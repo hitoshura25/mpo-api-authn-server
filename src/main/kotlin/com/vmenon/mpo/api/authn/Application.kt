@@ -33,7 +33,7 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import java.security.SecureRandom
-import java.util.*
+import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 
 fun Application.module() {

@@ -1,10 +1,14 @@
 plugins {
     id("org.jetbrains.kotlin.jvm") version "1.9.23"
     id("application")
+    id("org.jetbrains.kotlinx.kover") version "0.9.1"
 }
 
-group = "com.example"
+val junitVersion = "5.11.3"
+
+group = "com.vmenon.mpo.api.authn"
 version = "1.0-SNAPSHOT"
+
 
 repositories {
     mavenCentral()
@@ -25,11 +29,17 @@ dependencies {
     implementation("ch.qos.logback:logback-classic:1.4.14")
 
     // Test dependencies
+    testImplementation("org.junit.jupiter:junit-jupiter-api:${junitVersion}")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:${junitVersion}")
     testImplementation("io.ktor:ktor-server-test-host:2.3.7")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.9.23")
     testImplementation("io.mockk:mockk:1.13.8")
 }
 
 application {
-    mainClass.set("com.example.ApplicationKt")
+    mainClass.set("com.vmenon.mpo.api.authn.ApplicationKt")
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }

@@ -14,7 +14,7 @@ import io.ktor.server.testing.testApplication
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import org.junit.Test
+import org.junit.jupiter.api.Test
 
 class ApplicationTest {
 

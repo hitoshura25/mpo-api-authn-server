@@ -4,7 +4,7 @@ import com.yubico.webauthn.CredentialRepository
 import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.data.ByteArray
 import com.yubico.webauthn.data.PublicKeyCredentialDescriptor
-import java.util.*
+import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 
 data class UserAccount(

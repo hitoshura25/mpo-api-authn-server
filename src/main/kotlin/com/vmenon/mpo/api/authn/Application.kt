@@ -20,35 +20,6 @@ import java.security.SecureRandom
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
 
-data class RegistrationRequest(
-    val username: String,
-    val displayName: String
-)
-
-data class RegistrationResponse(
-    val requestId: String,
-    val publicKeyCredentialCreationOptions: String
-)
-
-data class RegistrationCompleteRequest(
-    val requestId: String,
-    val credential: String
-)
-
-data class AuthenticationRequest(
-    val username: String? = null
-)
-
-data class AuthenticationResponse(
-    val requestId: String,
-    val publicKeyCredentialRequestOptions: String
-)
-
-data class AuthenticationCompleteRequest(
-    val requestId: String,
-    val credential: String
-)
-
 fun Application.module() {
     val credentialRepository = InMemoryCredentialRepository()
     val registrationRequestStorage = ConcurrentHashMap<String, PublicKeyCredentialCreationOptions>()

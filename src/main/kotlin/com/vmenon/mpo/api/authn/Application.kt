@@ -1,6 +1,5 @@
-package com.example
+package com.vmenon.mpo.api.authn
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.yubico.webauthn.*
@@ -54,10 +53,6 @@ fun Application.module() {
     val credentialRepository = InMemoryCredentialRepository()
     val registrationRequestStorage = ConcurrentHashMap<String, PublicKeyCredentialCreationOptions>()
     val assertionRequestStorage = ConcurrentHashMap<String, AssertionRequest>()
-    val objectMapper = ObjectMapper().apply {
-        registerModule(KotlinModule.Builder().build())
-        registerModule(JavaTimeModule())
-    }
 
     val relyingParty = RelyingParty.builder()
         .identity(

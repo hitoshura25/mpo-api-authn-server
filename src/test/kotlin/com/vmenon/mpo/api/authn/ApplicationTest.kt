@@ -1,4 +1,4 @@
-package com.example
+package com.vmenon.mpo.api.authn
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule

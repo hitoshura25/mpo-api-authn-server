@@ -1,4 +1,4 @@
-package com.example
+package com.vmenon.mpo.api.authn
 
 import com.yubico.webauthn.CredentialRepository
 import com.yubico.webauthn.RegisteredCredential

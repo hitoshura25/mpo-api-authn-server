@@ -5,7 +5,10 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.yubico.TestAuthenticator
+import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.Defaults
+import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.generateKeypair
 import com.yubico.webauthn.data.ByteArray
+import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -14,6 +17,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
+import java.security.KeyPair
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -98,64 +102,6 @@ class ApplicationTest {
         assertTrue(response.bodyAsText().contains("Invalid request ID"))
     }
 
-    @Test
-    fun testAuthenticationCompleteSuccess() = testApplication {
-        application {
-            module()
-        }
-
-        // First, start an authentication to get a valid request ID
-        val authRequest = AuthenticationRequest(username = "testuser")
-
-        val startResponse = client.post("/authenticate/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(authRequest))
-        }
-
-        assertEquals(HttpStatusCode.OK, startResponse.status)
-        val startResponseBody = objectMapper.readTree(startResponse.bodyAsText())
-        assertNotNull(startResponseBody.get("requestId"))
-        assertNotNull(startResponseBody.get("publicKeyCredentialRequestOptions"))
-
-        val requestId = startResponseBody.get("requestId").asText()
-
-        // Create a mock authentication response (this would normally come from the WebAuthn API)
-        val mockCredential = """
-        {
-            "id": "mock-credential-id",
-            "rawId": "bW9jay1jcmVkZW50aWFsLWlk",
-            "type": "public-key",
-            "response": {
-                "clientDataJSON": "eyJ0eXBlIjoid2ViYXV0aG4uZ2V0IiwiY2hhbGxlbmdlIjoibW9jay1jaGFsbGVuZ2UiLCJvcmlnaW4iOiJodHRwOi8vbG9jYWxob3N0OjgwODAifQ",
-                "authenticatorData": "SZYN5YgOjGh0NBcPZHZgW4_krrmihjLHmVzzuoMdl2MBAAAAAQ",
-                "signature": "MEUCIQDTGOGq-Q_Qr8jKD9nSFLlJrXo0F0gPfMgM8HtTfJ5Ky3UFAiEA27FgHZOD5TkzB3c73-eW3WTFnZwqxX5gLqlhjSQd8Fbi"
-            }
-        }
-        """.trimIndent()
-
-        val completeRequest = AuthenticationCompleteRequest(
-            requestId = requestId,
-            credential = mockCredential
-        )
-
-        val completeResponse = client.post("/authenticate/complete") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(completeRequest))
-        }
-
-        // Note: This will likely fail with the actual WebAuthn validation
-        // but we're testing that the endpoint accepts the request and processes it
-        assertTrue(
-            completeResponse.status == HttpStatusCode.OK ||
-                    completeResponse.status == HttpStatusCode.InternalServerError
-        )
-
-        // If it's an error, it should be a validation error, not a "request ID not found" error
-        if (completeResponse.status == HttpStatusCode.InternalServerError) {
-            val errorMessage = completeResponse.bodyAsText()
-            assertTrue(!errorMessage.contains("Invalid request ID"))
-        }
-    }
 
     @Test
     fun testRegistrationCompleteWithInvalidRequestId() = testApplication {
@@ -178,14 +124,23 @@ class ApplicationTest {
     }
 
     @Test
-    fun testRegistrationCompleteSuccess() = testApplication {
+    fun testRegisterAndAuthenticationSuccess() = testApplication {
         application {
             module()
         }
 
+        val username = "testuser"
+        val displayName = "Test User"
+        val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
+
+        registerUser(client, username, displayName, keyPair)
+        authenticateUser(client, username, keyPair)
+    }
+
+    private suspend fun registerUser(client: HttpClient, username: String, displayName: String, keyPair: KeyPair) {
         val registrationRequest = RegistrationRequest(
-            username = "testuser",
-            displayName = "Test User"
+            username = username,
+            displayName = displayName
         )
 
         val startResponse = client.post("/register/start") {
@@ -201,17 +156,21 @@ class ApplicationTest {
 
         val credentialOptionsString = startResponseBody.get("publicKeyCredentialCreationOptions").asText()
         val credentialOptions = objectMapper.readTree(credentialOptionsString)
-        assertEquals("testuser", credentialOptions.get("user").get("name").asText())
-        assertEquals("Test User", credentialOptions.get("user").get("displayName").asText())
-        assertEquals("localhost", credentialOptions.get("rp").get("id").asText())
-        assertEquals("WebAuthn Demo", credentialOptions.get("rp").get("name").asText())
+        val publicKey = credentialOptions.get("publicKey")
+        assertEquals(username, publicKey.get("user").get("name").asText())
+        assertEquals(displayName, publicKey.get("user").get("displayName").asText())
+        assertEquals("localhost", publicKey.get("rp").get("id").asText())
+        assertEquals("WebAuthn Demo", publicKey.get("rp").get("name").asText())
 
         val requestId = startResponseBody.get("requestId").asText()
         val createCredentialOptions =
             objectMapper.readTree(startResponseBody.get("publicKeyCredentialCreationOptions").asText())
 
-        val challenge = createCredentialOptions.get("challenge").asText()
-        val credential = TestAuthenticator.createUnattestedCredential(ByteArray.fromBase64Url(challenge))
+        val challenge = createCredentialOptions.get("publicKey").get("challenge").asText()
+        val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
+            ByteArray.fromBase64Url(challenge),
+            keyPair,
+        )
 
         val publicKeyCredentialJson =
             objectMapper.writeValueAsString(credential.first)
@@ -225,6 +184,48 @@ class ApplicationTest {
             contentType(ContentType.Application.Json)
             setBody(objectMapper.writeValueAsString(completeRequest))
         }
+        assertTrue(completeResponse.status == HttpStatusCode.OK)
+    }
+
+    private suspend fun authenticateUser(client: HttpClient, username: String, keyPair: KeyPair) {
+        val authRequest = AuthenticationRequest(username)
+
+        val startResponse = client.post("/authenticate/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(authRequest))
+        }
+
+        assertEquals(HttpStatusCode.OK, startResponse.status)
+        val startResponseBody = objectMapper.readTree(startResponse.bodyAsText())
+        assertNotNull(startResponseBody.get("requestId"))
+        assertNotNull(startResponseBody.get("publicKeyCredentialRequestOptions"))
+
+        val requestId = startResponseBody.get("requestId").asText()
+        val requestCredentialOptions =
+            objectMapper.readTree(startResponseBody.get("publicKeyCredentialRequestOptions").asText())
+        val publicKey = requestCredentialOptions.get("publicKey")
+        val challenge = publicKey.get("challenge").asText()
+        val allowCredentials = publicKey.get("allowCredentials").first()
+        val credential =
+            TestAuthenticator.createUnattestedCredentialForAuthentication(
+                ByteArray.fromBase64Url(challenge),
+                ByteArray.fromBase64Url(allowCredentials.get("id").asText()),
+                keyPair,
+            )
+
+        val publicKeyCredentialJson =
+            objectMapper.writeValueAsString(credential)
+
+        val completeRequest = AuthenticationCompleteRequest(
+            requestId = requestId,
+            credential = publicKeyCredentialJson
+        )
+
+        val completeResponse = client.post("/authenticate/complete") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(completeRequest))
+        }
+
         assertTrue(completeResponse.status == HttpStatusCode.OK)
     }
 }

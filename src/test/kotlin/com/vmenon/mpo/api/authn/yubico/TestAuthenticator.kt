@@ -1,13 +1,16 @@
 package com.vmenon.mpo.api.authn.yubico
 
 import BinaryUtil
+import Crypto
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
+import com.yubico.webauthn.data.AuthenticatorAssertionResponse
 import com.yubico.webauthn.data.AuthenticatorAttestationResponse
 import com.yubico.webauthn.data.AuthenticatorDataFlags
 import com.yubico.webauthn.data.ByteArray
 import com.yubico.webauthn.data.COSEAlgorithmIdentifier
+import com.yubico.webauthn.data.ClientAssertionExtensionOutputs
 import com.yubico.webauthn.data.ClientRegistrationExtensionOutputs
 import com.yubico.webauthn.data.PublicKeyCredential
 import java.security.KeyPair
@@ -94,32 +97,67 @@ object TestAuthenticator {
         bytes.addAll(BinaryUtil.fromHex("0020").toList())
         bytes.addAll(credentialId.bytes.toList())
         bytes.addAll(publicKeyCose.bytes.toList())
-
         return ByteArray(bytes.toByteArray())
     }
 
     /**
-     * Create an unattested credential for testing
+     * Create an unattested credential for testing registration
      */
-    fun createUnattestedCredential(
+    fun createUnattestedCredentialForRegistration(
         challenge: ByteArray,
-        authenticatorExtensions: JsonNode? = null,
-        flags: AuthenticatorDataFlags? = null
+        keyPair: KeyPair
     ): Triple<
             PublicKeyCredential<AuthenticatorAttestationResponse, ClientRegistrationExtensionOutputs>,
             KeyPair,
             List<Pair<X509Certificate, PrivateKey>>
             > {
-        val (authData, keypair) = createAuthenticatorData(
-            authenticatorExtensions = authenticatorExtensions,
-            flags = flags
+        val authData = createAuthenticatorData(
+            keyPair = keyPair
         )
-        return createCredential(
+        return createAuthenticatorAttestationCredential(
             authDataBytes = authData,
-            clientDataJson = createClientData(challenge = challenge),
-            credentialKeypair = keypair,
+            credentialKeypair = keyPair,
+            clientDataJson = createClientData(challenge = challenge, "webauthn.create"),
             attestationMaker = AttestationMaker.none()
         )
+    }
+
+    /**
+     * Create an unattested credential for testing authentication
+     */
+    fun createUnattestedCredentialForAuthentication(
+        challenge: ByteArray,
+        allowedCredentialId: ByteArray,
+        keyPair: KeyPair,
+    ): PublicKeyCredential<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs> {
+        val authDataBytes: ByteArray =
+            makeAuthDataBytes(
+                rpId = Defaults.rpId,
+                signatureCount = 1338
+            )
+        val clientDataJson = createClientData(challenge = challenge, "webauthn.get")
+        val clientDataJsonBytes = toBytes(
+            clientDataJson
+        )
+        val response = AuthenticatorAssertionResponse.builder()
+            .authenticatorData(authDataBytes)
+            .clientDataJSON(clientDataJsonBytes)
+            .signature(
+                makeAssertionSignature(
+                    authDataBytes,
+                    Crypto.sha256(clientDataJsonBytes),
+                    keyPair.private,
+                )
+            )
+            .build()
+
+        val credential =
+            PublicKeyCredential.builder<AuthenticatorAssertionResponse, ClientAssertionExtensionOutputs>()
+                .id(allowedCredentialId)
+                .response(response)
+                .clientExtensionResults(ClientAssertionExtensionOutputs.builder().build())
+                .build()
+        return credential
     }
 
     /**
@@ -127,14 +165,10 @@ object TestAuthenticator {
      */
     fun createAuthenticatorData(
         aaguid: ByteArray = Defaults.aaguid,
-        authenticatorExtensions: JsonNode? = null,
-        credentialKeypair: KeyPair? = null,
-        keyAlgorithm: COSEAlgorithmIdentifier = Defaults.keyAlgorithm,
-        flags: AuthenticatorDataFlags? = null
-    ): Pair<ByteArray, KeyPair> {
-        val keypair = credentialKeypair ?: generateKeypair(algorithm = keyAlgorithm)
-
-        val publicKeyCose = when (val pub = keypair.public) {
+        keyPair: KeyPair,
+        keyAlgorithm: COSEAlgorithmIdentifier = Defaults.keyAlgorithm
+    ): ByteArray {
+        val publicKeyCose = when (val pub = keyPair.public) {
             is ECPublicKey -> WebAuthnTestCodecs.ecPublicKeyToCose(pub)
             is RSAPublicKey -> WebAuthnTestCodecs.rsaPublicKeyToCose(pub, keyAlgorithm)
             // Note: BCEdDSAPublicKey handling would need proper import
@@ -143,17 +177,13 @@ object TestAuthenticator {
 
         val authDataBytes = makeAuthDataBytes(
             rpId = Defaults.rpId,
-            flags = flags,
             attestedCredentialDataBytes = makeAttestedCredentialDataBytes(
                 aaguid = aaguid,
                 publicKeyCose = publicKeyCose
-            ),
-            extensionsCborBytes = authenticatorExtensions?.let { ext ->
-                ByteArray(JacksonCodecs.cbor().writeValueAsBytes(ext))
-            }
+            )
         )
 
-        return Pair(authDataBytes, keypair)
+        return authDataBytes
     }
 
     /**
@@ -196,8 +226,6 @@ object TestAuthenticator {
         return ByteArray(bytes.toByteArray())
     }
 
-    private val jsonFactory: JsonNodeFactory = JsonNodeFactory.instance
-
     private fun toBytes(s: String): ByteArray = ByteArray(s.toByteArray(Charsets.UTF_8))
 
     fun sha256(s: String): ByteArray = sha256(toBytes(s))
@@ -208,7 +236,7 @@ object TestAuthenticator {
     /**
      * Create a credential for testing
      */
-    fun createCredential(
+    fun createAuthenticatorAttestationCredential(
         authDataBytes: ByteArray,
         credentialKeypair: KeyPair,
         attestationMaker: AttestationMaker,
@@ -253,6 +281,7 @@ object TestAuthenticator {
      */
     fun createClientData(
         challenge: ByteArray,
+        type: String,
         clientData: JsonNode? = null,
         origin: String = Defaults.origin,
         tokenBindingStatus: String = Defaults.TokenBinding.status,
@@ -265,7 +294,7 @@ object TestAuthenticator {
 
                 rootNode.put("challenge", challenge.base64Url)
                 rootNode.put("origin", origin)
-                rootNode.put("type", "webauthn.create")
+                rootNode.put("type", type)
 
                 if (tokenBindingStatus === "present") {
                     val tokenBinding = objectMapper.createObjectNode()
@@ -309,8 +338,6 @@ object TestAuthenticator {
             COSEAlgorithmIdentifier.RS384,
             COSEAlgorithmIdentifier.RS512,
             COSEAlgorithmIdentifier.RS1 -> generateRsaKeypair()
-
-            else -> throw IllegalArgumentException("Unsupported algorithm: $algorithm")
         }
 
     fun generateEcKeypair(curve: String = "secp256r1"): KeyPair {
@@ -337,5 +364,29 @@ object TestAuthenticator {
         val keyPairGenerator = KeyPairGenerator.getInstance("RSA")
         keyPairGenerator.initialize(2048, random)
         return keyPairGenerator.generateKeyPair()
+    }
+
+    fun makeAssertionSignature(
+        authenticatorData: ByteArray,
+        clientDataHash: ByteArray,
+        key: PrivateKey,
+        alg: COSEAlgorithmIdentifier = COSEAlgorithmIdentifier.ES256
+    ): ByteArray =
+        sign(authenticatorData.concat(clientDataHash), key, alg)
+
+    fun sign(
+        data: ByteArray,
+        key: PrivateKey,
+        alg: COSEAlgorithmIdentifier
+    ): ByteArray {
+        val jAlg = WebAuthnCodecs.getJavaAlgorithmName(alg)
+
+        // Need to use BouncyCastle provider here because JDK15 standard providers do not support secp256k1
+        val sig = java.security.Signature.getInstance(jAlg, BouncyCastleProvider())
+
+        sig.initSign(key)
+        sig.update(data.bytes)
+        val signedData = sig.sign()
+        return ByteArray(signedData)
     }
 }

@@ -102,7 +102,7 @@ fun Application.module() {
 
             val response = RegistrationResponse(
                 requestId = requestId,
-                publicKeyCredentialCreationOptions = startRegistrationOptions.toJson()
+                publicKeyCredentialCreationOptions = startRegistrationOptions.toCredentialsCreateJson()
             )
 
             call.respond(response)
@@ -167,7 +167,7 @@ fun Application.module() {
 
             val response = AuthenticationResponse(
                 requestId = requestId,
-                publicKeyCredentialRequestOptions = startAssertionOptions.toJson()
+                publicKeyCredentialRequestOptions = startAssertionOptions.toCredentialsGetJson()
             )
 
             call.respond(response)

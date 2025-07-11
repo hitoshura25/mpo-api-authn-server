@@ -8,6 +8,11 @@ on:
 jobs:
   default-branch-run:
     runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-jdk
@@ -15,3 +20,7 @@ jobs:
       - uses: ./.github/actions/run-tests
         with:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: ./.github/actions/docker-publish
+        with:
+          docker_username: ${{ secrets.DOCKER_USERNAME }}
+          docker_password: ${{ secrets.DOCKER_PASSWORD }}

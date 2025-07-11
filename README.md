@@ -1,6 +1,6 @@
 # mpo-api-authn-server
 
-[![codecov](https://codecov.io/gh/hitoshura25/mpo-api-authn-server/graph/badge.svg?token=DMqg4cl5Vq)]
+[![codecov](https://codecov.io/gh/hitoshura25/mpo-api-authn-server/graph/badge.svg?token=DMqg4cl5Vq)](https://codecov.io/gh/hitoshura25/mpo-api-authn-server)
 
 Server implementation for webauthn based on Yubico's java-webauthn-server
 

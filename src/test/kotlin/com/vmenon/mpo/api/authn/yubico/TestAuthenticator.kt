@@ -1,7 +1,6 @@
 package com.vmenon.mpo.api.authn.yubico
 
 import BinaryUtil
-import Crypto
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.JsonNodeFactory
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -145,7 +144,7 @@ object TestAuthenticator {
             .signature(
                 makeAssertionSignature(
                     authDataBytes,
-                    Crypto.sha256(clientDataJsonBytes),
+                    sha256(clientDataJsonBytes),
                     keyPair.private,
                 )
             )

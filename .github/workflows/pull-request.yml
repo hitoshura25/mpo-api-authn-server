@@ -15,3 +15,7 @@ jobs:
       - uses: ./.github/actions/run-tests
         with:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
+      - uses: ./.github/actions/docker-publish
+        with:
+          docker_username: ${{ secrets.DOCKER_USERNAME }}
+          docker_password: ${{ secrets.DOCKER_PASSWORD }}

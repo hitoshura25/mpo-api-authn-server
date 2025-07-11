@@ -1,6 +1,7 @@
 plugins {
     id("org.jetbrains.kotlin.jvm") version "1.9.23"
     id("application")
+    id("com.github.johnrengelman.shadow") version "8.1.1"
     id("org.jetbrains.kotlinx.kover") version "0.9.1"
 }
 
@@ -51,6 +52,17 @@ dependencies {
 
 application {
     mainClass.set("com.vmenon.mpo.api.authn.ApplicationKt")
+}
+
+tasks.shadowJar {
+    archiveClassifier.set("all")
+    manifest {
+        attributes["Main-Class"] = "com.vmenon.mpo.api.authn.ApplicationKt"
+    }
+}
+
+tasks.build {
+    dependsOn(tasks.shadowJar)
 }
 
 tasks.withType<Test> {

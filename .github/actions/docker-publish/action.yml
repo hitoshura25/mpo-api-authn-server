@@ -22,7 +22,7 @@ runs:
       with:
         images: hitoshura25/mpo-api-authn-server
         tags: |
-          type=raw,value=latest
+          type=raw,value=latest,enable={{is_default_branch}}
 
     - name: Build and push Docker image
       id: push

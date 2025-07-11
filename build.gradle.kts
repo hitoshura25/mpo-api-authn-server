@@ -11,6 +11,7 @@ val webauthnVersion = "2.6.0"
 val jacksonVersion = "2.16.1"
 val logbackVersion = "1.4.14"
 val mockkVersion = "1.13.8"
+val bouncyCastleVersion = "1.81"
 
 group = "com.vmenon.mpo.api.authn"
 version = "1.0-SNAPSHOT"
@@ -32,6 +33,8 @@ dependencies {
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVersion")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:${jacksonVersion}")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:${jacksonVersion}")
+
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
 
     // Test dependencies
@@ -40,6 +43,10 @@ dependencies {
     testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion")
     testImplementation("io.mockk:mockk:$mockkVersion")
+    testImplementation("com.upokecenter:cbor")
+    testImplementation("org.bouncycastle:bcpkix-jdk18on:$bouncyCastleVersion")
+    testImplementation("org.bouncycastle:bcprov-jdk18on:$bouncyCastleVersion")
+    testImplementation("com.google.guava:guava")
 }
 
 application {

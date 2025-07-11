@@ -9,7 +9,6 @@ import com.google.common.primitives.Bytes
 import com.upokecenter.cbor.CBORObject
 import com.yubico.webauthn.data.ByteArray
 import com.yubico.webauthn.data.COSEAlgorithmIdentifier
-import java.io.IOException
 import java.math.BigInteger
 import java.security.KeyFactory
 import java.security.NoSuchAlgorithmException
@@ -116,19 +115,6 @@ object WebAuthnCodecs {
         return ByteArray(CBORObject.FromObject(coseKey).EncodeToBytes())
     }
 
-    @Throws(IOException::class, InvalidKeySpecException::class, NoSuchAlgorithmException::class)
-    fun importCosePublicKey(key: ByteArray): PublicKey {
-        val cose = CBORObject.DecodeFromBytes(key.bytes)
-        val kty = cose.get(CBORObject.FromObject(1)).AsInt32()
-
-        return when (kty) {
-            1 -> importCoseEdDsaPublicKey(cose)
-            2 -> importCoseEcdsaPublicKey(cose)
-            3 -> importCoseRsaPublicKey(cose)
-            else -> throw IllegalArgumentException("Unsupported key type: $kty")
-        }
-    }
-
     @Throws(NoSuchAlgorithmException::class, InvalidKeySpecException::class)
     private fun importCoseRsaPublicKey(cose: CBORObject): PublicKey {
         val spec = RSAPublicKeySpec(
@@ -200,13 +186,6 @@ object WebAuthnCodecs {
             COSEAlgorithmIdentifier.RS384 -> "SHA384withRSA"
             COSEAlgorithmIdentifier.RS512 -> "SHA512withRSA"
             COSEAlgorithmIdentifier.RS1 -> "SHA1withRSA"
-        }
-    }
-
-    fun jwsAlgorithmNameToJavaAlgorithmName(alg: String): String {
-        return when (alg) {
-            "RS256" -> "SHA256withRSA"
-            else -> throw IllegalArgumentException("Unknown algorithm: $alg")
         }
     }
 }

@@ -15,7 +15,7 @@ object BinaryUtil {
 
         val result = ByteArray(hex.length / 2)
         for (i in 0..<hex.length) {
-            val d = hex.get(i).digitToIntOrNull(16) ?: -1
+            val d = hex[i].digitToIntOrNull(16) ?: -1
             require(d >= 0) { "Invalid hex digit at index $i in: $hex" }
             result[i / 2] = (result[i / 2].toInt() or (d shl (((i + 1) % 2) * 4))).toByte()
         }
@@ -79,8 +79,8 @@ object BinaryUtil {
     }
 
     fun encodeDerSequence(vararg items: ByteArray): ByteArray {
-        val content: ByteArray = BinaryUtil.concat(*items)
-        return BinaryUtil.concat(byteArrayOf(0x30), encodeDerLength(content.size), content)
+        val content: ByteArray = concat(*items)
+        return concat(byteArrayOf(0x30), encodeDerLength(content.size), content)
     }
 
     fun encodeDerObjectId(oid: ByteArray): ByteArray {

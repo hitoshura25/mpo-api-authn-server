@@ -1,0 +1,11 @@
+# .github/actions/setup-jdk/action.yml
+name: 'Setup JDK'
+description: 'Sets up JDK environment'
+runs:
+  using: "composite"
+  steps:
+    - name: Set up JDK
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'

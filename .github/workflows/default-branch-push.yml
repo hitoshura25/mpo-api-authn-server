@@ -1,0 +1,17 @@
+name: Default Branch Tests and Coverage
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  default-branch-run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-jdk
+      - uses: ./.github/actions/cache-gradle
+      - uses: ./.github/actions/run-tests
+        with:
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}

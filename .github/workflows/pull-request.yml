@@ -1,0 +1,17 @@
+name: Pull Request Tests and Coverage
+
+on:
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  pull-request-run-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-jdk
+      - uses: ./.github/actions/cache-gradle
+      - uses: ./.github/actions/run-tests
+        with:
+          codecov_token: ${{ secrets.CODECOV_TOKEN }}

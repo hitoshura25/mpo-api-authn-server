@@ -1,5 +1,17 @@
 version: '3.8'
 services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: webauthn
+      POSTGRES_USER: webauthn_user
+      POSTGRES_PASSWORD: webauthn_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
   redis:
     image: redis:7-alpine
     ports:
@@ -14,15 +26,29 @@ services:
     ports:
       - "8080:8080"
     environment:
+      # Temporary storage (Redis for registration/assertion requests)
       - STORAGE_TYPE=redis
       - REDIS_HOST=redis
       - REDIS_PORT=6379
       - REDIS_PASSWORD=webauthn_password
       - REDIS_DATABASE=0
       - REDIS_MAX_CONNECTIONS=10
+
+      # Permanent storage (PostgreSQL for credentials)
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=webauthn
+      - DB_USERNAME=webauthn_user
+      - DB_PASSWORD=webauthn_password
+      - DB_MAX_POOL_SIZE=10
+
+      # Encryption key for secure credential storage (generate a new one for production!)
+      - ENCRYPTION_KEY=YourBase64EncodedAES256KeyHere==
     depends_on:
       - redis
+      - postgres
     restart: unless-stopped
 
 volumes:
+  postgres_data:
   redis_data:

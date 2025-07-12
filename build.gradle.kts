@@ -42,6 +42,10 @@ dependencies {
     implementation("redis.clients:jedis:5.1.0")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-smile:${jacksonVersion}")
 
+    // PostgreSQL for credential storage
+    implementation("org.postgresql:postgresql:42.7.2")
+    implementation("com.zaxxer:HikariCP:5.0.1")
+
     // Dependency Injection
     implementation("io.insert-koin:koin-ktor:3.5.3")
     implementation("io.insert-koin:koin-logger-slf4j:3.5.3")

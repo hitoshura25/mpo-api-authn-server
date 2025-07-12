@@ -1,11 +1,13 @@
 package com.vmenon.mpo.api.authn.di
 
-import com.vmenon.mpo.api.authn.InMemoryCredentialRepository
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
+import com.vmenon.mpo.api.authn.storage.ScalableCredentialRepository
 import com.vmenon.mpo.api.authn.storage.inmem.InMemoryAssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.inmem.InMemoryCredentialRepository
 import com.vmenon.mpo.api.authn.storage.inmem.InMemoryRegistrationRequestStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisAssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.redis.RedisCredentialRepository
 import com.vmenon.mpo.api.authn.storage.redis.RedisRegistrationRequestStorage
 import com.yubico.webauthn.RelyingParty
 import com.yubico.webauthn.data.RelyingPartyIdentity
@@ -126,12 +128,49 @@ val appModule = module {
         }
     }
 
-    single { InMemoryCredentialRepository() }
+    single<ScalableCredentialRepository>(named("redis")) {
+        val host: String by inject(named("redisHost"))
+        val port: Int by inject(named("redisPort"))
+        val password: String? by inject(named("redisPassword"))
+        val database: Int by inject(named("redisDatabase"))
+        val maxConnections: Int by inject(named("redisMaxConnections"))
+
+        RedisCredentialRepository.create(
+            host = host,
+            port = port,
+            password = password,
+            database = database,
+            maxConnections = maxConnections
+        )
+    }
+
+    single<ScalableCredentialRepository>(named("memory")) {
+        InMemoryCredentialRepository()
+    }
+
+    single<ScalableCredentialRepository> {
+        val storageType: String by inject(named("storageType"))
+        when (storageType.lowercase()) {
+            "redis" -> {
+                println("Initializing Redis credential repository...")
+                get<ScalableCredentialRepository>(named("redis"))
+            }
+
+            "memory" -> {
+                println("WARNING: Using in-memory credential repository - not suitable for production multi-instance deployments")
+                get<ScalableCredentialRepository>(named("memory"))
+            }
+
+            else -> {
+                throw IllegalArgumentException("Unsupported storage type: $storageType. Supported types: redis, memory")
+            }
+        }
+    }
 
     single {
         val relyingPartyId: String by inject(named("relyingPartyId"))
         val relyingPartyName: String by inject(named("relyingPartyName"))
-        val credentialRepository: InMemoryCredentialRepository by inject()
+        val credentialRepository: ScalableCredentialRepository by inject()
 
         RelyingParty.builder()
             .identity(

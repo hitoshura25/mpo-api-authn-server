@@ -4,7 +4,10 @@ import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.di.appModule
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
+import com.vmenon.mpo.api.authn.storage.ScalableCredentialRepository
+import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.yubico.webauthn.FinishAssertionOptions
 import com.yubico.webauthn.FinishRegistrationOptions
 import com.yubico.webauthn.RegisteredCredential
@@ -39,14 +42,12 @@ import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 
 fun Application.module() {
-    // Install Koin
     install(Koin) {
         slf4jLogger()
         modules(appModule)
     }
 
-    // Inject separate storage dependencies
-    val credentialRepository: InMemoryCredentialRepository by inject()
+    val credentialRepository: ScalableCredentialRepository by inject()
     val registrationStorage: RegistrationRequestStorage by inject()
     val assertionStorage: AssertionRequestStorage by inject()
     val relyingParty: RelyingParty by inject()

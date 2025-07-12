@@ -1,43 +1,33 @@
-package com.vmenon.mpo.api.authn
+package com.vmenon.mpo.api.authn.storage.inmem
 
-import com.yubico.webauthn.CredentialRepository
+import com.vmenon.mpo.api.authn.storage.CredentialRegistration
+import com.vmenon.mpo.api.authn.storage.ScalableCredentialRepository
+import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.data.ByteArray
 import com.yubico.webauthn.data.PublicKeyCredentialDescriptor
 import java.util.Optional
 import java.util.concurrent.ConcurrentHashMap
 
-data class UserAccount(
-    val username: String,
-    val displayName: String,
-    val userHandle: ByteArray
-)
-
-data class CredentialRegistration(
-    val userAccount: UserAccount,
-    val credential: RegisteredCredential,
-    val registrationTime: Long = System.currentTimeMillis()
-)
-
-class InMemoryCredentialRepository : CredentialRepository {
+class InMemoryCredentialRepository : ScalableCredentialRepository {
     private val storage = ConcurrentHashMap<String, MutableSet<CredentialRegistration>>()
     private val usersByHandle = ConcurrentHashMap<ByteArray, UserAccount>()
 
-    fun addRegistration(registration: CredentialRegistration) {
+    override fun addRegistration(registration: CredentialRegistration) {
         val username = registration.userAccount.username
         storage.computeIfAbsent(username) { mutableSetOf() }.add(registration)
         usersByHandle[registration.userAccount.userHandle] = registration.userAccount
     }
 
-    fun getRegistrationsByUsername(username: String): Set<CredentialRegistration> {
+    override fun getRegistrationsByUsername(username: String): Set<CredentialRegistration> {
         return storage[username] ?: emptySet()
     }
 
-    fun getUserByHandle(userHandle: ByteArray): UserAccount? {
+    override fun getUserByHandle(userHandle: ByteArray): UserAccount? {
         return usersByHandle[userHandle]
     }
 
-    fun getUserByUsername(username: String): UserAccount? {
+    override fun getUserByUsername(username: String): UserAccount? {
         return storage[username]?.firstOrNull()?.userAccount
     }
 
@@ -60,19 +50,23 @@ class InMemoryCredentialRepository : CredentialRepository {
     }
 
     override fun lookup(credentialId: ByteArray, userHandle: ByteArray): Optional<RegisteredCredential> {
-        val user = getUserByHandle(userHandle) ?: return Optional.empty()
+        val userAccount = getUserByHandle(userHandle) ?: return Optional.empty()
 
-        return storage[user.username]
-            ?.find { it.credential.credentialId == credentialId }
+        return getRegistrationsByUsername(userAccount.username)
+            .find { it.credential.credentialId == credentialId }
             ?.let { Optional.of(it.credential) }
             ?: Optional.empty()
     }
 
     override fun lookupAll(credentialId: ByteArray): Set<RegisteredCredential> {
-        return storage.values
-            .flatten()
+        return storage.values.flatten()
             .filter { it.credential.credentialId == credentialId }
             .map { it.credential }
             .toSet()
+    }
+
+    override fun close() {
+        storage.clear()
+        usersByHandle.clear()
     }
 }

@@ -38,8 +38,19 @@ dependencies {
 
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
 
+    // Redis for scalable storage
+    implementation("redis.clients:jedis:5.1.0")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-smile:${jacksonVersion}")
+
+    // Dependency Injection
+    implementation("io.insert-koin:koin-ktor:3.5.3")
+    implementation("io.insert-koin:koin-logger-slf4j:3.5.3")
+    implementation("io.insert-koin:koin-core:3.5.3")
+
     // Test dependencies
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
+    testImplementation("io.insert-koin:koin-test:3.5.3")
+    testImplementation("io.insert-koin:koin-test-junit5:3.5.3")
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion")

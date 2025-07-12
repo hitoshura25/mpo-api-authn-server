@@ -2,7 +2,8 @@ package com.vmenon.mpo.api.authn
 
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.yubico.webauthn.AssertionRequest
+import com.vmenon.mpo.api.authn.di.appModule
+import com.vmenon.mpo.api.authn.storage.RequestStorage
 import com.yubico.webauthn.FinishAssertionOptions
 import com.yubico.webauthn.FinishRegistrationOptions
 import com.yubico.webauthn.RegisteredCredential
@@ -11,8 +12,6 @@ import com.yubico.webauthn.StartAssertionOptions
 import com.yubico.webauthn.StartRegistrationOptions
 import com.yubico.webauthn.data.ByteArray
 import com.yubico.webauthn.data.PublicKeyCredential
-import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
-import com.yubico.webauthn.data.RelyingPartyIdentity
 import com.yubico.webauthn.data.UserIdentity
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -34,22 +33,21 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import java.security.SecureRandom
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
+import org.koin.ktor.ext.inject
+import org.koin.ktor.plugin.Koin
+import org.koin.logger.slf4jLogger
 
 fun Application.module() {
-    val credentialRepository = InMemoryCredentialRepository()
-    val registrationRequestStorage = ConcurrentHashMap<String, PublicKeyCredentialCreationOptions>()
-    val assertionRequestStorage = ConcurrentHashMap<String, AssertionRequest>()
+    // Install Koin
+    install(Koin) {
+        slf4jLogger()
+        modules(appModule)
+    }
 
-    val relyingParty = RelyingParty.builder()
-        .identity(
-            RelyingPartyIdentity.builder()
-                .id("localhost")
-                .name("WebAuthn Demo")
-                .build()
-        )
-        .credentialRepository(credentialRepository)
-        .build()
+    // Inject dependencies
+    val credentialRepository: InMemoryCredentialRepository by inject()
+    val requestStorage: RequestStorage by inject()
+    val relyingParty: RelyingParty by inject()
 
     install(ContentNegotiation) {
         jackson {
@@ -98,7 +96,7 @@ fun Application.module() {
                     .build()
             )
 
-            registrationRequestStorage[requestId] = startRegistrationOptions
+            requestStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
 
             val response = RegistrationResponse(
                 requestId = requestId,
@@ -110,7 +108,7 @@ fun Application.module() {
 
         post("/register/complete") {
             val request = call.receive<RegistrationCompleteRequest>()
-            val startRegistrationOptions = registrationRequestStorage.remove(request.requestId)
+            val startRegistrationOptions = requestStorage.retrieveAndRemoveRegistrationRequest(request.requestId)
                 ?: throw IllegalArgumentException("Invalid request ID")
 
             val finishRegistrationOptions = relyingParty.finishRegistration(
@@ -163,7 +161,7 @@ fun Application.module() {
                 )
             }
 
-            assertionRequestStorage[requestId] = startAssertionOptions
+            requestStorage.storeAssertionRequest(requestId, startAssertionOptions)
 
             val response = AuthenticationResponse(
                 requestId = requestId,
@@ -175,7 +173,7 @@ fun Application.module() {
 
         post("/authenticate/complete") {
             val request = call.receive<AuthenticationCompleteRequest>()
-            val startAssertionOptions = assertionRequestStorage.remove(request.requestId)
+            val startAssertionOptions = requestStorage.retrieveAndRemoveAssertionRequest(request.requestId)
                 ?: throw IllegalArgumentException("Invalid request ID")
 
             val finishAssertionOptions = relyingParty.finishAssertion(

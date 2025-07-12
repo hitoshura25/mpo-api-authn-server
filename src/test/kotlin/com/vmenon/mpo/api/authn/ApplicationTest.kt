@@ -21,7 +21,10 @@ import java.security.KeyPair
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import org.koin.core.context.stopKoin
 
 class ApplicationTest {
 
@@ -29,6 +32,21 @@ class ApplicationTest {
         registerModule(KotlinModule.Builder().build())
         registerModule(JavaTimeModule())
         registerModule(Jdk8Module())
+    }
+
+    @BeforeEach
+    fun setup() {
+        // Ensure clean Koin state before each test
+        stopKoin()
+        // Set test environment to use memory storage
+        System.setProperty("STORAGE_TYPE", "memory")
+    }
+
+    @AfterEach
+    fun teardown() {
+        // Clean up after each test
+        stopKoin()
+        System.clearProperty("STORAGE_TYPE")
     }
 
     @Test

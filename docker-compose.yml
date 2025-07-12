@@ -1,0 +1,28 @@
+version: '3.8'
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --requirepass webauthn_password
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+  webauthn-server:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - STORAGE_TYPE=redis
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=webauthn_password
+      - REDIS_DATABASE=0
+      - REDIS_MAX_CONNECTIONS=10
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+volumes:
+  redis_data:

@@ -1,6 +1,6 @@
-package com.vmenon.mpo.api.authn.storage
+package com.vmenon.mpo.api.authn.storage.inmem
 
-import com.yubico.webauthn.AssertionRequest
+import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -8,18 +8,17 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 
 /**
- * In-memory implementation of RequestStorage for development/testing
+ * In-memory implementation of RegistrationRequestStorage for development/testing
  * NOTE: This should NOT be used in production multi-instance deployments
  */
-class InMemoryRequestStorage : RequestStorage {
+class InMemoryRegistrationRequestStorage : RegistrationRequestStorage {
 
     private data class StoredItem<T>(
         val value: T,
         val expirationTime: Long
     )
 
-    private val registrationStorage = ConcurrentHashMap<String, StoredItem<PublicKeyCredentialCreationOptions>>()
-    private val assertionStorage = ConcurrentHashMap<String, StoredItem<AssertionRequest>>()
+    private val storage = ConcurrentHashMap<String, StoredItem<PublicKeyCredentialCreationOptions>>()
     private val cleanupExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
     init {
@@ -35,29 +34,11 @@ class InMemoryRequestStorage : RequestStorage {
         ttlSeconds: Long
     ) {
         val expirationTime = System.currentTimeMillis() + (ttlSeconds * 1000)
-        registrationStorage[requestId] = StoredItem(options, expirationTime)
+        storage[requestId] = StoredItem(options, expirationTime)
     }
 
     override fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
-        val stored = registrationStorage.remove(requestId)
-        return if (stored != null && stored.expirationTime > System.currentTimeMillis()) {
-            stored.value
-        } else {
-            null
-        }
-    }
-
-    override fun storeAssertionRequest(
-        requestId: String,
-        request: AssertionRequest,
-        ttlSeconds: Long
-    ) {
-        val expirationTime = System.currentTimeMillis() + (ttlSeconds * 1000)
-        assertionStorage[requestId] = StoredItem(request, expirationTime)
-    }
-
-    override fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest? {
-        val stored = assertionStorage.remove(requestId)
+        val stored = storage.remove(requestId)
         return if (stored != null && stored.expirationTime > System.currentTimeMillis()) {
             stored.value
         } else {
@@ -67,19 +48,13 @@ class InMemoryRequestStorage : RequestStorage {
 
     private fun cleanupExpiredEntries() {
         val currentTime = System.currentTimeMillis()
-
-        registrationStorage.entries.removeIf { (_, stored) ->
-            stored.expirationTime <= currentTime
-        }
-
-        assertionStorage.entries.removeIf { (_, stored) ->
+        storage.entries.removeIf { (_, stored) ->
             stored.expirationTime <= currentTime
         }
     }
 
     override fun close() {
         cleanupExecutor.shutdown()
-        registrationStorage.clear()
-        assertionStorage.clear()
+        storage.clear()
     }
 }

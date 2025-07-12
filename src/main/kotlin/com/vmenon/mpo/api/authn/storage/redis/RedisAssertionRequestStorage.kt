@@ -1,20 +1,20 @@
-package com.vmenon.mpo.api.authn.storage
+package com.vmenon.mpo.api.authn.storage.redis
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.yubico.webauthn.AssertionRequest
-import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.JedisPoolConfig
 
 /**
- * Redis-based implementation of RequestStorage for scalable WebAuthn request storage
+ * Redis-based implementation of AssertionRequestStorage
  */
-class RedisRequestStorage(
+class RedisAssertionRequestStorage(
     private val jedisPool: JedisPool,
-    private val keyPrefix: String = "webauthn:"
-) : RequestStorage {
+    private val keyPrefix: String = "webauthn:auth:"
+) : AssertionRequestStorage {
 
     private val objectMapper = ObjectMapper().apply {
         registerModule(KotlinModule.Builder().build())
@@ -22,16 +22,13 @@ class RedisRequestStorage(
     }
 
     companion object {
-        private const val REGISTRATION_PREFIX = "reg:"
-        private const val ASSERTION_PREFIX = "auth:"
-
         fun create(
             host: String = "localhost",
             port: Int = 6379,
             password: String? = null,
             database: Int = 0,
             maxConnections: Int = 10
-        ): RedisRequestStorage {
+        ): RedisAssertionRequestStorage {
             val config = JedisPoolConfig().apply {
                 maxTotal = maxConnections
                 maxIdle = maxConnections / 2
@@ -46,34 +43,7 @@ class RedisRequestStorage(
                 JedisPool(config, host, port, 2000, null, database)
             }
 
-            return RedisRequestStorage(jedisPool)
-        }
-    }
-
-    override fun storeRegistrationRequest(
-        requestId: String,
-        options: PublicKeyCredentialCreationOptions,
-        ttlSeconds: Long
-    ) {
-        val key = "$keyPrefix$REGISTRATION_PREFIX$requestId"
-        val value = objectMapper.writeValueAsString(options)
-
-        jedisPool.resource.use { jedis ->
-            jedis.setex(key, ttlSeconds, value)
-        }
-    }
-
-    override fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
-        val key = "$keyPrefix$REGISTRATION_PREFIX$requestId"
-
-        return jedisPool.resource.use { jedis ->
-            val value = jedis.get(key)
-            if (value != null) {
-                jedis.del(key) // Remove after retrieving
-                objectMapper.readValue(value, PublicKeyCredentialCreationOptions::class.java)
-            } else {
-                null
-            }
+            return RedisAssertionRequestStorage(jedisPool)
         }
     }
 
@@ -82,7 +52,7 @@ class RedisRequestStorage(
         request: AssertionRequest,
         ttlSeconds: Long
     ) {
-        val key = "$keyPrefix$ASSERTION_PREFIX$requestId"
+        val key = "$keyPrefix$requestId"
         val value = objectMapper.writeValueAsString(request)
 
         jedisPool.resource.use { jedis ->
@@ -91,7 +61,7 @@ class RedisRequestStorage(
     }
 
     override fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest? {
-        val key = "$keyPrefix$ASSERTION_PREFIX$requestId"
+        val key = "$keyPrefix$requestId"
 
         return jedisPool.resource.use { jedis ->
             val value = jedis.get(key)

@@ -1,7 +1,9 @@
 package com.vmenon.mpo.api.authn.di
 
-import com.vmenon.mpo.api.authn.storage.InMemoryRequestStorage
-import com.vmenon.mpo.api.authn.storage.RequestStorage
+import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
+import com.vmenon.mpo.api.authn.storage.inmem.InMemoryAssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.inmem.InMemoryRegistrationRequestStorage
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.AfterEach
@@ -35,9 +37,11 @@ class DependencyInjectionTest : KoinTest {
             modules(appModule)
         }
 
-        val storage: RequestStorage by inject()
+        val registrationStorage: RegistrationRequestStorage by inject()
+        val assertionStorage: AssertionRequestStorage by inject()
 
-        assertTrue(storage is InMemoryRequestStorage)
+        assertTrue(registrationStorage is InMemoryRegistrationRequestStorage)
+        assertTrue(assertionStorage is InMemoryAssertionRequestStorage)
 
         System.clearProperty("STORAGE_TYPE")
     }
@@ -80,16 +84,25 @@ class DependencyInjectionTest : KoinTest {
                 modules(appModule)
             }
 
-            // Get the Koin instance and try to get the RequestStorage directly
             val koin = getKoin()
-            val exception = assertThrows<Exception> {
-                koin.get<RequestStorage>()
+
+            // Both registration and assertion storage should throw exceptions
+            val registrationException = assertThrows<Exception> {
+                koin.get<RegistrationRequestStorage>()
+            }
+
+            val assertionException = assertThrows<Exception> {
+                koin.get<AssertionRequestStorage>()
             }
 
             // Check that the root cause is our IllegalArgumentException with the expected message
-            val rootCause = generateSequence(exception as Throwable) { it.cause }.last()
-            assertTrue(rootCause is IllegalArgumentException)
-            assertTrue(rootCause.message?.contains("Unsupported storage type: unsupported") == true)
+            val registrationRootCause = generateSequence(registrationException as Throwable) { it.cause }.last()
+            val assertionRootCause = generateSequence(assertionException as Throwable) { it.cause }.last()
+
+            assertTrue(registrationRootCause is IllegalArgumentException)
+            assertTrue(assertionRootCause is IllegalArgumentException)
+            assertTrue(registrationRootCause.message?.contains("Unsupported storage type: unsupported") == true)
+            assertTrue(assertionRootCause.message?.contains("Unsupported storage type: unsupported") == true)
         } finally {
             System.clearProperty("STORAGE_TYPE")
         }

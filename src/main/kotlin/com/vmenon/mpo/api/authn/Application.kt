@@ -3,7 +3,8 @@ package com.vmenon.mpo.api.authn
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.di.appModule
-import com.vmenon.mpo.api.authn.storage.RequestStorage
+import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.yubico.webauthn.FinishAssertionOptions
 import com.yubico.webauthn.FinishRegistrationOptions
 import com.yubico.webauthn.RegisteredCredential
@@ -44,9 +45,10 @@ fun Application.module() {
         modules(appModule)
     }
 
-    // Inject dependencies
+    // Inject separate storage dependencies
     val credentialRepository: InMemoryCredentialRepository by inject()
-    val requestStorage: RequestStorage by inject()
+    val registrationStorage: RegistrationRequestStorage by inject()
+    val assertionStorage: AssertionRequestStorage by inject()
     val relyingParty: RelyingParty by inject()
 
     install(ContentNegotiation) {
@@ -96,7 +98,7 @@ fun Application.module() {
                     .build()
             )
 
-            requestStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
+            registrationStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
 
             val response = RegistrationResponse(
                 requestId = requestId,
@@ -108,7 +110,7 @@ fun Application.module() {
 
         post("/register/complete") {
             val request = call.receive<RegistrationCompleteRequest>()
-            val startRegistrationOptions = requestStorage.retrieveAndRemoveRegistrationRequest(request.requestId)
+            val startRegistrationOptions = registrationStorage.retrieveAndRemoveRegistrationRequest(request.requestId)
                 ?: throw IllegalArgumentException("Invalid request ID")
 
             val finishRegistrationOptions = relyingParty.finishRegistration(
@@ -161,7 +163,7 @@ fun Application.module() {
                 )
             }
 
-            requestStorage.storeAssertionRequest(requestId, startAssertionOptions)
+            assertionStorage.storeAssertionRequest(requestId, startAssertionOptions)
 
             val response = AuthenticationResponse(
                 requestId = requestId,
@@ -173,7 +175,7 @@ fun Application.module() {
 
         post("/authenticate/complete") {
             val request = call.receive<AuthenticationCompleteRequest>()
-            val startAssertionOptions = requestStorage.retrieveAndRemoveAssertionRequest(request.requestId)
+            val startAssertionOptions = assertionStorage.retrieveAndRemoveAssertionRequest(request.requestId)
                 ?: throw IllegalArgumentException("Invalid request ID")
 
             val finishAssertionOptions = relyingParty.finishAssertion(

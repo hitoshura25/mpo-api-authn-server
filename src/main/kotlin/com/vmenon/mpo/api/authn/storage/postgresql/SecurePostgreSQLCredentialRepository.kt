@@ -1,11 +1,9 @@
 package com.vmenon.mpo.api.authn.storage.postgresql
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.ScalableCredentialRepository
 import com.vmenon.mpo.api.authn.storage.UserAccount
+import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.data.PublicKeyCredentialDescriptor
 import com.zaxxer.hikari.HikariConfig
@@ -30,11 +28,6 @@ class SecurePostgreSQLCredentialRepository(
     private val encryptionKey: SecretKey
 ) : ScalableCredentialRepository {
 
-    private val objectMapper = ObjectMapper().apply {
-        registerModule(KotlinModule.Builder().build())
-        registerModule(JavaTimeModule())
-    }
-
     companion object {
         private const val ENCRYPTION_ALGORITHM = "AES/GCM/NoPadding"
         private const val GCM_IV_LENGTH = 12
@@ -50,7 +43,7 @@ class SecurePostgreSQLCredentialRepository(
             encryptionKeyBase64: String? = null
         ): SecurePostgreSQLCredentialRepository {
             val config = HikariConfig().apply {
-                jdbcUrl = "jdbc:postgresql://$host:$port/$database?sslmode=require"
+                jdbcUrl = "jdbc:postgresql://$host:$port/$database?sslmode=disable"
                 this.username = username
                 this.password = password
                 maximumPoolSize = maxPoolSize

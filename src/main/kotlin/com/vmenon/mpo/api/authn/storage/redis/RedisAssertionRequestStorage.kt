@@ -1,9 +1,7 @@
 package com.vmenon.mpo.api.authn.storage.redis
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
+import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import com.yubico.webauthn.AssertionRequest
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.JedisPoolConfig
@@ -16,10 +14,6 @@ class RedisAssertionRequestStorage(
     private val keyPrefix: String = "webauthn:auth:"
 ) : AssertionRequestStorage {
 
-    private val objectMapper = ObjectMapper().apply {
-        registerModule(KotlinModule.Builder().build())
-        registerModule(JavaTimeModule())
-    }
 
     companion object {
         fun create(

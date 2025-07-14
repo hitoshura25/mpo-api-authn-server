@@ -1,9 +1,6 @@
 package com.vmenon.mpo.api.authn
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.vmenon.mpo.api.authn.yubico.TestAuthenticator
 import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.Defaults
 import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.generateKeypair
@@ -28,11 +25,7 @@ import org.koin.core.context.stopKoin
 
 class ApplicationTest {
 
-    private val objectMapper = ObjectMapper().apply {
-        registerModule(KotlinModule.Builder().build())
-        registerModule(JavaTimeModule())
-        registerModule(Jdk8Module())
-    }
+    private val objectMapper = JacksonUtils.objectMapper
 
     @BeforeEach
     fun setup() {

@@ -1,5 +1,6 @@
 package com.vmenon.mpo.api.authn
 
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.di.appModule
@@ -56,6 +57,7 @@ fun Application.module() {
         jackson {
             registerModule(KotlinModule.Builder().build())
             registerModule(JavaTimeModule())
+            registerModule(Jdk8Module())
         }
     }
 

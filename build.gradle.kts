@@ -13,6 +13,9 @@ val jacksonVersion = "2.16.1"
 val logbackVersion = "1.4.14"
 val mockkVersion = "1.13.8"
 val bouncyCastleVersion = "1.81"
+val testContainersVersion = "1.21.3"
+val testContainersRedisVersion = "2.2.2"
+
 
 group = "com.vmenon.mpo.api.authn"
 version = "1.0-SNAPSHOT"
@@ -55,6 +58,13 @@ dependencies {
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     testImplementation("io.insert-koin:koin-test:3.5.3")
     testImplementation("io.insert-koin:koin-test-junit5:3.5.3")
+
+    // Testcontainers for end-to-end testing with real databases
+    testImplementation("org.testcontainers:junit-jupiter:$testContainersVersion")
+    testImplementation("org.testcontainers:postgresql:$testContainersVersion")
+    testImplementation("org.testcontainers:testcontainers:$testContainersVersion")
+    testImplementation("com.redis:testcontainers-redis:${testContainersRedisVersion}")
+
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion")

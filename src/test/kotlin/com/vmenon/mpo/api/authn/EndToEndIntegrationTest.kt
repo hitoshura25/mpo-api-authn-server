@@ -93,8 +93,6 @@ class EndToEndIntegrationTest {
     fun setupTest() {
         stopKoin() // Ensure clean state
 
-        println("In Test: database host ${postgres.host}, port: ${postgres.getMappedPort(5432)}")
-
         // Set environment variables for the test containers
         System.setProperty("STORAGE_TYPE", "redis")
         System.setProperty("REDIS_HOST", redis.host)

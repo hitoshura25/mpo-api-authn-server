@@ -101,9 +101,6 @@ val storageModule = module {
         val maxPoolSize: Int by inject(named("dbMaxPoolSize"))
         val encryptionKey: String? by inject(named("encryptionKey"))
 
-        println("In DI Module: database host ${host}, port: $port")
-
-
         SecurePostgreSQLCredentialRepository.create(
             host = host,
             port = port,

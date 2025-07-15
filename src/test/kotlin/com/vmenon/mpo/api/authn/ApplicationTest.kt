@@ -22,30 +22,27 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.context.stopKoin
+import org.koin.test.KoinTest
 
-class ApplicationTest {
-
+class ApplicationTest : KoinTest {
     private val objectMapper = JacksonUtils.objectMapper
 
     @BeforeEach
     fun setup() {
         // Ensure clean Koin state before each test
         stopKoin()
-        // Set test environment to use memory storage
-        System.setProperty("STORAGE_TYPE", "memory")
     }
 
     @AfterEach
     fun teardown() {
         // Clean up after each test
         stopKoin()
-        System.clearProperty("STORAGE_TYPE")
     }
 
     @Test
     fun testRootEndpoint() = testApplication {
         application {
-            module()
+            module(testStorageModule)
         }
 
         val response = client.get("/")
@@ -56,7 +53,7 @@ class ApplicationTest {
     @Test
     fun testAuthenticationStart() = testApplication {
         application {
-            module()
+            module(testStorageModule)
         }
 
         val authRequest = AuthenticationRequest(username = "testuser")
@@ -76,7 +73,7 @@ class ApplicationTest {
     @Test
     fun testAuthenticationStartWithoutUsername() = testApplication {
         application {
-            module()
+            module(testStorageModule)
         }
 
         val authRequest = AuthenticationRequest()
@@ -96,7 +93,7 @@ class ApplicationTest {
     @Test
     fun testAuthenticationCompleteWithInvalidRequestId() = testApplication {
         application {
-            module()
+            module(testStorageModule)
         }
 
         val completeRequest = AuthenticationCompleteRequest(
@@ -117,7 +114,7 @@ class ApplicationTest {
     @Test
     fun testRegistrationCompleteWithInvalidRequestId() = testApplication {
         application {
-            module()
+            module(testStorageModule)
         }
 
         val completeRequest = RegistrationCompleteRequest(
@@ -137,7 +134,7 @@ class ApplicationTest {
     @Test
     fun testRegisterAndAuthenticationSuccess() = testApplication {
         application {
-            module()
+            module(testStorageModule)
         }
 
         val username = "testuser"

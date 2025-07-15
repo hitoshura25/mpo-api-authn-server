@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.vmenon.mpo.api.authn.di.storageModule
 import com.vmenon.mpo.api.authn.yubico.TestAuthenticator
 import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.Defaults
 import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.generateKeypair
@@ -128,7 +129,7 @@ class EndToEndIntegrationTest {
     @Test
     fun `test complete WebAuthn flow with real databases`() = testApplication {
         application {
-            module()
+            module(storageModule)
         }
 
         val username = "integration_test_user"
@@ -244,9 +245,9 @@ class EndToEndIntegrationTest {
 
         testApplication {
             application {
-                module()
+                module(storageModule)
             }
-            
+
             // Register a user
             registerUser(client, username, displayName, keyPair)
 
@@ -257,7 +258,7 @@ class EndToEndIntegrationTest {
         testApplication {
             // Start application again
             application {
-                module()
+                module(storageModule)
             }
 
             // Try to authenticate the previously registered user
@@ -286,7 +287,7 @@ class EndToEndIntegrationTest {
     @Test
     fun `test Redis failure recovery`() = testApplication {
         application {
-            module()
+            module(storageModule)
         }
 
         val username = "redis_failure_test"
@@ -316,7 +317,7 @@ class EndToEndIntegrationTest {
     @Test
     fun `test encrypted credential storage in PostgreSQL`() = testApplication {
         application {
-            module()
+            module(storageModule)
         }
 
         val username = "encryption_test_user"

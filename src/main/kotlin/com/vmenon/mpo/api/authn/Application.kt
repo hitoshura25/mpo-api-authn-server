@@ -4,6 +4,7 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.di.appModule
+import com.vmenon.mpo.api.authn.di.storageModule
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
@@ -38,14 +39,15 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import java.security.SecureRandom
 import java.util.UUID
+import org.koin.core.module.Module
 import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 
-fun Application.module() {
+fun Application.module(storageModule: Module) {
     install(Koin) {
         slf4jLogger()
-        modules(appModule)
+        modules(listOf(appModule, storageModule))
     }
 
     val credentialRepository: ScalableCredentialRepository by inject()
@@ -204,6 +206,6 @@ fun Application.module() {
 
 fun main() {
     embeddedServer(Netty, port = 8080) {
-        module()
+        module(storageModule)
     }.start(wait = true)
 }

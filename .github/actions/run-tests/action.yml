@@ -10,7 +10,7 @@ runs:
   steps:
     - name: Run tests and coverage
       shell: bash
-      run: ./gradlew koverXmlReport
+      run: ./gradlew koverXmlReport --debug
 
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5

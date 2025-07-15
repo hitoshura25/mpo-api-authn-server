@@ -9,10 +9,5 @@ sleep 10
 
 echo "✅ Full stack is ready!"
 echo ""
-echo "📝 Services running:"
-echo "  WebAuthn Server: http://localhost:8080"
-echo "  PostgreSQL: localhost:5432"
-echo "  Redis: localhost:6379"
-echo ""
 echo "🔍 To view logs: docker-compose logs -f"
 echo "🛑 To stop: docker-compose down"

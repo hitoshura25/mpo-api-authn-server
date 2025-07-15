@@ -5,3 +5,57 @@
 Server implementation for webauthn based on Yubico's java-webauthn-server
 
 **Disclaimer**: Used Github Copilot agent mode along with various AI Models (Claude Sonnet, Gpt 4.1)
+
+# Docker Setup Guide
+
+This project supports two different Docker setups to accommodate different development workflows.
+
+## 🔧 Development Mode (Recommended for active development)
+
+**Use this when:** You're actively coding and want fast iteration cycles.
+
+**What it does:** Starts only the dependencies (PostgreSQL & Redis) in Docker containers while you run your Kotlin
+application locally.
+
+**Benefits:**
+
+- Faster development cycle (no Docker rebuilds)
+- Better debugging capabilities
+- IDE integration works seamlessly
+- Easier testing and hot reloading
+
+### Usage:
+
+```bash
+# Start dependencies only
+./start-dev.sh # (or docker-compose -f docker-compose.deps.yml up -d)
+
+# Run your application locally
+./gradlew run
+
+# Stop dependencies when done
+docker-compose down
+```
+
+## 🌐 Full Stack Mode (For demos, integration testing, production)
+
+**Use this when:** You want to showcase the complete system, run integration tests, or deploy everything together.
+
+**What it does:** Starts PostgreSQL, Redis, AND your WebAuthn server application in Docker containers.
+
+**Benefits:**
+
+- Complete environment isolation
+- Perfect for demos and presentations
+- Great for integration testing
+- Production-like setup
+
+### Usage:
+
+```bash
+# Start everything
+./start-full.sh # (or docker-compose -f docker-compose.yml up -d)
+
+# Stop everything
+docker-compose down
+```

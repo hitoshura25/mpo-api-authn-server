@@ -20,3 +20,4 @@ replay_pid*
 .gradle
 .idea
 build/
+.env

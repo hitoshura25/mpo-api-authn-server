@@ -30,30 +30,6 @@ services:
       timeout: 3s
       retries: 5
 
-  webauthn-server:
-    build: .
-    ports:
-      - "8080:8080"
-    environment:
-      - DATABASE_URL=jdbc:postgresql://postgres:5432/webauthn
-      - DATABASE_USER=webauthn_user
-      - DATABASE_PASSWORD=webauthn_password
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - REDIS_PASSWORD=webauthn_password
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
-
 volumes:
   postgres_data:
   redis_data:

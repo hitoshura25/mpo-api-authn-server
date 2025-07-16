@@ -168,7 +168,7 @@ class ApplicationTest : KoinTest {
         assertEquals(username, publicKey.get("user").get("name").asText())
         assertEquals(displayName, publicKey.get("user").get("displayName").asText())
         assertEquals("localhost", publicKey.get("rp").get("id").asText())
-        assertEquals("WebAuthn Demo", publicKey.get("rp").get("name").asText())
+        assertEquals("MPO Api Authn", publicKey.get("rp").get("name").asText())
 
         val requestId = startResponseBody.get("requestId").asText()
         val createCredentialOptions =

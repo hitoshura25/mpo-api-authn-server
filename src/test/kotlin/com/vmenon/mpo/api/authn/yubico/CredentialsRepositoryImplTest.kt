@@ -53,7 +53,6 @@ class CredentialsRepositoryImplTest {
 
     @BeforeEach
     fun setupTest() {
-        // Use quantum-safe storage - no encryption key needed!
         credentialStorage = QuantumSafeCredentialStorage.create(
             host = postgres.host,
             port = postgres.getMappedPort(5432),

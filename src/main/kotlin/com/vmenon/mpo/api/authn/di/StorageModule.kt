@@ -47,11 +47,11 @@ val storageModule = module {
     }
 
     single(named("dbUsername")) {
-        System.getProperty("MPO_AUTHN_DB_USERNAME") ?: System.getenv("MPO_AUTHN_DB_USERNAME") ?: "webauthn_user"
+        System.getProperty("MPO_AUTHN_DB_USERNAME") ?: System.getenv("MPO_AUTHN_DB_USERNAME")
     }
 
     single(named("dbPassword")) {
-        System.getProperty("MPO_AUTHN_DB_PASSWORD") ?: System.getenv("MPO_AUTHN_DB_PASSWORD") ?: "webauthn_password"
+        System.getProperty("MPO_AUTHN_DB_PASSWORD") ?: System.getenv("MPO_AUTHN_DB_PASSWORD")
     }
 
     single(named("dbMaxPoolSize")) {
@@ -62,7 +62,7 @@ val storageModule = module {
     factory<JedisPool> {
         val host: String by inject(named("redisHost"))
         val port: Int by inject(named("redisPort"))
-        val password: String? by inject(named("redisPassword"))
+        val password: String by inject(named("redisPassword"))
         val database: Int by inject(named("redisDatabase"))
         val maxConnections: Int by inject(named("redisMaxConnections"))
         val config = JedisPoolConfig().apply {
@@ -72,12 +72,8 @@ val storageModule = module {
             testOnBorrow = true
             testOnReturn = true
         }
-        val jedisPool = if (password != null) {
-            JedisPool(config, host, port, 2000, password, database)
-        } else {
-            JedisPool(config, host, port, 2000, null, database)
-        }
-        jedisPool
+
+        JedisPool(config, host, port, 2000, password, database)
     }
 
     single<RegistrationRequestStorage> {

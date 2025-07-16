@@ -1,11 +1,10 @@
 package com.vmenon.mpo.api.authn.storage.postgresql
 
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
-import com.vmenon.mpo.api.authn.storage.ScalableCredentialRepository
+import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import com.yubico.webauthn.RegisteredCredential
-import com.yubico.webauthn.data.PublicKeyCredentialDescriptor
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import java.security.MessageDigest
@@ -23,10 +22,10 @@ import javax.sql.DataSource
  * Secure PostgreSQL-based credential repository with application-level encryption
  * This encrypts sensitive data before storing it in the database
  */
-class SecurePostgreSQLCredentialRepository(
+class SecurePostgreSQLCredentialStorage(
     private val dataSource: DataSource,
     private val encryptionKey: SecretKey
-) : ScalableCredentialRepository {
+) : CredentialStorage {
 
     companion object {
         private const val ENCRYPTION_ALGORITHM = "AES/GCM/NoPadding"
@@ -41,7 +40,7 @@ class SecurePostgreSQLCredentialRepository(
             password: String = "webauthn_password",
             maxPoolSize: Int = 10,
             encryptionKeyBase64: String? = null
-        ): SecurePostgreSQLCredentialRepository {
+        ): SecurePostgreSQLCredentialStorage {
             val config = HikariConfig().apply {
                 jdbcUrl = "jdbc:postgresql://$host:$port/$database?sslmode=disable"
                 this.username = username
@@ -69,9 +68,9 @@ class SecurePostgreSQLCredentialRepository(
                 generateEncryptionKey()
             }
 
-            val repository = SecurePostgreSQLCredentialRepository(dataSource, encryptionKey)
-            repository.initializeTables()
-            return repository
+            val storage = SecurePostgreSQLCredentialStorage(dataSource, encryptionKey)
+            storage.initializeTables()
+            return storage
         }
 
         private fun generateEncryptionKey(): SecretKey {
@@ -264,24 +263,6 @@ class SecurePostgreSQLCredentialRepository(
         }
     }
 
-    override fun getCredentialIdsForUsername(username: String): Set<PublicKeyCredentialDescriptor> {
-        return getRegistrationsByUsername(username)
-            .map { registration ->
-                PublicKeyCredentialDescriptor.builder()
-                    .id(registration.credential.credentialId)
-                    .build()
-            }
-            .toSet()
-    }
-
-    override fun getUserHandleForUsername(username: String): Optional<com.yubico.webauthn.data.ByteArray> {
-        return Optional.ofNullable(getUserByUsername(username)?.userHandle)
-    }
-
-    override fun getUsernameForUserHandle(userHandle: com.yubico.webauthn.data.ByteArray): Optional<String> {
-        return Optional.ofNullable(getUserByHandle(userHandle)?.username)
-    }
-
     override fun lookup(
         credentialId: com.yubico.webauthn.data.ByteArray,
         userHandle: com.yubico.webauthn.data.ByteArray
@@ -332,12 +313,6 @@ class SecurePostgreSQLCredentialRepository(
                     }
                 }
             }
-        }
-    }
-
-    override fun close() {
-        if (dataSource is HikariDataSource) {
-            dataSource.close()
         }
     }
 }

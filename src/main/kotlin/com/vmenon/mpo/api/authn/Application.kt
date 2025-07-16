@@ -7,8 +7,8 @@ import com.vmenon.mpo.api.authn.di.appModule
 import com.vmenon.mpo.api.authn.di.storageModule
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
+import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
-import com.vmenon.mpo.api.authn.storage.ScalableCredentialRepository
 import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.yubico.webauthn.FinishAssertionOptions
 import com.yubico.webauthn.FinishRegistrationOptions
@@ -50,10 +50,10 @@ fun Application.module(storageModule: Module) {
         modules(listOf(appModule, storageModule))
     }
 
-    val credentialRepository: ScalableCredentialRepository by inject()
     val registrationStorage: RegistrationRequestStorage by inject()
     val assertionStorage: AssertionRequestStorage by inject()
     val relyingParty: RelyingParty by inject()
+    val credentialStorage: CredentialStorage by inject()
 
     install(ContentNegotiation) {
         jackson {
@@ -145,7 +145,7 @@ fun Application.module(storageModule: Module) {
                     .build()
             )
 
-            credentialRepository.addRegistration(registration)
+            credentialStorage.addRegistration(registration)
 
             call.respond(mapOf("success" to true, "message" to "Registration successful"))
         }

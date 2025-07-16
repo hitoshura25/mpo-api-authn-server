@@ -19,8 +19,6 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import java.security.KeyPair
-import java.util.Base64
-import javax.crypto.KeyGenerator
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -71,22 +69,11 @@ class EndToEndIntegrationTest {
         registerModule(Jdk8Module())
     }
 
-    private lateinit var encryptionKey: String
-
     @BeforeAll
     fun setupContainers() {
         // Start containers
         postgres.start()
         redis.start()
-
-        // Generate encryption key for testing
-        val keyGen = KeyGenerator.getInstance("AES")
-        keyGen.init(256)
-        val secretKey = keyGen.generateKey()
-        encryptionKey = Base64.getEncoder().encodeToString(secretKey.encoded)
-
-        println("PostgreSQL URL: ${postgres.jdbcUrl}")
-        println("Redis URL: redis://localhost:${redis.getMappedPort(6379)}")
     }
 
     @AfterAll
@@ -112,21 +99,20 @@ class EndToEndIntegrationTest {
         System.setProperty("DB_USERNAME", postgres.username)
         System.setProperty("DB_PASSWORD", postgres.password)
 
-        // Disable SSL for testcontainers (they don't support SSL by default)
+        // Disable SSL for test databases (they don't support SSL by default)
         System.setProperty("DB_REQUIRE_SSL", "false")
 
-        // Encryption key
-        System.setProperty("ENCRYPTION_KEY", encryptionKey)
+        // No need for encryption key - quantum-safe storage handles encryption automatically
     }
 
     @AfterEach
     fun cleanupTest() {
         stopKoin()
 
-        // Clear system properties
+        // Clear system properties (removed ENCRYPTION_KEY)
         val properties = listOf(
             "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DATABASE",
-            "DB_HOST", "DB_PORT", "DB_NAME", "DB_USERNAME", "DB_PASSWORD", "ENCRYPTION_KEY"
+            "DB_HOST", "DB_PORT", "DB_NAME", "DB_USERNAME", "DB_PASSWORD", "DB_REQUIRE_SSL"
         )
         properties.forEach { System.clearProperty(it) }
     }
@@ -329,11 +315,11 @@ class EndToEndIntegrationTest {
         val displayName = "Encryption Test User"
         val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
 
-        // Register a user (this will store encrypted data in PostgreSQL)
+        // Register a user (this will store quantum-safe encrypted data in PostgreSQL)
         registerUser(client, username, displayName, keyPair)
 
-        // Verify data is encrypted in the database by connecting directly
-        postgres.createConnection("").use { connection ->
+        // Verify data is quantum-safe encrypted in the database by connecting directly
+        postgres.createConnection("")?.use { connection ->
             val statement = connection.createStatement()
             val resultSet = statement.executeQuery(
                 "SELECT encrypted_user_data, encrypted_credential_data FROM webauthn_users_secure u " +
@@ -346,9 +332,11 @@ class EndToEndIntegrationTest {
             val encryptedUserData = resultSet.getString("encrypted_user_data")
             val encryptedCredentialData = resultSet.getString("encrypted_credential_data")
 
-            // Verify data is encrypted (should not contain plaintext username)
+            // Verify data is quantum-safe encrypted (should contain method signature)
             assertTrue(encryptedUserData.isNotEmpty())
             assertTrue(encryptedCredentialData.isNotEmpty())
+            assertTrue(encryptedUserData.contains("KYBER768-AES256-GCM"), "Should use quantum-safe encryption")
+            assertTrue(encryptedCredentialData.contains("KYBER768-AES256-GCM"), "Should use quantum-safe encryption")
             assertFalse(encryptedUserData.contains(username), "Username should not be in plaintext")
             assertFalse(encryptedUserData.contains(displayName), "Display name should not be in plaintext")
         }

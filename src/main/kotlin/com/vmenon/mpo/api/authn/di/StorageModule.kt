@@ -3,7 +3,7 @@ package com.vmenon.mpo.api.authn.di
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
-import com.vmenon.mpo.api.authn.storage.postgresql.SecurePostgreSQLCredentialStorage
+import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisAssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisRegistrationRequestStorage
 import org.koin.core.qualifier.named
@@ -101,14 +101,14 @@ val storageModule = module {
         val maxPoolSize: Int by inject(named("dbMaxPoolSize"))
         val encryptionKey: String? by inject(named("encryptionKey"))
 
-        SecurePostgreSQLCredentialStorage.create(
+
+        QuantumSafeCredentialStorage.create(
             host = host,
             port = port,
             database = database,
             username = username,
             password = password,
             maxPoolSize = maxPoolSize,
-            encryptionKeyBase64 = encryptionKey
         )
     }
 }

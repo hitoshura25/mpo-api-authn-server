@@ -3,12 +3,10 @@ package com.vmenon.mpo.api.authn.yubico
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
-import com.vmenon.mpo.api.authn.storage.postgresql.SecurePostgreSQLCredentialStorage
+import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
 import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.data.ByteArray
 import java.security.SecureRandom
-import java.util.Base64
-import javax.crypto.KeyGenerator
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import org.junit.jupiter.api.AfterAll
@@ -40,18 +38,12 @@ class CredentialsRepositoryImplTest {
 
     private lateinit var credentialStorage: CredentialStorage
     private lateinit var credentialRepositoryImpl: CredentialRepositoryImpl
-    private lateinit var encryptionKey: String
 
     @BeforeAll
     fun setupContainers() {
         // Start containers
         postgres.start()
         println("PostgreSQL URL: ${postgres.jdbcUrl}")
-
-        val keyGen = KeyGenerator.getInstance("AES")
-        keyGen.init(256)
-        val secretKey = keyGen.generateKey()
-        encryptionKey = Base64.getEncoder().encodeToString(secretKey.encoded)
     }
 
     @AfterAll
@@ -61,14 +53,14 @@ class CredentialsRepositoryImplTest {
 
     @BeforeEach
     fun setupTest() {
-        credentialStorage = SecurePostgreSQLCredentialStorage.create(
+        // Use quantum-safe storage - no encryption key needed!
+        credentialStorage = QuantumSafeCredentialStorage.create(
             host = postgres.host,
             port = postgres.getMappedPort(5432),
             database = postgres.databaseName,
             username = postgres.username,
             password = postgres.password,
-            maxPoolSize = 10,
-            encryptionKeyBase64 = encryptionKey
+            maxPoolSize = 10
         )
 
         // Clear all data from tables before each test

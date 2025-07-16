@@ -12,7 +12,7 @@ val webauthnVersion = "2.6.0"
 val jacksonVersion = "2.16.1"
 val logbackVersion = "1.4.14"
 val mockkVersion = "1.13.8"
-val bouncyCastleVersion = "1.81"
+val bouncyCastleVersion = "1.78"
 val testContainersVersion = "1.21.3"
 val testContainersRedisVersion = "2.2.2"
 
@@ -49,6 +49,10 @@ dependencies {
     implementation("org.postgresql:postgresql:42.7.2")
     implementation("com.zaxxer:HikariCP:5.0.1")
 
+    // Post-Quantum Cryptography
+    implementation("org.bouncycastle:bcprov-jdk18on:$bouncyCastleVersion")
+    implementation("org.bouncycastle:bcpkix-jdk18on:$bouncyCastleVersion")
+
     // Dependency Injection
     implementation("io.insert-koin:koin-ktor:3.5.3")
     implementation("io.insert-koin:koin-logger-slf4j:3.5.3")
@@ -70,8 +74,6 @@ dependencies {
     testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion")
     testImplementation("io.mockk:mockk:$mockkVersion")
     testImplementation("com.upokecenter:cbor")
-    testImplementation("org.bouncycastle:bcpkix-jdk18on:$bouncyCastleVersion")
-    testImplementation("org.bouncycastle:bcprov-jdk18on:$bouncyCastleVersion")
     testImplementation("com.google.guava:guava")
 }
 

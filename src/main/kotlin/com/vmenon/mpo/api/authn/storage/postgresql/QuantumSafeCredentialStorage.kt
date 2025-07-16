@@ -24,12 +24,12 @@ class QuantumSafeCredentialStorage(
 
     companion object {
         fun create(
-            host: String = "localhost",
-            port: Int = 5432,
-            database: String = "webauthn",
-            username: String = "webauthn_user",
-            password: String = "webauthn_password",
-            maxPoolSize: Int = 10
+            host: String,
+            port: Int,
+            database: String,
+            username: String,
+            password: String,
+            maxPoolSize: Int
         ): QuantumSafeCredentialStorage {
             val config = HikariConfig().apply {
                 jdbcUrl = "jdbc:postgresql://$host:$port/$database?sslmode=disable"

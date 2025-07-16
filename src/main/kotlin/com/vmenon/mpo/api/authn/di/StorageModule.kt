@@ -99,8 +99,6 @@ val storageModule = module {
         val username: String by inject(named("dbUsername"))
         val password: String by inject(named("dbPassword"))
         val maxPoolSize: Int by inject(named("dbMaxPoolSize"))
-        val encryptionKey: String? by inject(named("encryptionKey"))
-
 
         QuantumSafeCredentialStorage.create(
             host = host,

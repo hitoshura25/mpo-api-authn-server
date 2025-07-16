@@ -84,9 +84,6 @@ abstract class BaseIntegrationTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_NAME, postgres.databaseName)
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_USERNAME, postgres.username)
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PASSWORD, postgres.password)
-
-        // Additional test configuration
-        System.setProperty("DB_REQUIRE_SSL", "false")
     }
 
     /**
@@ -105,8 +102,7 @@ abstract class BaseIntegrationTest {
             EnvironmentVariables.MPO_AUTHN_DB_PORT,
             EnvironmentVariables.MPO_AUTHN_DB_NAME,
             EnvironmentVariables.MPO_AUTHN_DB_USERNAME,
-            EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
-            "DB_REQUIRE_SSL"
+            EnvironmentVariables.MPO_AUTHN_DB_PASSWORD
         )
         properties.forEach { System.clearProperty(it) }
     }

@@ -109,11 +109,49 @@ class CredentialsRepositoryImplTest {
         assertTrue(storedUserHandle.isEmpty)
     }
 
+    @Test
+    fun testLookupAllReturnsValidCredentialsIfInStorage() {
+        val username = "integration_test_user"
+        val displayName = "Integration Test User"
+        val userHandle = ByteArray(64)
+
+        SecureRandom().nextBytes(userHandle)
+        val userHandleByteArray = ByteArray(userHandle)
+        val registration = addRegistration(username, displayName, userHandleByteArray)
+
+        val storedCredentials = credentialRepositoryImpl.lookupAll(registration.credential.credentialId)
+        assertEquals(registration.credential.credentialId, storedCredentials.first().credentialId)
+    }
+
+    @Test
+    fun testLookupAllReturnsNoCredentialsIfNotInStorage() {
+        val credentialId = ByteArray(64)
+        SecureRandom().nextBytes(credentialId)
+        val storedCredentials = credentialRepositoryImpl.lookupAll(ByteArray(credentialId))
+        assertTrue(storedCredentials.isEmpty())
+    }
+
+    @Test
+    fun testLookupReturnsNoCredentialsIfNotInStorage() {
+        val credentialId = ByteArray(64)
+        SecureRandom().nextBytes(credentialId)
+
+        val userHandle = ByteArray(64)
+        SecureRandom().nextBytes(userHandle)
+
+        val storedCredential = credentialRepositoryImpl.lookup(
+            ByteArray(credentialId),
+            ByteArray(userHandle)
+        )
+        assertTrue(storedCredential.isEmpty())
+    }
+
+
     private fun addRegistration(
         username: String,
         userDisplayName: String,
         userHandle: ByteArray,
-    ) {
+    ): CredentialRegistration {
         val credentialId = ByteArray(64)
         val publicKeyCose = ByteArray(256)
 
@@ -137,6 +175,7 @@ class CredentialsRepositoryImplTest {
         )
 
         credentialStorage.addRegistration(registration)
+        return registration
     }
 
     private fun clearDatabase() {

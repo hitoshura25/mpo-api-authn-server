@@ -6,6 +6,36 @@ Server implementation for webauthn based on Yubico's java-webauthn-server
 
 **Disclaimer**: Used GitHub Copilot agent mode along with various AI Models (Claude Sonnet, Gpt 4.1)
 
+# Environment Variables
+
+Setup the below in order to properly configure the app and dependencies:
+
+### Database Configuration
+
+```
+MPO_AUTHN_DB_NAME
+MPO_AUTHN_DB_USERNAME
+MPO_AUTHN_DB_PASSWORD
+MPO_AUTHN_DB_PORT
+```
+
+### Redis Configuration
+
+```
+MPO_AUTHN_REDIS_PASSWORD
+MPO_AUTHN_REDIS_HOST
+MPO_AUTHN_REDIS_PORT
+```
+
+### Application Configuration
+
+```
+MPO_AUTHN_APP_RELYING_PARTY_ID
+MPO_AUTHN_APP_RELYING_PARTY_NAME
+
+MPO_AUTHN_APP_PORT # Only used when running the full docker compose stack
+```
+
 # Docker Setup Guide
 
 This project supports two different Docker setups to accommodate different development workflows.

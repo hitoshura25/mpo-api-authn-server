@@ -4,52 +4,19 @@ import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
+import com.vmenon.mpo.api.authn.test_utils.BaseIntegrationTest
 import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.data.ByteArray
 import java.security.SecureRandom
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.AfterAll
-import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import org.junit.jupiter.api.TestInstance
-import org.testcontainers.containers.BindMode
-import org.testcontainers.containers.PostgreSQLContainer
-import org.testcontainers.junit.jupiter.Container
-import org.testcontainers.junit.jupiter.Testcontainers
-import org.testcontainers.utility.DockerImageName
 
-@Testcontainers
-@TestInstance(TestInstance.Lifecycle.PER_CLASS)
-class CredentialsRepositoryImplTest {
-    companion object {
-        @Container
-        val postgres = PostgreSQLContainer(DockerImageName.parse("postgres:15-alpine"))
-            .withDatabaseName("webauthn_test")
-            .withUsername("test_user")
-            .withPassword("test_password")
-            .withFileSystemBind(
-                "src/main/resources/db/migration",
-                "/docker-entrypoint-initdb.d",
-                BindMode.READ_ONLY
-            )
-    }
+class CredentialsRepositoryImplTest : BaseIntegrationTest() {
 
     private lateinit var credentialStorage: CredentialStorage
     private lateinit var credentialRepositoryImpl: CredentialRepositoryImpl
-
-    @BeforeAll
-    fun setupContainers() {
-        // Start containers
-        postgres.start()
-        println("PostgreSQL URL: ${postgres.jdbcUrl}")
-    }
-
-    @AfterAll
-    fun tearDownContainers() {
-        postgres.stop()
-    }
 
     @BeforeEach
     fun setupTest() {
@@ -59,11 +26,8 @@ class CredentialsRepositoryImplTest {
             database = postgres.databaseName,
             username = postgres.username,
             password = postgres.password,
-            maxPoolSize = 10
+            maxPoolSize = 5
         )
-
-        // Clear all data from tables before each test
-        clearDatabase()
 
         credentialRepositoryImpl = CredentialRepositoryImpl(credentialStorage)
     }
@@ -167,14 +131,5 @@ class CredentialsRepositoryImplTest {
 
         credentialStorage.addRegistration(registration)
         return registration
-    }
-
-    private fun clearDatabase() {
-        postgres.createConnection("").use { connection ->
-            connection.createStatement().use { statement ->
-                statement.execute("TRUNCATE TABLE webauthn_credentials_secure CASCADE")
-                statement.execute("TRUNCATE TABLE webauthn_users_secure CASCADE")
-            }
-        }
     }
 }

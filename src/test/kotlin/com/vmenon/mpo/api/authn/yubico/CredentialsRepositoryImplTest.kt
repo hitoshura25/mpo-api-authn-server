@@ -135,7 +135,7 @@ class CredentialsRepositoryImplTest {
             ByteArray(credentialId),
             ByteArray(userHandle)
         )
-        assertTrue(storedCredential.isEmpty())
+        assertTrue(storedCredential.isEmpty)
     }
 
 

@@ -87,22 +87,17 @@ class EndToEndIntegrationTest {
         stopKoin() // Ensure clean state
 
         // Set environment variables for the test containers
-        System.setProperty("REDIS_HOST", redis.host)
-        System.setProperty("REDIS_PORT", redis.getMappedPort(6379).toString())
-        System.setProperty("REDIS_PASSWORD", "test_password")
-        System.setProperty("REDIS_DATABASE", "0")
+        System.setProperty("MPO_AUTHN_REDIS_HOST", redis.host)
+        System.setProperty("MPO_AUTHN_REDIS_PORT", redis.getMappedPort(6379).toString())
+        System.setProperty("MPO_AUTHN_REDIS_PASSWORD", "test_password")
+        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "0")
 
         // PostgreSQL configuration
-        System.setProperty("DB_HOST", postgres.host)
-        System.setProperty("DB_PORT", postgres.getMappedPort(5432).toString())
-        System.setProperty("DB_NAME", postgres.databaseName)
-        System.setProperty("DB_USERNAME", postgres.username)
-        System.setProperty("DB_PASSWORD", postgres.password)
-
-        // Disable SSL for test databases (they don't support SSL by default)
-        System.setProperty("DB_REQUIRE_SSL", "false")
-
-        // No need for encryption key - quantum-safe storage handles encryption automatically
+        System.setProperty("MPO_AUTHN_DB_HOST", postgres.host)
+        System.setProperty("MPO_AUTHN_DB_PORT", postgres.getMappedPort(5432).toString())
+        System.setProperty("MPO_AUTHN_DB_NAME", postgres.databaseName)
+        System.setProperty("MPO_AUTHN_DB_USERNAME", postgres.username)
+        System.setProperty("MPO_AUTHN_DB_PASSWORD", postgres.password)
     }
 
     @AfterEach
@@ -111,8 +106,15 @@ class EndToEndIntegrationTest {
 
         // Clear system properties (removed ENCRYPTION_KEY)
         val properties = listOf(
-            "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DATABASE",
-            "DB_HOST", "DB_PORT", "DB_NAME", "DB_USERNAME", "DB_PASSWORD", "DB_REQUIRE_SSL"
+            "MPO_AUTHN_REDIS_HOST",
+            "MPO_AUTHN_REDIS_PORT",
+            "MPO_AUTHN_REDIS_PASSWORD",
+            "MPO_AUTHN_REDIS_DATABASE",
+            "MPO_AUTHN_DB_HOST",
+            "MPO_AUTHN_DB_PORT",
+            "MPO_AUTHN_DB_NAME",
+            "MPO_AUTHN_DB_USERNAME",
+            "MPO_AUTHN_DB_PASSWORD"
         )
         properties.forEach { System.clearProperty(it) }
     }

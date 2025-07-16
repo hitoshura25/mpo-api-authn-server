@@ -13,11 +13,13 @@ import org.koin.dsl.module
  */
 val appModule = module {
     single(named("relyingPartyId")) {
-        System.getProperty("RELYING_PARTY_ID") ?: System.getenv("RELYING_PARTY_ID") ?: "localhost"
+        System.getProperty("MPO_AUTHN_APP_RELYING_PARTY_ID") ?: System.getenv("MPO_AUTHN_APP_RELYING_PARTY_ID")
+        ?: "localhost"
     }
 
     single(named("relyingPartyName")) {
-        System.getProperty("RELYING_PARTY_NAME") ?: System.getenv("RELYING_PARTY_NAME") ?: "WebAuthn Demo"
+        System.getProperty("MPO_AUTHN_APP_RELYING_PARTY_NAME") ?: System.getenv("MPO_AUTHN_APP_RELYING_PARTY_NAME")
+        ?: "MPO Api Authn"
     }
 
     single<CredentialRepository> {

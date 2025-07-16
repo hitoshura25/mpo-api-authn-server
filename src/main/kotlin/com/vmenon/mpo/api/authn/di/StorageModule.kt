@@ -22,8 +22,11 @@ val storageModule = module {
         val portString = System.getProperty("MPO_AUTHN_REDIS_PORT") ?: System.getenv("MPO_AUTHN_REDIS_PORT")
         if (portString != null) {
             require(portString.isNotBlank()) { "MPO_AUTHN_REDIS_PORT cannot be blank" }
+            portString.toIntOrNull()
+                ?: throw IllegalArgumentException("MPO_AUTHN_REDIS_PORT must be a valid integer, got: '$portString'")
+        } else {
+            6379
         }
-        portString?.toIntOrNull() ?: 6379
     }
 
     single(named("redisPassword")) {
@@ -37,8 +40,11 @@ val storageModule = module {
         val databaseString = System.getProperty("MPO_AUTHN_REDIS_DATABASE") ?: System.getenv("MPO_AUTHN_REDIS_DATABASE")
         if (databaseString != null) {
             require(databaseString.isNotBlank()) { "MPO_AUTHN_REDIS_DATABASE cannot be blank" }
+            databaseString.toIntOrNull()
+                ?: throw IllegalArgumentException("MPO_AUTHN_REDIS_DATABASE must be a valid integer, got: '$databaseString'")
+        } else {
+            0
         }
-        databaseString?.toIntOrNull() ?: 0
     }
 
     single(named("redisMaxConnections")) {
@@ -46,8 +52,11 @@ val storageModule = module {
             System.getProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS") ?: System.getenv("MPO_AUTHN_REDIS_MAX_CONNECTIONS")
         if (connectionsString != null) {
             require(connectionsString.isNotBlank()) { "MPO_AUTHN_REDIS_MAX_CONNECTIONS cannot be blank" }
+            connectionsString.toIntOrNull()
+                ?: throw IllegalArgumentException("MPO_AUTHN_REDIS_MAX_CONNECTIONS must be a valid integer, got: '$connectionsString'")
+        } else {
+            10
         }
-        connectionsString?.toIntOrNull() ?: 10
     }
 
     single(named("dbHost")) {
@@ -60,8 +69,11 @@ val storageModule = module {
         val portString = System.getProperty("MPO_AUTHN_DB_PORT") ?: System.getenv("MPO_AUTHN_DB_PORT")
         if (portString != null) {
             require(portString.isNotBlank()) { "MPO_AUTHN_DB_PORT cannot be blank" }
+            portString.toIntOrNull()
+                ?: throw IllegalArgumentException("MPO_AUTHN_DB_PORT must be a valid integer, got: '$portString'")
+        } else {
+            5432
         }
-        portString?.toIntOrNull() ?: 5432
     }
 
     single(named("dbName")) {
@@ -89,8 +101,11 @@ val storageModule = module {
             System.getProperty("MPO_AUTHN_DB_MAX_POOL_SIZE") ?: System.getenv("MPO_AUTHN_DB_MAX_POOL_SIZE")
         if (poolSizeString != null) {
             require(poolSizeString.isNotBlank()) { "MPO_AUTHN_DB_MAX_POOL_SIZE cannot be blank" }
+            poolSizeString.toIntOrNull()
+                ?: throw IllegalArgumentException("MPO_AUTHN_DB_MAX_POOL_SIZE must be a valid integer, got: '$poolSizeString'")
+        } else {
+            10
         }
-        poolSizeString?.toIntOrNull() ?: 10
     }
 
     factory<JedisPool> {

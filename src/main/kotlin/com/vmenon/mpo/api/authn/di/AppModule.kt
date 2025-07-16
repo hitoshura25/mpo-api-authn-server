@@ -1,5 +1,6 @@
 package com.vmenon.mpo.api.authn.di
 
+import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.yubico.CredentialRepositoryImpl
 import com.yubico.webauthn.CredentialRepository
@@ -13,13 +14,15 @@ import org.koin.dsl.module
  */
 val appModule = module {
     single(named("relyingPartyId")) {
-        System.getProperty("MPO_AUTHN_APP_RELYING_PARTY_ID") ?: System.getenv("MPO_AUTHN_APP_RELYING_PARTY_ID")
-        ?: "localhost"
+        System.getProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID)
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID)
+            ?: "localhost"
     }
 
     single(named("relyingPartyName")) {
-        System.getProperty("MPO_AUTHN_APP_RELYING_PARTY_NAME") ?: System.getenv("MPO_AUTHN_APP_RELYING_PARTY_NAME")
-        ?: "MPO Api Authn"
+        System.getProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME)
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME)
+            ?: "MPO Api Authn"
     }
 
     single<CredentialRepository> {

@@ -1,5 +1,6 @@
 package com.vmenon.mpo.api.authn.di
 
+import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import kotlin.test.assertEquals
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -24,7 +25,7 @@ class StorageModuleTest : KoinTest {
     // Redis Configuration Tests using Koin DI with direct get() calls
     @Test
     fun `Redis host configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_REDIS_HOST", "redis-test.example.com")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_HOST, "redis-test.example.com")
 
         startKoin {
             modules(storageModule)
@@ -46,7 +47,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when Redis host is blank`() {
-        System.setProperty("MPO_AUTHN_REDIS_HOST", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_HOST, "")
 
         startKoin {
             modules(storageModule)
@@ -59,7 +60,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Redis port configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_REDIS_PORT", "6380")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PORT, "6380")
 
         startKoin {
             modules(storageModule)
@@ -81,7 +82,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Redis port is not a integer`() {
-        System.setProperty("MPO_AUTHN_REDIS_PORT", "not-a-number")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PORT, "not-a-number")
 
         startKoin {
             modules(storageModule)
@@ -94,7 +95,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Redis port is below port number range`() {
-        System.setProperty("MPO_AUTHN_REDIS_PORT", "0")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PORT, "0")
 
         startKoin {
             modules(storageModule)
@@ -107,7 +108,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Redis port is above port number range`() {
-        System.setProperty("MPO_AUTHN_REDIS_PORT", "65536")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PORT, "65536")
 
         startKoin {
             modules(storageModule)
@@ -120,7 +121,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Redis port is blank`() {
-        System.setProperty("MPO_AUTHN_REDIS_PORT", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PORT, "")
 
         startKoin {
             modules(storageModule)
@@ -133,7 +134,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Redis password should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_REDIS_PASSWORD", "test-password")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD, "test-password")
 
         startKoin {
             modules(storageModule)
@@ -156,7 +157,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when Redis password is blank`() {
-        System.setProperty("MPO_AUTHN_REDIS_PASSWORD", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD, "")
 
         startKoin {
             modules(storageModule)
@@ -169,7 +170,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Redis database configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "3")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE, "3")
 
         startKoin {
             modules(storageModule)
@@ -191,7 +192,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when redis database is blank`() {
-        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE, "")
 
         startKoin {
             modules(storageModule)
@@ -204,7 +205,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when redis database is not an integer`() {
-        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "invalid-value")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE, "invalid-value")
 
         startKoin {
             modules(storageModule)
@@ -217,7 +218,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when redis database is below range value`() {
-        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "-1")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE, "-1")
 
         startKoin {
             modules(storageModule)
@@ -230,7 +231,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when redis database is above range value`() {
-        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "16")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE, "16")
 
         startKoin {
             modules(storageModule)
@@ -243,7 +244,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Redis max connections should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS", "25")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS, "25")
 
         startKoin {
             modules(storageModule)
@@ -255,7 +256,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when redis max connections is blank`() {
-        System.setProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS, "")
 
         startKoin {
             modules(storageModule)
@@ -268,7 +269,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when redis max connections is invalid value`() {
-        System.setProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS", "not-a-number")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS, "not-a-number")
 
         startKoin {
             modules(storageModule)
@@ -281,7 +282,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Database host configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_DB_HOST", "postgres-test.example.com")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_HOST, "postgres-test.example.com")
 
         startKoin {
             modules(storageModule)
@@ -303,7 +304,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when Database host is blank`() {
-        System.setProperty("MPO_AUTHN_DB_HOST", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_HOST, "")
 
         startKoin {
             modules(storageModule)
@@ -316,7 +317,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Database port configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_DB_PORT", "5433")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PORT, "5433")
 
         startKoin {
             modules(storageModule)
@@ -338,7 +339,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Database port is blank`() {
-        System.setProperty("MPO_AUTHN_DB_PORT", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PORT, "")
 
         startKoin {
             modules(storageModule)
@@ -351,7 +352,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Database port is not an integer`() {
-        System.setProperty("MPO_AUTHN_DB_PORT", "not-a-number")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PORT, "not-a-number")
 
         startKoin {
             modules(storageModule)
@@ -364,7 +365,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Database port is below port number range`() {
-        System.setProperty("MPO_AUTHN_DB_PORT", "-1")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PORT, "-1")
 
         startKoin {
             modules(storageModule)
@@ -377,7 +378,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Datbase port is above port number range`() {
-        System.setProperty("MPO_AUTHN_DB_PORT", "65536")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PORT, "65536")
 
         startKoin {
             modules(storageModule)
@@ -390,7 +391,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Database name configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_DB_NAME", "test_webauthn_db")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_NAME, "test_webauthn_db")
 
         startKoin {
             modules(storageModule)
@@ -412,7 +413,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when Database name is blank`() {
-        System.setProperty("MPO_AUTHN_DB_NAME", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_NAME, "")
 
         startKoin {
             modules(storageModule)
@@ -425,7 +426,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Database username configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_DB_USERNAME", "test_user")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_USERNAME, "test_user")
 
         startKoin {
             modules(storageModule)
@@ -448,7 +449,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when Database username is blank`() {
-        System.setProperty("MPO_AUTHN_DB_USERNAME", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_USERNAME, "")
 
         startKoin {
             modules(storageModule)
@@ -461,7 +462,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Database password configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_DB_PASSWORD", "test_password")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PASSWORD, "test_password")
 
         startKoin {
             modules(storageModule)
@@ -484,7 +485,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw InstanceCreationException when Database password is blank`() {
-        System.setProperty("MPO_AUTHN_DB_PASSWORD", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PASSWORD, "")
 
         startKoin {
             modules(storageModule)
@@ -497,7 +498,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Database max pool size configuration should work through Koin DI`() {
-        System.setProperty("MPO_AUTHN_DB_MAX_POOL_SIZE", "20")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE, "20")
 
         startKoin {
             modules(storageModule)
@@ -509,7 +510,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Database max pool size is blank`() {
-        System.setProperty("MPO_AUTHN_DB_MAX_POOL_SIZE", "")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE, "")
 
         startKoin {
             modules(storageModule)
@@ -522,7 +523,7 @@ class StorageModuleTest : KoinTest {
 
     @Test
     fun `Should throw Exception when Database max pool size is invalid value`() {
-        System.setProperty("MPO_AUTHN_DB_MAX_POOL_SIZE", "not-a-number")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE, "not-a-number")
 
         startKoin {
             modules(storageModule)
@@ -535,17 +536,17 @@ class StorageModuleTest : KoinTest {
 
     private fun clearAllTestProperties() {
         val properties = listOf(
-            "MPO_AUTHN_REDIS_HOST",
-            "MPO_AUTHN_REDIS_PORT",
-            "MPO_AUTHN_REDIS_PASSWORD",
-            "MPO_AUTHN_REDIS_DATABASE",
-            "MPO_AUTHN_REDIS_MAX_CONNECTIONS",
-            "MPO_AUTHN_DB_HOST",
-            "MPO_AUTHN_DB_PORT",
-            "MPO_AUTHN_DB_NAME",
-            "MPO_AUTHN_DB_USERNAME",
-            "MPO_AUTHN_DB_PASSWORD",
-            "MPO_AUTHN_DB_MAX_POOL_SIZE"
+            EnvironmentVariables.MPO_AUTHN_REDIS_HOST,
+            EnvironmentVariables.MPO_AUTHN_REDIS_PORT,
+            EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD,
+            EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE,
+            EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS,
+            EnvironmentVariables.MPO_AUTHN_DB_HOST,
+            EnvironmentVariables.MPO_AUTHN_DB_PORT,
+            EnvironmentVariables.MPO_AUTHN_DB_NAME,
+            EnvironmentVariables.MPO_AUTHN_DB_USERNAME,
+            EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
+            EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE
         )
         properties.forEach { System.clearProperty(it) }
     }

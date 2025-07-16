@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import com.vmenon.mpo.api.authn.di.storageModule
 import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator
 import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.Defaults
@@ -87,17 +88,22 @@ class EndToEndIntegrationTest {
         stopKoin() // Ensure clean state
 
         // Set environment variables for the test containers
-        System.setProperty("MPO_AUTHN_REDIS_HOST", redis.host)
-        System.setProperty("MPO_AUTHN_REDIS_PORT", redis.getMappedPort(6379).toString())
-        System.setProperty("MPO_AUTHN_REDIS_PASSWORD", "test_password")
-        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "0")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_HOST, redis.host)
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PORT, redis.getMappedPort(6379).toString())
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD, "test_password")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE, "0")
 
         // PostgreSQL configuration
-        System.setProperty("MPO_AUTHN_DB_HOST", postgres.host)
-        System.setProperty("MPO_AUTHN_DB_PORT", postgres.getMappedPort(5432).toString())
-        System.setProperty("MPO_AUTHN_DB_NAME", postgres.databaseName)
-        System.setProperty("MPO_AUTHN_DB_USERNAME", postgres.username)
-        System.setProperty("MPO_AUTHN_DB_PASSWORD", postgres.password)
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_HOST, postgres.host)
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PORT, postgres.getMappedPort(5432).toString())
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_NAME, postgres.databaseName)
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_USERNAME, postgres.username)
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PASSWORD, postgres.password)
+
+        // Disable SSL for test databases (they don't support SSL by default)
+        System.setProperty("DB_REQUIRE_SSL", "false")
+
+        // No need for encryption key - quantum-safe storage handles encryption automatically
     }
 
     @AfterEach
@@ -106,15 +112,16 @@ class EndToEndIntegrationTest {
 
         // Clear system properties (removed ENCRYPTION_KEY)
         val properties = listOf(
-            "MPO_AUTHN_REDIS_HOST",
-            "MPO_AUTHN_REDIS_PORT",
-            "MPO_AUTHN_REDIS_PASSWORD",
-            "MPO_AUTHN_REDIS_DATABASE",
-            "MPO_AUTHN_DB_HOST",
-            "MPO_AUTHN_DB_PORT",
-            "MPO_AUTHN_DB_NAME",
-            "MPO_AUTHN_DB_USERNAME",
-            "MPO_AUTHN_DB_PASSWORD"
+            EnvironmentVariables.MPO_AUTHN_REDIS_HOST,
+            EnvironmentVariables.MPO_AUTHN_REDIS_PORT,
+            EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD,
+            EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE,
+            EnvironmentVariables.MPO_AUTHN_DB_HOST,
+            EnvironmentVariables.MPO_AUTHN_DB_PORT,
+            EnvironmentVariables.MPO_AUTHN_DB_NAME,
+            EnvironmentVariables.MPO_AUTHN_DB_USERNAME,
+            EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
+            "DB_REQUIRE_SSL"
         )
         properties.forEach { System.clearProperty(it) }
     }

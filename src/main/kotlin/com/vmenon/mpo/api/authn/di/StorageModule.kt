@@ -1,5 +1,6 @@
 package com.vmenon.mpo.api.authn.di
 
+import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
@@ -13,18 +14,21 @@ import redis.clients.jedis.JedisPoolConfig
 
 val storageModule = module {
     single(named("redisHost")) {
-        val value = System.getProperty("MPO_AUTHN_REDIS_HOST") ?: System.getenv("MPO_AUTHN_REDIS_HOST") ?: "localhost"
-        require(value.isNotBlank()) { "MPO_AUTHN_REDIS_HOST cannot be blank" }
+        val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_REDIS_HOST)
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_REDIS_HOST) ?: "localhost"
+        require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_REDIS_HOST} cannot be blank" }
         value
     }
 
     single(named("redisPort")) {
-        val portString = System.getProperty("MPO_AUTHN_REDIS_PORT") ?: System.getenv("MPO_AUTHN_REDIS_PORT")
+        val portString = System.getProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PORT) ?: System.getenv(
+            EnvironmentVariables.MPO_AUTHN_REDIS_PORT
+        )
         if (portString != null) {
-            require(portString.isNotBlank()) { "MPO_AUTHN_REDIS_PORT cannot be blank" }
+            require(portString.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_REDIS_PORT} cannot be blank" }
             val port = portString.toIntOrNull()
-                ?: throw IllegalArgumentException("MPO_AUTHN_REDIS_PORT must be a valid integer, got: '$portString'")
-            require(port in 1..65535) { "MPO_AUTHN_REDIS_PORT must be a valid port number (1-65535), got: $port" }
+                ?: throw IllegalArgumentException("${EnvironmentVariables.MPO_AUTHN_REDIS_PORT} must be a valid integer, got: '$portString'")
+            require(port in 1..65535) { "${EnvironmentVariables.MPO_AUTHN_REDIS_PORT} must be a valid port number (1-65535), got: $port" }
             port
         } else {
             6379
@@ -32,20 +36,24 @@ val storageModule = module {
     }
 
     single(named("redisPassword")) {
-        val value = System.getProperty("MPO_AUTHN_REDIS_PASSWORD") ?: System.getenv("MPO_AUTHN_REDIS_PASSWORD")
-        requireNotNull(value) { "MPO_AUTHN_REDIS_PASSWORD is required but was not provided" }
-        require(value.isNotBlank()) { "MPO_AUTHN_REDIS_PASSWORD cannot be blank" }
+        val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD) ?: System.getenv(
+            EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD
+        )
+        requireNotNull(value) { "${EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD} is required but was not provided" }
+        require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD} cannot be blank" }
         value
     }
 
     single(named("redisDatabase")) {
-        val databaseString = System.getProperty("MPO_AUTHN_REDIS_DATABASE") ?: System.getenv("MPO_AUTHN_REDIS_DATABASE")
+        val databaseString = System.getProperty(EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE) ?: System.getenv(
+            EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE
+        )
         if (databaseString != null) {
-            require(databaseString.isNotBlank()) { "MPO_AUTHN_REDIS_DATABASE cannot be blank" }
+            require(databaseString.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} cannot be blank" }
             val database = databaseString.toIntOrNull()
-                ?: throw IllegalArgumentException("MPO_AUTHN_REDIS_DATABASE must be a valid integer, got: '$databaseString'")
-            require(database >= 0) { "MPO_AUTHN_REDIS_DATABASE must be non-negative, got: $database" }
-            require(database <= 15) { "MPO_AUTHN_REDIS_DATABASE must be between 0-15 (standard Redis database range), got: $database" }
+                ?: throw IllegalArgumentException("${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be a valid integer, got: '$databaseString'")
+            require(database >= 0) { "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be non-negative, got: $database" }
+            require(database <= 15) { "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be between 0-15 (standard Redis database range), got: $database" }
             database
         } else {
             0
@@ -54,29 +62,34 @@ val storageModule = module {
 
     single(named("redisMaxConnections")) {
         val connectionsString =
-            System.getProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS") ?: System.getenv("MPO_AUTHN_REDIS_MAX_CONNECTIONS")
+            System.getProperty(EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS) ?: System.getenv(
+                EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS
+            )
         if (connectionsString != null) {
-            require(connectionsString.isNotBlank()) { "MPO_AUTHN_REDIS_MAX_CONNECTIONS cannot be blank" }
+            require(connectionsString.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS} cannot be blank" }
             connectionsString.toIntOrNull()
-                ?: throw IllegalArgumentException("MPO_AUTHN_REDIS_MAX_CONNECTIONS must be a valid integer, got: '$connectionsString'")
+                ?: throw IllegalArgumentException("${EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS} must be a valid integer, got: '$connectionsString'")
         } else {
             10
         }
     }
 
     single(named("dbHost")) {
-        val value = System.getProperty("MPO_AUTHN_DB_HOST") ?: System.getenv("MPO_AUTHN_DB_HOST") ?: "localhost"
-        require(value.isNotBlank()) { "MPO_AUTHN_DB_HOST cannot be blank" }
+        val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_HOST)
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_DB_HOST) ?: "localhost"
+        require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_DB_HOST} cannot be blank" }
         value
     }
 
     single(named("dbPort")) {
-        val portString = System.getProperty("MPO_AUTHN_DB_PORT") ?: System.getenv("MPO_AUTHN_DB_PORT")
+        val portString = System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_PORT) ?: System.getenv(
+            EnvironmentVariables.MPO_AUTHN_DB_PORT
+        )
         if (portString != null) {
-            require(portString.isNotBlank()) { "MPO_AUTHN_DB_PORT cannot be blank" }
+            require(portString.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_DB_PORT} cannot be blank" }
             val port = portString.toIntOrNull()
-                ?: throw IllegalArgumentException("MPO_AUTHN_DB_PORT must be a valid integer, got: '$portString'")
-            require(port in 1..65535) { "MPO_AUTHN_DB_PORT must be a valid port number (1-65535), got: $port" }
+                ?: throw IllegalArgumentException("${EnvironmentVariables.MPO_AUTHN_DB_PORT} must be a valid integer, got: '$portString'")
+            require(port in 1..65535) { "${EnvironmentVariables.MPO_AUTHN_DB_PORT} must be a valid port number (1-65535), got: $port" }
             port
         } else {
             5432
@@ -84,32 +97,36 @@ val storageModule = module {
     }
 
     single(named("dbName")) {
-        val value = System.getProperty("MPO_AUTHN_DB_NAME") ?: System.getenv("MPO_AUTHN_DB_NAME") ?: "webauthn"
-        require(value.isNotBlank()) { "MPO_AUTHN_DB_NAME cannot be blank" }
+        val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_NAME)
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_DB_NAME) ?: "webauthn"
+        require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_DB_NAME} cannot be blank" }
         value
     }
 
     single(named("dbUsername")) {
-        val value = System.getProperty("MPO_AUTHN_DB_USERNAME") ?: System.getenv("MPO_AUTHN_DB_USERNAME")
-        requireNotNull(value) { "MPO_AUTHN_DB_USERNAME is required but was not provided" }
-        require(value.isNotBlank()) { "MPO_AUTHN_DB_USERNAME cannot be blank" }
+        val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_USERNAME)
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_DB_USERNAME)
+        requireNotNull(value) { "${EnvironmentVariables.MPO_AUTHN_DB_USERNAME} is required but was not provided" }
+        require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_DB_USERNAME} cannot be blank" }
         value
     }
 
     single(named("dbPassword")) {
-        val value = System.getProperty("MPO_AUTHN_DB_PASSWORD") ?: System.getenv("MPO_AUTHN_DB_PASSWORD")
-        requireNotNull(value) { "MPO_AUTHN_DB_PASSWORD is required but was not provided" }
-        require(value.isNotBlank()) { "MPO_AUTHN_DB_PASSWORD cannot be blank" }
+        val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_PASSWORD)
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_DB_PASSWORD)
+        requireNotNull(value) { "${EnvironmentVariables.MPO_AUTHN_DB_PASSWORD} is required but was not provided" }
+        require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_DB_PASSWORD} cannot be blank" }
         value
     }
 
     single(named("dbMaxPoolSize")) {
-        val poolSizeString =
-            System.getProperty("MPO_AUTHN_DB_MAX_POOL_SIZE") ?: System.getenv("MPO_AUTHN_DB_MAX_POOL_SIZE")
+        val poolSizeString = System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE) ?: System.getenv(
+            EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE
+        )
         if (poolSizeString != null) {
-            require(poolSizeString.isNotBlank()) { "MPO_AUTHN_DB_MAX_POOL_SIZE cannot be blank" }
+            require(poolSizeString.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} cannot be blank" }
             poolSizeString.toIntOrNull()
-                ?: throw IllegalArgumentException("MPO_AUTHN_DB_MAX_POOL_SIZE must be a valid integer, got: '$poolSizeString'")
+                ?: throw IllegalArgumentException("${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} must be a valid integer, got: '$poolSizeString'")
         } else {
             10
         }

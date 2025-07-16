@@ -22,8 +22,10 @@ val storageModule = module {
         val portString = System.getProperty("MPO_AUTHN_REDIS_PORT") ?: System.getenv("MPO_AUTHN_REDIS_PORT")
         if (portString != null) {
             require(portString.isNotBlank()) { "MPO_AUTHN_REDIS_PORT cannot be blank" }
-            portString.toIntOrNull()
+            val port = portString.toIntOrNull()
                 ?: throw IllegalArgumentException("MPO_AUTHN_REDIS_PORT must be a valid integer, got: '$portString'")
+            require(port in 1..65535) { "MPO_AUTHN_REDIS_PORT must be a valid port number (1-65535), got: $port" }
+            port
         } else {
             6379
         }
@@ -40,8 +42,11 @@ val storageModule = module {
         val databaseString = System.getProperty("MPO_AUTHN_REDIS_DATABASE") ?: System.getenv("MPO_AUTHN_REDIS_DATABASE")
         if (databaseString != null) {
             require(databaseString.isNotBlank()) { "MPO_AUTHN_REDIS_DATABASE cannot be blank" }
-            databaseString.toIntOrNull()
+            val database = databaseString.toIntOrNull()
                 ?: throw IllegalArgumentException("MPO_AUTHN_REDIS_DATABASE must be a valid integer, got: '$databaseString'")
+            require(database >= 0) { "MPO_AUTHN_REDIS_DATABASE must be non-negative, got: $database" }
+            require(database <= 15) { "MPO_AUTHN_REDIS_DATABASE must be between 0-15 (standard Redis database range), got: $database" }
+            database
         } else {
             0
         }
@@ -69,8 +74,10 @@ val storageModule = module {
         val portString = System.getProperty("MPO_AUTHN_DB_PORT") ?: System.getenv("MPO_AUTHN_DB_PORT")
         if (portString != null) {
             require(portString.isNotBlank()) { "MPO_AUTHN_DB_PORT cannot be blank" }
-            portString.toIntOrNull()
+            val port = portString.toIntOrNull()
                 ?: throw IllegalArgumentException("MPO_AUTHN_DB_PORT must be a valid integer, got: '$portString'")
+            require(port in 1..65535) { "MPO_AUTHN_DB_PORT must be a valid port number (1-65535), got: $port" }
+            port
         } else {
             5432
         }

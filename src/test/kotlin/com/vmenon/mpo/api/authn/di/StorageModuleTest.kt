@@ -70,8 +70,18 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw Exception when Redis port is invalid value`() {
-        System.setProperty("MPO_AUTHN_REDIS_PORT", "invalid-port")
+    fun `Should use default value when Redis port not configured through Koin DI`() {
+        startKoin {
+            modules(storageModule)
+        }
+
+        val redisPort = get<Int>(named("redisPort"))
+        assertEquals(6379, redisPort)
+    }
+
+    @Test
+    fun `Should throw Exception when Redis port is not a integer`() {
+        System.setProperty("MPO_AUTHN_REDIS_PORT", "not-a-number")
 
         startKoin {
             modules(storageModule)
@@ -83,13 +93,29 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should use default value when Redis port not configured through Koin DI`() {
+    fun `Should throw Exception when Redis port is below port number range`() {
+        System.setProperty("MPO_AUTHN_REDIS_PORT", "0")
+
         startKoin {
             modules(storageModule)
         }
 
-        val redisPort = get<Int>(named("redisPort"))
-        assertEquals(6379, redisPort)
+        assertThrows<Exception> {
+            get<Int>(named("redisPort"))
+        }
+    }
+
+    @Test
+    fun `Should throw Exception when Redis port is above port number range`() {
+        System.setProperty("MPO_AUTHN_REDIS_PORT", "65536")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<Exception> {
+            get<Int>(named("redisPort"))
+        }
     }
 
     @Test
@@ -177,8 +203,34 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw InstanceCreationException when redis database is invalid value`() {
+    fun `Should throw InstanceCreationException when redis database is not an integer`() {
         System.setProperty("MPO_AUTHN_REDIS_DATABASE", "invalid-value")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
+            get<Int>(named("redisDatabase"))
+        }
+    }
+
+    @Test
+    fun `Should throw InstanceCreationException when redis database is below range value`() {
+        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "-1")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
+            get<Int>(named("redisDatabase"))
+        }
+    }
+
+    @Test
+    fun `Should throw InstanceCreationException when redis database is above range value`() {
+        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "16")
 
         startKoin {
             modules(storageModule)
@@ -298,8 +350,34 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw Exception when Database port is invalid value`() {
-        System.setProperty("MPO_AUTHN_DB_PORT", "invalid-port")
+    fun `Should throw Exception when Database port is not an integer`() {
+        System.setProperty("MPO_AUTHN_DB_PORT", "not-a-number")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<Exception> {
+            get<Int>(named("dbPort"))
+        }
+    }
+
+    @Test
+    fun `Should throw Exception when Database port is below port number range`() {
+        System.setProperty("MPO_AUTHN_DB_PORT", "-1")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<Exception> {
+            get<Int>(named("dbPort"))
+        }
+    }
+
+    @Test
+    fun `Should throw Exception when Datbase port is above port number range`() {
+        System.setProperty("MPO_AUTHN_DB_PORT", "65536")
 
         startKoin {
             modules(storageModule)
@@ -453,22 +531,6 @@ class StorageModuleTest : KoinTest {
         assertThrows<Exception> {
             get<Int>(named("dbMaxPoolSize"))
         }
-    }
-
-    @Test
-    fun `Configuration should handle edge numeric values through Koin DI`() {
-        System.setProperty("MPO_AUTHN_REDIS_PORT", "0")
-        System.setProperty("MPO_AUTHN_DB_PORT", "-1")
-        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "999")
-
-        startKoin {
-            modules(storageModule)
-        }
-
-        // Should use the actual values, even if unusual
-        assertEquals(0, get<Int>(named("redisPort")))
-        assertEquals(-1, get<Int>(named("dbPort")))
-        assertEquals(999, get<Int>(named("redisDatabase")))
     }
 
     private fun clearAllTestProperties() {

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.assertThrows
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
+import org.koin.core.error.InstanceCreationException
 import org.koin.core.qualifier.named
 import org.koin.test.KoinTest
 import org.koin.test.get
@@ -41,6 +42,19 @@ class StorageModuleTest : KoinTest {
 
         val redisHost = get<String>(named("redisHost"))
         assertEquals("localhost", redisHost)
+    }
+
+    @Test
+    fun `Should throw InstanceCreationException when Redis host is blank`() {
+        System.setProperty("MPO_AUTHN_REDIS_HOST", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
+            get<String>(named("redisHost"))
+        }
     }
 
     @Test
@@ -80,6 +94,19 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
+    fun `Should throw Exception when Redis port is blank`() {
+        System.setProperty("MPO_AUTHN_REDIS_PORT", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<Exception> {
+            get<String>(named("redisPort"))
+        }
+    }
+
+    @Test
     fun `Redis password should work through Koin DI`() {
         System.setProperty("MPO_AUTHN_REDIS_PASSWORD", "test-password")
 
@@ -92,12 +119,25 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw IllegalStateException when Redis password not configured through Koin DI`() {
+    fun `Should throw InstanceCreationException when Redis password not configured through Koin DI`() {
         startKoin {
             modules(storageModule)
         }
 
-        assertThrows<IllegalStateException> {
+        assertThrows<InstanceCreationException> {
+            get<String>(named("redisPassword"))
+        }
+    }
+
+    @Test
+    fun `Should throw InstanceCreationException when Redis password is blank`() {
+        System.setProperty("MPO_AUTHN_REDIS_PASSWORD", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
             get<String>(named("redisPassword"))
         }
     }
@@ -115,6 +155,19 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
+    fun `Should throw InstanceCreationException when redis database is blank`() {
+        System.setProperty("MPO_AUTHN_REDIS_DATABASE", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
+            get<Int>(named("redisDatabase"))
+        }
+    }
+
+    @Test
     fun `Redis max connections should work through Koin DI`() {
         System.setProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS", "25")
 
@@ -126,7 +179,19 @@ class StorageModuleTest : KoinTest {
         assertEquals(25, redisMaxConnections)
     }
 
-    // Database Configuration Tests using Koin DI
+    @Test
+    fun `Should throw InstanceCreationException when redis max connections is blank`() {
+        System.setProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
+            get<Int>(named("redisMaxConnections"))
+        }
+    }
+
     @Test
     fun `Database host configuration should work through Koin DI`() {
         System.setProperty("MPO_AUTHN_DB_HOST", "postgres-test.example.com")
@@ -150,6 +215,19 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
+    fun `Should throw InstanceCreationException when Database host is blank`() {
+        System.setProperty("MPO_AUTHN_DB_HOST", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
+            get<String>(named("dbHost"))
+        }
+    }
+
+    @Test
     fun `Database port configuration should work through Koin DI`() {
         System.setProperty("MPO_AUTHN_DB_PORT", "5433")
 
@@ -159,6 +237,19 @@ class StorageModuleTest : KoinTest {
 
         val dbPort = get<Int>(named("dbPort"))
         assertEquals(5433, dbPort)
+    }
+
+    @Test
+    fun `Should throw Exception when Database port is blank`() {
+        System.setProperty("MPO_AUTHN_DB_PORT", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<Exception> {
+            get<String>(named("dbPort"))
+        }
     }
 
     @Test
@@ -184,6 +275,19 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
+    fun `Should throw InstanceCreationException when Database name is blank`() {
+        System.setProperty("MPO_AUTHN_DB_NAME", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
+            get<String>(named("dbName"))
+        }
+    }
+
+    @Test
     fun `Database username configuration should work through Koin DI`() {
         System.setProperty("MPO_AUTHN_DB_USERNAME", "test_user")
 
@@ -196,12 +300,25 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw IllegalStateException when Database username not configured through Koin DI`() {
+    fun `Should throw InstanceCreationException when Database username not configured through Koin DI`() {
         startKoin {
             modules(storageModule)
         }
 
-        assertThrows<IllegalStateException> {
+        assertThrows<InstanceCreationException> {
+            get<String>(named("dbUsername"))
+        }
+    }
+
+    @Test
+    fun `Should throw InstanceCreationException when Database username is blank`() {
+        System.setProperty("MPO_AUTHN_DB_USERNAME", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
             get<String>(named("dbUsername"))
         }
     }
@@ -219,12 +336,25 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw IllegalStateException when Database password not configured through Koin DI`() {
+    fun `Should throw InstanceCreationException when Database password not configured through Koin DI`() {
         startKoin {
             modules(storageModule)
         }
 
-        assertThrows<IllegalStateException> {
+        assertThrows<InstanceCreationException> {
+            get<String>(named("dbPassword"))
+        }
+    }
+
+    @Test
+    fun `Should throw InstanceCreationException when Database password is blank`() {
+        System.setProperty("MPO_AUTHN_DB_PASSWORD", "")
+
+        startKoin {
+            modules(storageModule)
+        }
+
+        assertThrows<InstanceCreationException> {
             get<String>(named("dbPassword"))
         }
     }
@@ -242,21 +372,16 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Empty string values should be handled correctly through Koin DI`() {
-        System.setProperty("MPO_AUTHN_REDIS_HOST", "")
-        System.setProperty("MPO_AUTHN_DB_NAME", "")
-        System.setProperty("MPO_AUTHN_REDIS_PORT", "")
+    fun `Should throw Exception when Database max pool size is blank`() {
+        System.setProperty("MPO_AUTHN_DB_MAX_POOL_SIZE", "")
 
         startKoin {
             modules(storageModule)
         }
 
-        // Empty strings should be used as-is for string properties
-        assertEquals("", get<String>(named("redisHost")))
-        assertEquals("", get<String>(named("dbName")))
-
-        // Empty string for numeric property should fall back to default
-        assertEquals(6379, get<Int>(named("redisPort")))
+        assertThrows<Exception> {
+            get<String>(named("dbMaxPoolSize"))
+        }
     }
 
     @Test

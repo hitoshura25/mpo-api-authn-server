@@ -13,50 +13,84 @@ import redis.clients.jedis.JedisPoolConfig
 
 val storageModule = module {
     single(named("redisHost")) {
-        System.getProperty("MPO_AUTHN_REDIS_HOST") ?: System.getenv("MPO_AUTHN_REDIS_HOST") ?: "localhost"
+        val value = System.getProperty("MPO_AUTHN_REDIS_HOST") ?: System.getenv("MPO_AUTHN_REDIS_HOST") ?: "localhost"
+        require(value.isNotBlank()) { "MPO_AUTHN_REDIS_HOST cannot be blank" }
+        value
     }
 
     single(named("redisPort")) {
-        (System.getProperty("MPO_AUTHN_REDIS_PORT") ?: System.getenv("MPO_AUTHN_REDIS_PORT"))?.toIntOrNull() ?: 6379
+        val portString = System.getProperty("MPO_AUTHN_REDIS_PORT") ?: System.getenv("MPO_AUTHN_REDIS_PORT")
+        if (portString != null) {
+            require(portString.isNotBlank()) { "MPO_AUTHN_REDIS_PORT cannot be blank" }
+        }
+        portString?.toIntOrNull() ?: 6379
     }
 
     single(named("redisPassword")) {
-        System.getProperty("MPO_AUTHN_REDIS_PASSWORD") ?: System.getenv("MPO_AUTHN_REDIS_PASSWORD")
+        val value = System.getProperty("MPO_AUTHN_REDIS_PASSWORD") ?: System.getenv("MPO_AUTHN_REDIS_PASSWORD")
+        requireNotNull(value) { "MPO_AUTHN_REDIS_PASSWORD is required but was not provided" }
+        require(value.isNotBlank()) { "MPO_AUTHN_REDIS_PASSWORD cannot be blank" }
+        value
     }
 
     single(named("redisDatabase")) {
-        (System.getProperty("MPO_AUTHN_REDIS_DATABASE") ?: System.getenv("MPO_AUTHN_REDIS_DATABASE"))?.toIntOrNull()
-            ?: 0
+        val databaseString = System.getProperty("MPO_AUTHN_REDIS_DATABASE") ?: System.getenv("MPO_AUTHN_REDIS_DATABASE")
+        if (databaseString != null) {
+            require(databaseString.isNotBlank()) { "MPO_AUTHN_REDIS_DATABASE cannot be blank" }
+        }
+        databaseString?.toIntOrNull() ?: 0
     }
 
     single(named("redisMaxConnections")) {
-        (System.getProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS")
-            ?: System.getenv("MPO_AUTHN_REDIS_MAX_CONNECTIONS"))?.toIntOrNull() ?: 10
+        val connectionsString =
+            System.getProperty("MPO_AUTHN_REDIS_MAX_CONNECTIONS") ?: System.getenv("MPO_AUTHN_REDIS_MAX_CONNECTIONS")
+        if (connectionsString != null) {
+            require(connectionsString.isNotBlank()) { "MPO_AUTHN_REDIS_MAX_CONNECTIONS cannot be blank" }
+        }
+        connectionsString?.toIntOrNull() ?: 10
     }
 
     single(named("dbHost")) {
-        System.getProperty("MPO_AUTHN_DB_HOST") ?: System.getenv("MPO_AUTHN_DB_HOST") ?: "localhost"
+        val value = System.getProperty("MPO_AUTHN_DB_HOST") ?: System.getenv("MPO_AUTHN_DB_HOST") ?: "localhost"
+        require(value.isNotBlank()) { "MPO_AUTHN_DB_HOST cannot be blank" }
+        value
     }
 
     single(named("dbPort")) {
-        (System.getProperty("MPO_AUTHN_DB_PORT") ?: System.getenv("MPO_AUTHN_DB_PORT"))?.toIntOrNull() ?: 5432
+        val portString = System.getProperty("MPO_AUTHN_DB_PORT") ?: System.getenv("MPO_AUTHN_DB_PORT")
+        if (portString != null) {
+            require(portString.isNotBlank()) { "MPO_AUTHN_DB_PORT cannot be blank" }
+        }
+        portString?.toIntOrNull() ?: 5432
     }
 
     single(named("dbName")) {
-        System.getProperty("MPO_AUTHN_DB_NAME") ?: System.getenv("MPO_AUTHN_DB_NAME") ?: "webauthn"
+        val value = System.getProperty("MPO_AUTHN_DB_NAME") ?: System.getenv("MPO_AUTHN_DB_NAME") ?: "webauthn"
+        require(value.isNotBlank()) { "MPO_AUTHN_DB_NAME cannot be blank" }
+        value
     }
 
     single(named("dbUsername")) {
-        System.getProperty("MPO_AUTHN_DB_USERNAME") ?: System.getenv("MPO_AUTHN_DB_USERNAME")
+        val value = System.getProperty("MPO_AUTHN_DB_USERNAME") ?: System.getenv("MPO_AUTHN_DB_USERNAME")
+        requireNotNull(value) { "MPO_AUTHN_DB_USERNAME is required but was not provided" }
+        require(value.isNotBlank()) { "MPO_AUTHN_DB_USERNAME cannot be blank" }
+        value
     }
 
     single(named("dbPassword")) {
-        System.getProperty("MPO_AUTHN_DB_PASSWORD") ?: System.getenv("MPO_AUTHN_DB_PASSWORD")
+        val value = System.getProperty("MPO_AUTHN_DB_PASSWORD") ?: System.getenv("MPO_AUTHN_DB_PASSWORD")
+        requireNotNull(value) { "MPO_AUTHN_DB_PASSWORD is required but was not provided" }
+        require(value.isNotBlank()) { "MPO_AUTHN_DB_PASSWORD cannot be blank" }
+        value
     }
 
     single(named("dbMaxPoolSize")) {
-        (System.getProperty("MPO_AUTHN_DB_MAX_POOL_SIZE") ?: System.getenv("MPO_AUTHN_DB_MAX_POOL_SIZE"))?.toIntOrNull()
-            ?: 10
+        val poolSizeString =
+            System.getProperty("MPO_AUTHN_DB_MAX_POOL_SIZE") ?: System.getenv("MPO_AUTHN_DB_MAX_POOL_SIZE")
+        if (poolSizeString != null) {
+            require(poolSizeString.isNotBlank()) { "MPO_AUTHN_DB_MAX_POOL_SIZE cannot be blank" }
+        }
+        poolSizeString?.toIntOrNull() ?: 10
     }
 
     factory<JedisPool> {

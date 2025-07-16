@@ -60,6 +60,7 @@ class SecurePostgreSQLCredentialStorage(
 
             val dataSource = HikariDataSource(config)
 
+
             // Generate or load encryption key
             val encryptionKey = if (encryptionKeyBase64 != null) {
                 val keyBytes = Base64.getDecoder().decode(encryptionKeyBase64)
@@ -68,9 +69,7 @@ class SecurePostgreSQLCredentialStorage(
                 generateEncryptionKey()
             }
 
-            val storage = SecurePostgreSQLCredentialStorage(dataSource, encryptionKey)
-            storage.initializeTables()
-            return storage
+            return SecurePostgreSQLCredentialStorage(dataSource, encryptionKey)
         }
 
         private fun generateEncryptionKey(): SecretKey {
@@ -107,41 +106,6 @@ class SecurePostgreSQLCredentialStorage(
         return String(decryptedData)
     }
 
-    private fun initializeTables() {
-        dataSource.connection.use { connection ->
-            // Create users table with encrypted data
-            val createUsersTable = """
-                CREATE TABLE IF NOT EXISTS webauthn_users_secure (
-                    user_handle_hash CHAR(64) PRIMARY KEY,
-                    username_hash CHAR(64) UNIQUE NOT NULL,
-                    encrypted_user_data TEXT NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """.trimIndent()
-
-            // Create credentials table with encrypted data
-            val createCredentialsTable = """
-                CREATE TABLE IF NOT EXISTS webauthn_credentials_secure (
-                    credential_id_hash CHAR(64) PRIMARY KEY,
-                    user_handle_hash CHAR(64) NOT NULL REFERENCES webauthn_users_secure(user_handle_hash) ON DELETE CASCADE,
-                    encrypted_credential_data TEXT NOT NULL,
-                    registration_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """.trimIndent()
-
-            // Create indexes for performance (on hashes only)
-            val createIndexes = arrayOf(
-                "CREATE INDEX IF NOT EXISTS idx_webauthn_users_secure_username ON webauthn_users_secure(username_hash)",
-                "CREATE INDEX IF NOT EXISTS idx_webauthn_credentials_secure_user ON webauthn_credentials_secure(user_handle_hash)"
-            )
-
-            connection.createStatement().use { statement ->
-                statement.execute(createUsersTable)
-                statement.execute(createCredentialsTable)
-                createIndexes.forEach { statement.execute(it) }
-            }
-        }
-    }
 
     private fun hash(data: String): String {
         val digest = MessageDigest.getInstance("SHA-256")

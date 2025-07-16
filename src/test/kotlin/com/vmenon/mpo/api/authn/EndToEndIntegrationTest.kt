@@ -32,6 +32,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
 import org.koin.core.context.stopKoin
+import org.testcontainers.containers.BindMode
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Container
@@ -52,6 +53,11 @@ class EndToEndIntegrationTest {
             .withDatabaseName("webauthn_test")
             .withUsername("test_user")
             .withPassword("test_password")
+            .withFileSystemBind(
+                "src/main/resources/db/migration",
+                "/docker-entrypoint-initdb.d",
+                BindMode.READ_ONLY
+            )
 
         @Container
         val redis = GenericContainer(DockerImageName.parse("redis:7-alpine"))

@@ -14,4 +14,5 @@ interface CredentialStorage {
     ): Optional<RegisteredCredential>
 
     fun lookupAll(credentialId: com.yubico.webauthn.data.ByteArray): Set<RegisteredCredential>
+    fun close()
 }

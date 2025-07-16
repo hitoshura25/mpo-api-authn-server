@@ -55,12 +55,7 @@ val storageModule = module {
     single(named("dbMaxPoolSize")) {
         (System.getProperty("DB_MAX_POOL_SIZE") ?: System.getenv("DB_MAX_POOL_SIZE"))?.toIntOrNull() ?: 10
     }
-
-    // Encryption configuration for secure credential storage
-    single(named("encryptionKey")) {
-        System.getProperty("ENCRYPTION_KEY") ?: System.getenv("ENCRYPTION_KEY")
-    }
-
+    
     factory<JedisPool> {
         val host: String by inject(named("redisHost"))
         val port: Int by inject(named("redisPort"))

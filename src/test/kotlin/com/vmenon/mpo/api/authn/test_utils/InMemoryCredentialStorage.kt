@@ -45,4 +45,9 @@ class InMemoryCredentialStorage : CredentialStorage {
             .map { it.credential }
             .toSet()
     }
+
+    override fun close() {
+        usersByHandle.clear()
+        storage.clear()
+    }
 }

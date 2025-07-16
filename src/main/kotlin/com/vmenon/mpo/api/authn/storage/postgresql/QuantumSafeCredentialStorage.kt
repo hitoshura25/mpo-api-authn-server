@@ -8,6 +8,7 @@ import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import com.yubico.webauthn.RegisteredCredential
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
+import java.io.Closeable
 import java.security.MessageDigest
 import java.util.Optional
 import javax.sql.DataSource
@@ -254,5 +255,9 @@ class QuantumSafeCredentialStorage(
                 }
             }
         }
+    }
+
+    override fun close() {
+        (dataSource as Closeable).close()
     }
 }

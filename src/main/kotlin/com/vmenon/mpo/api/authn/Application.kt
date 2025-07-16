@@ -24,6 +24,7 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.jackson.jackson
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
@@ -201,6 +202,12 @@ fun Application.module(storageModule: Module) {
                 call.respond(HttpStatusCode.BadRequest, mapOf("success" to false, "message" to "Authentication failed"))
             }
         }
+    }
+
+    environment.monitor.subscribe(ApplicationStopping) {
+        credentialStorage.close()
+        registrationStorage.close()
+        assertionStorage.close()
     }
 }
 

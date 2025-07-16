@@ -1,8 +1,15 @@
 package com.vmenon.mpo.api.authn
 
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.yubico.webauthn.AssertionRequest
+import com.vmenon.mpo.api.authn.di.appModule
+import com.vmenon.mpo.api.authn.di.storageModule
+import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.CredentialRegistration
+import com.vmenon.mpo.api.authn.storage.CredentialStorage
+import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
+import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.yubico.webauthn.FinishAssertionOptions
 import com.yubico.webauthn.FinishRegistrationOptions
 import com.yubico.webauthn.RegisteredCredential
@@ -11,14 +18,13 @@ import com.yubico.webauthn.StartAssertionOptions
 import com.yubico.webauthn.StartRegistrationOptions
 import com.yubico.webauthn.data.ByteArray
 import com.yubico.webauthn.data.PublicKeyCredential
-import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
-import com.yubico.webauthn.data.RelyingPartyIdentity
 import com.yubico.webauthn.data.UserIdentity
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.jackson.jackson
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.call
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
@@ -34,27 +40,27 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import java.security.SecureRandom
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
+import org.koin.core.module.Module
+import org.koin.ktor.ext.inject
+import org.koin.ktor.plugin.Koin
+import org.koin.logger.slf4jLogger
 
-fun Application.module() {
-    val credentialRepository = InMemoryCredentialRepository()
-    val registrationRequestStorage = ConcurrentHashMap<String, PublicKeyCredentialCreationOptions>()
-    val assertionRequestStorage = ConcurrentHashMap<String, AssertionRequest>()
+fun Application.module(storageModule: Module) {
+    install(Koin) {
+        slf4jLogger()
+        modules(listOf(appModule, storageModule))
+    }
 
-    val relyingParty = RelyingParty.builder()
-        .identity(
-            RelyingPartyIdentity.builder()
-                .id("localhost")
-                .name("WebAuthn Demo")
-                .build()
-        )
-        .credentialRepository(credentialRepository)
-        .build()
+    val registrationStorage: RegistrationRequestStorage by inject()
+    val assertionStorage: AssertionRequestStorage by inject()
+    val relyingParty: RelyingParty by inject()
+    val credentialStorage: CredentialStorage by inject()
 
     install(ContentNegotiation) {
         jackson {
             registerModule(KotlinModule.Builder().build())
             registerModule(JavaTimeModule())
+            registerModule(Jdk8Module())
         }
     }
 
@@ -98,7 +104,7 @@ fun Application.module() {
                     .build()
             )
 
-            registrationRequestStorage[requestId] = startRegistrationOptions
+            registrationStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
 
             val response = RegistrationResponse(
                 requestId = requestId,
@@ -110,7 +116,7 @@ fun Application.module() {
 
         post("/register/complete") {
             val request = call.receive<RegistrationCompleteRequest>()
-            val startRegistrationOptions = registrationRequestStorage.remove(request.requestId)
+            val startRegistrationOptions = registrationStorage.retrieveAndRemoveRegistrationRequest(request.requestId)
                 ?: throw IllegalArgumentException("Invalid request ID")
 
             val finishRegistrationOptions = relyingParty.finishRegistration(
@@ -140,7 +146,7 @@ fun Application.module() {
                     .build()
             )
 
-            credentialRepository.addRegistration(registration)
+            credentialStorage.addRegistration(registration)
 
             call.respond(mapOf("success" to true, "message" to "Registration successful"))
         }
@@ -163,7 +169,7 @@ fun Application.module() {
                 )
             }
 
-            assertionRequestStorage[requestId] = startAssertionOptions
+            assertionStorage.storeAssertionRequest(requestId, startAssertionOptions)
 
             val response = AuthenticationResponse(
                 requestId = requestId,
@@ -175,7 +181,7 @@ fun Application.module() {
 
         post("/authenticate/complete") {
             val request = call.receive<AuthenticationCompleteRequest>()
-            val startAssertionOptions = assertionRequestStorage.remove(request.requestId)
+            val startAssertionOptions = assertionStorage.retrieveAndRemoveAssertionRequest(request.requestId)
                 ?: throw IllegalArgumentException("Invalid request ID")
 
             val finishAssertionOptions = relyingParty.finishAssertion(
@@ -197,10 +203,16 @@ fun Application.module() {
             }
         }
     }
+
+    environment.monitor.subscribe(ApplicationStopping) {
+        credentialStorage.close()
+        registrationStorage.close()
+        assertionStorage.close()
+    }
 }
 
 fun main() {
     embeddedServer(Netty, port = 8080) {
-        module()
+        module(storageModule)
     }.start(wait = true)
 }

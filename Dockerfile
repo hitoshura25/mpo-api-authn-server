@@ -11,7 +11,7 @@ COPY gradlew gradlew.bat build.gradle.kts ./
 COPY src src
 
 # Build the application
-RUN ./gradlew clean build --no-daemon
+RUN ./gradlew clean shadowJar --no-daemon
 
 # Runtime stage
 FROM openjdk:21-slim

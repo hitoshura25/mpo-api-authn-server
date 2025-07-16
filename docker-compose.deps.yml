@@ -1,0 +1,37 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      MPO_AUTHN_DB_NAME: ${MPO_AUTHN_DB_NAME}
+      MPO_AUTHN_DB_USERNAME: ${MPO_AUTHN_DB_USERNAME}
+      MPO_AUTHN_DB_PASSWORD: ${MPO_AUTHN_DB_PASSWORD}
+      MPO_AUTHN_DB_PORT: ${MPO_AUTHN_DB_PORT}
+    ports:
+      - "${MPO_AUTHN_DB_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./src/main/resources/db/migration:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${MPO_AUTHN_DB_USERNAME} -d ${MPO_AUTHN_DB_NAME}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${MPO_AUTHN_REDIS_PORT}:6379"
+    command: redis-server --requirepass ${MPO_AUTHN_REDIS_PASSWORD}
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+volumes:
+  postgres_data:
+  redis_data:

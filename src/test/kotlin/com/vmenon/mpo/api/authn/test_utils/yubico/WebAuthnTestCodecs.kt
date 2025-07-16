@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.yubico
+package com.vmenon.mpo.api.authn.test_utils.yubico
 
 import com.upokecenter.cbor.CBORObject
 import com.yubico.webauthn.data.ByteArray

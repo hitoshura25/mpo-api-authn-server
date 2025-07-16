@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.yubico
+package com.vmenon.mpo.api.authn.test_utils.yubico
 
 import BinaryUtil
 import com.fasterxml.jackson.databind.JsonNode
@@ -17,6 +17,7 @@ import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.PrivateKey
 import java.security.SecureRandom
+import java.security.Signature
 import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
@@ -381,7 +382,7 @@ object TestAuthenticator {
         val jAlg = WebAuthnCodecs.getJavaAlgorithmName(alg)
 
         // Need to use BouncyCastle provider here because JDK15 standard providers do not support secp256k1
-        val sig = java.security.Signature.getInstance(jAlg, BouncyCastleProvider())
+        val sig = Signature.getInstance(jAlg, BouncyCastleProvider())
 
         sig.initSign(key)
         sig.update(data.bytes)

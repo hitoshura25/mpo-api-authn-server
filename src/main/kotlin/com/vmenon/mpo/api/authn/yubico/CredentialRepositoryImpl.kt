@@ -24,7 +24,6 @@ class CredentialRepositoryImpl(private val credentialStorage: CredentialStorage)
 
     override fun getUsernameForUserHandle(userHandle: ByteArray): Optional<String> {
         return Optional.ofNullable(credentialStorage.getUserByHandle(userHandle)?.username)
-
     }
 
     override fun lookup(

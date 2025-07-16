@@ -33,13 +33,13 @@ class SecurePostgreSQLCredentialStorage(
         private const val GCM_TAG_LENGTH = 16
 
         fun create(
-            host: String = "localhost",
-            port: Int = 5432,
-            database: String = "webauthn",
-            username: String = "webauthn_user",
-            password: String = "webauthn_password",
-            maxPoolSize: Int = 10,
-            encryptionKeyBase64: String? = null
+            host: String,
+            port: Int,
+            database: String,
+            username: String,
+            password: String,
+            maxPoolSize: Int,
+            encryptionKeyBase64: String?
         ): SecurePostgreSQLCredentialStorage {
             val config = HikariConfig().apply {
                 jdbcUrl = "jdbc:postgresql://$host:$port/$database?sslmode=disable"
@@ -79,39 +79,6 @@ class SecurePostgreSQLCredentialStorage(
         }
     }
 
-    private fun encrypt(data: String): String {
-        val cipher = Cipher.getInstance(ENCRYPTION_ALGORITHM)
-        val iv = ByteArray(GCM_IV_LENGTH)
-        SecureRandom().nextBytes(iv)
-
-        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
-        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey, parameterSpec)
-
-        val encryptedData = cipher.doFinal(data.toByteArray())
-        val encryptedWithIv = iv + encryptedData
-
-        return Base64.getEncoder().encodeToString(encryptedWithIv)
-    }
-
-    private fun decrypt(encryptedData: String): String {
-        val encryptedWithIv = Base64.getDecoder().decode(encryptedData)
-        val iv = encryptedWithIv.sliceArray(0 until GCM_IV_LENGTH)
-        val encrypted = encryptedWithIv.sliceArray(GCM_IV_LENGTH until encryptedWithIv.size)
-
-        val cipher = Cipher.getInstance(ENCRYPTION_ALGORITHM)
-        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
-        cipher.init(Cipher.DECRYPT_MODE, encryptionKey, parameterSpec)
-
-        val decryptedData = cipher.doFinal(encrypted)
-        return String(decryptedData)
-    }
-
-
-    private fun hash(data: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hashBytes = digest.digest(data.toByteArray())
-        return hashBytes.joinToString("") { "%02x".format(it) }
-    }
 
     override fun addRegistration(registration: CredentialRegistration) {
         dataSource.connection.use { connection ->
@@ -278,5 +245,38 @@ class SecurePostgreSQLCredentialStorage(
                 }
             }
         }
+    }
+
+    private fun encrypt(data: String): String {
+        val cipher = Cipher.getInstance(ENCRYPTION_ALGORITHM)
+        val iv = ByteArray(GCM_IV_LENGTH)
+        SecureRandom().nextBytes(iv)
+
+        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
+        cipher.init(Cipher.ENCRYPT_MODE, encryptionKey, parameterSpec)
+
+        val encryptedData = cipher.doFinal(data.toByteArray())
+        val encryptedWithIv = iv + encryptedData
+
+        return Base64.getEncoder().encodeToString(encryptedWithIv)
+    }
+
+    private fun decrypt(encryptedData: String): String {
+        val encryptedWithIv = Base64.getDecoder().decode(encryptedData)
+        val iv = encryptedWithIv.sliceArray(0 until GCM_IV_LENGTH)
+        val encrypted = encryptedWithIv.sliceArray(GCM_IV_LENGTH until encryptedWithIv.size)
+
+        val cipher = Cipher.getInstance(ENCRYPTION_ALGORITHM)
+        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
+        cipher.init(Cipher.DECRYPT_MODE, encryptionKey, parameterSpec)
+
+        val decryptedData = cipher.doFinal(encrypted)
+        return String(decryptedData)
+    }
+
+    private fun hash(data: String): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        val hashBytes = digest.digest(data.toByteArray())
+        return hashBytes.joinToString("") { "%02x".format(it) }
     }
 }

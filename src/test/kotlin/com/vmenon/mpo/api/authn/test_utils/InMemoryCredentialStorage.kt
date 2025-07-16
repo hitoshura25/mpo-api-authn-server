@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.storage.inmem
+package com.vmenon.mpo.api.authn.test_utils
 
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage

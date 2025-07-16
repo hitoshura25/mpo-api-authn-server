@@ -1,9 +1,9 @@
 package com.vmenon.mpo.api.authn
 
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.Defaults
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.generateKeypair
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
-import com.vmenon.mpo.api.authn.yubico.TestAuthenticator
-import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.Defaults
-import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.generateKeypair
 import com.yubico.webauthn.data.ByteArray
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get

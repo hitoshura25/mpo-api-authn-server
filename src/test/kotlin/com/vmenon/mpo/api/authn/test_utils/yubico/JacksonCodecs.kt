@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.yubico
+package com.vmenon.mpo.api.authn.test_utils.yubico
 
 import com.fasterxml.jackson.annotation.JsonInclude.Include
 import com.fasterxml.jackson.core.Base64Variants

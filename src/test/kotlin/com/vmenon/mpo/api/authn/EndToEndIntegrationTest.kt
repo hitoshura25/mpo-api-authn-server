@@ -5,9 +5,9 @@ import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
 import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.di.storageModule
-import com.vmenon.mpo.api.authn.yubico.TestAuthenticator
-import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.Defaults
-import com.vmenon.mpo.api.authn.yubico.TestAuthenticator.generateKeypair
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.Defaults
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.generateKeypair
 import com.yubico.webauthn.data.ByteArray
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -100,7 +100,6 @@ class EndToEndIntegrationTest {
         stopKoin() // Ensure clean state
 
         // Set environment variables for the test containers
-        System.setProperty("STORAGE_TYPE", "redis")
         System.setProperty("REDIS_HOST", redis.host)
         System.setProperty("REDIS_PORT", redis.getMappedPort(6379).toString())
         System.setProperty("REDIS_PASSWORD", "test_password")
@@ -126,7 +125,7 @@ class EndToEndIntegrationTest {
 
         // Clear system properties
         val properties = listOf(
-            "STORAGE_TYPE", "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DATABASE",
+            "REDIS_HOST", "REDIS_PORT", "REDIS_PASSWORD", "REDIS_DATABASE",
             "DB_HOST", "DB_PORT", "DB_NAME", "DB_USERNAME", "DB_PASSWORD", "ENCRYPTION_KEY"
         )
         properties.forEach { System.clearProperty(it) }

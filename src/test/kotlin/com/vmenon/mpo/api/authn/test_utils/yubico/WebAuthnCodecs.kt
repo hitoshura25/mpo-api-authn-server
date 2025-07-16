@@ -2,7 +2,7 @@
 Taken from https://github.com/Yubico/java-webauthn-server/blob/365aba221da3a64fa0ee788a1878cf4d737f4b2b/webauthn-server-core/src/main/java/com/yubico/webauthn/WebAuthnCodecs.java#L45
  */
 
-package com.vmenon.mpo.api.authn.yubico
+package com.vmenon.mpo.api.authn.test_utils.yubico
 
 import BinaryUtil
 import com.google.common.primitives.Bytes

@@ -37,7 +37,8 @@ val monitoringModule = module {
     single<OpenTelemetry> {
         val jaegerEndpoint: Optional<String> by inject(named("openTelemetryJaegerEndpoint"))
         if (jaegerEndpoint.isPresent) {
-            logger.info("Using Jaeger endpoint: $jaegerEndpoint")
+            val endpoint = jaegerEndpoint.get()
+            logger.info("Using Jaeger endpoint: $endpoint")
             val serviceName: String by inject(named("openTelemetryServiceName"))
             val resource = Resource.getDefault()
                 .merge(
@@ -48,7 +49,7 @@ val monitoringModule = module {
                 )
 
             val jaegerExporter = OtlpGrpcSpanExporter.builder()
-                .setEndpoint(jaegerEndpoint.get())
+                .setEndpoint(endpoint)
                 .build()
 
             val tracerProvider = SdkTracerProvider.builder()

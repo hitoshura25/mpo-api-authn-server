@@ -13,18 +13,19 @@ Setup the below in order to properly configure the app and dependencies:
 ### Database Configuration
 
 ```
+MPO_AUTHN_DB_HOST
+MPO_AUTHN_DB_PORT
 MPO_AUTHN_DB_NAME
 MPO_AUTHN_DB_USERNAME
 MPO_AUTHN_DB_PASSWORD
-MPO_AUTHN_DB_PORT
 ```
 
 ### Redis Configuration
 
 ```
-MPO_AUTHN_REDIS_PASSWORD
 MPO_AUTHN_REDIS_HOST
 MPO_AUTHN_REDIS_PORT
+MPO_AUTHN_REDIS_PASSWORD
 ```
 
 ### Application Configuration

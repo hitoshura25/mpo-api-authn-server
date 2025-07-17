@@ -2,10 +2,9 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      MPO_AUTHN_DB_NAME: ${MPO_AUTHN_DB_NAME}
-      MPO_AUTHN_DB_USERNAME: ${MPO_AUTHN_DB_USERNAME}
-      MPO_AUTHN_DB_PASSWORD: ${MPO_AUTHN_DB_PASSWORD}
-      MPO_AUTHN_DB_PORT: ${MPO_AUTHN_DB_PORT}
+      POSTGRES_DB: ${MPO_AUTHN_DB_NAME}
+      POSTGRES_USER: ${MPO_AUTHN_DB_USERNAME}
+      POSTGRES_PASSWORD: ${MPO_AUTHN_DB_PASSWORD}
     ports:
       - "${MPO_AUTHN_DB_PORT}:5432"
     volumes:

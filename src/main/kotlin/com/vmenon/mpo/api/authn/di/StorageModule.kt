@@ -15,7 +15,8 @@ import redis.clients.jedis.JedisPoolConfig
 val storageModule = module {
     single(named("redisHost")) {
         val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_REDIS_HOST)
-            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_REDIS_HOST) ?: "localhost"
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_REDIS_HOST)
+        requireNotNull(value) { "${EnvironmentVariables.MPO_AUTHN_REDIS_HOST} is required but was not provided" }
         require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_REDIS_HOST} cannot be blank" }
         value
     }
@@ -76,7 +77,8 @@ val storageModule = module {
 
     single(named("dbHost")) {
         val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_HOST)
-            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_DB_HOST) ?: "localhost"
+            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_DB_HOST)
+        requireNotNull(value) { "${EnvironmentVariables.MPO_AUTHN_DB_HOST} is required but was not provided" }
         require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_DB_HOST} cannot be blank" }
         value
     }

@@ -241,7 +241,6 @@ fun Application.module(storageModule: Module) {
             call.respond(mapOf("success" to true, "message" to "Registration successful"))
         }
 
-
         post("/authenticate/start") {
             val request = call.receive<AuthenticationRequest>()
             val requestId = UUID.randomUUID().toString()

@@ -51,6 +51,52 @@ class ApplicationTest : KoinTest {
     }
 
     @Test
+    fun testMetrics() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val response = client.get("/metrics")
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertNotNull(response.bodyAsText())
+    }
+
+    @Test
+    fun testHealth() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val response = client.get("/health")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("healthy", responseBody.get("status").asText())
+    }
+
+    @Test
+    fun testReady() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val response = client.get("/ready")
+        assertEquals(HttpStatusCode.OK, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("ready", responseBody.get("status").asText())
+    }
+
+    @Test
+    fun testLive() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val response = client.get("/live")
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals("Alive", response.bodyAsText())
+    }
+
+    @Test
     fun testAuthenticationStart() = testApplication {
         application {
             module(testStorageModule)

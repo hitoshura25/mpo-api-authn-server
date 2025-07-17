@@ -37,6 +37,7 @@ val monitoringModule = module {
     single<OpenTelemetry> {
         val jaegerEndpoint: Optional<String> by inject(named("openTelemetryJaegerEndpoint"))
         if (jaegerEndpoint.isPresent) {
+            logger.info("Using Jaeger endpoint: $jaegerEndpoint")
             val serviceName: String by inject(named("openTelemetryServiceName"))
             val resource = Resource.getDefault()
                 .merge(

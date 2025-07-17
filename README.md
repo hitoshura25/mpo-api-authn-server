@@ -33,7 +33,10 @@ MPO_AUTHN_REDIS_PORT
 MPO_AUTHN_APP_RELYING_PARTY_ID
 MPO_AUTHN_APP_RELYING_PARTY_NAME
 
-MPO_AUTHN_APP_PORT # Only used when running the full docker compose stack
+ # Only used when running the full docker compose stack
+MPO_AUTHN_APP_PORT
+MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT # If not setup, OpenTelemetry.noop() will be used
+MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME
 ```
 
 # Docker Setup Guide

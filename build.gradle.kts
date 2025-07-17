@@ -15,6 +15,10 @@ val mockkVersion = "1.13.8"
 val bouncyCastleVersion = "1.78"
 val testContainersVersion = "1.21.3"
 val testContainersRedisVersion = "2.2.2"
+val jedisVersion = "5.1.0"
+val postgresqlVersion = "42.7.2"
+val hikariCpVersion = "5.0.1"
+val koinVersion = "3.5.3"
 
 
 group = "com.vmenon.mpo.api.authn"
@@ -36,38 +40,38 @@ dependencies {
     implementation("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVersion")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
-    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:${jacksonVersion}")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:${jacksonVersion}")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:$jacksonVersion")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:$jacksonVersion")
 
     implementation("ch.qos.logback:logback-classic:$logbackVersion")
 
     // Redis for scalable storage
-    implementation("redis.clients:jedis:5.1.0")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-smile:${jacksonVersion}")
+    implementation("redis.clients:jedis:$jedisVersion")
+    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-smile:$jacksonVersion")
 
     // PostgreSQL for credential storage
-    implementation("org.postgresql:postgresql:42.7.2")
-    implementation("com.zaxxer:HikariCP:5.0.1")
+    implementation("org.postgresql:postgresql:$postgresqlVersion")
+    implementation("com.zaxxer:HikariCP:$hikariCpVersion")
 
     // Post-Quantum Cryptography
     implementation("org.bouncycastle:bcprov-jdk18on:$bouncyCastleVersion")
     implementation("org.bouncycastle:bcpkix-jdk18on:$bouncyCastleVersion")
 
     // Dependency Injection
-    implementation("io.insert-koin:koin-ktor:3.5.3")
-    implementation("io.insert-koin:koin-logger-slf4j:3.5.3")
-    implementation("io.insert-koin:koin-core:3.5.3")
+    implementation("io.insert-koin:koin-ktor:$koinVersion")
+    implementation("io.insert-koin:koin-logger-slf4j:$koinVersion")
+    implementation("io.insert-koin:koin-core:$koinVersion")
 
     // Test dependencies
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
-    testImplementation("io.insert-koin:koin-test:3.5.3")
-    testImplementation("io.insert-koin:koin-test-junit5:3.5.3")
+    testImplementation("io.insert-koin:koin-test:$koinVersion")
+    testImplementation("io.insert-koin:koin-test-junit5:$koinVersion")
 
     // Testcontainers for end-to-end testing with real databases
     testImplementation("org.testcontainers:junit-jupiter:$testContainersVersion")
     testImplementation("org.testcontainers:postgresql:$testContainersVersion")
     testImplementation("org.testcontainers:testcontainers:$testContainersVersion")
-    testImplementation("com.redis:testcontainers-redis:${testContainersRedisVersion}")
+    testImplementation("com.redis:testcontainers-redis:$testContainersRedisVersion")
 
     testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
     testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")

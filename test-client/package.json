@@ -8,12 +8,14 @@
     "test:ui": "playwright test --ui",
     "test:debug": "playwright test --debug",
     "test:headed": "playwright test --headed",
+    "test:report": "playwright show-report",
     "server:start": "cd .. && ./start-full.sh",
     "server:stop": "cd .. && docker-compose down",
     "server:logs": "cd .. && docker-compose logs -f webauthn-server",
     "server:restart": "cd .. && docker-compose restart webauthn-server",
     "server:status": "cd .. && docker-compose ps",
-    "test:with-server": "npm run server:start && npm run test; npm run server:stop"
+    "test:with-server": "npm run server:start && npm run test && npm run server:stop",
+    "test:with-server:report": "npm run server:start && npm run test && npm run server:stop && npm run test:report"
   },
   "devDependencies": {
     "@playwright/test": "^1.40.0"

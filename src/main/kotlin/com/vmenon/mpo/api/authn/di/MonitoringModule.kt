@@ -1,7 +1,7 @@
 package com.vmenon.mpo.api.authn.di
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
-import com.vmenon.mpo.api.authn.storage.redis.RedisOpenTelemetryHelper
+import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
 import io.micrometer.prometheus.PrometheusConfig
 import io.micrometer.prometheus.PrometheusMeterRegistry
 import io.opentelemetry.api.OpenTelemetry
@@ -77,8 +77,8 @@ val monitoringModule = module {
         PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
     }
 
-    single<RedisOpenTelemetryHelper> {
+    single<OpenTelemetryTracer> {
         val tracer: Tracer by inject()
-        RedisOpenTelemetryHelper(tracer)
+        OpenTelemetryTracer(tracer)
     }
 }

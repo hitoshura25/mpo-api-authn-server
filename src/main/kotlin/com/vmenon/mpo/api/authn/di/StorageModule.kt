@@ -1,12 +1,12 @@
 package com.vmenon.mpo.api.authn.di
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
+import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisAssertionRequestStorage
-import com.vmenon.mpo.api.authn.storage.redis.RedisOpenTelemetryHelper
 import com.vmenon.mpo.api.authn.storage.redis.RedisRegistrationRequestStorage
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
@@ -154,13 +154,13 @@ val storageModule = module {
 
     single<RegistrationRequestStorage> {
         val jedisPool: JedisPool by inject()
-        val openTelemetryHelper: RedisOpenTelemetryHelper by inject()
+        val openTelemetryHelper: OpenTelemetryTracer by inject()
         RedisRegistrationRequestStorage(jedisPool, openTelemetryHelper)
     }
 
     single<AssertionRequestStorage> {
         val jedisPool: JedisPool by inject()
-        val openTelemetryHelper: RedisOpenTelemetryHelper by inject()
+        val openTelemetryHelper: OpenTelemetryTracer by inject()
         RedisAssertionRequestStorage(jedisPool, openTelemetryHelper)
     }
 

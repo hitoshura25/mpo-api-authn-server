@@ -1,13 +1,43 @@
-package com.vmenon.mpo.api.authn.storage.redis
+package com.vmenon.mpo.api.authn.monitoring
 
+import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.semconv.DbAttributes
 import redis.clients.jedis.JedisPool
 
-class RedisOpenTelemetryHelper(
+class OpenTelemetryTracer(
     private val tracer: Tracer,
 ) {
+    fun <T> traceOperation(operation: String, block: () -> T): T {
+        val span = tracer.spanBuilder("business.operation")
+            .setAttribute("operation.name", operation)
+            .startSpan()
+
+        return try {
+            span.setStatus(StatusCode.OK)
+            block()
+        } catch (e: Exception) {
+            span.setStatus(StatusCode.ERROR, e.message ?: "Unknown error")
+            span.recordException(e)
+            throw e
+        } finally {
+            span.end()
+        }
+    }
+
+    fun <T> writeValueAsString(value: T): String {
+        return traceOperation("writeValueAsString") {
+            objectMapper.writeValueAsString(value)
+        }
+    }
+
+    fun <T> readValue(content: String, valueType: Class<T>): T {
+        return traceOperation("readValue") {
+            objectMapper.readValue(content, valueType)
+        }
+    }
+
     fun setex(jedisPool: JedisPool, key: String, ttlSeconds: Long, value: String) {
         val span = tracer.spanBuilder("redis.setex")
             .setAttribute(DbAttributes.DB_SYSTEM_NAME, "redis")

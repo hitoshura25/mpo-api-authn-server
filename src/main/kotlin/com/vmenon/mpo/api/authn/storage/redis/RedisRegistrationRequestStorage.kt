@@ -1,7 +1,7 @@
 package com.vmenon.mpo.api.authn.storage.redis
 
+import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
-import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
 import redis.clients.jedis.JedisPool
 
@@ -10,7 +10,7 @@ import redis.clients.jedis.JedisPool
  */
 class RedisRegistrationRequestStorage(
     private val jedisPool: JedisPool,
-    private val redisOpenTelemetryHelper: RedisOpenTelemetryHelper,
+    private val openTelemetryTracer: OpenTelemetryTracer,
     private val keyPrefix: String = "webauthn:reg:",
 ) : RegistrationRequestStorage {
 
@@ -19,19 +19,23 @@ class RedisRegistrationRequestStorage(
         options: PublicKeyCredentialCreationOptions,
         ttlSeconds: Long
     ) {
-        val key = "$keyPrefix$requestId"
-        val value = objectMapper.writeValueAsString(options)
-        redisOpenTelemetryHelper.setex(jedisPool, key, ttlSeconds, value)
+        openTelemetryTracer.traceOperation("RedisRegistrationRequestStorage.storeRegistrationRequest") {
+            val key = "$keyPrefix$requestId"
+            val value = openTelemetryTracer.writeValueAsString(options)
+            openTelemetryTracer.setex(jedisPool, key, ttlSeconds, value)
+        }
     }
 
     override fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
-        val key = "$keyPrefix$requestId"
-        val value = redisOpenTelemetryHelper.get(jedisPool, key)
-        return if (value != null) {
-            redisOpenTelemetryHelper.del(jedisPool, key) // Remove after retrieving
-            objectMapper.readValue(value, PublicKeyCredentialCreationOptions::class.java)
-        } else {
-            null
+        return openTelemetryTracer.traceOperation("RedisRegistrationRequestStorage.retrieveAndRemoveRegistrationRequest") {
+            val key = "$keyPrefix$requestId"
+            val value = openTelemetryTracer.get(jedisPool, key)
+            if (value != null) {
+                openTelemetryTracer.del(jedisPool, key) // Remove after retrieving
+                openTelemetryTracer.readValue(value, PublicKeyCredentialCreationOptions::class.java)
+            } else {
+                null
+            }
         }
     }
 

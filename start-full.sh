@@ -2,7 +2,7 @@
 
 # Full stack setup - Start everything including the application
 echo "🚀 Starting full stack (PostgreSQL, Redis & WebAuthn Server)..."
-docker-compose up -d
+docker-compose up --build -d
 
 echo "⏳ Waiting for all services to be healthy..."
 sleep 10

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.TestInstance
 import org.koin.core.context.stopKoin
+import org.koin.test.KoinTest
 import org.testcontainers.containers.BindMode
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.PostgreSQLContainer
@@ -14,12 +15,12 @@ import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
 
 /**
- * Base class for integration tests that need PostgreSQL and Redis containers.
+ * Base class for integration tests that need PostgreSQL, Redis, and Jaeger containers.
  * Manages the lifecycle of shared test containers and provides common setup functionality.
  */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-abstract class BaseIntegrationTest {
+abstract class BaseIntegrationTest : KoinTest {
     val postgres: PostgreSQLContainer<*> = PostgreSQLContainer(DockerImageName.parse("postgres:15-alpine"))
         .withDatabaseName("webauthn_test")
         .withUsername("test_user")
@@ -34,18 +35,26 @@ abstract class BaseIntegrationTest {
         .withExposedPorts(6379)
         .withCommand("redis-server --requirepass test_password")
 
+    val jaeger: GenericContainer<*> = GenericContainer(DockerImageName.parse("jaegertracing/all-in-one:1.53"))
+        .withExposedPorts(14250, 16686)
+        .withEnv("COLLECTOR_OTLP_ENABLED", "true")
+
     @BeforeAll
     fun startContainers() {
         postgres.start()
         redis.start()
+        jaeger.start()
         println("PostgreSQL URL: ${postgres.jdbcUrl}")
         println("Redis Host: ${redis.host}:${redis.getMappedPort(6379)}")
+        println("Jaeger UI: http://${jaeger.host}:${jaeger.getMappedPort(16686)}")
+        println("Jaeger OTLP Endpoint: http://${jaeger.host}:${jaeger.getMappedPort(14250)}")
     }
 
     @AfterAll
     fun stopContainers() {
         postgres.stop()
         redis.stop()
+        jaeger.stop()
     }
 
     @BeforeEach
@@ -84,6 +93,13 @@ abstract class BaseIntegrationTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_NAME, postgres.databaseName)
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_USERNAME, postgres.username)
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_PASSWORD, postgres.password)
+
+        // OpenTelemetry/Jaeger configuration
+        System.setProperty(
+            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
+            "http://${jaeger.host}:${jaeger.getMappedPort(14250)}"
+        )
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME, "mpo-authn-server-test")
     }
 
     /**
@@ -102,7 +118,9 @@ abstract class BaseIntegrationTest {
             EnvironmentVariables.MPO_AUTHN_DB_PORT,
             EnvironmentVariables.MPO_AUTHN_DB_NAME,
             EnvironmentVariables.MPO_AUTHN_DB_USERNAME,
-            EnvironmentVariables.MPO_AUTHN_DB_PASSWORD
+            EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
+            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
+            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME
         )
         properties.forEach { System.clearProperty(it) }
     }

@@ -14,12 +14,14 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import java.security.KeyPair
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -55,22 +57,13 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         assertEquals("WebAuthn Server is running!", healthResponse.bodyAsText())
 
         // Step 1: Start registration
-        val registrationRequest = RegistrationRequest(
-            username = username,
-            displayName = displayName
-        )
-
-        val startRegResponse = client.post("/register/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(registrationRequest))
-        }
-
+        val startRegResponse = startRegistration(client, username, displayName)
         assertEquals(HttpStatusCode.OK, startRegResponse.status)
+
         val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
         assertNotNull(startRegBody.get("requestId"))
         assertNotNull(startRegBody.get("publicKeyCredentialCreationOptions"))
 
-        val registrationRequestId = startRegBody.get("requestId").asText()
         val credentialOptionsString = startRegBody.get("publicKeyCredentialCreationOptions").asText()
         val credentialOptions = objectMapper.readTree(credentialOptionsString)
 
@@ -80,22 +73,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         assertEquals(displayName, publicKey.get("user").get("displayName").asText())
 
         // Step 2: Complete registration
-        val challenge = publicKey.get("challenge").asText()
-        val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
-            ByteArray.fromBase64Url(challenge),
-            keyPair,
-        )
-
-        val publicKeyCredentialJson = objectMapper.writeValueAsString(credential.first)
-        val completeRegRequest = RegistrationCompleteRequest(
-            requestId = registrationRequestId,
-            credential = publicKeyCredentialJson
-        )
-
-        val completeRegResponse = client.post("/register/complete") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(completeRegRequest))
-        }
+        val completeRegResponse = completeRegistration(client, startRegResponse, keyPair)
 
         assertEquals(HttpStatusCode.OK, completeRegResponse.status)
         val completeRegBody = objectMapper.readTree(completeRegResponse.bodyAsText())
@@ -103,46 +81,14 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         assertEquals("Registration successful", completeRegBody.get("message").asText())
 
         // Step 3: Start authentication
-        val authRequest = AuthenticationRequest(username = username)
-
-        val startAuthResponse = client.post("/authenticate/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(authRequest))
-        }
-
+        val startAuthResponse = startAuthentication(client, username)
         assertEquals(HttpStatusCode.OK, startAuthResponse.status)
         val startAuthBody = objectMapper.readTree(startAuthResponse.bodyAsText())
         assertNotNull(startAuthBody.get("requestId"))
         assertNotNull(startAuthBody.get("publicKeyCredentialRequestOptions"))
 
-        val authRequestId = startAuthBody.get("requestId").asText()
-        val requestCredentialOptions = objectMapper.readTree(
-            startAuthBody.get("publicKeyCredentialRequestOptions").asText()
-        )
-
         // Step 4: Complete authentication
-        val authPublicKey = requestCredentialOptions.get("publicKey")
-        val authChallenge = authPublicKey.get("challenge").asText()
-        val allowCredentials = authPublicKey.get("allowCredentials").first()
-        val credentialId = allowCredentials.get("id").asText()
-
-        val authCredential = TestAuthenticator.createUnattestedCredentialForAuthentication(
-            ByteArray.fromBase64Url(authChallenge),
-            ByteArray.fromBase64Url(credentialId),
-            keyPair,
-        )
-
-        val authCredentialJson = objectMapper.writeValueAsString(authCredential)
-        val completeAuthRequest = AuthenticationCompleteRequest(
-            requestId = authRequestId,
-            credential = authCredentialJson
-        )
-
-        val completeAuthResponse = client.post("/authenticate/complete") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(completeAuthRequest))
-        }
-
+        val completeAuthResponse = completeAuthentication(client, startAuthResponse, keyPair)
         assertEquals(HttpStatusCode.OK, completeAuthResponse.status)
         val completeAuthBody = objectMapper.readTree(completeAuthResponse.bodyAsText())
         assertTrue(completeAuthBody.get("success").asBoolean())
@@ -175,12 +121,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             }
 
             // Try to authenticate the previously registered user
-            val authRequest = AuthenticationRequest(username = username)
-
-            val startAuthResponse = client.post("/authenticate/start") {
-                contentType(ContentType.Application.Json)
-                setBody(objectMapper.writeValueAsString(authRequest))
-            }
+            val startAuthResponse = startAuthentication(client, username)
 
             assertEquals(HttpStatusCode.OK, startAuthResponse.status)
             val startAuthBody = objectMapper.readTree(startAuthResponse.bodyAsText())
@@ -198,70 +139,93 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `test Redis failure recovery`() = testApplication {
+    fun `test registration complete request id does not match`() = testApplication {
         application {
             module(storageModule)
         }
 
-        val username = "redis_failure_test"
-        val displayName = "Redis Failure Test"
-
-        // Test that registration fails gracefully when Redis is unavailable
-        // (This would require stopping Redis container mid-test in a real scenario)
-
-        // For now, test that we can start registration which stores temporary data in Redis
-        val registrationRequest = RegistrationRequest(
-            username = username,
-            displayName = displayName
-        )
-
-        val startRegResponse = client.post("/register/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(registrationRequest))
-        }
-
-        assertEquals(HttpStatusCode.OK, startRegResponse.status)
-
-        // Verify Redis is working by checking we get a request ID
-        val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
-        assertNotNull(startRegBody.get("requestId"))
-    }
-
-    private suspend fun registerUser(client: HttpClient, username: String, displayName: String, keyPair: KeyPair) {
-        val registrationRequest = RegistrationRequest(
-            username = username,
-            displayName = displayName
-        )
-
-        val startRegResponse = client.post("/register/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(registrationRequest))
-        }
-
-        assertEquals(HttpStatusCode.OK, startRegResponse.status)
-        val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
-        val requestId = startRegBody.get("requestId").asText()
-        val credentialOptions = objectMapper.readTree(
-            startRegBody.get("publicKeyCredentialCreationOptions").asText()
-        )
-
-        val challenge = credentialOptions.get("publicKey").get("challenge").asText()
-        val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
-            ByteArray.fromBase64Url(challenge),
-            keyPair,
-        )
+        val username = "integration_test_user"
+        val displayName = "Integration Test User"
+        startRegistration(client, username, displayName)
 
         val completeRegRequest = RegistrationCompleteRequest(
-            requestId = requestId,
-            credential = objectMapper.writeValueAsString(credential.first)
+            requestId = UUID.randomUUID().toString(),
+            credential = ""
         )
 
         val completeRegResponse = client.post("/register/complete") {
             contentType(ContentType.Application.Json)
             setBody(objectMapper.writeValueAsString(completeRegRequest))
         }
+        assertEquals(HttpStatusCode.InternalServerError, completeRegResponse.status)
+    }
 
-        assertEquals(HttpStatusCode.OK, completeRegResponse.status)
+    @Test
+    fun `test authentication complete request id does not match`() = testApplication {
+        application {
+            module(storageModule)
+        }
+
+        val username = "integration_test_user"
+        val displayName = "Integration Test User"
+        val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
+        val startRegResponse = startRegistration(client, username, displayName)
+        completeRegistration(client, startRegResponse, keyPair)
+        startAuthentication(client, username)
+        val completeAuthRequest = AuthenticationCompleteRequest(
+            requestId = UUID.randomUUID().toString(),
+            credential = ""
+        )
+        val completeAuthResponse = client.post("/authenticate/complete") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(completeAuthRequest))
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, completeAuthResponse.status)
+    }
+
+    @Test
+    fun `test Redis failure before registration start`() = testApplication {
+        application {
+            module(storageModule)
+        }
+
+        redis.stop()
+
+        val username = "redis_failure_test"
+        val displayName = "Redis Failure Test"
+
+        val registrationRequest = RegistrationRequest(
+            username = username,
+            displayName = displayName
+        )
+
+        val startRegResponse = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(registrationRequest))
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, startRegResponse.status)
+        redis.start()
+    }
+
+    @Test
+    fun `test Redis failure before registration complete`() = testApplication {
+        application {
+            module(storageModule)
+        }
+
+        val username = "redis_failure_test"
+        val displayName = "Redis Failure Test"
+        val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
+
+        val startRegResponse = startRegistration(client, username, displayName)
+        redis.stop()
+
+        val completeRegResponse = completeRegistration(client, startRegResponse, keyPair)
+        assertEquals(HttpStatusCode.InternalServerError, completeRegResponse.status)
+
+        redis.start()
     }
 
     @Test
@@ -299,5 +263,100 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             assertFalse(encryptedUserData.contains(username), "Username should not be in plaintext")
             assertFalse(encryptedUserData.contains(displayName), "Display name should not be in plaintext")
         }
+    }
+
+    private suspend fun registerUser(client: HttpClient, username: String, displayName: String, keyPair: KeyPair) {
+        val startRegResponse = startRegistration(client, username, displayName)
+        assertEquals(HttpStatusCode.OK, startRegResponse.status)
+
+        val completeRegResponse = completeRegistration(client, startRegResponse, keyPair)
+        assertEquals(HttpStatusCode.OK, completeRegResponse.status)
+    }
+
+    private suspend fun startRegistration(client: HttpClient, username: String, displayName: String): HttpResponse {
+        val registrationRequest = RegistrationRequest(
+            username = username,
+            displayName = displayName
+        )
+
+        val startRegResponse = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(registrationRequest))
+        }
+
+        return startRegResponse
+    }
+
+    private suspend fun completeRegistration(
+        client: HttpClient,
+        startRegResponse: HttpResponse,
+        keyPair: KeyPair
+    ): HttpResponse {
+        val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
+        val requestId = startRegBody.get("requestId").asText()
+        val credentialOptions = objectMapper.readTree(
+            startRegBody.get("publicKeyCredentialCreationOptions").asText()
+        )
+
+        val challenge = credentialOptions.get("publicKey").get("challenge").asText()
+        val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
+            ByteArray.fromBase64Url(challenge),
+            keyPair,
+        )
+
+        val completeRegRequest = RegistrationCompleteRequest(
+            requestId = requestId,
+            credential = objectMapper.writeValueAsString(credential.first)
+        )
+
+        val completeRegResponse = client.post("/register/complete") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(completeRegRequest))
+        }
+
+        return completeRegResponse
+    }
+
+    private suspend fun startAuthentication(client: HttpClient, username: String): HttpResponse {
+        val authRequest = AuthenticationRequest(username = username)
+        val startAuthResponse = client.post("/authenticate/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(authRequest))
+        }
+        return startAuthResponse
+    }
+
+    private suspend fun completeAuthentication(
+        client: HttpClient,
+        startAuthResponse: HttpResponse,
+        keyPair: KeyPair
+    ): HttpResponse {
+        val startAuthBody = objectMapper.readTree(startAuthResponse.bodyAsText())
+        val authRequestId = startAuthBody.get("requestId").asText()
+        val requestCredentialOptions = objectMapper.readTree(
+            startAuthBody.get("publicKeyCredentialRequestOptions").asText()
+        )
+        val authPublicKey = requestCredentialOptions.get("publicKey")
+        val authChallenge = authPublicKey.get("challenge").asText()
+        val allowCredentials = authPublicKey.get("allowCredentials").first()
+        val credentialId = allowCredentials.get("id").asText()
+
+        val authCredential = TestAuthenticator.createUnattestedCredentialForAuthentication(
+            ByteArray.fromBase64Url(authChallenge),
+            ByteArray.fromBase64Url(credentialId),
+            keyPair,
+        )
+
+        val authCredentialJson = objectMapper.writeValueAsString(authCredential)
+        val completeAuthRequest = AuthenticationCompleteRequest(
+            requestId = authRequestId,
+            credential = authCredentialJson
+        )
+
+        val completeAuthResponse = client.post("/authenticate/complete") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(completeAuthRequest))
+        }
+        return completeAuthResponse
     }
 }

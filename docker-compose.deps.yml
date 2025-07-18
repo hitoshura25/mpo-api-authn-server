@@ -2,10 +2,9 @@ services:
   postgres:
     image: postgres:15-alpine
     environment:
-      MPO_AUTHN_DB_NAME: ${MPO_AUTHN_DB_NAME}
-      MPO_AUTHN_DB_USERNAME: ${MPO_AUTHN_DB_USERNAME}
-      MPO_AUTHN_DB_PASSWORD: ${MPO_AUTHN_DB_PASSWORD}
-      MPO_AUTHN_DB_PORT: ${MPO_AUTHN_DB_PORT}
+      POSTGRES_DB: ${MPO_AUTHN_DB_NAME}
+      POSTGRES_USER: ${MPO_AUTHN_DB_USERNAME}
+      POSTGRES_PASSWORD: ${MPO_AUTHN_DB_PASSWORD}
     ports:
       - "${MPO_AUTHN_DB_PORT}:5432"
     volumes:
@@ -28,6 +27,21 @@ services:
     restart: unless-stopped
     healthcheck:
       test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.53
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC endpoint
+      - "14268:14268"  # HTTP endpoint for spans
+      - "9411:9411"    # Zipkin compatible endpoint
+    healthcheck:
+      test: [ "CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:16686/" ]
       interval: 10s
       timeout: 3s
       retries: 5

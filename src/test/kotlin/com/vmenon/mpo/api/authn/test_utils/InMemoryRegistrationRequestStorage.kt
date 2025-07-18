@@ -28,7 +28,7 @@ class InMemoryRegistrationRequestStorage : RegistrationRequestStorage {
         }, 1, 1, TimeUnit.MINUTES)
     }
 
-    override fun storeRegistrationRequest(
+    override suspend fun storeRegistrationRequest(
         requestId: String,
         options: PublicKeyCredentialCreationOptions,
         ttlSeconds: Long
@@ -37,7 +37,7 @@ class InMemoryRegistrationRequestStorage : RegistrationRequestStorage {
         storage[requestId] = StoredItem(options, expirationTime)
     }
 
-    override fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
+    override suspend fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
         val stored = storage.remove(requestId)
         return if (stored != null && stored.expirationTime > System.currentTimeMillis()) {
             stored.value

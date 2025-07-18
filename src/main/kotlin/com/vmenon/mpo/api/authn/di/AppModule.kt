@@ -14,15 +14,19 @@ import org.koin.dsl.module
  */
 val appModule = module {
     single(named("relyingPartyId")) {
-        System.getProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID)
+        val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID)
             ?: System.getenv(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID)
             ?: "localhost"
+        require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID} cannot be blank" }
+        value
     }
 
     single(named("relyingPartyName")) {
-        System.getProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME)
+        val value = System.getProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME)
             ?: System.getenv(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME)
             ?: "MPO Api Authn"
+        require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME} cannot be blank" }
+        value
     }
 
     single<CredentialRepository> {

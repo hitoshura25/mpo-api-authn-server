@@ -13,7 +13,7 @@ interface RegistrationRequestStorage {
      * @param options the registration options to store
      * @param ttlSeconds time to live in seconds (default 5 minutes)
      */
-    fun storeRegistrationRequest(
+    suspend fun storeRegistrationRequest(
         requestId: String,
         options: PublicKeyCredentialCreationOptions,
         ttlSeconds: Long = 300
@@ -24,7 +24,7 @@ interface RegistrationRequestStorage {
      * @param requestId the request identifier
      * @return the stored options or null if not found/expired
      */
-    fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions?
+    suspend fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions?
 
     /**
      * Close/cleanup resources

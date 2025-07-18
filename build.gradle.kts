@@ -19,7 +19,9 @@ val jedisVersion = "5.1.0"
 val postgresqlVersion = "42.7.2"
 val hikariCpVersion = "5.0.1"
 val koinVersion = "3.5.3"
-
+val micrometerVersion = "1.12.2"
+val openTelemetryVersion = "1.32.0"
+val openTelemetryKtorVersion = "2.17.1-alpha"
 
 group = "com.vmenon.mpo.api.authn"
 version = "1.0-SNAPSHOT"
@@ -61,6 +63,20 @@ dependencies {
     implementation("io.insert-koin:koin-ktor:$koinVersion")
     implementation("io.insert-koin:koin-logger-slf4j:$koinVersion")
     implementation("io.insert-koin:koin-core:$koinVersion")
+
+    // Monitoring dependencies
+    implementation("io.ktor:ktor-server-metrics-micrometer:$ktorVersion")
+    implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
+    implementation("io.micrometer:micrometer-registry-prometheus:$micrometerVersion")
+
+    // OpenTelemetry for tracing
+    implementation("io.opentelemetry:opentelemetry-api:$openTelemetryVersion")
+    implementation("io.opentelemetry:opentelemetry-sdk:$openTelemetryVersion")
+    implementation("io.opentelemetry:opentelemetry-extension-trace-propagators:$openTelemetryVersion")
+    implementation("io.opentelemetry:opentelemetry-exporter-otlp:$openTelemetryVersion")
+    implementation("io.opentelemetry.instrumentation:opentelemetry-ktor-2.0:$openTelemetryKtorVersion")
+    implementation("io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$openTelemetryVersion")
+    runtimeOnly("io.opentelemetry.semconv:opentelemetry-semconv:$openTelemetryVersion")
 
     // Test dependencies
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")

@@ -28,7 +28,7 @@ class InMemoryAssertionRequestStorage : AssertionRequestStorage {
         }, 1, 1, TimeUnit.MINUTES)
     }
 
-    override fun storeAssertionRequest(
+    override suspend fun storeAssertionRequest(
         requestId: String,
         request: AssertionRequest,
         ttlSeconds: Long
@@ -37,7 +37,7 @@ class InMemoryAssertionRequestStorage : AssertionRequestStorage {
         storage[requestId] = StoredItem(request, expirationTime)
     }
 
-    override fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest? {
+    override suspend fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest? {
         val stored = storage.remove(requestId)
         return if (stored != null && stored.expirationTime > System.currentTimeMillis()) {
             stored.value

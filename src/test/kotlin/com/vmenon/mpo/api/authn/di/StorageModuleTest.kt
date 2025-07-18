@@ -36,13 +36,14 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Redis host should use default through Koin DI when not configured`() {
+    fun `Should throw InstanceCreationException when Redis host is not configured in DI`() {
         startKoin {
             modules(storageModule)
         }
 
-        val redisHost = get<String>(named("redisHost"))
-        assertEquals("localhost", redisHost)
+        assertThrows<InstanceCreationException> {
+            get<String>(named("redisHost"))
+        }
     }
 
     @Test
@@ -293,13 +294,14 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Database host should use default value when not configured through Koin DI`() {
+    fun `Should throw InstanceCreationException when Database host not configured in DI`() {
         startKoin {
             modules(storageModule)
         }
 
-        val dbHost = get<String>(named("dbHost"))
-        assertEquals("localhost", dbHost)
+        assertThrows<InstanceCreationException> {
+            get<String>(named("dbHost"))
+        }
     }
 
     @Test

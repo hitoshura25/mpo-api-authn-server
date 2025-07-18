@@ -98,7 +98,7 @@ class OpenTelemetryTracer(
                 span.setStatus(StatusCode.OK)
             }
         } catch (exception: Exception) {
-            span.setStatus(StatusCode.ERROR, exception.message ?: "Unknown error")
+            span.setStatus(StatusCode.ERROR, getMessage(exception))
             span.recordException(exception)
             throw exception
         } finally {

@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeAll
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.TestInstance
 import org.koin.core.context.stopKoin
+import org.koin.test.KoinTest
 import org.testcontainers.containers.BindMode
 import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.PostgreSQLContainer
@@ -19,7 +20,7 @@ import org.testcontainers.utility.DockerImageName
  */
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
-abstract class BaseIntegrationTest {
+abstract class BaseIntegrationTest : KoinTest {
     val postgres: PostgreSQLContainer<*> = PostgreSQLContainer(DockerImageName.parse("postgres:15-alpine"))
         .withDatabaseName("webauthn_test")
         .withUsername("test_user")

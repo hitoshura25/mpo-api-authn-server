@@ -6,6 +6,7 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.di.appModule
 import com.vmenon.mpo.api.authn.di.monitoringModule
 import com.vmenon.mpo.api.authn.di.storageModule
+import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
@@ -74,6 +75,7 @@ fun Application.module(storageModule: Module) {
     val assertionStorage: AssertionRequestStorage by inject()
     val relyingParty: RelyingParty by inject()
     val credentialStorage: CredentialStorage by inject()
+    val openTelemetryTracer: OpenTelemetryTracer by inject()
 
     install(ContentNegotiation) {
         jackson {
@@ -176,32 +178,42 @@ fun Application.module(storageModule: Module) {
         }
 
         post("/register/start") {
-            val request = call.receive<RegistrationRequest>()
+            val request = openTelemetryTracer.traceOperation("call.receive") {
+                call.receive<RegistrationRequest>()
+            }
             val requestId = UUID.randomUUID().toString()
-
             val userHandle = ByteArray(64)
             SecureRandom().nextBytes(userHandle)
 
-            val user = UserIdentity.builder()
-                .name(request.username)
-                .displayName(request.displayName)
-                .id(ByteArray(userHandle))
-                .build()
-
-            val startRegistrationOptions = relyingParty.startRegistration(
-                StartRegistrationOptions.builder()
-                    .user(user)
+            val user = openTelemetryTracer.traceOperation("buildUserIdentity") {
+                UserIdentity.builder()
+                    .name(request.username)
+                    .displayName(request.displayName)
+                    .id(ByteArray(userHandle))
                     .build()
-            )
+
+            }
+
+            val startRegistrationOptions = openTelemetryTracer.traceOperation("relyingParty.startRegistration") {
+                relyingParty.startRegistration(
+                    StartRegistrationOptions.builder()
+                        .user(user)
+                        .build()
+                )
+            }
 
             registrationStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
 
-            val response = RegistrationResponse(
-                requestId = requestId,
-                publicKeyCredentialCreationOptions = startRegistrationOptions.toCredentialsCreateJson()
-            )
+            val response = openTelemetryTracer.traceOperation("createRegistrationResponse") {
+                RegistrationResponse(
+                    requestId = requestId,
+                    publicKeyCredentialCreationOptions = startRegistrationOptions.toCredentialsCreateJson()
+                )
+            }
 
-            call.respond(response)
+            openTelemetryTracer.traceOperation("call.response") {
+                call.respond(response)
+            }
         }
 
         post("/register/complete") {

@@ -14,7 +14,7 @@ class RedisAssertionRequestStorage(
     private val keyPrefix: String = "webauthn:auth:",
 ) : AssertionRequestStorage {
 
-    override fun storeAssertionRequest(
+    override suspend fun storeAssertionRequest(
         requestId: String,
         request: AssertionRequest,
         ttlSeconds: Long
@@ -26,7 +26,7 @@ class RedisAssertionRequestStorage(
         }
     }
 
-    override fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest? {
+    override suspend fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest? {
         return openTelemetryTracer.traceOperation("RedisAssertionRequestStorage.retrieveAndRemoveAssertionRequest") {
             val key = "$keyPrefix$requestId"
             val value = openTelemetryTracer.get(jedisPool, key)

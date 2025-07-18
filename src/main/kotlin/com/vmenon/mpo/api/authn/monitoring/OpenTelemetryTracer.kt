@@ -9,7 +9,7 @@ import redis.clients.jedis.JedisPool
 class OpenTelemetryTracer(
     private val tracer: Tracer,
 ) {
-    fun <T> traceOperation(operation: String, block: () -> T): T {
+    suspend fun <T> traceOperation(operation: String, block: suspend () -> T): T {
         val span = tracer.spanBuilder(operation)
             .startSpan()
 
@@ -25,13 +25,13 @@ class OpenTelemetryTracer(
         }
     }
 
-    fun <T> writeValueAsString(value: T): String {
+    suspend fun <T> writeValueAsString(value: T): String {
         return traceOperation("ObjectMapper.writeValueAsString") {
             objectMapper.writeValueAsString(value)
         }
     }
 
-    fun <T> readValue(content: String, valueType: Class<T>): T {
+    suspend fun <T> readValue(content: String, valueType: Class<T>): T {
         return traceOperation("ObjectMapper.readValue") {
             objectMapper.readValue(content, valueType)
         }

@@ -14,7 +14,7 @@ class RedisRegistrationRequestStorage(
     private val keyPrefix: String = "webauthn:reg:",
 ) : RegistrationRequestStorage {
 
-    override fun storeRegistrationRequest(
+    override suspend fun storeRegistrationRequest(
         requestId: String,
         options: PublicKeyCredentialCreationOptions,
         ttlSeconds: Long
@@ -26,7 +26,7 @@ class RedisRegistrationRequestStorage(
         }
     }
 
-    override fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
+    override suspend fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
         return openTelemetryTracer.traceOperation("RedisRegistrationRequestStorage.retrieveAndRemoveRegistrationRequest") {
             val key = "$keyPrefix$requestId"
             val value = openTelemetryTracer.get(jedisPool, key)

@@ -13,7 +13,7 @@ interface AssertionRequestStorage {
      * @param request the assertion request to store
      * @param ttlSeconds time to live in seconds (default 5 minutes)
      */
-    fun storeAssertionRequest(
+    suspend fun storeAssertionRequest(
         requestId: String,
         request: AssertionRequest,
         ttlSeconds: Long = 300
@@ -24,7 +24,7 @@ interface AssertionRequestStorage {
      * @param requestId the request identifier
      * @return the stored request or null if not found/expired
      */
-    fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest?
+    suspend fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest?
 
     /**
      * Close/cleanup resources

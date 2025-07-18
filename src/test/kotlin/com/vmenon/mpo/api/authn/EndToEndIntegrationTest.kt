@@ -198,10 +198,12 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `test Redis failure recovery`() = testApplication {
+    fun `test Redis failure`() = testApplication {
         application {
             module(storageModule)
         }
+
+        redis.stop()
 
         val username = "redis_failure_test"
         val displayName = "Redis Failure Test"
@@ -220,11 +222,46 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             setBody(objectMapper.writeValueAsString(registrationRequest))
         }
 
-        assertEquals(HttpStatusCode.OK, startRegResponse.status)
+        assertEquals(HttpStatusCode.InternalServerError, startRegResponse.status)
+        redis.start()
+    }
 
-        // Verify Redis is working by checking we get a request ID
-        val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
-        assertNotNull(startRegBody.get("requestId"))
+
+    @Test
+    fun `test encrypted credential storage in PostgreSQL`() = testApplication {
+        application {
+            module(storageModule)
+        }
+
+        val username = "encryption_test_user"
+        val displayName = "Encryption Test User"
+        val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
+
+        // Register a user (this will store quantum-safe encrypted data in PostgreSQL)
+        registerUser(client, username, displayName, keyPair)
+
+        // Verify data is quantum-safe encrypted in the database by connecting directly
+        postgres.createConnection("")?.use { connection ->
+            val statement = connection.createStatement()
+            val resultSet = statement.executeQuery(
+                "SELECT encrypted_user_data, encrypted_credential_data FROM webauthn_users_secure u " +
+                        "JOIN webauthn_credentials_secure c ON u.user_handle_hash = c.user_handle_hash " +
+                        "WHERE u.username_hash = encode(sha256('$username'::bytea), 'hex')"
+            )
+
+            assertTrue(resultSet.next(), "User should be found in database")
+
+            val encryptedUserData = resultSet.getString("encrypted_user_data")
+            val encryptedCredentialData = resultSet.getString("encrypted_credential_data")
+
+            // Verify data is quantum-safe encrypted (should contain method signature)
+            assertTrue(encryptedUserData.isNotEmpty())
+            assertTrue(encryptedCredentialData.isNotEmpty())
+            assertTrue(encryptedUserData.contains("KYBER768-AES256-GCM"), "Should use quantum-safe encryption")
+            assertTrue(encryptedCredentialData.contains("KYBER768-AES256-GCM"), "Should use quantum-safe encryption")
+            assertFalse(encryptedUserData.contains(username), "Username should not be in plaintext")
+            assertFalse(encryptedUserData.contains(displayName), "Display name should not be in plaintext")
+        }
     }
 
     private suspend fun registerUser(client: HttpClient, username: String, displayName: String, keyPair: KeyPair) {
@@ -264,40 +301,4 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         assertEquals(HttpStatusCode.OK, completeRegResponse.status)
     }
 
-    @Test
-    fun `test encrypted credential storage in PostgreSQL`() = testApplication {
-        application {
-            module(storageModule)
-        }
-
-        val username = "encryption_test_user"
-        val displayName = "Encryption Test User"
-        val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
-
-        // Register a user (this will store quantum-safe encrypted data in PostgreSQL)
-        registerUser(client, username, displayName, keyPair)
-
-        // Verify data is quantum-safe encrypted in the database by connecting directly
-        postgres.createConnection("")?.use { connection ->
-            val statement = connection.createStatement()
-            val resultSet = statement.executeQuery(
-                "SELECT encrypted_user_data, encrypted_credential_data FROM webauthn_users_secure u " +
-                        "JOIN webauthn_credentials_secure c ON u.user_handle_hash = c.user_handle_hash " +
-                        "WHERE u.username_hash = encode(sha256('$username'::bytea), 'hex')"
-            )
-
-            assertTrue(resultSet.next(), "User should be found in database")
-
-            val encryptedUserData = resultSet.getString("encrypted_user_data")
-            val encryptedCredentialData = resultSet.getString("encrypted_credential_data")
-
-            // Verify data is quantum-safe encrypted (should contain method signature)
-            assertTrue(encryptedUserData.isNotEmpty())
-            assertTrue(encryptedCredentialData.isNotEmpty())
-            assertTrue(encryptedUserData.contains("KYBER768-AES256-GCM"), "Should use quantum-safe encryption")
-            assertTrue(encryptedCredentialData.contains("KYBER768-AES256-GCM"), "Should use quantum-safe encryption")
-            assertFalse(encryptedUserData.contains(username), "Username should not be in plaintext")
-            assertFalse(encryptedUserData.contains(displayName), "Display name should not be in plaintext")
-        }
-    }
 }

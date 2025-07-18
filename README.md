@@ -130,5 +130,5 @@ This project contains a simple web based client used for automated testing the p
 cd test-client
 npx install playwright
 npm install
-npm run test:with-server
+npm run test:with-server:report
 ```

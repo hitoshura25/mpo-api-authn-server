@@ -10,7 +10,8 @@ import redis.clients.jedis.JedisPool
  */
 class RedisAssertionRequestStorage(
     private val jedisPool: JedisPool,
-    private val keyPrefix: String = "webauthn:auth:"
+    private val redisOpenTelemetryHelper: RedisOpenTelemetryHelper,
+    private val keyPrefix: String = "webauthn:auth:",
 ) : AssertionRequestStorage {
 
     override fun storeAssertionRequest(
@@ -20,23 +21,17 @@ class RedisAssertionRequestStorage(
     ) {
         val key = "$keyPrefix$requestId"
         val value = objectMapper.writeValueAsString(request)
-
-        jedisPool.resource.use { jedis ->
-            jedis.setex(key, ttlSeconds, value)
-        }
+        redisOpenTelemetryHelper.setex(jedisPool, key, ttlSeconds, value)
     }
 
     override fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest? {
         val key = "$keyPrefix$requestId"
-
-        return jedisPool.resource.use { jedis ->
-            val value = jedis.get(key)
-            if (value != null) {
-                jedis.del(key) // Remove after retrieving
-                objectMapper.readValue(value, AssertionRequest::class.java)
-            } else {
-                null
-            }
+        val value = redisOpenTelemetryHelper.get(jedisPool, key)
+        return if (value != null) {
+            redisOpenTelemetryHelper.del(jedisPool, key) // Remove after retrieving
+            objectMapper.readValue(value, AssertionRequest::class.java)
+        } else {
+            null
         }
     }
 

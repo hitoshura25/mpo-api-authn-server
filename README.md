@@ -121,3 +121,14 @@ MPO_AUTHN_APP_RELYING_PARTY_NAME=MPO Api Authn
 MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME=mpo-authn-server
 MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT=http://jaeger:4317
 ```
+
+# Test Client
+
+This project contains a simple web based client used for automated testing the passkey flow. To run:
+
+```
+cd test-client
+npx install playwright
+npm install
+npm run test:with-server
+```

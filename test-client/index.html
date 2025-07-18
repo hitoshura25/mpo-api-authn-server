@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebAuthn Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .success {
+            color: #28a745;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .info {
+            color: #0c5460;
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        #serverUrl {
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>WebAuthn Passkey Test Client</h1>
+
+    <div class="section">
+        <h2>Server Configuration</h2>
+        <div class="form-group">
+            <label for="serverUrl">Server URL:</label>
+            <input type="text" id="serverUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Registration (Create Passkey)</h2>
+        <div class="form-group">
+            <label for="regUsername">Username:</label>
+            <input type="text" id="regUsername" placeholder="Enter username" value="testuser">
+        </div>
+        <div class="form-group">
+            <label for="regDisplayName">Display Name:</label>
+            <input type="text" id="regDisplayName" placeholder="Enter display name" value="Test User">
+        </div>
+        <button onclick="registerPasskey()">Register Passkey</button>
+        <div id="registrationStatus" class="status"></div>
+    </div>
+
+    <div class="section">
+        <h2>Authentication (Use Passkey)</h2>
+        <div class="form-group">
+            <label for="authUsername">Username (optional for usernameless flow):</label>
+            <input type="text" id="authUsername" placeholder="Enter username or leave blank">
+        </div>
+        <button onclick="authenticatePasskey()">Authenticate with Passkey</button>
+        <div id="authenticationStatus" class="status"></div>
+    </div>
+
+    <div class="section">
+        <h2>Test Server Connection</h2>
+        <button onclick="testServerConnection()">Test Server Connection</button>
+        <div id="connectionStatus" class="status"></div>
+    </div>
+</div>
+
+<script>
+    // Utility functions
+    function showStatus(elementId, message, type = 'info') {
+        const element = document.getElementById(elementId);
+        element.className = `status ${type}`;
+        element.textContent = message;
+    }
+
+    function getServerUrl() {
+        return document.getElementById('serverUrl').value.trim();
+    }
+
+    // Test server connection
+    async function testServerConnection() {
+        showStatus('connectionStatus', 'Testing server connection...', 'info');
+
+        try {
+            const response = await fetch(`${getServerUrl()}/health`);
+            if (response.ok) {
+                showStatus('connectionStatus', 'Server connection successful!', 'success');
+            } else {
+                showStatus('connectionStatus', `Server responded with status: ${response.status}`, 'error');
+            }
+        } catch (error) {
+            showStatus('connectionStatus', `Connection failed: ${error.message}`, 'error');
+        }
+    }
+
+    // Base64URL encoding/decoding utilities
+    function base64UrlDecode(str) {
+        str = str.replace(/-/g, '+').replace(/_/g, '/');
+        const pad = str.length % 4;
+        if (pad) {
+            str += '='.repeat(4 - pad);
+        }
+        return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+    }
+
+    function base64UrlEncode(buffer) {
+        return btoa(String.fromCharCode(...new Uint8Array(buffer)))
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=/g, '');
+    }
+
+    // Convert server response to WebAuthn format
+    function processCredentialCreationOptions(options) {
+        return {
+            ...options,
+            challenge: base64UrlDecode(options.challenge),
+            user: {
+                ...options.user,
+                id: base64UrlDecode(options.user.id)
+            },
+            excludeCredentials: options.excludeCredentials?.map(cred => ({
+                ...cred,
+                id: base64UrlDecode(cred.id)
+            })) || []
+        };
+    }
+
+    function processCredentialRequestOptions(options) {
+        return {
+            ...options,
+            challenge: base64UrlDecode(options.challenge),
+            allowCredentials: options.allowCredentials?.map(cred => ({
+                ...cred,
+                id: base64UrlDecode(cred.id)
+            })) || []
+        };
+    }
+
+    // Convert WebAuthn credential to server format
+    function processCredentialForServer(credential) {
+        return {
+            id: credential.id,
+            rawId: base64UrlEncode(credential.rawId),
+            response: {
+                clientDataJSON: base64UrlEncode(credential.response.clientDataJSON),
+                attestationObject: base64UrlEncode(credential.response.attestationObject)
+            },
+            type: credential.type
+        };
+    }
+
+    function processAuthenticationCredentialForServer(credential) {
+        return {
+            id: credential.id,
+            rawId: base64UrlEncode(credential.rawId),
+            response: {
+                clientDataJSON: base64UrlEncode(credential.response.clientDataJSON),
+                authenticatorData: base64UrlEncode(credential.response.authenticatorData),
+                signature: base64UrlEncode(credential.response.signature),
+                userHandle: credential.response.userHandle ? base64UrlEncode(credential.response.userHandle) : null
+            },
+            type: credential.type
+        };
+    }
+
+    // Registration flow
+    async function registerPasskey() {
+        const username = document.getElementById('regUsername').value.trim();
+        const displayName = document.getElementById('regDisplayName').value.trim();
+
+        if (!username || !displayName) {
+            showStatus('registrationStatus', 'Please enter both username and display name', 'error');
+            return;
+        }
+
+        showStatus('registrationStatus', 'Starting registration...', 'info');
+
+        try {
+            // Step 1: Start registration
+            const startResponse = await fetch(`${getServerUrl()}/register/start`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    username: username,
+                    displayName: displayName
+                })
+            });
+
+            if (!startResponse.ok) {
+                throw new Error(`Registration start failed: ${startResponse.status} ${startResponse.statusText}`);
+            }
+
+            const startData = await startResponse.json();
+            showStatus('registrationStatus', 'Creating passkey...', 'info');
+
+            // Step 2: Create credentials
+            const publicKeyCredentialCreationOptions = processCredentialCreationOptions(
+                startData.publicKeyCredentialCreationOptions
+            );
+
+            const credential = await navigator.credentials.create({
+                publicKey: publicKeyCredentialCreationOptions
+            });
+
+            if (!credential) {
+                throw new Error('Failed to create credential');
+            }
+
+            showStatus('registrationStatus', 'Completing registration...', 'info');
+
+            // Step 3: Complete registration
+            const completeResponse = await fetch(`${getServerUrl()}/register/complete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    requestId: startData.requestId,
+                    credential: processCredentialForServer(credential)
+                })
+            });
+
+            if (!completeResponse.ok) {
+                throw new Error(`Registration completion failed: ${completeResponse.status} ${completeResponse.statusText}`);
+            }
+
+            showStatus('registrationStatus', 'Passkey registered successfully!', 'success');
+
+        } catch (error) {
+            console.error('Registration error:', error);
+            showStatus('registrationStatus', `Registration failed: ${error.message}`, 'error');
+        }
+    }
+
+    // Authentication flow
+    async function authenticatePasskey() {
+        const username = document.getElementById('authUsername').value.trim();
+
+        showStatus('authenticationStatus', 'Starting authentication...', 'info');
+
+        try {
+            // Step 1: Start authentication
+            const requestBody = username ? { username: username } : {};
+            const startResponse = await fetch(`${getServerUrl()}/authenticate/start`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(requestBody)
+            });
+
+            if (!startResponse.ok) {
+                throw new Error(`Authentication start failed: ${startResponse.status} ${startResponse.statusText}`);
+            }
+
+            const startData = await startResponse.json();
+            showStatus('authenticationStatus', 'Requesting passkey...', 'info');
+
+            // Step 2: Get credentials
+            const publicKeyCredentialRequestOptions = processCredentialRequestOptions(
+                startData.publicKeyCredentialRequestOptions
+            );
+
+            const credential = await navigator.credentials.get({
+                publicKey: publicKeyCredentialRequestOptions
+            });
+
+            if (!credential) {
+                throw new Error('Failed to get credential');
+            }
+
+            showStatus('authenticationStatus', 'Completing authentication...', 'info');
+
+            // Step 3: Complete authentication
+            const completeResponse = await fetch(`${getServerUrl()}/authenticate/complete`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    requestId: startData.requestId,
+                    credential: processAuthenticationCredentialForServer(credential)
+                })
+            });
+
+            if (!completeResponse.ok) {
+                throw new Error(`Authentication completion failed: ${completeResponse.status} ${completeResponse.statusText}`);
+            }
+
+            const result = await completeResponse.json();
+
+            if (result.success) {
+                showStatus('authenticationStatus',
+                    `Authentication successful! Welcome ${result.username}`, 'success');
+            } else {
+                showStatus('authenticationStatus',
+                    `Authentication failed: ${result.message}`, 'error');
+            }
+
+        } catch (error) {
+            console.error('Authentication error:', error);
+            showStatus('authenticationStatus', `Authentication failed: ${error.message}`, 'error');
+        }
+    }
+
+    // Test server connection on page load
+    window.addEventListener('load', function() {
+        testServerConnection();
+    });
+</script>
+</body>
+</html>

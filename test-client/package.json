@@ -1,0 +1,21 @@
+{
+  "name": "webauthn-test-automation",
+  "version": "1.0.0",
+  "description": "Automated testing for WebAuthn passkey authentication",
+  "main": "index.js",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:debug": "playwright test --debug",
+    "test:headed": "playwright test --headed",
+    "server:start": "cd .. && ./start-full.sh",
+    "server:stop": "cd .. && docker-compose down",
+    "server:logs": "cd .. && docker-compose logs -f webauthn-server",
+    "server:restart": "cd .. && docker-compose restart webauthn-server",
+    "server:status": "cd .. && docker-compose ps",
+    "test:with-server": "npm run server:start && npm run test; npm run server:stop"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.40.0"
+  }
+}

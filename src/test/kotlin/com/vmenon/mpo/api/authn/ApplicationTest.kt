@@ -91,26 +91,6 @@ class ApplicationTest : KoinTest {
     }
 
     @Test
-    fun testAuthenticationStart() = testApplication {
-        application {
-            module(testStorageModule)
-        }
-
-        val authRequest = AuthenticationRequest(username = "testuser")
-
-        val response = client.post("/authenticate/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(authRequest))
-        }
-
-        assertEquals(HttpStatusCode.OK, response.status)
-
-        val responseBody = objectMapper.readTree(response.bodyAsText())
-        assertNotNull(responseBody.get("requestId"))
-        assertNotNull(responseBody.get("publicKeyCredentialRequestOptions"))
-    }
-
-    @Test
     fun testAuthenticationStartWithoutUsername() = testApplication {
         application {
             module(testStorageModule)

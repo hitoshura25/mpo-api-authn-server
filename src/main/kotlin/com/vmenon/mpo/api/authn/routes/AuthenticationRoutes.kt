@@ -4,6 +4,7 @@ import com.vmenon.mpo.api.authn.AuthenticationCompleteRequest
 import com.vmenon.mpo.api.authn.AuthenticationRequest
 import com.vmenon.mpo.api.authn.AuthenticationResponse
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
+import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.FinishAssertionOptions
 import com.yubico.webauthn.RelyingParty
 import com.yubico.webauthn.StartAssertionOptions
@@ -44,7 +45,9 @@ fun Application.configureAuthenticationRoutes() {
 
             val response = AuthenticationResponse(
                 requestId = requestId,
-                publicKeyCredentialRequestOptions = startAssertionOptions.toCredentialsGetJson()
+                publicKeyCredentialRequestOptions = JacksonUtils.objectMapper.readTree(
+                    startAssertionOptions.toCredentialsGetJson(),
+                )
             )
 
             call.respond(response)

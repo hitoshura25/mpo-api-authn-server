@@ -1,14 +1,11 @@
 package com.vmenon.mpo.api.authn
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.di.storageModule
 import com.vmenon.mpo.api.authn.test_utils.BaseIntegrationTest
 import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator
 import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.Defaults
 import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.generateKeypair
+import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.data.ByteArray
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -36,11 +33,7 @@ import org.koin.core.context.stopKoin
  */
 class EndToEndIntegrationTest : BaseIntegrationTest() {
 
-    private val objectMapper = ObjectMapper().apply {
-        registerModule(KotlinModule.Builder().build())
-        registerModule(JavaTimeModule())
-        registerModule(Jdk8Module())
-    }
+    private val objectMapper = JacksonUtils.objectMapper
 
     @Test
     fun `test complete WebAuthn flow with real databases`() = testApplication {
@@ -131,9 +124,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             assertNotNull(startAuthBody.get("requestId"))
             assertNotNull(startAuthBody.get("publicKeyCredentialRequestOptions"))
 
-            val requestCredentialOptions = objectMapper.readTree(
-                startAuthBody.get("publicKeyCredentialRequestOptions").asText()
-            )
+            val requestCredentialOptions = startAuthBody.get("publicKeyCredentialRequestOptions")
             val allowCredentials = requestCredentialOptions.get("publicKey").get("allowCredentials")
             assertTrue(allowCredentials.size() > 0, "User credentials should be found after restart")
         }
@@ -331,9 +322,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     ): HttpResponse {
         val startAuthBody = objectMapper.readTree(startAuthResponse.bodyAsText())
         val authRequestId = startAuthBody.get("requestId").asText()
-        val requestCredentialOptions = objectMapper.readTree(
-            startAuthBody.get("publicKeyCredentialRequestOptions").asText()
-        )
+        val requestCredentialOptions = startAuthBody.get("publicKeyCredentialRequestOptions")
         val authPublicKey = requestCredentialOptions.get("publicKey")
         val authChallenge = authPublicKey.get("challenge").asText()
         val allowCredentials = authPublicKey.get("allowCredentials").first()

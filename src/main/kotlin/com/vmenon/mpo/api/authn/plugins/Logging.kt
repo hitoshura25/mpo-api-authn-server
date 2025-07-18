@@ -17,12 +17,7 @@ fun Application.configureLogging() {
             val uri = call.request.uri
             val userAgent = call.request.headers["User-Agent"]
             val duration = call.processingTimeMillis()
-
             "$httpMethod $uri - $status (${duration}ms) - $userAgent"
-        }
-
-        filter { call ->
-            !call.request.uri.startsWith("/health")
         }
     }
 }

@@ -3,6 +3,7 @@ package com.vmenon.mpo.api.authn.monitoring
 import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
+import io.opentelemetry.context.Context
 import io.opentelemetry.semconv.DbAttributes
 import redis.clients.jedis.JedisPool
 
@@ -11,6 +12,7 @@ class OpenTelemetryTracer(
 ) {
     suspend fun <T> traceOperation(operation: String, block: suspend () -> T): T {
         val span = tracer.spanBuilder(operation)
+            .setParent(Context.current())
             .startSpan()
 
         return try {
@@ -43,6 +45,7 @@ class OpenTelemetryTracer(
             .setAttribute(DbAttributes.DB_OPERATION_NAME, "setex")
             .setAttribute("redis.key", key)
             .setAttribute("redis.ttl", ttlSeconds)
+            .setParent(Context.current())
             .startSpan()
 
         try {
@@ -64,6 +67,7 @@ class OpenTelemetryTracer(
             .setAttribute(DbAttributes.DB_SYSTEM_NAME, "redis")
             .setAttribute(DbAttributes.DB_OPERATION_NAME, "get")
             .setAttribute("redis.key", key)
+            .setParent(Context.current())
             .startSpan()
 
         try {
@@ -88,6 +92,7 @@ class OpenTelemetryTracer(
             .setAttribute(DbAttributes.DB_SYSTEM_NAME, "redis")
             .setAttribute(DbAttributes.DB_OPERATION_NAME, "del")
             .setAttribute("redis.key", key)
+            .setParent(Context.current())
             .startSpan()
 
         try {

@@ -21,6 +21,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import java.security.KeyPair
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -56,22 +57,13 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         assertEquals("WebAuthn Server is running!", healthResponse.bodyAsText())
 
         // Step 1: Start registration
-        val registrationRequest = RegistrationRequest(
-            username = username,
-            displayName = displayName
-        )
-
-        val startRegResponse = client.post("/register/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(registrationRequest))
-        }
-
+        val startRegResponse = startRegistration(client, username, displayName)
         assertEquals(HttpStatusCode.OK, startRegResponse.status)
+
         val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
         assertNotNull(startRegBody.get("requestId"))
         assertNotNull(startRegBody.get("publicKeyCredentialCreationOptions"))
 
-        val registrationRequestId = startRegBody.get("requestId").asText()
         val credentialOptionsString = startRegBody.get("publicKeyCredentialCreationOptions").asText()
         val credentialOptions = objectMapper.readTree(credentialOptionsString)
 
@@ -81,22 +73,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         assertEquals(displayName, publicKey.get("user").get("displayName").asText())
 
         // Step 2: Complete registration
-        val challenge = publicKey.get("challenge").asText()
-        val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
-            ByteArray.fromBase64Url(challenge),
-            keyPair,
-        )
-
-        val publicKeyCredentialJson = objectMapper.writeValueAsString(credential.first)
-        val completeRegRequest = RegistrationCompleteRequest(
-            requestId = registrationRequestId,
-            credential = publicKeyCredentialJson
-        )
-
-        val completeRegResponse = client.post("/register/complete") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(completeRegRequest))
-        }
+        val completeRegResponse = completeRegistration(client, startRegResponse, keyPair)
 
         assertEquals(HttpStatusCode.OK, completeRegResponse.status)
         val completeRegBody = objectMapper.readTree(completeRegResponse.bodyAsText())
@@ -199,6 +176,28 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     }
 
     @Test
+    fun `test registration complete request id does not match`() = testApplication {
+        application {
+            module(storageModule)
+        }
+
+        val username = "redis_failure_test"
+        val displayName = "Redis Failure Test"
+        startRegistration(client, username, displayName)
+
+        val completeRegRequest = RegistrationCompleteRequest(
+            requestId = UUID.randomUUID().toString(),
+            credential = ""
+        )
+
+        val completeRegResponse = client.post("/register/complete") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(completeRegRequest))
+        }
+        assertEquals(HttpStatusCode.InternalServerError, completeRegResponse.status)
+    }
+
+    @Test
     fun `test Redis failure before registration start`() = testApplication {
         application {
             module(storageModule)
@@ -209,10 +208,6 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         val username = "redis_failure_test"
         val displayName = "Redis Failure Test"
 
-        // Test that registration fails gracefully when Redis is unavailable
-        // (This would require stopping Redis container mid-test in a real scenario)
-
-        // For now, test that we can start registration which stores temporary data in Redis
         val registrationRequest = RegistrationRequest(
             username = username,
             displayName = displayName

@@ -20,5 +20,13 @@ fun Application.configureOpenTelemetry() {
                 "${request.httpMethod.value} ${request.uri}"
             }
         }
+        attributesExtractor {
+            onStart {
+                attributes.put("http.request.timestamp", System.currentTimeMillis())
+            }
+            onEnd {
+                attributes.put("http.response.timestamp", System.currentTimeMillis())
+            }
+        }
     }
 }

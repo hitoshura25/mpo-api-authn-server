@@ -20,6 +20,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
+import io.opentelemetry.api.GlobalOpenTelemetry
 import java.security.KeyPair
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -64,8 +65,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         assertNotNull(startRegBody.get("requestId"))
         assertNotNull(startRegBody.get("publicKeyCredentialCreationOptions"))
 
-        val credentialOptionsString = startRegBody.get("publicKeyCredentialCreationOptions").asText()
-        val credentialOptions = objectMapper.readTree(credentialOptionsString)
+        val credentialOptions = startRegBody.get("publicKeyCredentialCreationOptions")
 
         // Verify registration options
         val publicKey = credentialOptions.get("publicKey")
@@ -112,6 +112,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
 
             // Simulate application restart by stopping Koin and clearing caches
             stopKoin()
+            GlobalOpenTelemetry.resetForTest()
         }
 
         testApplication {
@@ -294,10 +295,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     ): HttpResponse {
         val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
         val requestId = startRegBody.get("requestId").asText()
-        val credentialOptions = objectMapper.readTree(
-            startRegBody.get("publicKeyCredentialCreationOptions").asText()
-        )
-
+        val credentialOptions = startRegBody.get("publicKeyCredentialCreationOptions")
         val challenge = credentialOptions.get("publicKey").get("challenge").asText()
         val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
             ByteArray.fromBase64Url(challenge),

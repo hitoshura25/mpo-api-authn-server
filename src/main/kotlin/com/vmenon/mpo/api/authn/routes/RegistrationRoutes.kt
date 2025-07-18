@@ -8,6 +8,7 @@ import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
+import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.FinishRegistrationOptions
 import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.RelyingParty
@@ -61,7 +62,9 @@ fun Application.configureRegistrationRoutes() {
             val response = openTelemetryTracer.traceOperation("createRegistrationResponse") {
                 RegistrationResponse(
                     requestId = requestId,
-                    publicKeyCredentialCreationOptions = startRegistrationOptions.toCredentialsCreateJson()
+                    publicKeyCredentialCreationOptions = JacksonUtils.objectMapper.readTree(
+                        startRegistrationOptions.toCredentialsCreateJson()
+                    )
                 )
             }
 

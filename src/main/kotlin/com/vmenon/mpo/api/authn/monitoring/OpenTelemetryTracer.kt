@@ -17,10 +17,10 @@ class OpenTelemetryTracer(
         return try {
             span.setStatus(StatusCode.OK)
             block()
-        } catch (e: Exception) {
-            span.setStatus(StatusCode.ERROR, e.message ?: "Unknown error")
-            span.recordException(e)
-            throw e
+        } catch (exception: Exception) {
+            span.setStatus(StatusCode.ERROR, getMessage(exception))
+            span.recordException(exception)
+            throw exception
         } finally {
             span.end()
         }
@@ -51,10 +51,10 @@ class OpenTelemetryTracer(
                 jedis.setex(key, ttlSeconds, value)
             }
             span.setStatus(StatusCode.OK)
-        } catch (e: Exception) {
-            span.setStatus(StatusCode.ERROR, e.message ?: "Unknown error")
-            span.recordException(e)
-            throw e
+        } catch (exception: Exception) {
+            span.setStatus(StatusCode.ERROR, getMessage(exception))
+            span.recordException(exception)
+            throw exception
         } finally {
             span.end()
         }
@@ -75,10 +75,10 @@ class OpenTelemetryTracer(
             }
             span.setAttribute("redis.found", value != null)
             return value
-        } catch (e: Exception) {
-            span.setStatus(StatusCode.ERROR, e.message ?: "Unknown error")
-            span.recordException(e)
-            throw e
+        } catch (exception: Exception) {
+            span.setStatus(StatusCode.ERROR, getMessage(exception))
+            span.recordException(exception)
+            throw exception
         } finally {
             span.end()
         }
@@ -97,12 +97,14 @@ class OpenTelemetryTracer(
             }.also {
                 span.setStatus(StatusCode.OK)
             }
-        } catch (e: Exception) {
-            span.setStatus(StatusCode.ERROR, e.message ?: "Unknown error")
-            span.recordException(e)
-            throw e
+        } catch (exception: Exception) {
+            span.setStatus(StatusCode.ERROR, exception.message ?: "Unknown error")
+            span.recordException(exception)
+            throw exception
         } finally {
             span.end()
         }
     }
+
+    private fun getMessage(exception: Exception) = exception.message ?: "Unknown error"
 }

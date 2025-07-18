@@ -14,6 +14,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -198,7 +199,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `test Redis failure`() = testApplication {
+    fun `test Redis failure before registration start`() = testApplication {
         application {
             module(storageModule)
         }
@@ -226,6 +227,24 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         redis.start()
     }
 
+    @Test
+    fun `test Redis failure before registration complete`() = testApplication {
+        application {
+            module(storageModule)
+        }
+
+        val username = "redis_failure_test"
+        val displayName = "Redis Failure Test"
+        val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
+
+        val startRegResponse = startRegistration(client, username, displayName)
+        redis.stop()
+
+        val completeRegResponse = completeRegistration(client, startRegResponse, keyPair)
+        assertEquals(HttpStatusCode.InternalServerError, completeRegResponse.status)
+
+        redis.start()
+    }
 
     @Test
     fun `test encrypted credential storage in PostgreSQL`() = testApplication {
@@ -265,6 +284,14 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     }
 
     private suspend fun registerUser(client: HttpClient, username: String, displayName: String, keyPair: KeyPair) {
+        val startRegResponse = startRegistration(client, username, displayName)
+        assertEquals(HttpStatusCode.OK, startRegResponse.status)
+
+        val completeRegResponse = completeRegistration(client, startRegResponse, keyPair)
+        assertEquals(HttpStatusCode.OK, completeRegResponse.status)
+    }
+
+    private suspend fun startRegistration(client: HttpClient, username: String, displayName: String): HttpResponse {
         val registrationRequest = RegistrationRequest(
             username = username,
             displayName = displayName
@@ -275,7 +302,14 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             setBody(objectMapper.writeValueAsString(registrationRequest))
         }
 
-        assertEquals(HttpStatusCode.OK, startRegResponse.status)
+        return startRegResponse
+    }
+
+    private suspend fun completeRegistration(
+        client: HttpClient,
+        startRegResponse: HttpResponse,
+        keyPair: KeyPair
+    ): HttpResponse {
         val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
         val requestId = startRegBody.get("requestId").asText()
         val credentialOptions = objectMapper.readTree(
@@ -298,7 +332,6 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             setBody(objectMapper.writeValueAsString(completeRegRequest))
         }
 
-        assertEquals(HttpStatusCode.OK, completeRegResponse.status)
+        return completeRegResponse
     }
-
 }

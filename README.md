@@ -40,6 +40,8 @@ MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT # If not setup, OpenTelemetry.noop() wi
 MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME
 ```
 
+See [Docker Setup Guide for an example](#example-env)
+
 # Docker Setup Guide
 
 This project supports two different Docker setups to accommodate different development workflows.
@@ -92,4 +94,30 @@ docker-compose down
 
 # Stop everything
 docker-compose down
+```
+
+## Example .env
+
+Below is an example .env file that can be used with the docker-compose setup:
+
+```
+# Database Configuration
+MPO_AUTHN_DB_NAME=webauthn
+MPO_AUTHN_DB_USERNAME=webauthn_user
+MPO_AUTHN_DB_PASSWORD=<password>
+MPO_AUTHN_DB_PORT=5432
+MPO_AUTHN_DB_HOST=postgres
+
+# Redis Configuration
+MPO_AUTHN_REDIS_PASSWORD=<password>
+MPO_AUTHN_REDIS_HOST=redis
+MPO_AUTHN_REDIS_PORT=6379
+
+# Application Configuration
+MPO_AUTHN_APP_PORT=8080
+MPO_AUTHN_APP_RELYING_PARTY_ID=webauthn.mpo.io
+MPO_AUTHN_APP_RELYING_PARTY_NAME=MPO Api Authn
+
+MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME=mpo-authn-server
+MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT=http://jaeger:4317
 ```

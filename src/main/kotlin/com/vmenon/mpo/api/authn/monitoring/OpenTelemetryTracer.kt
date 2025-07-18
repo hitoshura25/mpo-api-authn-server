@@ -10,8 +10,7 @@ class OpenTelemetryTracer(
     private val tracer: Tracer,
 ) {
     fun <T> traceOperation(operation: String, block: () -> T): T {
-        val span = tracer.spanBuilder("business.operation")
-            .setAttribute("operation.name", operation)
+        val span = tracer.spanBuilder(operation)
             .startSpan()
 
         return try {
@@ -27,13 +26,13 @@ class OpenTelemetryTracer(
     }
 
     fun <T> writeValueAsString(value: T): String {
-        return traceOperation("writeValueAsString") {
+        return traceOperation("ObjectMapper.writeValueAsString") {
             objectMapper.writeValueAsString(value)
         }
     }
 
     fun <T> readValue(content: String, valueType: Class<T>): T {
-        return traceOperation("readValue") {
+        return traceOperation("ObjectMapper.readValue") {
             objectMapper.readValue(content, valueType)
         }
     }

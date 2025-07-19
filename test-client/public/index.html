@@ -237,7 +237,7 @@
             showStatus('registrationStatus', '🔑 Creating passkey...', 'info');
 
             // Step 2: Create credential using SimpleWebAuthn
-            const attResp = await SimpleWebAuthnBrowser.startRegistration(publicKeyOptions);
+            const attResp = await SimpleWebAuthnBrowser.startRegistration(publicKeyOptions.publicKey);
 
             showStatus('registrationStatus', '📤 Completing registration...', 'info');
 
@@ -321,7 +321,7 @@
             showStatus('authenticationStatus', '🔐 Please use your passkey...', 'info');
 
             // Step 2: Get authentication assertion using SimpleWebAuthn
-            const asseResp = await SimpleWebAuthnBrowser.startAuthentication(publicKeyOptions);
+            const asseResp = await SimpleWebAuthnBrowser.startAuthentication(publicKeyOptions.publicKey);
 
             showStatus('authenticationStatus', '📤 Completing authentication...', 'info');
 

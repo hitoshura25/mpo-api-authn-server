@@ -1,5 +1,6 @@
 package com.vmenon.mpo.api.authn.monitoring
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
@@ -36,6 +37,12 @@ class OpenTelemetryTracer(
     suspend fun <T> readValue(content: String, valueType: Class<T>): T {
         return traceOperation("ObjectMapper.readValue") {
             objectMapper.readValue(content, valueType)
+        }
+    }
+
+    suspend fun readTree(content: String): JsonNode {
+        return traceOperation("ObjectMapper.readTree") {
+            objectMapper.readTree(content)
         }
     }
 

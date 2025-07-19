@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebAuthn Test Client</title>
+    <title>WebAuthn Passkey Test Client</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -141,7 +141,10 @@
     </div>
 </div>
 
-<script>
+<script type="module">
+    // Import SimpleWebAuthn functions
+    import { startRegistration, startAuthentication } from './node_modules/@simplewebauthn/browser/dist/bundle/index.js';
+
     // Utility functions
     function showStatus(elementId, message, type = 'info') {
         const element = document.getElementById(elementId);
@@ -169,78 +172,7 @@
         }
     }
 
-    // Base64URL encoding/decoding utilities
-    function base64UrlDecode(str) {
-        str = str.replace(/-/g, '+').replace(/_/g, '/');
-        const pad = str.length % 4;
-        if (pad) {
-            str += '='.repeat(4 - pad);
-        }
-        return Uint8Array.from(atob(str), c => c.charCodeAt(0));
-    }
-
-    function base64UrlEncode(buffer) {
-        return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-            .replace(/\+/g, '-')
-            .replace(/\//g, '_')
-            .replace(/=/g, '');
-    }
-
-    // Convert server response to WebAuthn format
-    function processCredentialCreationOptions(options) {
-        return {
-            ...options,
-            challenge: base64UrlDecode(options.challenge),
-            user: {
-                ...options.user,
-                id: base64UrlDecode(options.user.id)
-            },
-            excludeCredentials: options.excludeCredentials?.map(cred => ({
-                ...cred,
-                id: base64UrlDecode(cred.id)
-            })) || []
-        };
-    }
-
-    function processCredentialRequestOptions(options) {
-        return {
-            ...options,
-            challenge: base64UrlDecode(options.challenge),
-            allowCredentials: options.allowCredentials?.map(cred => ({
-                ...cred,
-                id: base64UrlDecode(cred.id)
-            })) || []
-        };
-    }
-
-    // Convert WebAuthn credential to server format
-    function processCredentialForServer(credential) {
-        return {
-            id: credential.id,
-            rawId: base64UrlEncode(credential.rawId),
-            response: {
-                clientDataJSON: base64UrlEncode(credential.response.clientDataJSON),
-                attestationObject: base64UrlEncode(credential.response.attestationObject)
-            },
-            type: credential.type
-        };
-    }
-
-    function processAuthenticationCredentialForServer(credential) {
-        return {
-            id: credential.id,
-            rawId: base64UrlEncode(credential.rawId),
-            response: {
-                clientDataJSON: base64UrlEncode(credential.response.clientDataJSON),
-                authenticatorData: base64UrlEncode(credential.response.authenticatorData),
-                signature: base64UrlEncode(credential.response.signature),
-                userHandle: credential.response.userHandle ? base64UrlEncode(credential.response.userHandle) : null
-            },
-            type: credential.type
-        };
-    }
-
-    // Registration flow
+    // Registration flow using SimpleWebAuthn
     async function registerPasskey() {
         const username = document.getElementById('regUsername').value.trim();
         const displayName = document.getElementById('regDisplayName').value.trim();
@@ -253,7 +185,7 @@
         showStatus('registrationStatus', 'Starting registration...', 'info');
 
         try {
-            // Step 1: Start registration
+            // Step 1: Get registration options from server
             const startResponse = await fetch(`${getServerUrl()}/register/start`, {
                 method: 'POST',
                 headers: {
@@ -272,22 +204,12 @@
             const startData = await startResponse.json();
             showStatus('registrationStatus', 'Creating passkey...', 'info');
 
-            // Step 2: Create credentials
-            const publicKeyCredentialCreationOptions = processCredentialCreationOptions(
-                startData.publicKeyCredentialCreationOptions
-            );
-
-            const credential = await navigator.credentials.create({
-                publicKey: publicKeyCredentialCreationOptions
-            });
-
-            if (!credential) {
-                throw new Error('Failed to create credential');
-            }
+            // Step 2: Create credential using SimpleWebAuthn (handles all the encoding/decoding automatically)
+            const attResp = await startRegistration(startData.publicKeyCredentialCreationOptions.publicKey);
 
             showStatus('registrationStatus', 'Completing registration...', 'info');
 
-            // Step 3: Complete registration
+            // Step 3: Send credential to server for verification
             const completeResponse = await fetch(`${getServerUrl()}/register/complete`, {
                 method: 'POST',
                 headers: {
@@ -295,7 +217,7 @@
                 },
                 body: JSON.stringify({
                     requestId: startData.requestId,
-                    credential: processCredentialForServer(credential)
+                    credential: attResp
                 })
             });
 
@@ -303,29 +225,46 @@
                 throw new Error(`Registration completion failed: ${completeResponse.status} ${completeResponse.statusText}`);
             }
 
-            showStatus('registrationStatus', 'Passkey registered successfully!', 'success');
+            const result = await completeResponse.json();
+
+            if (result.success) {
+                showStatus('registrationStatus', 'Registration successful! You can now authenticate.', 'success');
+            } else {
+                showStatus('registrationStatus', `Registration failed: ${result.message}`, 'error');
+            }
 
         } catch (error) {
             console.error('Registration error:', error);
-            showStatus('registrationStatus', `Registration failed: ${error.message}`, 'error');
+
+            // Handle specific SimpleWebAuthn errors
+            if (error.name === 'InvalidStateError') {
+                showStatus('registrationStatus', 'A passkey for this account already exists on this device', 'error');
+            } else if (error.name === 'NotAllowedError') {
+                showStatus('registrationStatus', 'Registration was cancelled or timed out', 'error');
+            } else if (error.name === 'NotSupportedError') {
+                showStatus('registrationStatus', 'WebAuthn is not supported on this device/browser', 'error');
+            } else {
+                showStatus('registrationStatus', `Registration failed: ${error.message}`, 'error');
+            }
         }
     }
 
-    // Authentication flow
+    // Authentication flow using SimpleWebAuthn
     async function authenticatePasskey() {
         const username = document.getElementById('authUsername').value.trim();
 
         showStatus('authenticationStatus', 'Starting authentication...', 'info');
 
         try {
-            // Step 1: Start authentication
-            const requestBody = username ? { username: username } : {};
+            // Step 1: Get authentication options from server
             const startResponse = await fetch(`${getServerUrl()}/authenticate/start`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(requestBody)
+                body: JSON.stringify({
+                    username: username || null  // null for usernameless authentication
+                })
             });
 
             if (!startResponse.ok) {
@@ -333,24 +272,14 @@
             }
 
             const startData = await startResponse.json();
-            showStatus('authenticationStatus', 'Requesting passkey...', 'info');
+            showStatus('authenticationStatus', 'Please use your passkey...', 'info');
 
-            // Step 2: Get credentials
-            const publicKeyCredentialRequestOptions = processCredentialRequestOptions(
-                startData.publicKeyCredentialRequestOptions
-            );
-
-            const credential = await navigator.credentials.get({
-                publicKey: publicKeyCredentialRequestOptions
-            });
-
-            if (!credential) {
-                throw new Error('Failed to get credential');
-            }
+            // Step 2: Get authentication assertion using SimpleWebAuthn
+            const asseResp = await startAuthentication(startData.publicKeyCredentialRequestOptions.publicKey);
 
             showStatus('authenticationStatus', 'Completing authentication...', 'info');
 
-            // Step 3: Complete authentication
+            // Step 3: Send assertion to server for verification
             const completeResponse = await fetch(`${getServerUrl()}/authenticate/complete`, {
                 method: 'POST',
                 headers: {
@@ -358,7 +287,7 @@
                 },
                 body: JSON.stringify({
                     requestId: startData.requestId,
-                    credential: processAuthenticationCredentialForServer(credential)
+                    credential: asseResp
                 })
             });
 
@@ -378,9 +307,23 @@
 
         } catch (error) {
             console.error('Authentication error:', error);
-            showStatus('authenticationStatus', `Authentication failed: ${error.message}`, 'error');
+
+            // Handle specific SimpleWebAuthn errors
+            if (error.name === 'InvalidStateError') {
+                showStatus('authenticationStatus', 'No passkey found for this account on this device', 'error');
+            } else if (error.name === 'NotAllowedError') {
+                showStatus('authenticationStatus', 'Authentication was cancelled or timed out', 'error');
+            } else if (error.name === 'NotSupportedError') {
+                showStatus('authenticationStatus', 'WebAuthn is not supported on this device/browser', 'error');
+            } else {
+                showStatus('authenticationStatus', `Authentication failed: ${error.message}`, 'error');
+            }
         }
     }
+
+    // Make functions available globally for button onclick handlers
+    window.registerPasskey = registerPasskey;
+    window.authenticatePasskey = authenticatePasskey;
 </script>
 </body>
 </html>

@@ -47,47 +47,11 @@ module.exports = defineConfig({
         }
       },
     },
-
-    {
-      name: 'firefox',
-      use: {
-        ...devices['Desktop Firefox'],
-        // Firefox WebAuthn support
-        launchOptions: {
-          firefoxUserPrefs: {
-            'security.webauth.webauthn': true,
-            'security.webauth.webauthn_enable_softtoken': true,
-            'security.webauth.webauthn_enable_usbtoken': true
-          }
-        }
-      },
-    },
-
-    {
-      name: 'webkit',
-      use: {
-        ...devices['Desktop Safari'],
-        // Safari WebAuthn support
-        launchOptions: {
-          args: ['--enable-features=WebAuthentication']
-        }
-      },
-    },
-
     /* Test against mobile viewports for mobile passkey testing */
     {
       name: 'Mobile Chrome',
       use: {
         ...devices['Pixel 5'],
-        launchOptions: {
-          args: ['--enable-features=WebAuthentication']
-        }
-      },
-    },
-    {
-      name: 'Mobile Safari',
-      use: {
-        ...devices['iPhone 12'],
         launchOptions: {
           args: ['--enable-features=WebAuthentication']
         }

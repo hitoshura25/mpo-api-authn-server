@@ -17,27 +17,25 @@ function generateUniqueUsername(testName, workerIndex = 0) {
 test.describe('WebAuthn Passkey End-to-End Tests', () => {
 
   test.beforeEach(async ({ page, context }) => {
-    // For Chromium-based browsers, use CDP (Chrome DevTools Protocol)
-    if (context._browser.browserType().name() === 'chromium') {
-      const client = await context.newCDPSession(page);
-      await client.send('WebAuthn.enable');
-      const { authenticatorId } = await client.send('WebAuthn.addVirtualAuthenticator', {
-        options: {
-          protocol: 'ctap2',
-          ctap2Version: 'ctap2_1',
-          transport: 'internal',
-          hasResidentKey: true,
-          hasUserVerification: true,
-          hasLargeBlob: false,
-          hasCredBlob: false,
-          hasMinPinLength: false,
-          hasPrf: false,
-          automaticPresenceSimulation: true,
-          isUserVerified: true
-        }
-      });
-      page.authenticatorId = authenticatorId;
-    }
+    // Set up CDP (Chrome DevTools Protocol) virtual authenticator
+    const client = await context.newCDPSession(page);
+    await client.send('WebAuthn.enable');
+    const { authenticatorId } = await client.send('WebAuthn.addVirtualAuthenticator', {
+      options: {
+        protocol: 'ctap2',
+        ctap2Version: 'ctap2_1',
+        transport: 'internal',
+        hasResidentKey: true,
+        hasUserVerification: true,
+        hasLargeBlob: false,
+        hasCredBlob: false,
+        hasMinPinLength: false,
+        hasPrf: false,
+        automaticPresenceSimulation: true,
+        isUserVerified: true
+      }
+    });
+    page.authenticatorId = authenticatorId;
 
     // Navigate to the test client web application
     await page.goto('http://localhost:8081');

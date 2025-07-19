@@ -25,7 +25,7 @@ async function globalSetup() {
 
   for (let i = 0; i < maxClientRetries; i++) {
     try {
-      const response = await fetch('http://localhost:3000/health');
+      const response = await fetch('http://localhost:8081/health');
       if (response.ok) {
         console.log('✅ Test client is running and ready');
         break;
@@ -40,6 +40,54 @@ async function globalSetup() {
     }
 
     await new Promise(resolve => setTimeout(resolve, retryDelay));
+  }
+
+  // Verify that the test client has SimpleWebAuthn loaded
+  console.log('🔍 Verifying SimpleWebAuthn library is available...');
+  const browser = await chromium.launch();
+  const page = await browser.newPage();
+
+  try {
+    await page.goto('http://localhost:8081');
+    await page.waitForLoadState('networkidle');
+
+    // Wait for SimpleWebAuthn library to load
+    const isLibraryLoaded = await page.waitForFunction(() => {
+      return typeof window.SimpleWebAuthnBrowser !== 'undefined';
+    }, { timeout: 10000 });
+
+    if (isLibraryLoaded) {
+      console.log('✅ SimpleWebAuthn library loaded successfully');
+    } else {
+      throw new Error('SimpleWebAuthn library failed to load');
+    }
+
+    // Verify the web application loads correctly
+    console.log('🔍 Verifying web application loads correctly...');
+
+    // Check page title
+    const title = await page.title();
+    if (title !== 'WebAuthn Test Client') {
+      throw new Error(`Expected page title 'WebAuthn Test Client', got '${title}'`);
+    }
+
+    // Check main heading
+    const heading = await page.locator('h1').textContent();
+    if (!heading.includes('WebAuthn Passkey Test Client')) {
+      throw new Error(`Expected heading to contain 'WebAuthn Passkey Test Client', got '${heading}'`);
+    }
+
+    // Wait for application to fully initialize
+    await page.waitForFunction(() => {
+      return document.getElementById('connectionStatus') &&
+             document.querySelector('h1').textContent.includes('WebAuthn');
+    }, { timeout: 10000 });
+
+    console.log('✅ Web application loaded and initialized successfully');
+
+  } finally {
+    await page.close();
+    await browser.close();
   }
 
   // Wait for WebAuthn server to be ready

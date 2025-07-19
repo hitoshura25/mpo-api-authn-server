@@ -47,6 +47,7 @@ val appModule = module {
                     .build()
             )
             .credentialRepository(credentialRepository)
+            .allowOriginPort(true)
             .build()
     }
 }

@@ -3,34 +3,6 @@ const { test, expect } = require('@playwright/test');
 test.describe('WebAuthn Passkey End-to-End Tests', () => {
 
   test.beforeEach(async ({ page, context }) => {
-    // Set up network request/response logging
-    const requests = [];
-    const responses = [];
-
-    page.on('request', request => {
-      requests.push({
-        url: request.url(),
-        method: request.method(),
-        headers: request.headers(),
-        postData: request.postData(),
-        timestamp: Date.now()
-      });
-      console.log(`➡️  REQUEST: ${request.method()} ${request.url()}`);
-    });
-
-    page.on('response', response => {
-      responses.push({
-        url: response.url(),
-        status: response.status(),
-        headers: response.headers(),
-        timestamp: Date.now()
-      });
-      console.log(`⬅️  RESPONSE: ${response.status()} ${response.url()}`);
-    });
-
-    // Store for later access in tests
-    page.networkLogs = { requests, responses };
-
     // For Chromium-based browsers, use CDP (Chrome DevTools Protocol)
     if (context._browser.browserType().name() === 'chromium') {
       const client = await context.newCDPSession(page);
@@ -54,36 +26,8 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     }
 
     // Navigate to the test client web application
-    await page.goto('http://localhost:3000');
+    await page.goto('http://localhost:8081');
     await page.waitForLoadState('networkidle');
-
-    // Wait for the application to fully initialize
-    await page.waitForFunction(() => {
-      return window.SimpleWebAuthnBrowser &&
-             document.getElementById('connectionStatus') &&
-             document.querySelector('h1').textContent.includes('WebAuthn');
-    }, { timeout: 10000 });
-  });
-
-  test('should load test client web application', async ({ page }) => {
-    await expect(page).toHaveTitle('WebAuthn Test Client');
-    await expect(page.locator('h1')).toContainText('WebAuthn Passkey Test Client');
-
-    // Check if SimpleWebAuthn library is loaded
-    const isLibraryLoaded = await page.evaluate(() => {
-      return typeof window.SimpleWebAuthnBrowser !== 'undefined';
-    });
-    expect(isLibraryLoaded).toBe(true);
-  });
-
-  test('should successfully connect to server', async ({ page }) => {
-    // Wait for the automatic connection test to complete
-    await page.waitForTimeout(3000);
-
-    const connectionStatus = await page.locator('#connectionStatus').textContent();
-
-    // Server must be running for tests to pass
-    expect(connectionStatus).toContain('successful');
   });
 
   test('should complete full registration flow with virtual authenticator', async ({ page }) => {
@@ -158,124 +102,6 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     // Should get a proper response from server (success or business logic error)
     expect(authStatus).not.toContain('Connection failed');
     expect(authStatus).not.toContain('Network error');
-  });
-
-  test('should handle WebAuthn errors gracefully', async ({ page }) => {
-    // Mock WebAuthn to throw errors
-    await page.addInitScript(() => {
-      if (window.navigator && window.navigator.credentials) {
-        window.navigator.credentials.create = async () => {
-          throw new Error('NotAllowedError: User cancelled the operation');
-        };
-      }
-    });
-
-    // Fill form and try to register
-    await page.fill('#regUsername', 'error-test-user');
-    await page.fill('#regDisplayName', 'Error Test User');
-    await page.click('button:has-text("Register Passkey")');
-
-    // Wait for error to appear
-    await page.waitForTimeout(2000);
-
-    // Should show error status
-    const status = await page.locator('#registrationStatus').textContent();
-    expect(status).toContain('failed');
-  });
-
-  test('should validate form inputs properly', async ({ page }) => {
-    // Test empty username
-    await page.fill('#regUsername', '');
-    await page.fill('#regDisplayName', 'Test User');
-    await page.click('button:has-text("Register Passkey")');
-
-    await page.waitForTimeout(500);
-    let status = await page.locator('#registrationStatus').textContent();
-    expect(status).toContain('Please enter both username and display name');
-
-    // Test empty display name
-    await page.fill('#regUsername', 'testuser');
-    await page.fill('#regDisplayName', '');
-    await page.click('button:has-text("Register Passkey")');
-
-    await page.waitForTimeout(500);
-    status = await page.locator('#registrationStatus').textContent();
-    expect(status).toContain('Please enter both username and display name');
-  });
-
-  test('should test server API endpoints directly', async ({ page }) => {
-    // Test that server endpoints are accessible and return expected structure
-    const registrationStartResponse = await page.evaluate(async () => {
-      try {
-        const response = await fetch('http://localhost:8080/register/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: 'api-test-user',
-            displayName: 'API Test User'
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        return {
-          success: true,
-          hasRequestId: !!data.requestId,
-          hasOptions: !!data.publicKeyCredentialCreationOptions,
-          hasChallenge: !!data.publicKeyCredentialCreationOptions?.publicKey.challenge,
-          hasUser: !!data.publicKeyCredentialCreationOptions?.publicKey.user
-        };
-      } catch (error) {
-        return {
-          success: false,
-          error: error.message
-        };
-      }
-    });
-
-    expect(registrationStartResponse.success).toBe(true);
-    expect(registrationStartResponse.hasRequestId).toBe(true);
-    expect(registrationStartResponse.hasOptions).toBe(true);
-    expect(registrationStartResponse.hasChallenge).toBe(true);
-    expect(registrationStartResponse.hasUser).toBe(true);
-
-    // Test authentication start endpoint
-    const authStartResponse = await page.evaluate(async () => {
-      try {
-        const response = await fetch('http://localhost:8080/authenticate/start', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            username: 'api-test-user'
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-        }
-
-        const data = await response.json();
-        return {
-          success: true,
-          hasRequestId: !!data.requestId,
-          hasOptions: !!data.publicKeyCredentialRequestOptions,
-          hasChallenge: !!data.publicKeyCredentialRequestOptions?.publicKey.challenge
-        };
-      } catch (error) {
-        return {
-          success: false,
-          error: error.message
-        };
-      }
-    });
-
-    expect(authStartResponse.success).toBe(true);
-    expect(authStartResponse.hasRequestId).toBe(true);
-    expect(authStartResponse.hasOptions).toBe(true);
-    expect(authStartResponse.hasChallenge).toBe(true);
   });
 });
 

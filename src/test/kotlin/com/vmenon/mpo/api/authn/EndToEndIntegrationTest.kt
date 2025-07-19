@@ -149,7 +149,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             contentType(ContentType.Application.Json)
             setBody(objectMapper.writeValueAsString(completeRegRequest))
         }
-        assertEquals(HttpStatusCode.InternalServerError, completeRegResponse.status)
+        assertEquals(HttpStatusCode.BadRequest, completeRegResponse.status)
     }
 
     @Test

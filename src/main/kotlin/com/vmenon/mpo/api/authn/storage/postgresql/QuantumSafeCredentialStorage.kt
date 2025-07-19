@@ -204,6 +204,20 @@ class QuantumSafeCredentialStorage(
         }
     }
 
+    override fun userExists(username: String): Boolean {
+        val usernameHash = hash(username)
+        val sql = "SELECT 1 FROM webauthn_users_secure WHERE username_hash = ? LIMIT 1"
+
+        return dataSource.connection.use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setString(1, usernameHash)
+                statement.executeQuery().use { resultSet ->
+                    resultSet.next()
+                }
+            }
+        }
+    }
+
     override fun lookup(
         credentialId: com.yubico.webauthn.data.ByteArray,
         userHandle: com.yubico.webauthn.data.ByteArray

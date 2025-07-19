@@ -24,8 +24,11 @@ module.exports = defineConfig({
     trace: 'on-first-retry',
     /* Take screenshot on failure */
     screenshot: 'only-on-failure',
-    /* Record video on failure */
-    video: 'only-on-failure',
+    /* Record video on failure - ensure it's properly configured */
+    video: {
+      mode: 'retain-on-failure',
+      size: { width: 1280, height: 720 }
+    },
     /* Base URL for your WebAuthn server */
     baseURL: 'http://localhost:8080',
     /* Enable HAR recording for network analysis */

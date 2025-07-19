@@ -8,6 +8,7 @@ interface CredentialStorage {
     fun getRegistrationsByUsername(username: String): Set<CredentialRegistration>
     fun getUserByUsername(username: String): UserAccount?
     fun getUserByHandle(userHandle: com.yubico.webauthn.data.ByteArray): UserAccount?
+    fun userExists(username: String): Boolean
     fun lookup(
         credentialId: com.yubico.webauthn.data.ByteArray,
         userHandle: com.yubico.webauthn.data.ByteArray

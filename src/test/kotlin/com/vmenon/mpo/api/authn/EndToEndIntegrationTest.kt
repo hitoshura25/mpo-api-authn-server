@@ -173,7 +173,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             setBody(objectMapper.writeValueAsString(completeAuthRequest))
         }
 
-        assertEquals(HttpStatusCode.InternalServerError, completeAuthResponse.status)
+        assertEquals(HttpStatusCode.BadRequest, completeAuthResponse.status)
     }
 
     @Test

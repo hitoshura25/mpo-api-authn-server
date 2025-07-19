@@ -28,6 +28,11 @@ module.exports = defineConfig({
     video: 'only-on-failure',
     /* Base URL for your WebAuthn server */
     baseURL: 'http://localhost:8080',
+    /* Enable HAR recording for network analysis */
+    recordHar: {
+      mode: 'minimal',
+      path: 'test-results/network-logs.har'
+    }
   },
 
   /* Configure projects for major browsers */

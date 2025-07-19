@@ -249,7 +249,7 @@
                 },
                 body: JSON.stringify({
                     requestId: startData.requestId,
-                    credential: attResp
+                    credential: JSON.stringify(attResp)
                 })
             });
 
@@ -333,7 +333,7 @@
                 },
                 body: JSON.stringify({
                     requestId: startData.requestId,
-                    credential: asseResp
+                    credential: JSON.stringify(asseResp)
                 })
             });
 

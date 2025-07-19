@@ -3,6 +3,34 @@ const { test, expect } = require('@playwright/test');
 test.describe('WebAuthn Passkey End-to-End Tests', () => {
 
   test.beforeEach(async ({ page, context }) => {
+    // Set up network request/response logging
+    const requests = [];
+    const responses = [];
+
+    page.on('request', request => {
+      requests.push({
+        url: request.url(),
+        method: request.method(),
+        headers: request.headers(),
+        postData: request.postData(),
+        timestamp: Date.now()
+      });
+      console.log(`➡️  REQUEST: ${request.method()} ${request.url()}`);
+    });
+
+    page.on('response', response => {
+      responses.push({
+        url: response.url(),
+        status: response.status(),
+        headers: response.headers(),
+        timestamp: Date.now()
+      });
+      console.log(`⬅️  RESPONSE: ${response.status()} ${response.url()}`);
+    });
+
+    // Store for later access in tests
+    page.networkLogs = { requests, responses };
+
     // For Chromium-based browsers, use CDP (Chrome DevTools Protocol)
     if (context._browser.browserType().name() === 'chromium') {
       const client = await context.newCDPSession(page);

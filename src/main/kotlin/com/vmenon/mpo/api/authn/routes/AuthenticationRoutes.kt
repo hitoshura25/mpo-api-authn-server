@@ -3,6 +3,7 @@ package com.vmenon.mpo.api.authn.routes
 import com.vmenon.mpo.api.authn.AuthenticationCompleteRequest
 import com.vmenon.mpo.api.authn.AuthenticationRequest
 import com.vmenon.mpo.api.authn.AuthenticationResponse
+import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.yubico.webauthn.FinishAssertionOptions
 import com.yubico.webauthn.RelyingParty
@@ -22,6 +23,7 @@ fun Application.configureAuthenticationRoutes() {
     routing {
         val assertionStorage: AssertionRequestStorage by inject()
         val relyingParty: RelyingParty by inject()
+        val openTelemetryTracer: OpenTelemetryTracer by inject()
 
         post("/authenticate/start") {
             val request = call.receive<AuthenticationRequest>()
@@ -41,13 +43,19 @@ fun Application.configureAuthenticationRoutes() {
             }
 
             assertionStorage.storeAssertionRequest(requestId, startAssertionOptions)
+            val credentialsJson = openTelemetryTracer.traceOperation("toCredentialsCreateJson") {
+                startAssertionOptions.toCredentialsGetJson()
+            }
+            val credentialsObject = openTelemetryTracer.readTree(credentialsJson)
 
-            val response = AuthenticationResponse(
-                requestId = requestId,
-                publicKeyCredentialRequestOptions = startAssertionOptions.toCredentialsGetJson()
-            )
 
-            call.respond(response)
+            openTelemetryTracer.traceOperation("call.response") {
+                val response = AuthenticationResponse(
+                    requestId = requestId,
+                    publicKeyCredentialRequestOptions = credentialsObject
+                )
+                call.respond(response)
+            }
         }
 
         post("/authenticate/complete") {

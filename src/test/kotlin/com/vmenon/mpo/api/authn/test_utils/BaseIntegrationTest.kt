@@ -1,6 +1,7 @@
 package com.vmenon.mpo.api.authn.test_utils
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
+import io.opentelemetry.api.GlobalOpenTelemetry
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeAll
@@ -59,6 +60,7 @@ abstract class BaseIntegrationTest : KoinTest {
 
     @BeforeEach
     fun setupBaseTest() {
+        GlobalOpenTelemetry.resetForTest()
         setupTestEnvironmentVariables()
     }
 

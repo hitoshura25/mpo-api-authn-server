@@ -21,7 +21,7 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
-import java.security.SecureRandom
+import java.util.Base64
 import java.util.UUID
 import org.koin.ktor.ext.inject
 
@@ -37,14 +37,16 @@ fun Application.configureRegistrationRoutes() {
                 call.receive<RegistrationRequest>()
             }
             val requestId = UUID.randomUUID().toString()
-            val userHandle = ByteArray(64)
-            SecureRandom().nextBytes(userHandle)
+            val userHandle = ByteArray.fromBase64Url(
+                Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(UUID.randomUUID().toString().toByteArray())
+            )
 
             val user = openTelemetryTracer.traceOperation("buildUserIdentity") {
                 UserIdentity.builder()
                     .name(request.username)
                     .displayName(request.displayName)
-                    .id(ByteArray(userHandle))
+                    .id(userHandle)
                     .build()
             }
 
@@ -58,15 +60,18 @@ fun Application.configureRegistrationRoutes() {
 
             registrationStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
 
-            val response = openTelemetryTracer.traceOperation("createRegistrationResponse") {
-                RegistrationResponse(
-                    requestId = requestId,
-                    publicKeyCredentialCreationOptions = startRegistrationOptions.toCredentialsCreateJson()
-                )
+            val credentialsJson = openTelemetryTracer.traceOperation("toCredentialsCreateJson") {
+                startRegistrationOptions.toCredentialsCreateJson()
             }
 
+            val credentialsObject = openTelemetryTracer.readTree(credentialsJson)
+
             openTelemetryTracer.traceOperation("call.response") {
-                call.respond(response)
+                val registrationResponse = RegistrationResponse(
+                    requestId = requestId,
+                    publicKeyCredentialCreationOptions = credentialsObject
+                )
+                call.respond(registrationResponse)
             }
         }
 

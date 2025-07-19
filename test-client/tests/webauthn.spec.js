@@ -1,4 +1,18 @@
 const { test, expect } = require('@playwright/test');
+const crypto = require('crypto');
+
+// Helper function to generate unique usernames for parallel test execution
+function generateUniqueUsername(testName, workerIndex = 0) {
+  const timestamp = Date.now();
+  const randomBytes = crypto.randomBytes(4).toString('hex');
+  const processId = process.pid;
+  const workerId = workerIndex || Math.floor(Math.random() * 1000);
+
+  // Create a short hash of the test name for readability
+  const testHash = crypto.createHash('md5').update(testName).digest('hex').substring(0, 6);
+
+  return `pw-${testHash}-${timestamp}-${processId}-${workerId}-${randomBytes}`;
+}
 
 test.describe('WebAuthn Passkey End-to-End Tests', () => {
 
@@ -30,11 +44,12 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     await page.waitForLoadState('networkidle');
   });
 
-  test('should complete full registration flow with virtual authenticator', async ({ page }) => {
-    // No need to mock - use virtual authenticator for real WebAuthn calls
+  test('should complete full registration flow with virtual authenticator', async ({ page }, testInfo) => {
+    // Generate scalable unique username using test metadata
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
 
     // Fill registration form
-    await page.fill('#regUsername', 'playwright-test-user');
+    await page.fill('#regUsername', uniqueUsername);
     await page.fill('#regDisplayName', 'Playwright Test User');
 
     // Start registration - this will use the virtual authenticator
@@ -47,15 +62,18 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     expect(registrationStatus).toContain('successful');
   });
 
-  test('should complete full authentication flow with virtual authenticator', async ({ page }) => {
+  test('should complete full authentication flow with virtual authenticator', async ({ page }, testInfo) => {
+    // Generate unique username for this test
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
     // First register a credential
-    await page.fill('#regUsername', 'playwright-auth-user');
+    await page.fill('#regUsername', uniqueUsername);
     await page.fill('#regDisplayName', 'Playwright Auth User');
     await page.click('button:has-text("Register Passkey")');
     await page.waitForTimeout(3000);
 
     // Then authenticate with it
-    await page.fill('#authUsername', 'playwright-auth-user');
+    await page.fill('#authUsername', uniqueUsername);
     await page.click('button:has-text("Authenticate with Passkey")');
     await page.waitForTimeout(3000);
 
@@ -75,7 +93,7 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
               clientDataJSON: new TextEncoder().encode(JSON.stringify({
                 type: 'webauthn.get',
                 challenge: 'test-challenge',
-                origin: 'http://localhost:8080',
+                origin: 'http://localhost:8081',
               })),
               authenticatorData: new Uint8Array(37),
               signature: new Uint8Array(32),

@@ -60,6 +60,7 @@ abstract class BaseIntegrationTest : KoinTest {
 
     @BeforeEach
     fun setupBaseTest() {
+        GlobalOpenTelemetry.resetForTest()
         setupTestEnvironmentVariables()
     }
 
@@ -67,7 +68,6 @@ abstract class BaseIntegrationTest : KoinTest {
     fun cleanupBaseTest() {
         clearDatabase()
         clearTestEnvironmentVariables()
-        GlobalOpenTelemetry.resetForTest()
     }
 
     /**

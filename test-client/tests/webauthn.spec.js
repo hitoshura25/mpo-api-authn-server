@@ -1,43 +1,51 @@
 const { test, expect } = require('@playwright/test');
-const path = require('path');
 
 test.describe('WebAuthn Passkey End-to-End Tests', () => {
 
   test.beforeEach(async ({ page, context }) => {
-    // Add virtual authenticator with proper WebAuthn support
-    await context.addInitScript(() => {
-      // Mock WebAuthn API to work with virtual authenticator
-      if (!window.PublicKeyCredential) {
-        window.PublicKeyCredential = class MockPublicKeyCredential {
-          static async isUserVerifyingPlatformAuthenticatorAvailable() {
-            return true;
-          }
+    // For Chromium-based browsers, use CDP (Chrome DevTools Protocol)
+    if (context._browser.browserType().name() === 'chromium') {
+      const client = await context.newCDPSession(page);
+      await client.send('WebAuthn.enable');
+      const { authenticatorId } = await client.send('WebAuthn.addVirtualAuthenticator', {
+        options: {
+          protocol: 'ctap2',
+          ctap2Version: 'ctap2_1',
+          transport: 'internal',
+          hasResidentKey: true,
+          hasUserVerification: true,
+          hasLargeBlob: false,
+          hasCredBlob: false,
+          hasMinPinLength: false,
+          hasPrf: false,
+          automaticPresenceSimulation: true,
+          isUserVerified: true
+        }
+      });
+      page.authenticatorId = authenticatorId;
+    }
 
-          static async isConditionalMediationAvailable() {
-            return true;
-          }
-        };
-      }
-    });
-
-    // Navigate to the test client
-    const testClientPath = path.join(__dirname, '..', 'index.html');
-    await page.goto(`file://${testClientPath}`);
-
-    // Wait for page to fully load
+    // Navigate to the test client web application
+    await page.goto('http://localhost:3000');
     await page.waitForLoadState('networkidle');
+
+    // Wait for the application to fully initialize
+    await page.waitForFunction(() => {
+      return window.SimpleWebAuthnBrowser &&
+             document.getElementById('connectionStatus') &&
+             document.querySelector('h1').textContent.includes('WebAuthn');
+    }, { timeout: 10000 });
   });
 
-  test('should load test client and verify WebAuthn availability', async ({ page }) => {
+  test('should load test client web application', async ({ page }) => {
     await expect(page).toHaveTitle('WebAuthn Test Client');
     await expect(page.locator('h1')).toContainText('WebAuthn Passkey Test Client');
 
-    // Check if WebAuthn APIs are available
-    const isWebAuthnAvailable = await page.evaluate(() => {
-      return typeof window.PublicKeyCredential !== 'undefined';
+    // Check if SimpleWebAuthn library is loaded
+    const isLibraryLoaded = await page.evaluate(() => {
+      return typeof window.SimpleWebAuthnBrowser !== 'undefined';
     });
-
-    expect(isWebAuthnAvailable).toBe(true);
+    expect(isLibraryLoaded).toBe(true);
   });
 
   test('should successfully connect to server', async ({ page }) => {
@@ -50,113 +58,37 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     expect(connectionStatus).toContain('successful');
   });
 
-  test('should complete full registration flow with real server', async ({ page }) => {
-    // Mock successful WebAuthn registration but let server calls go through
-    await page.addInitScript(() => {
-      const mockCredential = {
-        id: 'test-credential-id-' + Date.now(),
-        rawId: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-        response: {
-          clientDataJSON: new TextEncoder().encode(JSON.stringify({
-            type: 'webauthn.create',
-            challenge: 'test-challenge',
-            origin: 'http://localhost:8080',
-          })),
-          attestationObject: new Uint8Array([
-            0xa3, 0x63, 0x66, 0x6d, 0x74, 0x66, 0x70, 0x61, 0x63, 0x6b, 0x65, 0x64,
-            0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, 0xa0, 0x68, 0x61, 0x75,
-            0x74, 0x68, 0x44, 0x61, 0x74, 0x61, 0x58, 0x25
-          ])
-        },
-        type: 'public-key',
-        clientExtensionResults: {}
-      };
-
-      // Override navigator.credentials.create but allow fetch to go through
-      if (window.navigator && window.navigator.credentials) {
-        window.navigator.credentials.create = async (options) => {
-          console.log('Mock WebAuthn create called with:', options);
-          // Simulate some delay
-          await new Promise(resolve => setTimeout(resolve, 100));
-          return mockCredential;
-        };
-      }
-    });
+  test('should complete full registration flow with virtual authenticator', async ({ page }) => {
+    // No need to mock - use virtual authenticator for real WebAuthn calls
 
     // Fill registration form
     await page.fill('#regUsername', 'playwright-test-user');
     await page.fill('#regDisplayName', 'Playwright Test User');
 
-    // Start registration
+    // Start registration - this will use the virtual authenticator
     await page.click('button:has-text("Register Passkey")');
 
     // Wait for registration to complete
     await page.waitForTimeout(5000);
 
-    // Check final registration status - should succeed or show specific error
     const registrationStatus = await page.locator('#registrationStatus').textContent();
-
-    // The test should either succeed or fail with a specific server error
-    // It should NOT fail with network issues if server is running
-    expect(registrationStatus).not.toContain('Connection failed');
-    expect(registrationStatus).not.toContain('Network error');
+    expect(registrationStatus).toContain('successful');
   });
 
-  test('should complete full authentication flow with real server', async ({ page }) => {
-    // Mock successful WebAuthn authentication but let server calls go through
-    await page.addInitScript(() => {
-      const mockCredential = {
-        id: 'test-credential-id-' + Date.now(),
-        rawId: new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]),
-        response: {
-          clientDataJSON: new TextEncoder().encode(JSON.stringify({
-            type: 'webauthn.get',
-            challenge: 'test-challenge',
-            origin: 'http://localhost:8080',
-          })),
-          authenticatorData: new Uint8Array([
-            0x49, 0x96, 0x0d, 0xe5, 0x88, 0x0e, 0x8c, 0x68, 0x74, 0x34, 0x17, 0x0f,
-            0x64, 0x76, 0x60, 0x5b, 0x8f, 0xe4, 0xae, 0xb9, 0xa2, 0x86, 0x32, 0xc7,
-            0x99, 0x5c, 0xf3, 0xba, 0x83, 0x1d, 0x97, 0x63, 0x01, 0x00, 0x00, 0x00, 0x00
-          ]),
-          signature: new Uint8Array([
-            0x30, 0x44, 0x02, 0x20, 0x18, 0x97, 0x71, 0x7b, 0x9c, 0x30, 0x7e, 0x02,
-            0x62, 0x1a, 0x5e, 0x1b, 0x1c, 0x6e, 0x6f, 0x88, 0x4d, 0x6e, 0x6f, 0x4d,
-            0x88, 0x4d, 0x6e, 0x6f, 0x4d, 0x88, 0x4d, 0x6e, 0x6f, 0x4d, 0x88, 0x4d
-          ]),
-          userHandle: new Uint8Array([21, 22, 23, 24, 25, 26, 27, 28])
-        },
-        type: 'public-key',
-        clientExtensionResults: {}
-      };
+  test('should complete full authentication flow with virtual authenticator', async ({ page }) => {
+    // First register a credential
+    await page.fill('#regUsername', 'playwright-auth-user');
+    await page.fill('#regDisplayName', 'Playwright Auth User');
+    await page.click('button:has-text("Register Passkey")');
+    await page.waitForTimeout(3000);
 
-      // Override navigator.credentials.get but allow fetch to go through
-      if (window.navigator && window.navigator.credentials) {
-        window.navigator.credentials.get = async (options) => {
-          console.log('Mock WebAuthn get called with:', options);
-          // Simulate some delay
-          await new Promise(resolve => setTimeout(resolve, 100));
-          return mockCredential;
-        };
-      }
-    });
-
-    // Fill authentication form
-    await page.fill('#authUsername', 'playwright-test-user');
-
-    // Start authentication
+    // Then authenticate with it
+    await page.fill('#authUsername', 'playwright-auth-user');
     await page.click('button:has-text("Authenticate with Passkey")');
+    await page.waitForTimeout(3000);
 
-    // Wait for authentication to complete
-    await page.waitForTimeout(5000);
-
-    // Check final authentication status - should succeed or show specific error
     const authStatus = await page.locator('#authenticationStatus').textContent();
-
-    // The test should either succeed or fail with a specific server error
-    // It should NOT fail with network issues if server is running
-    expect(authStatus).not.toContain('Connection failed');
-    expect(authStatus).not.toContain('Network error');
+    expect(authStatus).toContain('successful');
   });
 
   test('should handle usernameless authentication flow with real server', async ({ page }) => {
@@ -265,8 +197,8 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
           success: true,
           hasRequestId: !!data.requestId,
           hasOptions: !!data.publicKeyCredentialCreationOptions,
-          hasChallenge: !!data.publicKeyCredentialCreationOptions?.challenge,
-          hasUser: !!data.publicKeyCredentialCreationOptions?.user
+          hasChallenge: !!data.publicKeyCredentialCreationOptions?.publicKey.challenge,
+          hasUser: !!data.publicKeyCredentialCreationOptions?.publicKey.user
         };
       } catch (error) {
         return {
@@ -302,7 +234,7 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
           success: true,
           hasRequestId: !!data.requestId,
           hasOptions: !!data.publicKeyCredentialRequestOptions,
-          hasChallenge: !!data.publicKeyCredentialRequestOptions?.challenge
+          hasChallenge: !!data.publicKeyCredentialRequestOptions?.publicKey.challenge
         };
       } catch (error) {
         return {

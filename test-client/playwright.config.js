@@ -25,7 +25,7 @@ module.exports = defineConfig({
     /* Take screenshot on failure */
     screenshot: 'only-on-failure',
     /* Record video on failure */
-    video: 'retain-on-failure',
+    video: 'on',
     /* Base URL for your WebAuthn server */
     baseURL: 'http://localhost:8080',
   },

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WebAuthn Passkey Test Client</title>
+    <title>WebAuthn Test Client</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -21,6 +21,12 @@
         h1 {
             color: #333;
             text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
         }
         .section {
             margin: 30px 0;
@@ -96,93 +102,108 @@
         #serverUrl {
             font-family: monospace;
         }
+        .app-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
     </style>
 </head>
 <body>
 <div class="container">
-    <h1>WebAuthn Passkey Test Client</h1>
+    <h1>🔐 WebAuthn Passkey Test Client</h1>
+    <p class="subtitle">Test your WebAuthn implementation with real passkey authentication</p>
+
+    <div class="app-info">
+        <strong>📱 Instructions:</strong>
+        <ol>
+            <li>Make sure your WebAuthn server is running at the configured URL</li>
+            <li>Register a new passkey by entering a username and display name</li>
+            <li>Use the passkey to authenticate (with or without username)</li>
+            <li>Test both registration and authentication flows end-to-end</li>
+        </ol>
+    </div>
 
     <div class="section">
-        <h2>Server Configuration</h2>
+        <h2>🔧 Server Configuration</h2>
         <div class="form-group">
             <label for="serverUrl">Server URL:</label>
             <input type="text" id="serverUrl" value="http://localhost:8080" placeholder="http://localhost:8080">
         </div>
+        <button onclick="testServerConnection()">Test Connection</button>
+        <div id="connectionStatus" class="status"></div>
     </div>
 
     <div class="section">
-        <h2>Registration (Create Passkey)</h2>
+        <h2>📝 Registration (Create Passkey)</h2>
         <div class="form-group">
             <label for="regUsername">Username:</label>
-            <input type="text" id="regUsername" placeholder="Enter username" value="testuser">
+            <input type="text" id="regUsername" placeholder="Enter username" value="">
         </div>
         <div class="form-group">
             <label for="regDisplayName">Display Name:</label>
-            <input type="text" id="regDisplayName" placeholder="Enter display name" value="Test User">
+            <input type="text" id="regDisplayName" placeholder="Enter display name" value="">
         </div>
-        <button onclick="registerPasskey()">Register Passkey</button>
+        <button onclick="registerPasskey()">🔑 Register Passkey</button>
         <div id="registrationStatus" class="status"></div>
     </div>
 
     <div class="section">
-        <h2>Authentication (Use Passkey)</h2>
+        <h2>🔓 Authentication (Use Passkey)</h2>
         <div class="form-group">
             <label for="authUsername">Username (optional for usernameless flow):</label>
-            <input type="text" id="authUsername" placeholder="Enter username or leave blank">
+            <input type="text" id="authUsername"
+                   placeholder="Enter username or leave blank for usernameless authentication">
         </div>
-        <button onclick="authenticatePasskey()">Authenticate with Passkey</button>
+        <button onclick="authenticatePasskey()">🛡️ Authenticate with Passkey</button>
         <div id="authenticationStatus" class="status"></div>
-    </div>
-
-    <div class="section">
-        <h2>Test Server Connection</h2>
-        <button onclick="testServerConnection()">Test Server Connection</button>
-        <div id="connectionStatus" class="status"></div>
     </div>
 </div>
 
-<script type="module">
-    // Import SimpleWebAuthn functions
-    import { startRegistration, startAuthentication } from './node_modules/@simplewebauthn/browser/dist/bundle/index.js';
-
-    // Utility functions
-    function showStatus(elementId, message, type = 'info') {
+<script src="https://unpkg.com/@simplewebauthn/browser@10.0.0/dist/bundle/index.umd.min.js"></script>
+<script>
+    // Global functions for the UI
+    window.showStatus = function(elementId, message, type = 'info') {
         const element = document.getElementById(elementId);
         element.className = `status ${type}`;
         element.textContent = message;
-    }
+        console.log(`[${type.toUpperCase()}] ${elementId}: ${message}`);
+    };
 
-    function getServerUrl() {
+    window.getServerUrl = function() {
         return document.getElementById('serverUrl').value.trim();
-    }
+    };
 
     // Test server connection
-    async function testServerConnection() {
+    window.testServerConnection = async function() {
         showStatus('connectionStatus', 'Testing server connection...', 'info');
 
         try {
             const response = await fetch(`${getServerUrl()}/health`);
             if (response.ok) {
-                showStatus('connectionStatus', 'Server connection successful!', 'success');
+                const data = await response.json();
+                showStatus('connectionStatus', '✅ Server connection successful!', 'success');
             } else {
-                showStatus('connectionStatus', `Server responded with status: ${response.status}`, 'error');
+                showStatus('connectionStatus', `❌ Server responded with status: ${response.status}`, 'error');
             }
         } catch (error) {
-            showStatus('connectionStatus', `Connection failed: ${error.message}`, 'error');
+            showStatus('connectionStatus', `❌ Connection failed: ${error.message}`, 'error');
         }
-    }
+    };
 
     // Registration flow using SimpleWebAuthn
-    async function registerPasskey() {
+    window.registerPasskey = async function() {
         const username = document.getElementById('regUsername').value.trim();
         const displayName = document.getElementById('regDisplayName').value.trim();
 
         if (!username || !displayName) {
-            showStatus('registrationStatus', 'Please enter both username and display name', 'error');
+            showStatus('registrationStatus', '⚠️ Please enter both username and display name', 'error');
             return;
         }
 
-        showStatus('registrationStatus', 'Starting registration...', 'info');
+        showStatus('registrationStatus', '🔄 Starting registration...', 'info');
 
         try {
             // Step 1: Get registration options from server
@@ -198,16 +219,27 @@
             });
 
             if (!startResponse.ok) {
-                throw new Error(`Registration start failed: ${startResponse.status} ${startResponse.statusText}`);
+                const errorText = await startResponse.text();
+                throw new Error(`Registration start failed: ${startResponse.status} - ${errorText}`);
             }
 
             const startData = await startResponse.json();
-            showStatus('registrationStatus', 'Creating passkey...', 'info');
+            console.log('Registration options received:', startData);
 
-            // Step 2: Create credential using SimpleWebAuthn (handles all the encoding/decoding automatically)
-            const attResp = await startRegistration(startData.publicKeyCredentialCreationOptions.publicKey);
+            // Parse the JSON string if needed
+            let publicKeyOptions;
+            if (typeof startData.publicKeyCredentialCreationOptions === 'string') {
+                publicKeyOptions = JSON.parse(startData.publicKeyCredentialCreationOptions);
+            } else {
+                publicKeyOptions = startData.publicKeyCredentialCreationOptions;
+            }
 
-            showStatus('registrationStatus', 'Completing registration...', 'info');
+            showStatus('registrationStatus', '🔑 Creating passkey...', 'info');
+
+            // Step 2: Create credential using SimpleWebAuthn
+            const attResp = await SimpleWebAuthnBrowser.startRegistration(publicKeyOptions);
+
+            showStatus('registrationStatus', '📤 Completing registration...', 'info');
 
             // Step 3: Send credential to server for verification
             const completeResponse = await fetch(`${getServerUrl()}/register/complete`, {
@@ -222,38 +254,41 @@
             });
 
             if (!completeResponse.ok) {
-                throw new Error(`Registration completion failed: ${completeResponse.status} ${completeResponse.statusText}`);
+                const errorText = await completeResponse.text();
+                throw new Error(`Registration completion failed: ${completeResponse.status} - ${errorText}`);
             }
 
             const result = await completeResponse.json();
 
             if (result.success) {
-                showStatus('registrationStatus', 'Registration successful! You can now authenticate.', 'success');
+                showStatus('registrationStatus', '✅ Registration successful! You can now authenticate.', 'success');
+                // Clear the authentication username field and prefill it
+                document.getElementById('authUsername').value = username;
             } else {
-                showStatus('registrationStatus', `Registration failed: ${result.message}`, 'error');
+                showStatus('registrationStatus', `❌ Registration failed: ${result.message || 'Unknown error'}`, 'error');
             }
 
         } catch (error) {
             console.error('Registration error:', error);
 
-            // Handle specific SimpleWebAuthn errors
+            // Handle specific WebAuthn errors
             if (error.name === 'InvalidStateError') {
-                showStatus('registrationStatus', 'A passkey for this account already exists on this device', 'error');
+                showStatus('registrationStatus', '⚠️ A passkey for this account already exists on this device', 'error');
             } else if (error.name === 'NotAllowedError') {
-                showStatus('registrationStatus', 'Registration was cancelled or timed out', 'error');
+                showStatus('registrationStatus', '❌ Registration was cancelled or timed out', 'error');
             } else if (error.name === 'NotSupportedError') {
-                showStatus('registrationStatus', 'WebAuthn is not supported on this device/browser', 'error');
+                showStatus('registrationStatus', '❌ WebAuthn is not supported on this device/browser', 'error');
             } else {
-                showStatus('registrationStatus', `Registration failed: ${error.message}`, 'error');
+                showStatus('registrationStatus', `❌ Registration failed: ${error.message}`, 'error');
             }
         }
-    }
+    };
 
     // Authentication flow using SimpleWebAuthn
-    async function authenticatePasskey() {
+    window.authenticatePasskey = async function() {
         const username = document.getElementById('authUsername').value.trim();
 
-        showStatus('authenticationStatus', 'Starting authentication...', 'info');
+        showStatus('authenticationStatus', '🔄 Starting authentication...', 'info');
 
         try {
             // Step 1: Get authentication options from server
@@ -268,16 +303,27 @@
             });
 
             if (!startResponse.ok) {
-                throw new Error(`Authentication start failed: ${startResponse.status} ${startResponse.statusText}`);
+                const errorText = await startResponse.text();
+                throw new Error(`Authentication start failed: ${startResponse.status} - ${errorText}`);
             }
 
             const startData = await startResponse.json();
-            showStatus('authenticationStatus', 'Please use your passkey...', 'info');
+            console.log('Authentication options received:', startData);
+
+            // Parse the JSON string if needed
+            let publicKeyOptions;
+            if (typeof startData.publicKeyCredentialRequestOptions === 'string') {
+                publicKeyOptions = JSON.parse(startData.publicKeyCredentialRequestOptions);
+            } else {
+                publicKeyOptions = startData.publicKeyCredentialRequestOptions;
+            }
+
+            showStatus('authenticationStatus', '🔐 Please use your passkey...', 'info');
 
             // Step 2: Get authentication assertion using SimpleWebAuthn
-            const asseResp = await startAuthentication(startData.publicKeyCredentialRequestOptions.publicKey);
+            const asseResp = await SimpleWebAuthnBrowser.startAuthentication(publicKeyOptions);
 
-            showStatus('authenticationStatus', 'Completing authentication...', 'info');
+            showStatus('authenticationStatus', '📤 Completing authentication...', 'info');
 
             // Step 3: Send assertion to server for verification
             const completeResponse = await fetch(`${getServerUrl()}/authenticate/complete`, {
@@ -292,39 +338,42 @@
             });
 
             if (!completeResponse.ok) {
-                throw new Error(`Authentication completion failed: ${completeResponse.status} ${completeResponse.statusText}`);
+                const errorText = await completeResponse.text();
+                throw new Error(`Authentication completion failed: ${completeResponse.status} - ${errorText}`);
             }
 
             const result = await completeResponse.json();
 
             if (result.success) {
-                showStatus('authenticationStatus',
-                    `Authentication successful! Welcome ${result.username}`, 'success');
+                showStatus('authenticationStatus', `✅ Authentication successful! Welcome, ${result.username || 'user'}!`, 'success');
             } else {
-                showStatus('authenticationStatus',
-                    `Authentication failed: ${result.message}`, 'error');
+                showStatus('authenticationStatus', `❌ Authentication failed: ${result.message || 'Unknown error'}`, 'error');
             }
 
         } catch (error) {
             console.error('Authentication error:', error);
 
-            // Handle specific SimpleWebAuthn errors
+            // Handle specific WebAuthn errors
             if (error.name === 'InvalidStateError') {
-                showStatus('authenticationStatus', 'No passkey found for this account on this device', 'error');
+                showStatus('authenticationStatus', '⚠️ No passkey found for this account on this device', 'error');
             } else if (error.name === 'NotAllowedError') {
-                showStatus('authenticationStatus', 'Authentication was cancelled or timed out', 'error');
+                showStatus('authenticationStatus', '❌ Authentication was cancelled or timed out', 'error');
             } else if (error.name === 'NotSupportedError') {
-                showStatus('authenticationStatus', 'WebAuthn is not supported on this device/browser', 'error');
+                showStatus('authenticationStatus', '❌ WebAuthn is not supported on this device/browser', 'error');
             } else {
-                showStatus('authenticationStatus', `Authentication failed: ${error.message}`, 'error');
+                showStatus('authenticationStatus', `❌ Authentication failed: ${error.message}`, 'error');
             }
         }
-    }
+    };
 
-    // Make functions available globally for button onclick handlers
-    window.registerPasskey = registerPasskey;
-    window.authenticatePasskey = authenticatePasskey;
-    window.testServerConnection = testServerConnection;
+    // Auto-test server connection on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('🚀 WebAuthn Test Client loaded');
+        console.log('📋 SimpleWebAuthn library:', window.SimpleWebAuthnBrowser ? 'loaded' : 'not loaded');
+
+        // Test server connection automatically
+        setTimeout(testServerConnection, 1000);
+    });
 </script>
 </body>
 </html>

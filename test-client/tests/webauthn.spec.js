@@ -47,8 +47,6 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
 
     // Step 1: Register a new passkey
-    console.log(`Registering user: ${uniqueUsername}`);
-
     await page.fill('#regUsername', uniqueUsername);
     await page.fill('#regDisplayName', 'Playwright Test User');
 
@@ -62,8 +60,6 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     expect(registrationStatus).toContain('successful');
 
     // Step 2: Authenticate with the newly registered passkey
-    console.log(`Authenticating user: ${uniqueUsername}`);
-
     await page.fill('#authUsername', uniqueUsername);
     await page.click('button:has-text("Authenticate with Passkey")');
     await page.waitForTimeout(3000);

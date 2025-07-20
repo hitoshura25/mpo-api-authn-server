@@ -9,5 +9,5 @@ sleep 10
 
 echo "✅ Full stack is ready!"
 echo ""
-echo "🔍 To view logs: docker-compose logs -f"
+echo "🔍 To view logs: docker compose logs -f"
 echo "🛑 To stop: docker compose down"

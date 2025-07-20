@@ -11,22 +11,22 @@ generate_password() {
 }
 
 # Set up environment variables with secure defaults
-export MPO_AUTHN_DB_HOST="${MPO_AUTHN_DB_HOST:-localhost}"
+export MPO_AUTHN_DB_HOST="${MPO_AUTHN_DB_HOST:-postgres}"
 export MPO_AUTHN_DB_PORT="${MPO_AUTHN_DB_PORT:-5432}"
 export MPO_AUTHN_DB_NAME="${MPO_AUTHN_DB_NAME:-webauthn_db}"
 export MPO_AUTHN_DB_USERNAME="${MPO_AUTHN_DB_USERNAME:-webauthn_user}"
 
-# Generate secure random passwords
-export MPO_AUTHN_DB_PASSWORD="$(generate_password)"
-export MPO_AUTHN_REDIS_PASSWORD="$(generate_password)"
+# Use secrets if available, otherwise generate secure random passwords
+export MPO_AUTHN_DB_PASSWORD="${POSTGRES_PASSWORD:-$(generate_password)}"
+export MPO_AUTHN_REDIS_PASSWORD="${REDIS_PASSWORD:-$(generate_password)}"
 
-export MPO_AUTHN_REDIS_HOST="${MPO_AUTHN_REDIS_HOST:-localhost}"
+export MPO_AUTHN_REDIS_HOST="${MPO_AUTHN_REDIS_HOST:-redis}"
 export MPO_AUTHN_REDIS_PORT="${MPO_AUTHN_REDIS_PORT:-6379}"
 export MPO_AUTHN_APP_PORT="${MPO_AUTHN_APP_PORT:-8080}"
 export MPO_AUTHN_APP_RELYING_PARTY_ID="${MPO_AUTHN_APP_RELYING_PARTY_ID:-localhost}"
 export MPO_AUTHN_APP_RELYING_PARTY_NAME="${MPO_AUTHN_APP_RELYING_PARTY_NAME:-MPO Api Authn}"
 export MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME="${MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME:-webauthn-server}"
-export MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT="${MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT:-http://localhost:4317}"
+export MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT="${MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT:-http://jaeger:4317}"
 
 echo "✅ Secure environment variables configured"
 echo "🔐 Using $([ -n "${POSTGRES_PASSWORD:-}" ] && echo "provided" || echo "generated") database password"

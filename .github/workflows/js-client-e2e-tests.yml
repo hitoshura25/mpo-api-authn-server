@@ -69,6 +69,17 @@ jobs:
         working-directory: test-client
         run: npm ci
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('test-client/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-browsers-
+      - name: Install Playwright browsers
+        working-directory: test-client
+        run: npx playwright install chromium --with-deps
+
       - name: Start full stack
         id: start-full-stack
         env:
@@ -79,17 +90,12 @@ jobs:
           docker compose up -d --build
           echo "✅ Services started and ready"
 
-      - name: Run E2E tests with Playwright Docker
+      - name: Run E2E tests
         id: run-tests
         working-directory: test-client
         run: |
           set +e
-          docker run --rm \
-            --network host \
-            -v $(pwd):/workspace \
-            -w /workspace \
-            mcr.microsoft.com/playwright:v1.40.0-jammy \
-            /bin/bash -c "npm ci && npx playwright test"
+          npm test
           TEST_EXIT_CODE=$?
           set -e
           

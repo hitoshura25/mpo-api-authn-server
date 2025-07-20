@@ -6,7 +6,7 @@ on:
       - main
 
 jobs:
-  default-branch-run:
+  default-branch-run-tests:
     runs-on: ubuntu-latest
     permissions:
       packages: write
@@ -20,6 +20,25 @@ jobs:
       - uses: ./.github/actions/run-tests
         with:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
+
+  default-branch-run-js-client-e2e-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-jdk
+      - uses: ./.github/actions/cache-gradle
+      - uses: ./.github/actions/run-js-client-e2e-tests
+
+  docker-publish:
+    runs-on: ubuntu-latest
+    needs: [ default-branch-run-tests, default-branch-run-js-client-e2e-tests ]
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
       - uses: ./.github/actions/docker-publish
         with:
           docker_username: ${{ secrets.DOCKER_USERNAME }}

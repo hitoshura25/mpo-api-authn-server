@@ -30,6 +30,20 @@ jobs:
           cache: 'npm'
           cache-dependency-path: test-client/package-lock.json
 
+      - name: Set up environment variables and start services
+        shell: bash
+        run: |
+          echo "Setting up secure environment with random passwords..."
+          ./scripts/setup-secure-env.sh
+
+      - name: Cache node_modules
+        uses: actions/cache@v3
+        with:
+          path: test-client/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('test-client/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
+
       - name: Install test client dependencies
         working-directory: test-client
         run: npm ci

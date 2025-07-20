@@ -75,11 +75,11 @@ runs:
         path: |
           test-client/playwright-report/
           test-client/test-results/
-        retention-days: 7
+        retention-days: 3
 
     - name: Upload Docker Logs
       uses: actions/upload-artifact@v4
-      if: failure()
+      if: always()
       with:
         name: docker-logs
         path: |

@@ -48,9 +48,17 @@ jobs:
         working-directory: test-client
         run: npm ci
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('test-client/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-browsers-
+
       - name: Install Playwright browsers
         working-directory: test-client
-        run: npx playwright install --with-deps
+        run: npx playwright install chromium --with-deps
 
       - name: Start full stack
         id: start-full-stack

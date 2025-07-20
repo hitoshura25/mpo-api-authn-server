@@ -35,6 +35,11 @@ runs:
       shell: bash
       run: npx playwright install --with-deps
 
+    - name: Start full stack
+      id: start-full-stack
+      shell: bash
+      run: start-full.sh
+
     - name: Run Playwright tests
       id: run-tests
       working-directory: test-client
@@ -43,7 +48,7 @@ runs:
         echo "Running Playwright tests..."
         # Run tests and capture exit code
         set +e  # Don't exit on failure
-        npm run test:with-server
+        npm run test
         TEST_EXIT_CODE=$?
         set -e  # Re-enable exit on failure
         
@@ -55,6 +60,12 @@ runs:
         else
           echo "✅ Tests passed successfully"
         fi
+
+    - name: Stop full stack
+      id: stop-full-stack
+      shell: bash
+      run: docker-compose down
+      if: always()
 
     - name: Upload Playwright Report
       uses: actions/upload-artifact@v4

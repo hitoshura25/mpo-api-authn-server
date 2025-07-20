@@ -36,11 +36,25 @@ runs:
       run: npx playwright install --with-deps
 
     - name: Run Playwright tests
+      id: run-tests
       working-directory: test-client
       shell: bash
       run: |
         echo "Running Playwright tests..."
+        # Run tests and capture exit code
+        set +e  # Don't exit on failure
         npm run test:with-server
+        TEST_EXIT_CODE=$?
+        set -e  # Re-enable exit on failure
+        
+        # Store exit code for later use
+        echo "test-exit-code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
+        
+        if [ $TEST_EXIT_CODE -ne 0 ]; then
+          echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
+        else
+          echo "✅ Tests passed successfully"
+        fi
 
     - name: Upload Playwright Report
       uses: actions/upload-artifact@v4
@@ -60,3 +74,12 @@ runs:
         path: |
           docker-compose-logs.txt
         retention-days: 3
+
+    - name: Fail job if tests failed
+      shell: bash
+      run: |
+        if [ "${{ steps.run-tests.outputs.test-exit-code }}" != "0" ]; then
+          echo "❌ Job failed due to test failures"
+          exit 1
+        fi
+        echo "✅ Job completed successfully"

@@ -63,9 +63,14 @@ runs:
 
     - name: Stop full stack
       id: stop-full-stack
-      shell: bash
-      run: docker-compose down
       if: always()
+      shell: bash
+      run: |
+        echo "Capturing Docker Compose logs..."
+        docker-compose logs > docker-compose-logs.txt 2>&1
+        echo "Stopping Docker Compose services..."
+        docker-compose down -v
+        echo "✅ Docker Compose services stopped"
 
     - name: Upload Playwright Report
       uses: actions/upload-artifact@v4

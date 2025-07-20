@@ -9,14 +9,6 @@ runs:
         echo "Setting up secure environment with random passwords..."
         ./scripts/setup-secure-env.sh
 
-    - name: Set up Docker Compose
-      shell: bash
-      run: |
-        # Docker is pre-installed on GitHub runners, but we need docker-compose
-        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        docker-compose --version
-
     - name: Cache node_modules
       uses: actions/cache@v3
       with:
@@ -67,9 +59,9 @@ runs:
       shell: bash
       run: |
         echo "Capturing Docker Compose logs..."
-        docker-compose logs > docker-compose-logs.txt 2>&1
+        docker compose logs > docker-compose-logs.txt 2>&1
         echo "Stopping Docker Compose services..."
-        docker-compose down -v
+        docker compose down -v
         echo "✅ Docker Compose services stopped"
 
     - name: Upload Playwright Report

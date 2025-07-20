@@ -47,30 +47,10 @@ jobs:
           echo "Setting up secure environment with random passwords..."
           ./scripts/setup-secure-env.sh
 
-      - name: Pre-pull Docker images
-        run: |
-          echo "Pre-pulling dependency images..."
-          echo "Checking if images are already cached..."
-          
-          # Check what images are already present
-          echo "Currently cached images:"
-          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -E "(postgres|redis|jaeger|playwright)" || echo "No cached images found"
-          
-          echo "Starting parallel image pulls..."
-          start_time=$(date +%s)
-          
-          docker pull postgres:15-alpine &
-          docker pull redis:7-alpine &
-          docker pull jaegertracing/all-in-one:1.53 &
-          docker pull mcr.microsoft.com/playwright:v1.40.0-jammy &
-          wait
-          
-          end_time=$(date +%s)
-          duration=$((end_time - start_time))
-          echo "✅ Dependency images pulled in ${duration} seconds"
-          
-          echo "Images after pull:"
-          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -E "(postgres|redis|jaeger|playwright)"
+      - name: Build docker containers
+        uses: docker/bake-action@v6
+        with:
+          load: true
 
       - name: Cache node_modules
         uses: actions/cache@v3
@@ -94,11 +74,6 @@ jobs:
       - name: Install Playwright browsers
         working-directory: test-client
         run: npx playwright install chromium --with-deps
-
-      - name: Build docker containers
-        uses: docker/bake-action@v6
-        with:
-          load: true
 
       - name: Start full stack
         id: start-full-stack

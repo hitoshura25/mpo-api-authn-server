@@ -50,29 +50,3 @@ MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT=${MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPO
 EOF
 
 echo "📝 Created .env file with secure configuration"
-
-# Start Docker Compose if requested
-if [ "${START_SERVICES:-true}" = "true" ]; then
-    echo "🚀 Starting WebAuthn server and dependencies..."
-    docker-compose up -d
-
-    # Wait for services to be ready
-    echo "⏳ Waiting for services to be ready..."
-    for i in {1..30}; do
-        if curl -f http://localhost:${MPO_AUTHN_APP_PORT}/health > /dev/null 2>&1; then
-            echo "✅ WebAuthn server is ready at http://localhost:${MPO_AUTHN_APP_PORT}"
-            echo "🔍 Jaeger UI available at http://localhost:16686"
-            break
-        fi
-        echo "⏳ Waiting for services... (attempt $i/30)"
-        sleep 2
-    done
-
-    if ! curl -f http://localhost:${MPO_AUTHN_APP_PORT}/health > /dev/null 2>&1; then
-        echo "❌ Services failed to start"
-        docker-compose logs
-        exit 1
-    fi
-else
-    echo "⏭️ Skipping service startup (START_SERVICES=false)"
-fi

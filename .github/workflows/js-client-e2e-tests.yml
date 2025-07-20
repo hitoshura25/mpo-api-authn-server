@@ -53,6 +53,7 @@ jobs:
           docker pull postgres:15-alpine &
           docker pull redis:7-alpine &
           docker pull jaegertracing/all-in-one:1.53 &
+          docker pull mcr.microsoft.com/playwright:v1.40.0-jammy &
           wait
           echo "✅ Dependency images pulled"
 
@@ -68,11 +69,6 @@ jobs:
         working-directory: test-client
         run: npm ci
 
-      - name: Install Playwright Browsers
-        uses: microsoft/playwright-github-action@v1
-        with:
-          browsers: chromium
-
       - name: Start full stack
         id: start-full-stack
         env:
@@ -87,12 +83,17 @@ jobs:
           timeout 120s bash -c 'until docker compose ps | grep -q "healthy.*healthy.*healthy"; do sleep 2; done'
           echo "✅ Services started and ready"
 
-      - name: Run E2E tests
+      - name: Run E2E tests with Playwright Docker
         id: run-tests
         working-directory: test-client
         run: |
           set +e
-          npm test
+          docker run --rm \
+            --network host \
+            -v $(pwd):/workspace \
+            -w /workspace \
+            mcr.microsoft.com/playwright:v1.40.0-jammy \
+            /bin/bash -c "npm ci && npx playwright test"
           TEST_EXIT_CODE=$?
           set -e
           

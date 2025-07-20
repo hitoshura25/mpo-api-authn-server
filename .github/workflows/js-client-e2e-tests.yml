@@ -87,7 +87,7 @@ jobs:
           COMPOSE_DOCKER_CLI_BUILD: 1
         run: |
           echo "Starting Docker Compose services..."
-          docker compose up -d --build --parallel
+          docker compose up -d --build
           echo "Waiting for services to be ready..."
           
           # More efficient health check waiting

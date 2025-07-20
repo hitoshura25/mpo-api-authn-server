@@ -1,0 +1,31 @@
+# Ignore build artifacts and caches
+build/
+.gradle/
+.idea/
+*.iml
+*.ipr
+*.iws
+
+# Ignore test results and reports
+test-results/
+playwright-report/
+
+# Ignore IDE files
+.vscode/
+.DS_Store
+
+# Ignore git
+.git/
+.gitignore
+
+# Ignore CI/CD files
+.github/
+
+# Ignore documentation
+README.md
+LICENSE
+
+# Ignore scripts not needed in container
+scripts/
+start-*.sh
+ide.env

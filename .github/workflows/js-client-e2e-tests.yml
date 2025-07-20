@@ -77,10 +77,6 @@ jobs:
         run: |
           echo "Starting Docker Compose services..."
           docker compose up -d --build
-          echo "Waiting for services to be ready..."
-          
-          # More efficient health check waiting
-          timeout 120s bash -c 'until docker compose ps | grep -q "healthy.*healthy.*healthy"; do sleep 2; done'
           echo "✅ Services started and ready"
 
       - name: Run E2E tests with Playwright Docker

@@ -1,14 +1,11 @@
 package com.vmenon.mpo.api.authn
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.vmenon.mpo.api.authn.di.storageModule
 import com.vmenon.mpo.api.authn.test_utils.BaseIntegrationTest
 import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator
 import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.Defaults
 import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.generateKeypair
+import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.data.ByteArray
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -20,6 +17,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
+import io.opentelemetry.api.GlobalOpenTelemetry
 import java.security.KeyPair
 import java.util.UUID
 import kotlin.test.assertEquals
@@ -35,11 +33,7 @@ import org.koin.core.context.stopKoin
  */
 class EndToEndIntegrationTest : BaseIntegrationTest() {
 
-    private val objectMapper = ObjectMapper().apply {
-        registerModule(KotlinModule.Builder().build())
-        registerModule(JavaTimeModule())
-        registerModule(Jdk8Module())
-    }
+    private val objectMapper = JacksonUtils.objectMapper
 
     @Test
     fun `test complete WebAuthn flow with real databases`() = testApplication {
@@ -64,8 +58,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
         assertNotNull(startRegBody.get("requestId"))
         assertNotNull(startRegBody.get("publicKeyCredentialCreationOptions"))
 
-        val credentialOptionsString = startRegBody.get("publicKeyCredentialCreationOptions").asText()
-        val credentialOptions = objectMapper.readTree(credentialOptionsString)
+        val credentialOptions = startRegBody.get("publicKeyCredentialCreationOptions")
 
         // Verify registration options
         val publicKey = credentialOptions.get("publicKey")
@@ -112,6 +105,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
 
             // Simulate application restart by stopping Koin and clearing caches
             stopKoin()
+            GlobalOpenTelemetry.resetForTest()
         }
 
         testApplication {
@@ -130,9 +124,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             assertNotNull(startAuthBody.get("requestId"))
             assertNotNull(startAuthBody.get("publicKeyCredentialRequestOptions"))
 
-            val requestCredentialOptions = objectMapper.readTree(
-                startAuthBody.get("publicKeyCredentialRequestOptions").asText()
-            )
+            val requestCredentialOptions = startAuthBody.get("publicKeyCredentialRequestOptions")
             val allowCredentials = requestCredentialOptions.get("publicKey").get("allowCredentials")
             assertTrue(allowCredentials.size() > 0, "User credentials should be found after restart")
         }
@@ -157,7 +149,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             contentType(ContentType.Application.Json)
             setBody(objectMapper.writeValueAsString(completeRegRequest))
         }
-        assertEquals(HttpStatusCode.InternalServerError, completeRegResponse.status)
+        assertEquals(HttpStatusCode.BadRequest, completeRegResponse.status)
     }
 
     @Test
@@ -181,7 +173,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             setBody(objectMapper.writeValueAsString(completeAuthRequest))
         }
 
-        assertEquals(HttpStatusCode.InternalServerError, completeAuthResponse.status)
+        assertEquals(HttpStatusCode.BadRequest, completeAuthResponse.status)
     }
 
     @Test
@@ -294,10 +286,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     ): HttpResponse {
         val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
         val requestId = startRegBody.get("requestId").asText()
-        val credentialOptions = objectMapper.readTree(
-            startRegBody.get("publicKeyCredentialCreationOptions").asText()
-        )
-
+        val credentialOptions = startRegBody.get("publicKeyCredentialCreationOptions")
         val challenge = credentialOptions.get("publicKey").get("challenge").asText()
         val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
             ByteArray.fromBase64Url(challenge),
@@ -333,9 +322,7 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
     ): HttpResponse {
         val startAuthBody = objectMapper.readTree(startAuthResponse.bodyAsText())
         val authRequestId = startAuthBody.get("requestId").asText()
-        val requestCredentialOptions = objectMapper.readTree(
-            startAuthBody.get("publicKeyCredentialRequestOptions").asText()
-        )
+        val requestCredentialOptions = startAuthBody.get("publicKeyCredentialRequestOptions")
         val authPublicKey = requestCredentialOptions.get("publicKey")
         val authChallenge = authPublicKey.get("challenge").asText()
         val allowCredentials = authPublicKey.get("allowCredentials").first()

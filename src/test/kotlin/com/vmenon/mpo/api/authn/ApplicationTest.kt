@@ -126,8 +126,8 @@ class ApplicationTest : KoinTest {
             setBody(objectMapper.writeValueAsString(completeRequest))
         }
 
-        assertEquals(HttpStatusCode.InternalServerError, response.status)
-        assertTrue(response.bodyAsText().contains("Invalid request ID"))
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertTrue(response.bodyAsText().contains("Invalid or expired request ID"))
     }
 
 
@@ -147,7 +147,7 @@ class ApplicationTest : KoinTest {
             setBody(objectMapper.writeValueAsString(completeRequest))
         }
 
-        assertEquals(HttpStatusCode.InternalServerError, response.status)
-        assertTrue(response.bodyAsText().contains("Invalid request ID"))
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertTrue(response.bodyAsText().contains("Invalid or expired request ID"))
     }
 }

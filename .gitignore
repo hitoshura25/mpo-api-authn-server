@@ -1,3 +1,5 @@
+.DS_Store
+
 # Compiled class file
 *.class
 
@@ -21,3 +23,4 @@ replay_pid*
 .idea
 build/
 .env
+ide.env

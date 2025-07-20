@@ -30,6 +30,10 @@ class InMemoryCredentialStorage : CredentialStorage {
         return storage[username]?.firstOrNull()?.userAccount
     }
 
+    override fun userExists(username: String): Boolean {
+        return storage.containsKey(username)
+    }
+
     override fun lookup(credentialId: ByteArray, userHandle: ByteArray): Optional<RegisteredCredential> {
         val userAccount = getUserByHandle(userHandle) ?: return Optional.empty()
 

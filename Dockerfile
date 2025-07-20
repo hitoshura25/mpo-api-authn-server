@@ -3,11 +3,14 @@ FROM gradle:8.13-jdk21 AS build
 
 WORKDIR /app
 
-# Copy Gradle wrapper and build files
+# Copy Gradle wrapper and build files first (changes less frequently)
 COPY gradle gradle
 COPY gradlew gradlew.bat build.gradle.kts ./
 
-# Copy source code
+# Download dependencies (this layer will be cached if dependencies don't change)
+RUN ./gradlew dependencies --no-daemon
+
+# Copy source code (changes more frequently, so comes after dependency download)
 COPY src src
 
 # Build the application
@@ -17,6 +20,9 @@ RUN ./gradlew clean shadowJar --no-daemon
 FROM openjdk:21-slim
 
 WORKDIR /app
+
+# Install curl for health checks
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser

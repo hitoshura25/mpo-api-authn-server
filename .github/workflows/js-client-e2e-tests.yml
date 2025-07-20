@@ -1,0 +1,94 @@
+name: Run JS Client E2E Tests
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '18'
+    outputs:
+      test-exit-code:
+        description: 'Exit code from the tests'
+        value: ${{ jobs.js-client-e2e-tests.outputs.test-exit-code }}
+
+jobs:
+  js-client-e2e-tests:
+    runs-on: ubuntu-latest
+    outputs:
+      test-exit-code: ${{ steps.run-tests.outputs.test-exit-code }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: 'npm'
+          cache-dependency-path: test-client/package-lock.json
+
+      - name: Install test client dependencies
+        working-directory: test-client
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: test-client
+        run: npx playwright install --with-deps
+
+      - name: Start full stack
+        id: start-full-stack
+        run: |
+          echo "Starting Docker Compose services..."
+          docker compose up -d --build
+          echo "Waiting for services to be ready..."
+          sleep 30
+          echo "✅ Services started and ready"
+
+      - name: Run E2E tests
+        id: run-tests
+        working-directory: test-client
+        run: |
+          set +e
+          npm test
+          TEST_EXIT_CODE=$?
+          set -e
+          
+          # Store exit code for later use
+          echo "test-exit-code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          if [ $TEST_EXIT_CODE -ne 0 ]; then
+            echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
+          else
+            echo "✅ Tests passed successfully"
+          fi
+
+      - name: Stop full stack
+        id: stop-full-stack
+        if: always()
+        run: |
+          echo "Capturing Docker Compose logs..."
+          docker compose logs > docker-compose-logs.txt 2>&1
+          echo "Stopping Docker Compose services..."
+          docker compose down -v
+          echo "✅ Docker Compose services stopped"
+
+      - name: Upload Playwright Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: |
+            test-client/playwright-report/
+            test-client/test-results/
+          retention-days: 3
+
+      - name: Upload Docker Logs
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: docker-logs
+          path: docker-compose-logs.txt
+          retention-days: 3

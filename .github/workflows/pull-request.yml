@@ -17,9 +17,8 @@ jobs:
           codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
   pull-request-run-js-client-e2e-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-jdk
-      - uses: ./.github/actions/cache-gradle
-      - uses: ./.github/actions/run-js-client-e2e-tests
+    name: Pull Request E2E Tests
+    uses: ./.github/workflows/js-client-e2e-tests.yml
+    with:
+      node-version: '18'
+

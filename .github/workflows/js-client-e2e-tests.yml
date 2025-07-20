@@ -95,6 +95,11 @@ jobs:
         working-directory: test-client
         run: npx playwright install chromium --with-deps
 
+      - name: Build docker containers
+        uses: docker/bake-action@v6
+        with:
+          load: true
+
       - name: Start full stack
         id: start-full-stack
         env:

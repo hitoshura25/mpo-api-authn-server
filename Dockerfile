@@ -7,14 +7,11 @@ WORKDIR /app
 COPY gradle gradle
 COPY gradlew gradlew.bat build.gradle.kts ./
 
-# Download dependencies (this layer will be cached if dependencies don't change)
-RUN ./gradlew dependencies --no-daemon
-
 # Copy source code (changes more frequently, so comes after dependency download)
 COPY src src
 
-# Build the application
-RUN ./gradlew clean shadowJar --no-daemon
+# Build the application (no clean needed since we want to keep the cached dependencies)
+RUN --mount=type=cache,target=~/.gradle ./gradlew shadowJar --parallel --no-daemon
 
 # Runtime stage
 FROM openjdk:21-slim

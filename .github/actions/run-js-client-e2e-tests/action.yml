@@ -3,6 +3,20 @@ description: 'Runs JavaScript E2E tests using Playwright'
 runs:
   using: "composite"
   steps:
+    - name: Set up environment variables and start services
+      shell: bash
+      run: |
+        echo "Setting up secure environment with random passwords..."
+        ./scripts/setup-secure-env.sh
+
+    - name: Set up Docker Compose
+      shell: bash
+      run: |
+        # Docker is pre-installed on GitHub runners, but we need docker-compose
+        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+        sudo chmod +x /usr/local/bin/docker-compose
+        docker-compose --version
+
     - name: Cache node_modules
       uses: actions/cache@v3
       with:
@@ -20,14 +34,6 @@ runs:
       working-directory: test-client
       shell: bash
       run: npx playwright install --with-deps
-
-    - name: Set up Docker Compose
-      shell: bash
-      run: |
-        # Docker is pre-installed on GitHub runners, but we need docker-compose
-        sudo curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
-        sudo chmod +x /usr/local/bin/docker-compose
-        docker-compose --version
 
     - name: Run Playwright tests
       working-directory: test-client

@@ -50,12 +50,27 @@ jobs:
       - name: Pre-pull Docker images
         run: |
           echo "Pre-pulling dependency images..."
+          echo "Checking if images are already cached..."
+          
+          # Check what images are already present
+          echo "Currently cached images:"
+          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -E "(postgres|redis|jaeger|playwright)" || echo "No cached images found"
+          
+          echo "Starting parallel image pulls..."
+          start_time=$(date +%s)
+          
           docker pull postgres:15-alpine &
           docker pull redis:7-alpine &
           docker pull jaegertracing/all-in-one:1.53 &
           docker pull mcr.microsoft.com/playwright:v1.40.0-jammy &
           wait
-          echo "✅ Dependency images pulled"
+          
+          end_time=$(date +%s)
+          duration=$((end_time - start_time))
+          echo "✅ Dependency images pulled in ${duration} seconds"
+          
+          echo "Images after pull:"
+          docker images --format "table {{.Repository}}:{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}" | grep -E "(postgres|redis|jaeger|playwright)"
 
       - name: Cache node_modules
         uses: actions/cache@v3
@@ -87,8 +102,30 @@ jobs:
           COMPOSE_DOCKER_CLI_BUILD: 1
         run: |
           echo "Starting Docker Compose services..."
+          start_time=$(date +%s)
+          
           docker compose up -d --build
-          echo "✅ Services started and ready"
+          echo "Waiting for services to be ready..."
+          
+          # Wait for all services to be healthy
+          echo "Checking service health..."
+          for i in {1..60}; do
+            healthy_count=$(docker compose ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
+            if [ "$healthy_count" -eq 4 ]; then
+              echo "✅ All 4 services are healthy"
+              break
+            fi
+            echo "Waiting for services... ($healthy_count/4 healthy) - attempt $i/60"
+            sleep 2
+          done
+          
+          end_time=$(date +%s)
+          duration=$((end_time - start_time))
+          echo "✅ Services started and ready in ${duration} seconds"
+          
+          # Final check and display status
+          echo "Final service status:"
+          docker compose ps
 
       - name: Run E2E tests
         id: run-tests

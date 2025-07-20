@@ -38,7 +38,7 @@ runs:
     - name: Start full stack
       id: start-full-stack
       shell: bash
-      run: start-full.sh
+      run: ./start-full.sh
 
     - name: Run Playwright tests
       id: run-tests

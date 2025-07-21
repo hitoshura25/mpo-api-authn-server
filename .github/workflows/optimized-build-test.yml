@@ -58,7 +58,6 @@ jobs:
           images: mpo-api-authn-server
           tags: |
             type=ref,event=pr,prefix=pr-
-            type=sha,prefix={{branch}}-,format=short
           labels: |
             org.opencontainers.image.title=MPO API Auth Server
             org.opencontainers.image.description=Authentication server for MPO API

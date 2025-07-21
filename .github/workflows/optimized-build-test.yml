@@ -30,6 +30,11 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Setup Gradle
+        uses: gradle/gradle-build-action@v2
+        with:
+          gradle-home-cache-cleanup: true
+
       - name: Cache Gradle dependencies
         uses: actions/cache@v3
         with:
@@ -40,8 +45,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Run unit tests
-        run: ./gradlew test
+      - name: Run tests with Gradle cache
+        run: ./gradlew test --build-cache --parallel
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -50,10 +55,13 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: your-app
+          images: mpo-api-authn-server
           tags: |
-            type=ref,event=pr
-            type=sha,prefix={{branch}}-
+            type=ref,event=pr,prefix=pr-
+            type=sha,prefix={{branch}}-,format=short
+          labels: |
+            org.opencontainers.image.title=MPO API Auth Server
+            org.opencontainers.image.description=Authentication server for MPO API
 
       - name: Build and cache Docker image
         id: build
@@ -65,6 +73,8 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            GRADLE_OPTS=-Dorg.gradle.daemon=false
 
   js-client-e2e-tests:
     needs: build-and-test

@@ -105,7 +105,7 @@ jobs:
       - name: Cache Docker images
         uses: actions/cache@v4
         with:
-          path: /tmp/.buildx-cache
+          path: /var/lib/docker
           key: ${{ runner.os }}-docker-deps-${{ hashFiles('docker-compose.yml', 'docker-compose.deps.yml') }}
           restore-keys: |
             ${{ runner.os }}-docker-deps-

@@ -13,5 +13,7 @@ jobs:
       node-version: '18'
     secrets:
       codecov_token: ${{ secrets.CODECOV_TOKEN }}
-      gradle_encryption_key: ${{secrets.GRADLE_ENCRYPTION_KEY}}
+      gradle_encryption_key: ${{secrets.GRADLE_ENCRYPTION_KEY }}
+      docker_hub_username: ${{ secrets.DOCKER_USERNAME }}
+      docker_hub_token: ${{ secrets.DOCKER_PASSWORD }}
 

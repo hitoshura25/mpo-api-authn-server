@@ -15,6 +15,12 @@ on:
       gradle_encryption_key:
         description: 'Gradle encryption key'
         required: true
+      docker_hub_username:
+        description: 'DockerHub username'
+        required: true
+      docker_hub_token:
+        description: 'DockerHub token'
+        required: true
     outputs:
       test-exit-code:
         description: 'Exit code from the tests'
@@ -60,16 +66,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Extract metadata
+      - name: Docker meta
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: mpo-api-authn-server
+          images: hitoshura25/mpo-api-authn-server
           tags: |
-            type=ref,event=pr,prefix=pr-
-          labels: |
-            org.opencontainers.image.title=MPO API Auth Server
-            org.opencontainers.image.description=Authentication server for MPO API
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=pr
 
       - name: Build and cache Docker image
         id: build
@@ -158,3 +162,18 @@ jobs:
           name: docker-logs
           path: docker-compose-logs.txt
           retention-days: 3
+
+      - name: Login to DockerHub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.docker_hub_username }}
+          password: ${{ secrets.docker_hub_token }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}

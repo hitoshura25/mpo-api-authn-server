@@ -95,7 +95,8 @@ jobs:
         working-directory: test-client
         run: |
           npm ci
-          npx playwright install chromium
+          # They recommend using the --with-dependencies flag however that adds additional time and tests work so far without it
+          npx playwright install chromium 
 
       - name: Set up environment and start services
         run: |

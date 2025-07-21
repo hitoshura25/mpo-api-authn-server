@@ -5,10 +5,12 @@ const { spawn } = require('child_process');
 let testClientProcess = null;
 
 async function globalSetup() {
+  const setupStartTime = Date.now();
   console.log('🚀 Setting up WebAuthn test environment...');
 
   // Start the test client web application
   console.log('🌐 Starting test client web application...');
+  const clientStartTime = Date.now();
   testClientProcess = spawn('npm', ['start'], {
     cwd: __dirname,
     stdio: 'inherit',
@@ -20,6 +22,7 @@ async function globalSetup() {
 
   // Wait for test client to be ready
   console.log('⏳ Waiting for test client to be ready...');
+  const clientWaitStartTime = Date.now();
   const maxClientRetries = 15;
   const retryDelay = 1000;
 
@@ -27,7 +30,9 @@ async function globalSetup() {
     try {
       const response = await fetch('http://localhost:8081/health');
       if (response.ok) {
-        console.log('✅ Test client is running and ready');
+        const clientReadyTime = Date.now();
+        const clientWaitDuration = clientReadyTime - clientWaitStartTime;
+        console.log(`✅ Test client is running and ready (${clientWaitDuration}ms)`);
         break;
       }
     } catch (error) {
@@ -35,7 +40,9 @@ async function globalSetup() {
     }
 
     if (i === maxClientRetries - 1) {
-      console.error('❌ Test client failed to start');
+      const failedTime = Date.now();
+      const totalWaitTime = failedTime - clientWaitStartTime;
+      console.error(`❌ Test client failed to start after ${totalWaitTime}ms`);
       throw new Error('Test client is not ready');
     }
 
@@ -44,6 +51,7 @@ async function globalSetup() {
 
   // Verify that the test client has SimpleWebAuthn loaded
   console.log('🔍 Verifying SimpleWebAuthn library is available...');
+  const libraryCheckStartTime = Date.now();
   const browser = await chromium.launch();
   const page = await browser.newPage();
 
@@ -57,13 +65,16 @@ async function globalSetup() {
     }, { timeout: 10000 });
 
     if (isLibraryLoaded) {
-      console.log('✅ SimpleWebAuthn library loaded successfully');
+      const libraryLoadedTime = Date.now();
+      const libraryCheckDuration = libraryLoadedTime - libraryCheckStartTime;
+      console.log(`✅ SimpleWebAuthn library loaded successfully (${libraryCheckDuration}ms)`);
     } else {
       throw new Error('SimpleWebAuthn library failed to load');
     }
 
     // Verify the web application loads correctly
     console.log('🔍 Verifying web application loads correctly...');
+    const appVerifyStartTime = Date.now();
 
     // Check page title
     const title = await page.title();
@@ -83,7 +94,9 @@ async function globalSetup() {
              document.querySelector('h1').textContent.includes('WebAuthn');
     }, { timeout: 10000 });
 
-    console.log('✅ Web application loaded and initialized successfully');
+    const appVerifiedTime = Date.now();
+    const appVerifyDuration = appVerifiedTime - appVerifyStartTime;
+    console.log(`✅ Web application loaded and initialized successfully (${appVerifyDuration}ms)`);
 
   } finally {
     await page.close();
@@ -92,14 +105,19 @@ async function globalSetup() {
 
   // Wait for WebAuthn server to be ready
   console.log('⏳ Waiting for WebAuthn server to be ready...');
-
+  const serverWaitStartTime = Date.now();
   const maxRetries = 30; // Wait up to 30 seconds
 
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await fetch('http://localhost:8080/health');
       if (response.ok) {
-        console.log('✅ WebAuthn server is running and ready for tests');
+        const serverReadyTime = Date.now();
+        const serverWaitDuration = serverReadyTime - serverWaitStartTime;
+        const totalSetupTime = serverReadyTime - setupStartTime;
+        console.log(`✅ WebAuthn server is running and ready for tests (waited ${serverWaitDuration}ms)`);
+        console.log(`🎯 Total setup time: ${totalSetupTime}ms (${(totalSetupTime/1000).toFixed(1)}s)`);
+
         // Store the test client process so we can clean it up later
         global.testClientProcess = testClientProcess;
         return null;
@@ -115,7 +133,10 @@ async function globalSetup() {
   }
 
   // If we get here, server is not ready
-  console.error('❌ WebAuthn server is not ready after 30 seconds');
+  const failedTime = Date.now();
+  const totalWaitTime = failedTime - serverWaitStartTime;
+  const totalSetupTime = failedTime - setupStartTime;
+  console.error(`❌ WebAuthn server is not ready after ${totalWaitTime}ms (total setup time: ${totalSetupTime}ms)`);
   console.error('   Please ensure the server is running with Docker Compose:');
   console.error('   npm run server:start');
   console.error('   Or check server logs with:');

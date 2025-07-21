@@ -1,10 +1,12 @@
 // Global teardown for Playwright tests
 async function globalTeardown() {
+  const teardownStartTime = Date.now();
   console.log('🧹 Cleaning up WebAuthn test environment...');
 
   // Clean up the test client web application process
   if (global.testClientProcess) {
     console.log('🔌 Stopping test client web application...');
+    const stopStartTime = Date.now();
     try {
       global.testClientProcess.kill('SIGTERM');
 
@@ -16,11 +18,19 @@ async function globalTeardown() {
         global.testClientProcess.kill('SIGKILL');
       }
 
-      console.log('✅ Test client stopped successfully');
+      const stopEndTime = Date.now();
+      const stopDuration = stopEndTime - stopStartTime;
+      console.log(`✅ Test client stopped successfully (${stopDuration}ms)`);
     } catch (error) {
-      console.warn('⚠️ Warning: Could not stop test client process:', error.message);
+      const stopEndTime = Date.now();
+      const stopDuration = stopEndTime - stopStartTime;
+      console.warn(`⚠️ Warning: Could not stop test client process after ${stopDuration}ms:`, error.message);
     }
   }
+
+  const teardownEndTime = Date.now();
+  const totalTeardownTime = teardownEndTime - teardownStartTime;
+  console.log(`🎯 Total teardown time: ${totalTeardownTime}ms (${(totalTeardownTime/1000).toFixed(1)}s)`);
 
   return null;
 }

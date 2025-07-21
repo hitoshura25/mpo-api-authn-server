@@ -6,20 +6,14 @@ on:
       - main
 
 jobs:
-  pull-request-run-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-jdk
-      - uses: ./.github/actions/cache-gradle
-      - uses: ./.github/actions/run-tests
-        with:
-          codecov_token: ${{ secrets.CODECOV_TOKEN }}
-
   pull-request-run-js-client-e2e-tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-jdk
-      - uses: ./.github/actions/cache-gradle
-      - uses: ./.github/actions/run-js-client-e2e-tests
+    name: Pull Request E2E Tests
+    uses: ./.github/workflows/js-client-e2e-tests.yml
+    with:
+      node-version: '18'
+    secrets:
+      codecov_token: ${{ secrets.CODECOV_TOKEN }}
+      gradle_encryption_key: ${{secrets.GRADLE_ENCRYPTION_KEY }}
+      docker_hub_username: ${{ secrets.DOCKER_USERNAME }}
+      docker_hub_token: ${{ secrets.DOCKER_PASSWORD }}
+

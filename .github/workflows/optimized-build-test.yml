@@ -14,11 +14,15 @@ on:
         value: ${{ jobs.js-client-e2e-tests.outputs.test-exit-code }}
 
 jobs:
-  build-and-test:
+  js-client-e2e-tests:
+    needs: build-and-test
     runs-on: ubuntu-latest
+    services:
+      playwright:
+        image: mcr.microsoft.com/playwright:v1.40.0-jammy
+        options: --network-alias playwright
     outputs:
-      image-tag: ${{ steps.meta.outputs.tags }}
-      image-digest: ${{ steps.build.outputs.digest }}
+      test-exit-code: ${{ steps.run-tests.outputs.test-exit-code }}
 
     steps:
       - name: Checkout code
@@ -34,16 +38,6 @@ jobs:
         uses: gradle/gradle-build-action@v2
         with:
           gradle-home-cache-cleanup: true
-
-      - name: Cache Gradle dependencies
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-
 
       - name: Run tests with Gradle cache
         run: ./gradlew test --build-cache --parallel
@@ -75,29 +69,6 @@ jobs:
           build-args: |
             GRADLE_OPTS=-Dorg.gradle.daemon=false
 
-  js-client-e2e-tests:
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    services:
-      playwright:
-        image: mcr.microsoft.com/playwright:v1.40.0-jammy
-        options: --network-alias playwright
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Load cached Docker image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          load: true
-          tags: ${{ needs.build-and-test.outputs.image-tag }}
-          cache-from: type=gha
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -114,7 +85,7 @@ jobs:
       - name: Set up environment and start services
         run: |
           ./scripts/setup-secure-env.sh
-          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 COMPOSE_BAKE=true docker compose up -d --build
+          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose up -d --build
           
           # Wait for services
           for i in {1..60}; do

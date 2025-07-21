@@ -102,15 +102,13 @@ jobs:
           # They recommend using the --with-dependencies flag however that adds additional time and tests work so far without it
           npx playwright install chromium --only-shell
 
-      - name: Cache dependency images
-        run: |
-          # Enable Docker BuildKit cache
-          export DOCKER_BUILDKIT=1
-          export COMPOSE_DOCKER_CLI_BUILD=1
-
-          # Pull dependency images with cache
-          docker buildx imagetools inspect postgres:15-alpine || docker pull postgres:15-alpine
-          docker buildx imagetools inspect redis:7-alpine || docker pull redis:7-alpine
+      - name: Cache Docker images
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.buildx-cache
+          key: ${{ runner.os }}-docker-deps-${{ hashFiles('docker-compose.yml', 'docker-compose.deps.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-docker-deps-
 
       - name: Set up environment and start services
         run: |

@@ -102,14 +102,6 @@ jobs:
           # They recommend using the --with-dependencies flag however that adds additional time and tests work so far without it
           npx playwright install chromium --only-shell
 
-      - name: Cache Docker images
-        uses: actions/cache@v4
-        with:
-          path: /var/lib/docker
-          key: ${{ runner.os }}-docker-deps-${{ hashFiles('docker-compose.yml', 'docker-compose.deps.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-docker-deps-
-
       - name: Set up environment and start services
         run: |
           ./scripts/setup-secure-env.sh

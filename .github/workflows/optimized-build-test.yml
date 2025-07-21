@@ -41,7 +41,6 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-home-cache-cleanup: true
-          cache-read-only: ${{ github.event_name == 'pull_request' }}
 
       - name: Run tests with Gradle cache
         run: ./gradlew koverXmlReport --build-cache --parallel

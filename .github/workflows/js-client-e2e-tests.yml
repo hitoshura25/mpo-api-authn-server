@@ -114,7 +114,7 @@ jobs:
               echo "✅ All services ready"
               break
             fi
-            sleep 2
+            sleep 0.5
           done
 
       - name: Run E2E tests

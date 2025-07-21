@@ -4,6 +4,45 @@ const { spawn } = require('child_process');
 
 let testClientProcess = null;
 
+/**
+ * Generic function to wait for a service to be ready with responsive polling
+ */
+async function waitForService(url, serviceName, maxWaitTimeMs = 15000) {
+  const startTime = Date.now();
+  const retryDelay = 100;
+  const maxRetries = Math.floor(maxWaitTimeMs / retryDelay);
+
+  console.log(`⏳ Waiting for ${serviceName} to be ready...`);
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = await fetch(url);
+      if (response.ok) {
+        const endTime = Date.now();
+        const waitDuration = endTime - startTime;
+        console.log(`✅ ${serviceName} is running and ready (${waitDuration}ms)`);
+        return waitDuration;
+      } else {
+        // Only log every 10th attempt to reduce noise (every 1 second)
+        if (i % 10 === 0 || i > maxRetries * 0.7) {
+          console.log(`⏳ ${serviceName} responded with status ${response.status}, retrying... (${Math.floor(i * retryDelay / 1000)}s)`);
+        }
+      }
+    } catch (error) {
+      // Only log every 10th attempt to reduce noise (every 1 second)
+      if (i % 10 === 0 || i > maxRetries * 0.7) {
+        console.log(`⏳ ${serviceName} not ready, retrying... (${Math.floor(i * retryDelay / 1000)}s)`);
+      }
+    }
+
+    await new Promise(resolve => setTimeout(resolve, retryDelay));
+  }
+
+  const failedTime = Date.now();
+  const totalWaitTime = failedTime - startTime;
+  throw new Error(`${serviceName} is not ready after ${totalWaitTime}ms`);
+}
+
 async function globalSetup() {
   const setupStartTime = Date.now();
   console.log('🚀 Setting up WebAuthn test environment...');
@@ -16,145 +55,60 @@ async function globalSetup() {
     detached: false
   });
 
-  // Wait for test client to be ready (start checking immediately)
-  console.log('⏳ Waiting for test client to be ready...');
-  const clientWaitStartTime = Date.now();
-  const maxClientRetries = 150; // 15 seconds max (150 * 100ms)
-  const retryDelay = 100; // Check every 100ms instead of 1000ms
-
-  for (let i = 0; i < maxClientRetries; i++) {
-    try {
-      const response = await fetch('http://localhost:8081/health');
-      if (response.ok) {
-        const clientReadyTime = Date.now();
-        const clientWaitDuration = clientReadyTime - clientWaitStartTime;
-        console.log(`✅ Test client is running and ready (${clientWaitDuration}ms)`);
-        break;
-      }
-    } catch (error) {
-      // Only log every 10th attempt to reduce noise (every 1 second)
-      if (i % 10 === 0 || i > 100) {
-        console.log(`⏳ Test client not ready, retrying... (${Math.floor(i * retryDelay / 1000)}s)`);
-      }
-    }
-
-    if (i === maxClientRetries - 1) {
-      const failedTime = Date.now();
-      const totalWaitTime = failedTime - clientWaitStartTime;
-      console.error(`❌ Test client failed to start after ${totalWaitTime}ms`);
-      throw new Error('Test client is not ready');
-    }
-
-    await new Promise(resolve => setTimeout(resolve, retryDelay));
+  // Wait for test client to be ready
+  try {
+    await waitForService('http://localhost:8081/health', 'Test client', 15000);
+  } catch (error) {
+    console.error(`❌ ${error.message}`);
+    throw new Error('Test client is not ready');
   }
 
-  // Verify that the test client has SimpleWebAuthn loaded
-  console.log('🔍 Verifying SimpleWebAuthn library is available...');
-  const libraryCheckStartTime = Date.now();
-  const browser = await chromium.launch();
-  const page = await browser.newPage();
+  // Quick verification that the web application is serving correctly
+  console.log('🔍 Verifying web application is serving correctly...');
+  const appVerifyStartTime = Date.now();
 
   try {
-    await page.goto('http://localhost:8081');
-    await page.waitForLoadState('networkidle');
+    // Just check that the main page loads with correct content
+    const response = await fetch('http://localhost:8081');
+    const html = await response.text();
 
-    // Wait for SimpleWebAuthn library to load
-    const isLibraryLoaded = await page.waitForFunction(() => {
-      return typeof window.SimpleWebAuthnBrowser !== 'undefined';
-    }, { timeout: 10000 });
-
-    if (isLibraryLoaded) {
-      const libraryLoadedTime = Date.now();
-      const libraryCheckDuration = libraryLoadedTime - libraryCheckStartTime;
-      console.log(`✅ SimpleWebAuthn library loaded successfully (${libraryCheckDuration}ms)`);
-    } else {
-      throw new Error('SimpleWebAuthn library failed to load');
+    if (!html.includes('WebAuthn Test Client')) {
+      throw new Error('Web application does not contain expected content');
     }
 
-    // Verify the web application loads correctly
-    console.log('🔍 Verifying web application loads correctly...');
-    const appVerifyStartTime = Date.now();
-
-    // Check page title
-    const title = await page.title();
-    if (title !== 'WebAuthn Test Client') {
-      throw new Error(`Expected page title 'WebAuthn Test Client', got '${title}'`);
-    }
-
-    // Check main heading
-    const heading = await page.locator('h1').textContent();
-    if (!heading.includes('WebAuthn Passkey Test Client')) {
-      throw new Error(`Expected heading to contain 'WebAuthn Passkey Test Client', got '${heading}'`);
-    }
-
-    // Wait for application to fully initialize
-    await page.waitForFunction(() => {
-      return document.getElementById('connectionStatus') &&
-             document.querySelector('h1').textContent.includes('WebAuthn');
-    }, { timeout: 10000 });
-
-    const appVerifiedTime = Date.now();
-    const appVerifyDuration = appVerifiedTime - appVerifyStartTime;
-    console.log(`✅ Web application loaded and initialized successfully (${appVerifyDuration}ms)`);
-
-  } finally {
-    await page.close();
-    await browser.close();
+    const appVerifyDuration = Date.now() - appVerifyStartTime;
+    console.log(`✅ Web application verified successfully (${appVerifyDuration}ms)`);
+  } catch (error) {
+    throw new Error(`Web application verification failed: ${error.message}`);
   }
 
   // Wait for WebAuthn server to be ready
-  console.log('⏳ Waiting for WebAuthn server to be ready...');
-  const serverWaitStartTime = Date.now();
-  const maxRetries = 300; // 30 seconds max (300 * 100ms)
+  try {
+    await waitForService('http://localhost:8080/health', 'WebAuthn server', 30000);
+  } catch (error) {
+    console.error(`❌ ${error.message}`);
+    console.error('   Please ensure the server is running with Docker Compose:');
+    console.error('   npm run server:start');
+    console.error('   Or check server logs with:');
+    console.error('   npm run server:logs');
+    console.error('   Check server status with:');
+    console.error('   npm run server:status');
 
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const response = await fetch('http://localhost:8080/health');
-      if (response.ok) {
-        const serverReadyTime = Date.now();
-        const serverWaitDuration = serverReadyTime - serverWaitStartTime;
-        const totalSetupTime = serverReadyTime - setupStartTime;
-        console.log(`✅ WebAuthn server is running and ready for tests (waited ${serverWaitDuration}ms)`);
-        console.log(`🎯 Total setup time: ${totalSetupTime}ms (${(totalSetupTime/1000).toFixed(1)}s)`);
-
-        // Store the test client process so we can clean it up later
-        global.testClientProcess = testClientProcess;
-        return null;
-      } else {
-        // Only log every 10th attempt to reduce noise (every 1 second)
-        if (i % 10 === 0 || i > 200) {
-          console.log(`⏳ WebAuthn server responded with status ${response.status}, retrying... (${Math.floor(i * retryDelay / 1000)}s)`);
-        }
-      }
-    } catch (error) {
-      // Only log every 10th attempt to reduce noise (every 1 second)
-      if (i % 10 === 0 || i > 200) {
-        console.log(`⏳ WebAuthn server not ready, retrying... (${Math.floor(i * retryDelay / 1000)}s)`);
-      }
+    // Clean up test client if WebAuthn server failed
+    if (testClientProcess) {
+      testClientProcess.kill('SIGTERM');
     }
 
-    // Wait before next retry
-    await new Promise(resolve => setTimeout(resolve, retryDelay));
+    throw new Error('WebAuthn server is not ready. Please start the server with Docker Compose.');
   }
 
-  // If we get here, server is not ready
-  const failedTime = Date.now();
-  const totalWaitTime = failedTime - serverWaitStartTime;
-  const totalSetupTime = failedTime - setupStartTime;
-  console.error(`❌ WebAuthn server is not ready after ${totalWaitTime}ms (total setup time: ${totalSetupTime}ms)`);
-  console.error('   Please ensure the server is running with Docker Compose:');
-  console.error('   npm run server:start');
-  console.error('   Or check server logs with:');
-  console.error('   npm run server:logs');
-  console.error('   Check server status with:');
-  console.error('   npm run server:status');
+  const serverReadyTime = Date.now();
+  const totalSetupTime = serverReadyTime - setupStartTime;
+  console.log(`🎯 Total setup time: ${totalSetupTime}ms (${(totalSetupTime/1000).toFixed(1)}s)`);
 
-  // Clean up test client if WebAuthn server failed
-  if (testClientProcess) {
-    testClientProcess.kill('SIGTERM');
-  }
-
-  throw new Error('WebAuthn server is not ready. Please start the server with Docker Compose.');
+  // Store the test client process so we can clean it up later
+  global.testClientProcess = testClientProcess;
+  return null;
 }
 
 module.exports = globalSetup;

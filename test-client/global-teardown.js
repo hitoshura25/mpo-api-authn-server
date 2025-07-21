@@ -27,13 +27,13 @@ async function globalTeardown() {
         await new Promise(resolve => setTimeout(resolve, 100));
       }
 
-      const stopEndTime = Date.now();
-      const stopDuration = stopEndTime - stopStartTime;
-      console.log(`✅ Test client stopped successfully (${stopDuration}ms)`);
+      console.log(`✅ Test client stopped successfully`);
     } catch (error) {
+      console.warn(`⚠️ Warning: Could not stop test client process:`, error.message);
+    } finally {
       const stopEndTime = Date.now();
       const stopDuration = stopEndTime - stopStartTime;
-      console.warn(`⚠️ Warning: Could not stop test client process after ${stopDuration}ms:`, error.message);
+      console.log(`🔌 Process cleanup completed (${stopDuration}ms)`);
     }
   }
 

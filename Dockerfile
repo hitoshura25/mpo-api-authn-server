@@ -11,7 +11,7 @@ COPY gradlew gradlew.bat build.gradle.kts ./
 COPY src src
 
 # Build the application (no clean needed since we want to keep the cached dependencies)
-RUN --mount=type=cache,target=~/.gradle ./gradlew shadowJar --parallel --no-daemon
+RUN --mount=type=cache,target=~/.gradle ./gradlew shadowJar --parallel --no-daemon --configuration-cache
 
 # Runtime stage
 FROM openjdk:21-slim

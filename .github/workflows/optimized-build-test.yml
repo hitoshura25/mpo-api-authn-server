@@ -11,10 +11,10 @@ on:
     outputs:
       test-exit-code:
         description: 'Exit code from the tests'
-        value: ${{ jobs.js-client-e2e-tests.outputs.test-exit-code }}
+        value: ${{ jobs.js-client-e2e-tests-optimized.outputs.test-exit-code }}
 
 jobs:
-  js-client-e2e-tests:
+  js-client-e2e-tests-optimized:
     runs-on: ubuntu-latest
     services:
       playwright:

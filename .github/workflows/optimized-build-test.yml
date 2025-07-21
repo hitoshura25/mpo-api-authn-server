@@ -1,0 +1,147 @@
+name: Optimized CI Pipeline
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: 'Node.js version to use'
+        required: false
+        type: string
+        default: '18'
+    outputs:
+      test-exit-code:
+        description: 'Exit code from the tests'
+        value: ${{ jobs.js-client-e2e-tests.outputs.test-exit-code }}
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-digest: ${{ steps.build.outputs.digest }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Run unit tests
+        run: ./gradlew test
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: your-app
+          tags: |
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+
+      - name: Build and cache Docker image
+        id: build
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          load: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  js-client-e2e-tests:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    container:
+      image: mcr.microsoft.com/playwright:v1.40.0-jammy
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Load cached Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          load: true
+          tags: ${{ needs.build-and-test.outputs.image-tag }}
+          cache-from: type=gha
+
+      - name: Cache node_modules
+        uses: actions/cache@v3
+        with:
+          path: test-client/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('test-client/package-lock.json') }}
+
+      - name: Install test dependencies
+        working-directory: test-client
+        run: npm ci
+
+      - name: Set up environment and start services
+        run: |
+          ./scripts/setup-secure-env.sh
+          docker compose up -d --build
+          
+          # Wait for services
+          for i in {1..60}; do
+            healthy_count=$(docker compose ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
+            if [ "$healthy_count" -eq 4 ]; then
+              echo "✅ All services ready"
+              break
+            fi
+            sleep 2
+          done
+
+      - name: Run E2E tests
+        id: run-tests
+        working-directory: test-client
+        run: |
+          set +e
+          npm test
+          TEST_EXIT_CODE=$?
+          set -e
+          
+          # Store exit code for later use
+          echo "test-exit-code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
+          
+          if [ $TEST_EXIT_CODE -ne 0 ]; then
+            echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
+          else
+            echo "✅ Tests passed successfully"
+          fi
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker compose logs > docker-compose-logs.txt
+          docker compose down -v
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-artifacts
+          path: |
+            test-client/playwright-report/
+            test-client/test-results/
+            docker-compose-logs.txt

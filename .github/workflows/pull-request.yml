@@ -13,6 +13,7 @@ jobs:
       node-version: '18'
     secrets:
       codecov_token: ${{ secrets.CODECOV_TOKEN }}
+      gradle_encryption_key: ${{secrets.GRADLE_ENCRYPTION_KEY}}
 
   pull-request-optimized-build-test:
     name: Pull Request E2E Tests (optimized?)
@@ -21,4 +22,5 @@ jobs:
       node-version: '18'
     secrets:
       codecov_token: ${{ secrets.CODECOV_TOKEN }}
+      gradle_encryption_key: ${{secrets.GRADLE_ENCRYPTION_KEY}}
 

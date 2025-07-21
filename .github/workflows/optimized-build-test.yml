@@ -114,7 +114,7 @@ jobs:
       - name: Set up environment and start services
         run: |
           ./scripts/setup-secure-env.sh
-          docker compose up -d --build
+          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose up -d --build
           
           # Wait for services
           for i in {1..60}; do

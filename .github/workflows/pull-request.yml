@@ -11,6 +11,7 @@ jobs:
     uses: ./.github/workflows/js-client-e2e-tests.yml
     with:
       node-version: '18'
+    secrets:
       codecov_token: ${{ secrets.CODECOV_TOKEN }}
 
   pull-request-optimized-build-test:
@@ -18,5 +19,6 @@ jobs:
     uses: ./.github/workflows/optimized-build-test.yml
     with:
       node-version: '18'
+    secrets:
       codecov_token: ${{ secrets.CODECOV_TOKEN }}
 

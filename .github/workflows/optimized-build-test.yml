@@ -8,10 +8,10 @@ on:
         required: false
         type: string
         default: '18'
+    secrets:
       codecov_token:
         description: 'Codecov token for uploading coverage reports'
         required: true
-        type: string
     outputs:
       test-exit-code:
         description: 'Exit code from the tests'
@@ -51,7 +51,7 @@ jobs:
           files: ./build/reports/kover/report.xml
           flags: unit
           name: codecov-unit
-          token: ${{ inputs.codecov_token }}
+          token: ${{ secrets.codecov_token }}
           fail_ci_if_error: true
 
       - name: Set up Docker Buildx

@@ -85,64 +85,26 @@ jobs:
           cache: 'npm'
           cache-dependency-path: test-client/package-lock.json
 
-      - name: Install test client dependencies
+      - name: Install test dependencies
         working-directory: test-client
-        run: npm ci
-
-      - name: Cache Playwright browsers
-        uses: actions/cache@v3
-        with:
-          path: ~/.cache/ms-playwright
-          key: ${{ runner.os }}-playwright-browsers-${{ hashFiles('test-client/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-playwright-browsers-
-
-      - name: Install Playwright browsers
-        working-directory: test-client
-        run: npx playwright install chromium --with-deps
-
-      - name: Set up environment variables and start services
-        shell: bash
         run: |
-          echo "Setting up secure environment with random passwords..."
+          npm ci
+          npx playwright install chromium
+
+      - name: Set up environment and start services
+        run: |
           ./scripts/setup-secure-env.sh
+          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose up -d --build
 
-      - name: Build docker containers
-        uses: docker/bake-action@v6
-        with:
-          load: true
-
-      - name: Start full stack
-        id: start-full-stack
-        env:
-          DOCKER_BUILDKIT: 1
-          COMPOSE_DOCKER_CLI_BUILD: 1
-        run: |
-          echo "Starting Docker Compose services..."
-          start_time=$(date +%s)
-          
-          docker compose up -d --build
-          echo "Waiting for services to be ready..."
-          
-          # Wait for all services to be healthy
-          echo "Checking service health..."
+          # Wait for services
           for i in {1..60}; do
             healthy_count=$(docker compose ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
             if [ "$healthy_count" -eq 4 ]; then
-              echo "✅ All 4 services are healthy"
+              echo "✅ All services ready"
               break
             fi
-            echo "Waiting for services... ($healthy_count/4 healthy) - attempt $i/60"
             sleep 2
           done
-          
-          end_time=$(date +%s)
-          duration=$((end_time - start_time))
-          echo "✅ Services started and ready in ${duration} seconds"
-          
-          # Final check and display status
-          echo "Final service status:"
-          docker compose ps
 
       - name: Run E2E tests
         id: run-tests

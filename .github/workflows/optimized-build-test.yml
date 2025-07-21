@@ -78,10 +78,6 @@ jobs:
   js-client-e2e-tests:
     needs: build-and-test
     runs-on: ubuntu-latest
-    services:
-      playwright:
-        image: mcr.microsoft.com/playwright:v1.40.0-jammy
-        options: --network-alias playwright
 
     steps:
       - name: Checkout code
@@ -105,11 +101,22 @@ jobs:
           cache: 'npm'
           cache-dependency-path: test-client/package-lock.json
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('test-client/package-lock.json', 'test-client/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-playwright-${{ hashFiles('test-client/package-lock.json') }}-
+            ${{ runner.os }}-playwright-
+
       - name: Install test dependencies
         working-directory: test-client
-        run: |
-          npm ci
-          npx playwright install
+        run: npm ci
+
+      - name: Install Playwright browsers
+        working-directory: test-client
+        run: npx playwright install --with-deps
 
       - name: Set up environment and start services
         run: |

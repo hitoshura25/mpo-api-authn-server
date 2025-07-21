@@ -10,12 +10,21 @@ async function globalTeardown() {
     try {
       global.testClientProcess.kill('SIGTERM');
 
-      // Give it a moment to gracefully shut down
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait for graceful shutdown with polling instead of fixed timeout
+      let attempts = 0;
+      const maxAttempts = 20; // Max 2 seconds (20 * 100ms)
 
-      // Force kill if still running
+      while (attempts < maxAttempts && !global.testClientProcess.killed) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+      }
+
+      // Force kill if still running after graceful period
       if (!global.testClientProcess.killed) {
+        console.log('⚡ Process still running, force killing...');
         global.testClientProcess.kill('SIGKILL');
+        // Give it a moment to process the SIGKILL
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
 
       const stopEndTime = Date.now();

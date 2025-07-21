@@ -10,21 +10,17 @@ async function globalSetup() {
 
   // Start the test client web application
   console.log('🌐 Starting test client web application...');
-  const clientStartTime = Date.now();
   testClientProcess = spawn('npm', ['start'], {
     cwd: __dirname,
     stdio: 'inherit',
     detached: false
   });
 
-  // Wait a moment for the test client to start
-  await new Promise(resolve => setTimeout(resolve, 3000));
-
-  // Wait for test client to be ready
+  // Wait for test client to be ready (start checking immediately)
   console.log('⏳ Waiting for test client to be ready...');
   const clientWaitStartTime = Date.now();
-  const maxClientRetries = 15;
-  const retryDelay = 1000;
+  const maxClientRetries = 150; // 15 seconds max (150 * 100ms)
+  const retryDelay = 100; // Check every 100ms instead of 1000ms
 
   for (let i = 0; i < maxClientRetries; i++) {
     try {
@@ -36,7 +32,10 @@ async function globalSetup() {
         break;
       }
     } catch (error) {
-      console.log(`⏳ Test client not ready, retrying... (${i + 1}/${maxClientRetries})`);
+      // Only log every 10th attempt to reduce noise (every 1 second)
+      if (i % 10 === 0 || i > 100) {
+        console.log(`⏳ Test client not ready, retrying... (${Math.floor(i * retryDelay / 1000)}s)`);
+      }
     }
 
     if (i === maxClientRetries - 1) {
@@ -106,7 +105,7 @@ async function globalSetup() {
   // Wait for WebAuthn server to be ready
   console.log('⏳ Waiting for WebAuthn server to be ready...');
   const serverWaitStartTime = Date.now();
-  const maxRetries = 30; // Wait up to 30 seconds
+  const maxRetries = 300; // 30 seconds max (300 * 100ms)
 
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -122,10 +121,16 @@ async function globalSetup() {
         global.testClientProcess = testClientProcess;
         return null;
       } else {
-        console.log(`⏳ WebAuthn server responded with status ${response.status}, retrying... (${i + 1}/${maxRetries})`);
+        // Only log every 10th attempt to reduce noise (every 1 second)
+        if (i % 10 === 0 || i > 200) {
+          console.log(`⏳ WebAuthn server responded with status ${response.status}, retrying... (${Math.floor(i * retryDelay / 1000)}s)`);
+        }
       }
     } catch (error) {
-      console.log(`⏳ WebAuthn server not ready, retrying... (${i + 1}/${maxRetries})`);
+      // Only log every 10th attempt to reduce noise (every 1 second)
+      if (i % 10 === 0 || i > 200) {
+        console.log(`⏳ WebAuthn server not ready, retrying... (${Math.floor(i * retryDelay / 1000)}s)`);
+      }
     }
 
     // Wait before next retry

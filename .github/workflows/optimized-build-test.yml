@@ -8,6 +8,10 @@ on:
         required: false
         type: string
         default: '18'
+      codecov_token:
+        description: 'Codecov token for uploading coverage reports'
+        required: true
+        type: string
     outputs:
       test-exit-code:
         description: 'Exit code from the tests'
@@ -39,7 +43,16 @@ jobs:
           gradle-home-cache-cleanup: true
 
       - name: Run tests with Gradle cache
-        run: ./gradlew test --build-cache --parallel
+        run: ./gradlew koverXmlReport --build-cache --parallel
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./build/reports/kover/report.xml
+          flags: unit
+          name: codecov-unit
+          token: ${{ inputs.codecov_token }}
+          fail_ci_if_error: true
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3

@@ -6,6 +6,7 @@ import com.vmenon.mpo.api.authn.di.storageModule
 import com.vmenon.mpo.api.authn.plugins.configureCORS
 import com.vmenon.mpo.api.authn.plugins.configureLogging
 import com.vmenon.mpo.api.authn.plugins.configureMetrics
+import com.vmenon.mpo.api.authn.plugins.configureOpenAPI
 import com.vmenon.mpo.api.authn.plugins.configureOpenTelemetry
 import com.vmenon.mpo.api.authn.plugins.configureSerialization
 import com.vmenon.mpo.api.authn.plugins.configureStatusPages
@@ -46,6 +47,7 @@ private fun Application.configurePlugins() {
     configureMetrics()
     configureLogging()
     configureOpenTelemetry()
+    configureOpenAPI()
 }
 
 private fun Application.configureRouting() {

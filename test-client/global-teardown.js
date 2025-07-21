@@ -1,26 +1,45 @@
 // Global teardown for Playwright tests
 async function globalTeardown() {
+  const teardownStartTime = Date.now();
   console.log('🧹 Cleaning up WebAuthn test environment...');
 
   // Clean up the test client web application process
   if (global.testClientProcess) {
     console.log('🔌 Stopping test client web application...');
+    const stopStartTime = Date.now();
     try {
       global.testClientProcess.kill('SIGTERM');
 
-      // Give it a moment to gracefully shut down
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Wait for graceful shutdown with polling instead of fixed timeout
+      let attempts = 0;
+      const maxAttempts = 20; // Max 2 seconds (20 * 100ms)
 
-      // Force kill if still running
-      if (!global.testClientProcess.killed) {
-        global.testClientProcess.kill('SIGKILL');
+      while (attempts < maxAttempts && !global.testClientProcess.killed) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
       }
 
-      console.log('✅ Test client stopped successfully');
+      // Force kill if still running after graceful period
+      if (!global.testClientProcess.killed) {
+        console.log('⚡ Process still running, force killing...');
+        global.testClientProcess.kill('SIGKILL');
+        // Give it a moment to process the SIGKILL
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      console.log(`✅ Test client stopped successfully`);
     } catch (error) {
-      console.warn('⚠️ Warning: Could not stop test client process:', error.message);
+      console.warn(`⚠️ Warning: Could not stop test client process:`, error.message);
+    } finally {
+      const stopEndTime = Date.now();
+      const stopDuration = stopEndTime - stopStartTime;
+      console.log(`🔌 Process cleanup completed (${stopDuration}ms)`);
     }
   }
+
+  const teardownEndTime = Date.now();
+  const totalTeardownTime = teardownEndTime - teardownStartTime;
+  console.log(`🎯 Total teardown time: ${totalTeardownTime}ms (${(totalTeardownTime/1000).toFixed(1)}s)`);
 
   return null;
 }

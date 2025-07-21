@@ -52,7 +52,12 @@ jobs:
 
       - name: Run tests and coverage
         shell: bash
-        run: ./gradlew koverXmlReport shadowJar --build-cache --parallel --configuration-cache
+        run: ./gradlew koverXmlReport --build-cache --parallel --configuration-cache
+
+      - name: Run shadowJar for cache
+        shell: bash
+        run: ./gradlew shadowJar --build-cache --parallel --configuration-cache
+        if: github.event_name != 'pull_request'
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

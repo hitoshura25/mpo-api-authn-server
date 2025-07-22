@@ -3,6 +3,7 @@ plugins {
     id("application")
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("org.jetbrains.kotlinx.kover") version "0.9.1"
+    id("org.openapi.generator") version "7.2.0"
 }
 
 val kotlinVersion = "1.9.23"
@@ -78,6 +79,11 @@ dependencies {
     implementation("io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$openTelemetryVersion")
     runtimeOnly("io.opentelemetry.semconv:opentelemetry-semconv:$openTelemetryVersion")
 
+    // OpenAPI/Swagger support
+    implementation("io.ktor:ktor-server-openapi:$ktorVersion")
+    implementation("io.ktor:ktor-server-swagger:$ktorVersion")
+    implementation("io.swagger.core.v3:swagger-core:2.2.19")
+
     // Test dependencies
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
     testImplementation("io.insert-koin:koin-test:$koinVersion")
@@ -114,4 +120,124 @@ tasks.build {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+}
+
+// OpenAPI specification file location - use the static file instead of fetching from server
+val openApiSpecFile = layout.buildDirectory.file("openapi/openapi.yaml")
+val staticOpenApiSpecFile = file("src/main/resources/openapi/documentation.yaml")
+
+// Task to copy static OpenAPI spec to build directory
+tasks.register<Copy>("copyOpenApiSpec") {
+    group = "openapi"
+    description = "Copy static OpenAPI specification to build directory"
+
+    from(staticOpenApiSpecFile)
+    into(layout.buildDirectory.dir("openapi"))
+    rename { "openapi.yaml" }
+
+    inputs.file(staticOpenApiSpecFile)
+    outputs.file(openApiSpecFile)
+}
+
+// TypeScript/JavaScript client generation
+tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generateTsClient") {
+    group = "openapi"
+    description = "Generate TypeScript client library"
+
+    dependsOn("copyOpenApiSpec")
+
+    generatorName.set("typescript-axios")
+    inputSpec.set(staticOpenApiSpecFile.absolutePath)
+    outputDir.set(layout.buildDirectory.dir("generated-clients/typescript").get().asFile.absolutePath)
+
+    configOptions.set(
+        mapOf(
+            "supportsES6" to "true",
+            "npmName" to "mpo-webauthn-client",
+            "npmVersion" to project.version.toString(),
+            "modelPropertyNaming" to "camelCase"
+        )
+    )
+
+    inputs.file(staticOpenApiSpecFile)
+    outputs.dir(layout.buildDirectory.dir("generated-clients/typescript"))
+}
+
+// Java client generation
+tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generateJavaClient") {
+    group = "openapi"
+    description = "Generate Java client library"
+
+    dependsOn("copyOpenApiSpec")
+
+    generatorName.set("java")
+    inputSpec.set(staticOpenApiSpecFile.absolutePath)
+    outputDir.set(layout.buildDirectory.dir("generated-clients/java").get().asFile.absolutePath)
+
+    configOptions.set(
+        mapOf(
+            "library" to "okhttp-gson",
+            "groupId" to "com.vmenon.mpo.api.authn",
+            "artifactId" to "mpo-webauthn-client",
+            "artifactVersion" to project.version.toString(),
+            "packageName" to "com.vmenon.mpo.api.authn.client"
+        )
+    )
+
+    inputs.file(staticOpenApiSpecFile)
+    outputs.dir(layout.buildDirectory.dir("generated-clients/java"))
+}
+
+// Python client generation
+tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generatePythonClient") {
+    group = "openapi"
+    description = "Generate Python client library"
+
+    dependsOn("copyOpenApiSpec")
+
+    generatorName.set("python")
+    inputSpec.set(staticOpenApiSpecFile.absolutePath)
+    outputDir.set(layout.buildDirectory.dir("generated-clients/python").get().asFile.absolutePath)
+
+    configOptions.set(
+        mapOf(
+            "packageName" to "mpo_webauthn_client",
+            "packageVersion" to project.version.toString(),
+            "projectName" to "mpo-webauthn-client"
+        )
+    )
+
+    inputs.file(staticOpenApiSpecFile)
+    outputs.dir(layout.buildDirectory.dir("generated-clients/python"))
+}
+
+// C# client generation
+tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generateCsharpClient") {
+    group = "openapi"
+    description = "Generate C# client library"
+
+    dependsOn("copyOpenApiSpec")
+
+    generatorName.set("csharp")
+    inputSpec.set(staticOpenApiSpecFile.absolutePath)
+    outputDir.set(layout.buildDirectory.dir("generated-clients/csharp").get().asFile.absolutePath)
+
+    configOptions.set(
+        mapOf(
+            "packageName" to "MpoWebAuthnClient",
+            "packageVersion" to project.version.toString(),
+            "clientPackage" to "MpoWebAuthnClient"
+        )
+    )
+
+    inputs.file(staticOpenApiSpecFile)
+    outputs.dir(layout.buildDirectory.dir("generated-clients/csharp"))
+}
+
+// Generate all clients
+tasks.register("generateAllClients") {
+    group = "openapi"
+    description = "Generate all client libraries"
+
+    dependsOn("generateTsClient", "generateJavaClient", "generatePythonClient", "generateCsharpClient")
 }

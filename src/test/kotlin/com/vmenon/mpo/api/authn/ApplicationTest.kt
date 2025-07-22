@@ -150,4 +150,65 @@ class ApplicationTest : KoinTest {
         assertEquals(HttpStatusCode.BadRequest, response.status)
         assertTrue(response.bodyAsText().contains("Invalid or expired request ID"))
     }
+
+    @Test
+    fun testOpenAPISpecification() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val response = client.get("/openapi")
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertTrue(
+            response.contentType().toString().contains(ContentType.Text.Plain.toString()),
+            "OpenAPI specification should not be empty"
+        )
+
+        val responseBody = response.bodyAsText()
+        assertNotNull(responseBody)
+        assertTrue(responseBody.isNotEmpty(), "OpenAPI specification should not be empty")
+        assertTrue(responseBody.contains("openapi: 3.0.3"), "Should contain OpenAPI version")
+        assertTrue(responseBody.contains("MPO WebAuthn Authentication Server API"), "Should contain API title")
+        assertTrue(responseBody.contains("/register/start"), "Should contain registration endpoints")
+        assertTrue(responseBody.contains("/authenticate/start"), "Should contain authentication endpoints")
+
+        // Verify YAML structure and key components
+        assertTrue(responseBody.contains("info:"), "Should contain info section")
+        assertTrue(responseBody.contains("title:"), "Should contain title")
+        assertTrue(responseBody.contains("description:"), "Should contain description")
+        assertTrue(
+            responseBody.contains("paths:") || responseBody.contains("WebAuthn"),
+            "Should contain paths or WebAuthn references"
+        )
+
+        // Verify it's valid YAML format (basic check)
+        assertTrue(responseBody.lines().any { it.trim().startsWith("openapi:") }, "Should start with openapi version")
+    }
+
+    @Test
+    fun testSwaggerUI() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val response = client.get("/swagger")
+        assertEquals(HttpStatusCode.OK, response.status)
+
+        val responseBody = response.bodyAsText()
+        assertNotNull(responseBody)
+        assertTrue(responseBody.isNotEmpty(), "Swagger UI should not be empty")
+        assertTrue(responseBody.contains("Swagger UI"), "Should contain Swagger UI title")
+        assertTrue(responseBody.contains("swagger-ui-bundle"), "Should contain Swagger UI bundle")
+    }
+
+    @Test
+    fun testSwaggerUINotFoundEndpoint() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        // Test that accessing a non-existent swagger endpoint returns 404
+        val response = client.get("/swagger/nonexistent")
+        assertEquals(HttpStatusCode.NotFound, response.status)
+    }
 }

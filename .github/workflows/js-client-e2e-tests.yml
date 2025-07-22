@@ -50,14 +50,9 @@ jobs:
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
 
-      - name: Run tests and coverage
+      - name: Run tests, coverage, and build JAR
         shell: bash
-        run: ./gradlew koverXmlReport --build-cache --parallel --configuration-cache
-
-      - name: Run shadowJar for cache
-        shell: bash
-        run: ./gradlew shadowJar --build-cache --parallel --configuration-cache
-        if: github.event_name != 'pull_request'
+        run: ./gradlew koverXmlReport shadowJar --build-cache --parallel --configuration-cache
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

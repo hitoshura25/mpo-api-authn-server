@@ -1,6 +1,9 @@
 #!/bin/bash
 
 # Full stack setup - Start everything including the application
+echo "🚀 Building WebAuthn Server..."
+./gradlew shadowJar --build-cache --parallel --configuration-cache
+
 echo "🚀 Starting full stack (PostgreSQL, Redis & WebAuthn Server)..."
 docker compose up --build -d
 

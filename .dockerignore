@@ -1,5 +1,7 @@
-# Ignore build artifacts and caches
+# Ignore build artifacts and caches except JAR files
 build/
+!build/libs/
+!build/libs/*.jar
 .gradle/
 .idea/
 *.iml

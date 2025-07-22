@@ -207,8 +207,8 @@ class ApplicationTest : KoinTest {
             module(testStorageModule)
         }
 
-        // Test that /swagger/ (with trailing slash) redirects to /swagger
-        val response = client.get("/swagger/")
+        val testClient = createClient { followRedirects = false }
+        val response = testClient.get("/swagger/")
         assertEquals(HttpStatusCode.MovedPermanently, response.status)
 
         // Check that the Location header points to the correct redirect URL

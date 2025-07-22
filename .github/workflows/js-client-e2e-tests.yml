@@ -42,6 +42,20 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      # Branch-specific Gradle caching
+      - name: Setup branch-specific Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+            gradle-${{ runner.os }}-
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -49,6 +63,8 @@ jobs:
           build-scan-publish: true
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
 
       - name: Run tests, coverage, and build JAR
         shell: bash

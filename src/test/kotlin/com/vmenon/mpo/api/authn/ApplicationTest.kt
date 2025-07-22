@@ -202,13 +202,17 @@ class ApplicationTest : KoinTest {
     }
 
     @Test
-    fun testSwaggerUINotFoundEndpoint() = testApplication {
+    fun testSwaggerUIWithTrailingSlash() = testApplication {
         application {
             module(testStorageModule)
         }
 
-        // Test that accessing a non-existent swagger endpoint returns 404
-        val response = client.get("/swagger/nonexistent")
-        assertEquals(HttpStatusCode.NotFound, response.status)
+        // Test that /swagger/ (with trailing slash) redirects to /swagger
+        val response = client.get("/swagger/")
+        assertEquals(HttpStatusCode.MovedPermanently, response.status)
+
+        // Check that the Location header points to the correct redirect URL
+        val locationHeader = response.headers["Location"]
+        assertEquals("/swagger", locationHeader)
     }
 }

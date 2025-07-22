@@ -6,6 +6,7 @@ import io.ktor.server.application.Application
 import io.ktor.server.application.call
 import io.ktor.server.plugins.swagger.swaggerUI
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondRedirect
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
@@ -24,6 +25,12 @@ fun Application.configureOpenAPIRoutes() {
             } else {
                 call.respond(HttpStatusCode.NotFound, "OpenAPI specification not found")
             }
+        }
+
+        // Redirect /swagger/ (with trailing slash) to /swagger (without trailing slash)
+        // This improves UX since the Swagger UI plugin only handles /swagger
+        get("/swagger/") {
+            call.respondRedirect("/swagger", permanent = true)
         }
 
         // Swagger UI configuration - simplified to avoid code generation issues

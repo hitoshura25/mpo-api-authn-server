@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.plugins
+package com.vmenon.mpo.api.authn.routes
 
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
@@ -10,7 +10,7 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 
-fun Application.configureOpenAPI() {
+fun Application.configureOpenAPIRoutes() {
     routing {
         // Serve the static OpenAPI specification
         get("/openapi") {

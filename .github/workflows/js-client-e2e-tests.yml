@@ -120,6 +120,7 @@ jobs:
           
           if [ $TEST_EXIT_CODE -ne 0 ]; then
             echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
+            exit $TEST_EXIT_CODE
           else
             echo "✅ Tests passed successfully"
           fi

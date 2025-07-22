@@ -98,27 +98,29 @@ const result = await api.completeRegistration({
 ```java
 import com.vmenon.mpo.api.authn.client.DefaultApi;
 import com.vmenon.mpo.api.authn.client.model.*;
+import com.vmenon.mpo.api.authn.client.ApiClient;
 
-DefaultApi api = new DefaultApi();
-api.
+// Create API client
+ApiClient apiClient = new ApiClient();
+apiClient.
 
-getApiClient().
+        setBasePath("http://localhost:8080");
 
-setBasePath("http://localhost:8080");
+        DefaultApi api = new DefaultApi(apiClient);
 
-// Start registration
-RegistrationRequest request = new RegistrationRequest()
-        .username("john.doe")
-        .displayName("John Doe");
+        // Start registration
+        RegistrationRequest request = new RegistrationRequest()
+                .username("john.doe")
+                .displayName("John Doe");
 
-RegistrationResponse response = api.startRegistration(request);
+        RegistrationResponse response = api.startRegistration(request);
 
-// Complete registration (after WebAuthn interaction)
-RegistrationCompleteRequest completeRequest = new RegistrationCompleteRequest()
-        .requestId(response.getRequestId())
-        .publicKeyCredential(credential); // From WebAuthn
+        // Complete registration (after WebAuthn interaction)
+        RegistrationCompleteRequest completeRequest = new RegistrationCompleteRequest()
+                .requestId(response.getRequestId())
+                .publicKeyCredential(credential); // From WebAuthn
 
-RegistrationCompleteResponse result = api.completeRegistration(completeRequest);
+        RegistrationCompleteResponse result = api.completeRegistration(completeRequest);
 ```
 
 ### Python Example
@@ -127,6 +129,7 @@ RegistrationCompleteResponse result = api.completeRegistration(completeRequest);
 import mpo_webauthn_client
 from mpo_webauthn_client.api import default_api
 from mpo_webauthn_client.model.registration_request import RegistrationRequest
+from mpo_webauthn_client.model.registration_complete_request import RegistrationCompleteRequest
 
 configuration = mpo_webauthn_client.Configuration(
     host="http://localhost:8080"

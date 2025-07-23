@@ -45,7 +45,7 @@ fun Application.configureAuthenticationRoutes() {
 
                 val requestId = UUID.randomUUID().toString()
 
-                val startAssertionOptions = if (request.username != null && request.username.isNotBlank()) {
+                val startAssertionOptions = if (request.username != null) {
                     openTelemetryTracer.traceOperation("relyingParty.startAssertion.withUsername") {
                         relyingParty.startAssertion(
                             StartAssertionOptions.builder()
@@ -127,13 +127,6 @@ fun Application.configureAuthenticationRoutes() {
                         mapOf("error" to "Authentication failed")
                     )
                 }
-
-            } catch (e: IllegalArgumentException) {
-                logger.warn("Authentication complete failed with invalid arguments", e)
-                call.respond(
-                    HttpStatusCode.BadRequest,
-                    mapOf("error" to "Invalid authentication data")
-                )
             } catch (e: Exception) {
                 logger.error("Authentication complete failed", e)
                 call.respond(

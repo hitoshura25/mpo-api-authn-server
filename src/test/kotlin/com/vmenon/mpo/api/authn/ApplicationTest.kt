@@ -10,6 +10,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
 import io.micrometer.prometheus.PrometheusMeterRegistry
+import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import kotlin.test.assertEquals
@@ -241,5 +242,171 @@ class ApplicationTest : KoinTest {
         assertEquals(HttpStatusCode.InternalServerError, response.status)
         val responseBody = objectMapper.readTree(response.bodyAsText())
         assertEquals("Metrics unavailable", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testAuthenticationStartWithEmptyUsername() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val authRequest = AuthenticationRequest(username = "")
+
+        val response = client.post("/authenticate/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(authRequest))
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Username cannot be empty if provided", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testAuthenticationCompleteWithRelyingPartyFailure() = testApplication {
+        // Mock RelyingParty to throw an exception
+        val mockRelyingParty = mockk<com.yubico.webauthn.RelyingParty>()
+        every { mockRelyingParty.finishAssertion(any()) } throws RuntimeException("RelyingParty service unavailable")
+
+        val testModuleWithFailingRelyingParty = module {
+            single<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryRegistrationRequestStorage()
+            }
+            single<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryAssertionRequestStorage()
+            }
+            single<com.vmenon.mpo.api.authn.storage.CredentialStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryCredentialStorage()
+            }
+            single<com.yubico.webauthn.RelyingParty> { mockRelyingParty }
+        }
+
+        application {
+            module(testModuleWithFailingRelyingParty)
+        }
+
+        val authRequest = AuthenticationRequest()
+
+        val response = client.post("/authenticate/complete") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(authRequest))
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Authentication failed. Please try again.", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testAuthenticationStartWithStorageFailure() = testApplication {
+        // Mock AssertionRequestStorage to throw an exception
+        val mockAssertionStorage = mockk<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage>()
+        coEvery {
+            mockAssertionStorage.storeAssertionRequest(
+                any(),
+                any(),
+                any()
+            )
+        } throws RuntimeException("Database connection failed")
+        every { mockAssertionStorage.close() } returns Unit
+
+        val testModuleWithFailingStorage = module {
+            single<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryRegistrationRequestStorage()
+            }
+            single<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage> { mockAssertionStorage }
+            single<com.vmenon.mpo.api.authn.storage.CredentialStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryCredentialStorage()
+            }
+        }
+
+        application {
+            module(testModuleWithFailingStorage)
+        }
+
+        val authRequest = AuthenticationRequest()
+
+        val response = client.post("/authenticate/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(authRequest))
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Authentication failed. Please try again.", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testRegistrationStartWithRelyingPartyFailure() = testApplication {
+        // Mock RelyingParty to throw an exception
+        val mockRelyingParty = mockk<com.yubico.webauthn.RelyingParty>()
+        every { mockRelyingParty.startRegistration(any()) } throws RuntimeException("RelyingParty configuration error")
+
+        val testModuleWithFailingRelyingParty = module {
+            single<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryRegistrationRequestStorage()
+            }
+            single<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryAssertionRequestStorage()
+            }
+            single<com.vmenon.mpo.api.authn.storage.CredentialStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryCredentialStorage()
+            }
+            single<com.yubico.webauthn.RelyingParty> { mockRelyingParty }
+        }
+
+        application {
+            module(testModuleWithFailingRelyingParty)
+        }
+
+        val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
+
+        val response = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(regRequest))
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testRegistrationStartWithStorageFailure() = testApplication {
+        // Mock RegistrationRequestStorage to throw an exception
+        val mockRegistrationStorage = mockk<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage>()
+        coEvery {
+            mockRegistrationStorage.storeRegistrationRequest(
+                any(),
+                any(),
+                any()
+            )
+        } throws RuntimeException("Storage system down")
+        every { mockRegistrationStorage.close() } returns Unit
+
+        val testModuleWithFailingStorage = module {
+            single<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage> { mockRegistrationStorage }
+            single<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryAssertionRequestStorage()
+            }
+            single<com.vmenon.mpo.api.authn.storage.CredentialStorage> {
+                com.vmenon.mpo.api.authn.test_utils.InMemoryCredentialStorage()
+            }
+        }
+
+        application {
+            module(testModuleWithFailingStorage)
+        }
+
+        val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
+
+        val response = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(regRequest))
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
     }
 }

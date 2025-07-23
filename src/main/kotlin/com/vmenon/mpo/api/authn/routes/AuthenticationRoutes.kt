@@ -45,7 +45,7 @@ fun Application.configureAuthenticationRoutes() {
 
                 val requestId = UUID.randomUUID().toString()
 
-                val startAssertionOptions = if (request.username != null && request.username.isNotBlank()) {
+                val startAssertionOptions = if (request.username != null) {
                     openTelemetryTracer.traceOperation("relyingParty.startAssertion.withUsername") {
                         relyingParty.startAssertion(
                             StartAssertionOptions.builder()

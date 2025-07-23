@@ -1,6 +1,9 @@
 package com.vmenon.mpo.api.authn
 
+import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
+import com.yubico.webauthn.RelyingParty
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -25,6 +28,10 @@ import org.koin.test.KoinTest
 
 class ApplicationTest : KoinTest {
     private val objectMapper = JacksonUtils.objectMapper
+    private val mockRelyingParty = mockk<RelyingParty>()
+    private val mockPrometheusRegistry = mockk<PrometheusMeterRegistry>()
+    private val mockRegistrationStorage = mockk<RegistrationRequestStorage>()
+    private val mockAssertionStorage = mockk<AssertionRequestStorage>()
 
     @BeforeEach
     fun setup() {
@@ -224,18 +231,17 @@ class ApplicationTest : KoinTest {
     @Test
     fun testMetricsEndpointExceptionHandling() = testApplication {
         // Create a mock PrometheusMeterRegistry that throws an exception when scrape() is called
-        val mockPrometheusRegistry = mockk<PrometheusMeterRegistry>()
         every { mockPrometheusRegistry.scrape() } throws RuntimeException("Metrics collection failed")
-
-        // Create a test module that provides the mock
-        val testModuleWithMockedMetrics = module {
-            single<PrometheusMeterRegistry> { mockPrometheusRegistry }
-        }
 
         application {
             module(testStorageModule)
             // Override the PrometheusMeterRegistry with our mock after other modules are loaded
-            getKoin().loadModules(listOf(testModuleWithMockedMetrics))
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<PrometheusMeterRegistry> { mockPrometheusRegistry }
+                    })
+            )
         }
 
         val response = client.get("/metrics")
@@ -265,24 +271,16 @@ class ApplicationTest : KoinTest {
     @Test
     fun testAuthenticationCompleteWithRelyingPartyFailure() = testApplication {
         // Mock RelyingParty to throw an exception
-        val mockRelyingParty = mockk<com.yubico.webauthn.RelyingParty>()
         every { mockRelyingParty.finishAssertion(any()) } throws RuntimeException("RelyingParty service unavailable")
 
-        val testModuleWithFailingRelyingParty = module {
-            single<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryRegistrationRequestStorage()
-            }
-            single<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryAssertionRequestStorage()
-            }
-            single<com.vmenon.mpo.api.authn.storage.CredentialStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryCredentialStorage()
-            }
-            single<com.yubico.webauthn.RelyingParty> { mockRelyingParty }
-        }
-
         application {
-            module(testModuleWithFailingRelyingParty)
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<RelyingParty> { mockRelyingParty }
+                    })
+            )
         }
 
         val authRequest = AuthenticationRequest()
@@ -300,7 +298,6 @@ class ApplicationTest : KoinTest {
     @Test
     fun testAuthenticationStartWithStorageFailure() = testApplication {
         // Mock AssertionRequestStorage to throw an exception
-        val mockAssertionStorage = mockk<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage>()
         coEvery {
             mockAssertionStorage.storeAssertionRequest(
                 any(),
@@ -310,18 +307,14 @@ class ApplicationTest : KoinTest {
         } throws RuntimeException("Database connection failed")
         every { mockAssertionStorage.close() } returns Unit
 
-        val testModuleWithFailingStorage = module {
-            single<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryRegistrationRequestStorage()
-            }
-            single<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage> { mockAssertionStorage }
-            single<com.vmenon.mpo.api.authn.storage.CredentialStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryCredentialStorage()
-            }
-        }
-
         application {
-            module(testModuleWithFailingStorage)
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<AssertionRequestStorage> { mockAssertionStorage }
+                    })
+            )
         }
 
         val authRequest = AuthenticationRequest()
@@ -339,24 +332,16 @@ class ApplicationTest : KoinTest {
     @Test
     fun testRegistrationStartWithRelyingPartyFailure() = testApplication {
         // Mock RelyingParty to throw an exception
-        val mockRelyingParty = mockk<com.yubico.webauthn.RelyingParty>()
         every { mockRelyingParty.startRegistration(any()) } throws RuntimeException("RelyingParty configuration error")
 
-        val testModuleWithFailingRelyingParty = module {
-            single<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryRegistrationRequestStorage()
-            }
-            single<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryAssertionRequestStorage()
-            }
-            single<com.vmenon.mpo.api.authn.storage.CredentialStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryCredentialStorage()
-            }
-            single<com.yubico.webauthn.RelyingParty> { mockRelyingParty }
-        }
-
         application {
-            module(testModuleWithFailingRelyingParty)
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<RelyingParty> { mockRelyingParty }
+                    })
+            )
         }
 
         val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
@@ -374,7 +359,6 @@ class ApplicationTest : KoinTest {
     @Test
     fun testRegistrationStartWithStorageFailure() = testApplication {
         // Mock RegistrationRequestStorage to throw an exception
-        val mockRegistrationStorage = mockk<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage>()
         coEvery {
             mockRegistrationStorage.storeRegistrationRequest(
                 any(),
@@ -384,18 +368,14 @@ class ApplicationTest : KoinTest {
         } throws RuntimeException("Storage system down")
         every { mockRegistrationStorage.close() } returns Unit
 
-        val testModuleWithFailingStorage = module {
-            single<com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage> { mockRegistrationStorage }
-            single<com.vmenon.mpo.api.authn.storage.AssertionRequestStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryAssertionRequestStorage()
-            }
-            single<com.vmenon.mpo.api.authn.storage.CredentialStorage> {
-                com.vmenon.mpo.api.authn.test_utils.InMemoryCredentialStorage()
-            }
-        }
-
         application {
-            module(testModuleWithFailingStorage)
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<RegistrationRequestStorage> { mockRegistrationStorage }
+                    })
+            )
         }
 
         val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")

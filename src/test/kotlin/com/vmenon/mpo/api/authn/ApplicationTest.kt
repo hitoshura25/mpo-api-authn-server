@@ -1,6 +1,7 @@
 package com.vmenon.mpo.api.authn
 
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
+import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.RelyingParty
@@ -35,6 +36,7 @@ class ApplicationTest : KoinTest {
     private val mockPrometheusRegistry = mockk<PrometheusMeterRegistry>()
     private val mockRegistrationStorage = mockk<RegistrationRequestStorage>()
     private val mockAssertionStorage = mockk<AssertionRequestStorage>()
+    private val mockCredentialStorage = mockk<CredentialStorage>()
 
     @BeforeEach
     fun setup() {
@@ -349,6 +351,32 @@ class ApplicationTest : KoinTest {
         assertEquals(HttpStatusCode.InternalServerError, response.status)
         val responseBody = objectMapper.readTree(response.bodyAsText())
         assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testRegistrationStartWithUserThatAlreadyExists() = testApplication {
+        every { mockCredentialStorage.userExists("testuser") } returns true
+
+        application {
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<CredentialStorage> { mockCredentialStorage }
+                    })
+            )
+        }
+
+        val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
+
+        val response = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(regRequest))
+        }
+
+        assertEquals(HttpStatusCode.Conflict, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Username is already registered", responseBody.get("error").asText())
     }
 
     @Test

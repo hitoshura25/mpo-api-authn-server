@@ -9,6 +9,9 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
+import io.micrometer.prometheus.PrometheusMeterRegistry
+import io.mockk.every
+import io.mockk.mockk
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -16,6 +19,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
 import org.koin.core.context.stopKoin
+import org.koin.dsl.module
 import org.koin.test.KoinTest
 
 class ApplicationTest : KoinTest {
@@ -214,5 +218,28 @@ class ApplicationTest : KoinTest {
         // Check that the Location header points to the correct redirect URL
         val locationHeader = response.headers["Location"]
         assertEquals("/swagger", locationHeader)
+    }
+
+    @Test
+    fun testMetricsEndpointExceptionHandling() = testApplication {
+        // Create a mock PrometheusMeterRegistry that throws an exception when scrape() is called
+        val mockPrometheusRegistry = mockk<PrometheusMeterRegistry>()
+        every { mockPrometheusRegistry.scrape() } throws RuntimeException("Metrics collection failed")
+
+        // Create a test module that provides the mock
+        val testModuleWithMockedMetrics = module {
+            single<PrometheusMeterRegistry> { mockPrometheusRegistry }
+        }
+
+        application {
+            module(testStorageModule)
+            // Override the PrometheusMeterRegistry with our mock after other modules are loaded
+            getKoin().loadModules(listOf(testModuleWithMockedMetrics))
+        }
+
+        val response = client.get("/metrics")
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Metrics unavailable", responseBody.get("error").asText())
     }
 }

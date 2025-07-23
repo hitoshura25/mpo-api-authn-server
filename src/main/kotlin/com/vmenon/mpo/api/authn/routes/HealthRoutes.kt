@@ -19,15 +19,7 @@ fun Application.configureHealthRoutes() {
         val prometheusRegistry: PrometheusMeterRegistry by inject()
 
         get("/") {
-            try {
-                call.respondText("WebAuthn Server is running!")
-            } catch (e: Exception) {
-                logger.error("Root endpoint failed", e)
-                call.respond(
-                    HttpStatusCode.InternalServerError,
-                    mapOf("error" to "Server error")
-                )
-            }
+            call.respondText("WebAuthn Server is running!")
         }
 
         get("/metrics") {
@@ -45,47 +37,21 @@ fun Application.configureHealthRoutes() {
 
         // Health check endpoint
         get("/health") {
-            try {
-                call.respond(
-                    mapOf(
-                        "status" to "healthy",
-                        "timestamp" to System.currentTimeMillis()
-                    )
+            call.respond(
+                mapOf(
+                    "status" to "healthy",
+                    "timestamp" to System.currentTimeMillis()
                 )
-            } catch (e: Exception) {
-                logger.error("Health check failed", e)
-                call.respond(
-                    HttpStatusCode.ServiceUnavailable,
-                    mapOf("status" to "unhealthy", "error" to "Health check failed")
-                )
-            }
+            )
         }
 
         // Readiness probe
         get("/ready") {
-            try {
-                // TODO: Add actual readiness checks (database connectivity, etc.)
-                call.respond(mapOf("status" to "ready"))
-            } catch (e: Exception) {
-                logger.error("Readiness check failed", e)
-                call.respond(
-                    HttpStatusCode.ServiceUnavailable,
-                    mapOf("status" to "not ready", "error" to "Readiness check failed")
-                )
-            }
+            call.respond(mapOf("status" to "ready"))
         }
 
         get("/live") {
-            try {
-                // Add liveness checks here
-                call.respondText("Alive", contentType = ContentType.Text.Plain)
-            } catch (e: Exception) {
-                logger.error("Liveness check failed", e)
-                call.respond(
-                    HttpStatusCode.InternalServerError,
-                    mapOf("error" to "Liveness check failed")
-                )
-            }
+            call.respondText("Alive", contentType = ContentType.Text.Plain)
         }
     }
 }

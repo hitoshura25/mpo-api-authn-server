@@ -3,9 +3,14 @@ package com.vmenon.mpo.api.authn
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.Defaults
+import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.generateKeypair
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.RelyingParty
+import com.yubico.webauthn.data.ByteArray
 import com.yubico.webauthn.data.PublicKeyCredential
+import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -20,6 +25,8 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkStatic
+import java.util.Optional
+import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -37,11 +44,15 @@ class ApplicationTest : KoinTest {
     private val mockRegistrationStorage = mockk<RegistrationRequestStorage>()
     private val mockAssertionStorage = mockk<AssertionRequestStorage>()
     private val mockCredentialStorage = mockk<CredentialStorage>()
+    private val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
 
     @BeforeEach
     fun setup() {
         // Ensure clean Koin state before each test
         stopKoin()
+        every { mockCredentialStorage.close() } returns Unit
+        every { mockAssertionStorage.close() } returns Unit
+        every { mockRegistrationStorage.close() } returns Unit
     }
 
     @AfterEach
@@ -329,7 +340,6 @@ class ApplicationTest : KoinTest {
                 any()
             )
         } throws RuntimeException("Storage system down")
-        every { mockRegistrationStorage.close() } returns Unit
 
         application {
             module(testStorageModule)
@@ -370,6 +380,65 @@ class ApplicationTest : KoinTest {
         val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
 
         val response = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(regRequest))
+        }
+
+        assertEquals(HttpStatusCode.Conflict, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Username is already registered", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testRegistrationCompleteWithUserThatAlreadyExists() = testApplication {
+        val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
+            Defaults.challenge,
+            keyPair,
+        )
+
+        every { mockRelyingParty.finishRegistration(any()) }.returns(mockk {
+            every { keyId } returns mockk {
+                every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
+            }
+            every { publicKeyCose } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
+            every { signatureCount } returns 0
+        })
+        every { mockCredentialStorage.userExists("testuser") } returns true
+        coEvery {
+            mockRegistrationStorage.retrieveAndRemoveRegistrationRequest(
+                any(),
+            )
+        } returns mockk<PublicKeyCredentialCreationOptions> {
+            every { challenge } returns Defaults.challenge
+            every { authenticatorSelection } returns Optional.of(mockk {
+                every { userVerification } returns Optional.of(mockk())
+            })
+            every { pubKeyCredParams } returns listOf(mockk {
+                every { alg } returns Defaults.keyAlgorithm
+            })
+            every { user } returns mockk {
+                every { name } returns "testuser"
+                every { displayName } returns "teruser displayName"
+                every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
+            }
+        }
+        application {
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<CredentialStorage> { mockCredentialStorage }
+                        single<RegistrationRequestStorage> { mockRegistrationStorage }
+                        single<RelyingParty> { mockRelyingParty }
+                    })
+            )
+        }
+
+        val regRequest = RegistrationCompleteRequest(
+            requestId = "testRequest",
+            credential = objectMapper.writeValueAsString(credential.first)
+        )
+        val response = client.post("/register/complete") {
             contentType(ContentType.Application.Json)
             setBody(objectMapper.writeValueAsString(regRequest))
         }
@@ -434,7 +503,6 @@ class ApplicationTest : KoinTest {
                 any()
             )
         } throws RuntimeException("Database connection failed")
-        every { mockAssertionStorage.close() } returns Unit
 
         application {
             module(testStorageModule)

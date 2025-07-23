@@ -18,6 +18,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
+import io.ktor.server.routing.get
 import io.ktor.server.testing.testApplication
 import io.micrometer.prometheus.PrometheusMeterRegistry
 import io.mockk.coEvery
@@ -116,6 +117,25 @@ class ApplicationTest : KoinTest {
         val response = client.get("/live")
         assertEquals(HttpStatusCode.OK, response.status)
         assertEquals("Alive", response.bodyAsText())
+    }
+
+    @Test
+    fun testStatusPageErrorHandler() = testApplication {
+        val errorFun = {
+            throw UnsupportedOperationException()
+        }
+        application {
+            module(testStorageModule)
+        }
+        routing {
+            this.get("/testStatusPage") {
+                errorFun()
+            }
+        }
+
+        val response = client.get("/testStatusPage")
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        assertEquals("Error occurred", response.bodyAsText())
     }
 
     @Test

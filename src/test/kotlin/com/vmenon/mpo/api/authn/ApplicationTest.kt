@@ -4,6 +4,7 @@ import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.RelyingParty
+import com.yubico.webauthn.data.PublicKeyCredential
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
@@ -16,6 +17,8 @@ import io.micrometer.prometheus.PrometheusMeterRegistry
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.unmockkStatic
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -388,5 +391,61 @@ class ApplicationTest : KoinTest {
         assertEquals(HttpStatusCode.InternalServerError, response.status)
         val responseBody = objectMapper.readTree(response.bodyAsText())
         assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testAuthenticationCompleteWithFailedAssertion() = testApplication {
+        // Mock RelyingParty for startAssertion (needed for the start step)
+        every { mockRelyingParty.startAssertion(any()) } returns mockk {
+            every { toCredentialsGetJson() } returns "{\"publicKey\": {}}"
+        }
+        
+        // Mock RelyingParty to return a FinishAssertionResult where isSuccess = false
+        every { mockRelyingParty.finishAssertion(any()) } returns mockk {
+            every { isSuccess } returns false
+        }
+
+        // Mock the static method PublicKeyCredential.parseAssertionResponseJson
+        mockkStatic(PublicKeyCredential::class)
+        every { PublicKeyCredential.parseAssertionResponseJson(any<String>()) } returns mockk()
+
+        try {
+            application {
+                module(testStorageModule)
+                getKoin().loadModules(
+                    listOf(
+                        module {
+                            single<RelyingParty> { mockRelyingParty }
+                        })
+                )
+            }
+
+            // First start an authentication to get a valid request ID
+            val authRequest = AuthenticationRequest()
+            val startResponse = client.post("/authenticate/start") {
+                contentType(ContentType.Application.Json)
+                setBody(objectMapper.writeValueAsString(authRequest))
+            }
+            assertEquals(HttpStatusCode.OK, startResponse.status)
+            val startBody = objectMapper.readTree(startResponse.bodyAsText())
+            val requestId = startBody.get("requestId").asText()
+
+            // Now try to complete with a valid request ID, but the assertion will fail
+            val completeRequest = AuthenticationCompleteRequest(
+                requestId = requestId,
+                credential = "{\"type\": \"public-key\", \"id\": \"test-credential-id\"}"
+            )
+
+            val response = client.post("/authenticate/complete") {
+                contentType(ContentType.Application.Json)
+                setBody(objectMapper.writeValueAsString(completeRequest))
+            }
+
+            assertEquals(HttpStatusCode.Unauthorized, response.status)
+            val responseBody = objectMapper.readTree(response.bodyAsText())
+            assertEquals("Authentication failed", responseBody.get("error").asText())
+        } finally {
+            unmockkStatic(PublicKeyCredential::class)
+        }
     }
 }

@@ -174,13 +174,6 @@ fun Application.configureRegistrationRoutes() {
 
                 logger.info("Successfully registered user: ${userAccount.username}")
                 call.respond(mapOf("success" to true, "message" to "Registration successful"))
-
-            } catch (e: IllegalArgumentException) {
-                logger.warn("Registration complete failed with invalid arguments", e)
-                call.respond(
-                    HttpStatusCode.BadRequest,
-                    mapOf("error" to "Invalid registration data")
-                )
             } catch (e: Exception) {
                 logger.error("Registration complete failed", e)
                 call.respond(

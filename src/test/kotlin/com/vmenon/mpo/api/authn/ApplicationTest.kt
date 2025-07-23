@@ -254,6 +254,104 @@ class ApplicationTest : KoinTest {
     }
 
     @Test
+    fun testRegistrationStartWithBlankUsername() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val regRequest = RegistrationRequest(username = "", displayName = "Test User")
+
+        val response = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(regRequest))
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Username is required", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testRegistrationStartWithBlankDisplayName() = testApplication {
+        application {
+            module(testStorageModule)
+        }
+
+        val regRequest = RegistrationRequest(username = "Test user", displayName = "")
+
+        val response = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(regRequest))
+        }
+
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Display name is required", responseBody.get("error").asText())
+    }
+
+
+    @Test
+    fun testRegistrationStartWithRelyingPartyFailure() = testApplication {
+        // Mock RelyingParty to throw an exception
+        every { mockRelyingParty.startRegistration(any()) } throws RuntimeException("RelyingParty configuration error")
+
+        application {
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<RelyingParty> { mockRelyingParty }
+                    })
+            )
+        }
+
+        val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
+
+        val response = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(regRequest))
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
+    }
+
+    @Test
+    fun testRegistrationStartWithStorageFailure() = testApplication {
+        // Mock RegistrationRequestStorage to throw an exception
+        coEvery {
+            mockRegistrationStorage.storeRegistrationRequest(
+                any(),
+                any(),
+                any()
+            )
+        } throws RuntimeException("Storage system down")
+        every { mockRegistrationStorage.close() } returns Unit
+
+        application {
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<RegistrationRequestStorage> { mockRegistrationStorage }
+                    })
+            )
+        }
+
+        val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
+
+        val response = client.post("/register/start") {
+            contentType(ContentType.Application.Json)
+            setBody(objectMapper.writeValueAsString(regRequest))
+        }
+
+        assertEquals(HttpStatusCode.InternalServerError, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
+    }
+
+    @Test
     fun testAuthenticationStartWithEmptyUsername() = testApplication {
         application {
             module(testStorageModule)
@@ -333,73 +431,12 @@ class ApplicationTest : KoinTest {
     }
 
     @Test
-    fun testRegistrationStartWithRelyingPartyFailure() = testApplication {
-        // Mock RelyingParty to throw an exception
-        every { mockRelyingParty.startRegistration(any()) } throws RuntimeException("RelyingParty configuration error")
-
-        application {
-            module(testStorageModule)
-            getKoin().loadModules(
-                listOf(
-                    module {
-                        single<RelyingParty> { mockRelyingParty }
-                    })
-            )
-        }
-
-        val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
-
-        val response = client.post("/register/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(regRequest))
-        }
-
-        assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val responseBody = objectMapper.readTree(response.bodyAsText())
-        assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
-    }
-
-    @Test
-    fun testRegistrationStartWithStorageFailure() = testApplication {
-        // Mock RegistrationRequestStorage to throw an exception
-        coEvery {
-            mockRegistrationStorage.storeRegistrationRequest(
-                any(),
-                any(),
-                any()
-            )
-        } throws RuntimeException("Storage system down")
-        every { mockRegistrationStorage.close() } returns Unit
-
-        application {
-            module(testStorageModule)
-            getKoin().loadModules(
-                listOf(
-                    module {
-                        single<RegistrationRequestStorage> { mockRegistrationStorage }
-                    })
-            )
-        }
-
-        val regRequest = RegistrationRequest(username = "testuser", displayName = "Test User")
-
-        val response = client.post("/register/start") {
-            contentType(ContentType.Application.Json)
-            setBody(objectMapper.writeValueAsString(regRequest))
-        }
-
-        assertEquals(HttpStatusCode.InternalServerError, response.status)
-        val responseBody = objectMapper.readTree(response.bodyAsText())
-        assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
-    }
-
-    @Test
     fun testAuthenticationCompleteWithFailedAssertion() = testApplication {
         // Mock RelyingParty for startAssertion (needed for the start step)
         every { mockRelyingParty.startAssertion(any()) } returns mockk {
             every { toCredentialsGetJson() } returns "{\"publicKey\": {}}"
         }
-        
+
         // Mock RelyingParty to return a FinishAssertionResult where isSuccess = false
         every { mockRelyingParty.finishAssertion(any()) } returns mockk {
             every { isSuccess } returns false

@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "webauthn-dev-tools": {
+      "command": "node",
+      "args": [
+        "dev-tools-mcp-server.js"
+      ]
+    }
+  }
+}

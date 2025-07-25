@@ -22,14 +22,14 @@ import kotlin.test.assertEquals
 
 /**
  * Shared test utilities for WebAuthn registration and authentication flows
- * 
+ *
  * This class provides reusable methods to eliminate duplication across test files:
  * - EndToEndIntegrationTest
  * - VulnerabilityProtectionTest
  * - Other WebAuthn test classes
  */
 object WebAuthnTestHelpers {
-    
+
     private val objectMapper = JacksonUtils.objectMapper
 
     /**
@@ -41,14 +41,14 @@ object WebAuthnTestHelpers {
      * @return Registration response
      */
     suspend fun registerUser(
-        client: HttpClient, 
-        username: String, 
-        displayName: String, 
+        client: HttpClient,
+        username: String,
+        displayName: String,
         keyPair: KeyPair
     ): HttpResponse {
         val startRegResponse = startRegistration(client, username, displayName)
         assertEquals(HttpStatusCode.OK, startRegResponse.status, "Registration start should succeed")
-        
+
         return completeRegistration(client, startRegResponse, keyPair)
     }
 
@@ -60,8 +60,8 @@ object WebAuthnTestHelpers {
      * @return Registration start response
      */
     suspend fun startRegistration(
-        client: HttpClient, 
-        username: String, 
+        client: HttpClient,
+        username: String,
         displayName: String
     ): HttpResponse {
         val registrationRequest = RegistrationRequest(
@@ -115,7 +115,7 @@ object WebAuthnTestHelpers {
      */
     suspend fun startAuthentication(client: HttpClient, username: String): HttpResponse {
         val authRequest = AuthenticationRequest(username = username)
-        
+
         return client.post("/authenticate/start") {
             contentType(ContentType.Application.Json)
             setBody(objectMapper.writeValueAsString(authRequest))
@@ -139,7 +139,7 @@ object WebAuthnTestHelpers {
         val startAuthBody = objectMapper.readTree(startAuthResponse.bodyAsText())
         val authRequestId = startAuthBody.get("requestId").asText()
         val authChallenge = extractChallenge(startAuthBody, "publicKeyCredentialRequestOptions")
-        
+
         val actualCredentialId = credentialId ?: extractCredentialId(startAuthBody)
 
         val authCredential = TestAuthenticator.createUnattestedCredentialForAuthentication(
@@ -157,26 +157,6 @@ object WebAuthnTestHelpers {
             contentType(ContentType.Application.Json)
             setBody(objectMapper.writeValueAsString(completeAuthRequest))
         }
-    }
-
-    /**
-     * Performs complete authentication flow
-     * @param client HTTP client for making requests
-     * @param username Username to authenticate
-     * @param keyPair Cryptographic key pair for the user
-     * @param credentialId Optional credential ID
-     * @return Authentication response
-     */
-    suspend fun authenticateUser(
-        client: HttpClient,
-        username: String,
-        keyPair: KeyPair,
-        credentialId: String? = null
-    ): HttpResponse {
-        val startAuthResponse = startAuthentication(client, username)
-        assertEquals(HttpStatusCode.OK, startAuthResponse.status, "Authentication start should succeed")
-        
-        return completeAuthentication(client, startAuthResponse, keyPair, credentialId)
     }
 
     /**
@@ -204,7 +184,7 @@ object WebAuthnTestHelpers {
             .get("publicKeyCredentialRequestOptions")
             ?.get("publicKey")
             ?.get("allowCredentials")
-            
+
         return allowCredentials?.firstOrNull()?.get("id")?.asText()
             ?: "test-credential-id" // Fallback for tests
     }
@@ -243,7 +223,7 @@ object WebAuthnTestHelpers {
         // Create malicious client data JSON
         val maliciousClientData = """{"type":"webauthn.get","challenge":"$challenge","origin":"$maliciousOrigin"}"""
         val maliciousClientDataB64 = java.util.Base64.getEncoder().encodeToString(maliciousClientData.toByteArray())
-        
+
         credentialNode.put("clientDataJSON", maliciousClientDataB64)
         return objectMapper.writeValueAsString(credentialNode)
     }

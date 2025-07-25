@@ -6,6 +6,7 @@
   "main": "dev-tools-mcp-server.js",
   "scripts": {
     "dev": "node dev-tools-mcp-server.js",
+    "monitor": "node scripts/vulnerability-monitor.js",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

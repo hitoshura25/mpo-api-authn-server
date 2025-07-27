@@ -250,15 +250,15 @@ components:
       type: object
       required:
         - requestId
-        - publicKeyCredential
+        - credential
       properties:
         requestId:
           type: string
           description: The request ID from the start registration response
           example: "550e8400-e29b-41d4-a716-446655440000"
-        publicKeyCredential:
-          type: object
-          description: The PublicKeyCredential returned by navigator.credentials.create()
+        credential:
+          type: string
+          description: The PublicKeyCredential JSON string returned by navigator.credentials.create()
 
     RegistrationCompleteResponse:
       type: object
@@ -302,15 +302,15 @@ components:
       type: object
       required:
         - requestId
-        - publicKeyCredential
+        - credential
       properties:
         requestId:
           type: string
           description: The request ID from the start authentication response
           example: "550e8400-e29b-41d4-a716-446655440001"
-        publicKeyCredential:
-          type: object
-          description: The PublicKeyCredential returned by navigator.credentials.get()
+        credential:
+          type: string
+          description: The PublicKeyCredential JSON string returned by navigator.credentials.get()
 
     AuthenticationCompleteResponse:
       type: object

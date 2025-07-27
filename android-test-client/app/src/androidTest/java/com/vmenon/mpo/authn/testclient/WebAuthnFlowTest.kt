@@ -67,7 +67,7 @@ class WebAuthnFlowTest {
             // Step 3: Complete registration
             val completeRequest = RegistrationCompleteRequest().apply {
                 requestId = startResponse.requestId
-                publicKeyCredential = mockCredential
+                credential = com.google.gson.Gson().toJson(mockCredential)
             }
 
             val completeResponse = registrationApi.completeRegistration(completeRequest)
@@ -112,7 +112,7 @@ class WebAuthnFlowTest {
             // Step 3: Complete authentication
             val completeRequest = AuthenticationCompleteRequest().apply {
                 requestId = startResponse.requestId
-                publicKeyCredential = mockAssertion
+                credential = com.google.gson.Gson().toJson(mockAssertion)
             }
 
             val completeResponse = authenticationApi.completeAuthentication(completeRequest)
@@ -199,7 +199,7 @@ class WebAuthnFlowTest {
 
         val completeRequest = RegistrationCompleteRequest().apply {
             requestId = startResponse.requestId
-            publicKeyCredential = mockCredential
+            credential = com.google.gson.Gson().toJson(mockCredential)
         }
 
         registrationApi.completeRegistration(completeRequest)

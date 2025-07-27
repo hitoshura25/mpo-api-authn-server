@@ -88,7 +88,7 @@ class WebAuthnViewModel : ViewModel() {
             
             val completeRequest = RegistrationCompleteRequest().apply {
                 requestId = startResponse.requestId
-                publicKeyCredential = mockCredential
+                credential = gson.toJson(mockCredential)
             }
             
             val completeResponse = withContext(Dispatchers.IO) {
@@ -151,7 +151,7 @@ class WebAuthnViewModel : ViewModel() {
             
             val completeRequest = AuthenticationCompleteRequest().apply {
                 requestId = startResponse.requestId
-                publicKeyCredential = mockAssertion
+                credential = gson.toJson(mockAssertion)
             }
             
             val completeResponse = withContext(Dispatchers.IO) {

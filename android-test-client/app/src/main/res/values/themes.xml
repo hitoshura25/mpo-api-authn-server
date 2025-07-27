@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Base application theme. -->
+    <style name="Base.Theme.WebAuthnTestClient" parent="Theme.Material3.DayNight">
+        <!-- Customize your light theme here. -->
+        <item name="colorPrimary">@android:color/holo_blue_bright</item>
+    </style>
+
+    <style name="Theme.WebAuthnTestClient" parent="Base.Theme.WebAuthnTestClient" />
+</resources>

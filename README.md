@@ -251,6 +251,29 @@ cat vulnerability-tracking.json
 - **7 security tests** running on every commit via pre-commit hooks
 - **Production-ready** security validation
 
+## 📦 GitHub Packages Integration
+
+Automated client library publishing with PR-aware versioning:
+
+```bash
+# Setup local access to published packages
+./scripts/setup-github-packages.sh
+
+# Published automatically on API changes:
+# - Main branch: com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0
+# - PR branches: com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr-123.1
+# - Feature branches: com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-develop.15
+```
+
+**Features:**
+- 🔄 **Automatic publishing** when OpenAPI specs change
+- 🏷️ **PR-aware versioning** for safe testing of API changes  
+- 💬 **GitHub bot comments** with usage instructions on PRs
+- 🔐 **Secure GitHub Packages** integration
+- 📱 **Android test client** auto-updates to use latest versions
+
+See [GITHUB_PACKAGES_SETUP.md](GITHUB_PACKAGES_SETUP.md) for complete setup guide.
+
 ## 🤖 MCP Integration
 
 Model Context Protocol integration for AI-assisted development:

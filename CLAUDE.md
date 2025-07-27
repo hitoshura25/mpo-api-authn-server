@@ -136,13 +136,35 @@ This project development followed a collaborative approach with continuous user 
 - Pull request creation testing should happen in CI environment, not locally with uncommitted changes
 - User understanding: "This is something that will be run as part of the github workflow... it may not be feasible to actually test for the pull request creation at this point"
 
+#### 7. **Android Client Generation & Publishing**
+- **Problem**: The initial publish workflow tried to embed complex Gradle syntax in YAML causing parsing errors
+- **Solution**: Restructured to generate client directly into android-test-client library module
+- **Key Insight**: "The whole point is using the client generated code, if we have to manually update it every time then that is an issue"
+- **Approach**: Configure OpenAPI generation correctly rather than post-process generated code
+- **Dependencies**: Android requires specific annotation libraries (JSR305 + javax.annotation-api) for generated code
+- **Build Consistency**: User feedback: "Let's consistently use kts for the build scripts" - prefer Kotlin DSL throughout
+
+#### 8. **OpenAPI Client Integration Challenges**
+- **Annotation Compatibility**: Generated Java code uses javax.annotation which isn't available by default in Android
+- **Testing Validation**: User insisted on actually running tests: "Please ensure that we can run the test with the generated client code"
+- **Method Name Mismatches**: API methods may differ from expected names (e.g., `getHealth()` vs `healthCheck()`)
+- **Enum Handling**: Generated enums require proper comparison (e.g., `status.toString() == "healthy"`)
+
 ### Code Quality Preferences
 - **Self-Documenting Code**: "Going forward I prefer self-documentation of code versus explicit comments if possible"
 - **Functional over Complex**: Simple functions preferred over nested class hierarchies
 - **Real Integration**: Actual API calls and git operations over mocked behaviors
+- **Build Consistency**: Kotlin DSL (.kts) preferred over Groovy for all build scripts ✅ Completed
+- **Generated Code Integrity**: Never manually modify generated code; fix generation configuration instead
 
 ### Security Implementation Patterns
 - **Comprehensive Coverage**: All 4 major WebAuthn vulnerabilities now have test coverage
 - **Automated Monitoring**: Weekly vulnerability scanning with PR generation
 - **Correlation Logic**: Link vulnerabilities to actionable dependency updates
 - **Production Ready**: 7/7 security tests passing, 100% coverage achieved
+
+### Android Client Publishing Architecture
+- **Structure**: Main project generates → android-test-client/client-library → GitHub Packages
+- **Workflow**: `./gradlew copyGeneratedClientToLibrary` → `./gradlew client-library:publish`
+- **Testing**: Both unit and instrumentation tests validate generated client integration
+- **Versioning**: PR-aware versioning (1.0.0-pr-123.1) for safe testing of API changes

@@ -180,7 +180,9 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
             "groupId" to "com.vmenon.mpo.api.authn",
             "artifactId" to "mpo-webauthn-client",
             "artifactVersion" to project.version.toString(),
-            "packageName" to "com.vmenon.mpo.api.authn.client"
+            "invokerPackage" to "com.vmenon.mpo.api.authn.client",
+            "apiPackage" to "com.vmenon.mpo.api.authn.client.api",
+            "modelPackage" to "com.vmenon.mpo.api.authn.client.model"
         )
     )
 
@@ -234,10 +236,168 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
     outputs.dir(layout.buildDirectory.dir("generated-clients/csharp"))
 }
 
+// Android client generation (specifically configured for Android)
+tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generateAndroidClient") {
+    group = "openapi"
+    description = "Generate Android client library"
+
+    dependsOn("copyOpenApiSpec")
+
+    generatorName.set("java")
+    inputSpec.set(staticOpenApiSpecFile.absolutePath)
+    outputDir.set(layout.buildDirectory.dir("generated-clients/android").get().asFile.absolutePath)
+
+    configOptions.set(
+        mapOf(
+            "library" to "okhttp-gson",
+            "groupId" to "com.vmenon.mpo.api.authn",
+            "artifactId" to "mpo-webauthn-android-client",
+            "artifactVersion" to project.version.toString(),
+            "invokerPackage" to "com.vmenon.mpo.api.authn.client",
+            "apiPackage" to "com.vmenon.mpo.api.authn.client.api",
+            "modelPackage" to "com.vmenon.mpo.api.authn.client.model",
+            "android" to "true",
+            "dateLibrary" to "java8",
+            "withXml" to "false",
+            "hideGenerationTimestamp" to "true",
+            "useJakartaEe" to "false",
+            "annotationLibrary" to "none"
+        )
+    )
+
+    inputs.file(staticOpenApiSpecFile)
+    outputs.dir(layout.buildDirectory.dir("generated-clients/android"))
+}
+
+// Copy generated client code to library module
+tasks.register<Copy>("copyGeneratedClientToLibrary") {
+    group = "openapi"
+    description = "Copy generated Android client code to library module"
+
+    dependsOn("generateAndroidClient")
+
+    from(layout.buildDirectory.dir("generated-clients/android/src/main/java"))
+    into(file("android-test-client/client-library/src/main/java"))
+
+    inputs.dir(layout.buildDirectory.dir("generated-clients/android/src/main/java"))
+    outputs.dir(file("android-test-client/client-library/src/main/java"))
+}
+
+// Build generated clients
+tasks.register("buildGeneratedClients") {
+    group = "openapi"
+    description = "Build all generated client libraries"
+
+    dependsOn("generateAllClients")
+
+    doLast {
+        // Build Java client
+        val javaClientDir = layout.buildDirectory.dir("generated-clients/java").get().asFile
+        if (javaClientDir.exists()) {
+            exec {
+                workingDir = javaClientDir
+                commandLine("./gradlew", "build", "publishToMavenLocal")
+            }
+        }
+
+        // Build Android client  
+        val androidClientDir = layout.buildDirectory.dir("generated-clients/android").get().asFile
+        if (androidClientDir.exists()) {
+            exec {
+                workingDir = androidClientDir
+                commandLine("./gradlew", "build", "publishToMavenLocal")
+            }
+        }
+
+        // Build TypeScript client
+        val tsClientDir = layout.buildDirectory.dir("generated-clients/typescript").get().asFile
+        if (tsClientDir.exists() && File(tsClientDir, "package.json").exists()) {
+            exec {
+                workingDir = tsClientDir
+                commandLine("npm", "install")
+            }
+            exec {
+                workingDir = tsClientDir
+                commandLine("npm", "run", "build")
+            }
+        }
+    }
+}
+
+// Prepare clients for publishing
+tasks.register("prepareClientPublishing") {
+    group = "openapi"
+    description = "Prepare all generated clients for publishing to repositories"
+
+    dependsOn("buildGeneratedClients")
+
+    doLast {
+        val distributionDir = layout.buildDirectory.dir("client-distributions").get().asFile
+        distributionDir.mkdirs()
+
+        println("📦 Client libraries prepared for publishing:")
+
+        // Java/Android clients (Maven)
+        listOf("java", "android").forEach { clientType ->
+            val clientDir = layout.buildDirectory.dir("generated-clients/$clientType").get().asFile
+            if (clientDir.exists()) {
+                val jarFiles = clientDir.walkTopDown()
+                    .filter { it.extension == "jar" && !it.name.contains("sources") }
+                    .toList()
+
+                jarFiles.forEach { jar ->
+                    val destFile = File(distributionDir, "${clientType}-${jar.name}")
+                    jar.copyTo(destFile, overwrite = true)
+                    println("   📋 ${clientType.uppercase()}: ${destFile.absolutePath}")
+                }
+            }
+        }
+
+        // TypeScript client (NPM)
+        val tsClientDir = layout.buildDirectory.dir("generated-clients/typescript").get().asFile
+        if (tsClientDir.exists()) {
+            val tgzFiles = tsClientDir.walkTopDown()
+                .filter { it.extension == "tgz" }
+                .toList()
+
+            tgzFiles.forEach { tgz ->
+                val destFile = File(distributionDir, "typescript-${tgz.name}")
+                tgz.copyTo(destFile, overwrite = true)
+                println("   📋 TYPESCRIPT: ${destFile.absolutePath}")
+            }
+        }
+
+        // Python client (PyPI)
+        val pythonClientDir = layout.buildDirectory.dir("generated-clients/python").get().asFile
+        if (pythonClientDir.exists()) {
+            val distDir = File(pythonClientDir, "dist")
+            if (distDir.exists()) {
+                distDir.listFiles()?.forEach { distFile ->
+                    val destFile = File(distributionDir, "python-${distFile.name}")
+                    distFile.copyTo(destFile, overwrite = true)
+                    println("   📋 PYTHON: ${destFile.absolutePath}")
+                }
+            }
+        }
+
+        println("\n🚀 Publishing commands:")
+        println("   Maven:     mvn deploy (from generated-clients/java or generated-clients/android)")
+        println("   NPM:       npm publish (from generated-clients/typescript)")
+        println("   PyPI:      twine upload dist/* (from generated-clients/python)")
+        println("   NuGet:     dotnet nuget push (from generated-clients/csharp)")
+    }
+}
+
 // Generate all clients
 tasks.register("generateAllClients") {
     group = "openapi"
     description = "Generate all client libraries"
 
-    dependsOn("generateTsClient", "generateJavaClient", "generatePythonClient", "generateCsharpClient")
+    dependsOn(
+        "generateTsClient",
+        "generateJavaClient",
+        "generatePythonClient",
+        "generateCsharpClient",
+        "generateAndroidClient"
+    )
 }

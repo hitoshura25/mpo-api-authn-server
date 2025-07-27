@@ -54,8 +54,97 @@ After generation, client libraries will be available in:
 build/generated-clients/
 ├── typescript/          # TypeScript/JavaScript client
 ├── java/               # Java client
+├── android/            # Android-specific Java client
 ├── python/             # Python client
 └── csharp/             # C# client
+```
+
+## Client Publishing
+
+### Build and Publish All Clients
+
+```bash
+# Generate, build, and prepare all clients for publishing
+./gradlew prepareClientPublishing
+```
+
+This will:
+1. Generate all client libraries
+2. Build them (compile, test, package)
+3. Publish Java/Android clients to local Maven
+4. Package TypeScript/Python/C# clients for distribution
+5. Create distribution artifacts in `build/client-distributions/`
+
+### Individual Client Management
+
+```bash
+# Generate specific client
+./gradlew generateAndroidClient
+./gradlew generateTsClient
+
+# Build and publish individual clients
+cd build/generated-clients/android
+./gradlew build publishToMavenLocal
+
+cd build/generated-clients/typescript  
+npm install && npm run build && npm pack
+```
+
+### Publishing to Remote Repositories
+
+After running `./gradlew prepareClientPublishing`, you can publish to remote repositories:
+
+#### Maven Central (Java/Android)
+```bash
+cd build/generated-clients/java
+# Configure Maven credentials in ~/.m2/settings.xml
+./gradlew publish
+
+cd ../android
+./gradlew publish
+```
+
+#### NPM Registry (TypeScript)
+```bash
+cd build/generated-clients/typescript
+npm login
+npm publish
+```
+
+#### PyPI (Python)
+```bash
+cd build/generated-clients/python
+pip install twine
+python setup.py sdist bdist_wheel
+twine upload dist/*
+```
+
+#### NuGet Gallery (C#)
+```bash
+cd build/generated-clients/csharp
+dotnet pack
+dotnet nuget push *.nupkg --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json
+```
+
+### Using Published Clients
+
+Once published, consumers can use the clients directly:
+
+#### Android Project
+```gradle
+dependencies {
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+}
+```
+
+#### NPM Project
+```bash
+npm install mpo-webauthn-client
+```
+
+#### Python Project
+```bash
+pip install mpo-webauthn-client
 ```
 
 ## Using the Generated Clients

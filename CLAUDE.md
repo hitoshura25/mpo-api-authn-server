@@ -45,7 +45,7 @@ This project follows a multi-module Gradle structure for clear separation of con
 #### Main Server
 - **Tests**: `./gradlew :webauthn-server:test`
 - **Build**: `./gradlew :webauthn-server:build`
-- **Run**: `./gradlew :webauthn-server:run` or `./webauthn-server/start-dev.sh`
+- **Run**: `./gradlew :webauthn-server:run` or `cd webauthn-server && ./start-dev.sh`
 - **Coverage**: `./gradlew :webauthn-server:koverHtmlReport`
 
 #### Test Service
@@ -210,6 +210,15 @@ This project development followed a collaborative approach with continuous user 
 - **Testing**: Both unit and instrumentation tests validate generated client integration
 - **Versioning**: PR-aware versioning (1.0.0-pr-123.1) for safe testing of API changes
 
+### Docker Best Practices Implementation
+- **Multi-stage builds**: Optimal layer separation and caching
+- **Slim Alpine images**: `eclipse-temurin:21-jre-alpine` for minimal size
+- **Non-root user**: Security hardening with dedicated app user (uid 1001)
+- **JVM optimization**: Container-aware settings with G1GC and memory limits
+- **Layer caching**: Dependencies installed in separate layers for faster rebuilds
+- **Health checks**: Proper startup periods and retry logic
+- **Security**: No root processes, minimal attack surface
+
 ## Multi-Module Project Restructuring (January 2025)
 
 ### What Was Done
@@ -231,7 +240,10 @@ The project was restructured from a single-module to multi-module architecture t
 │   ├── src/main/kotlin/com/vmenon/mpo/api/authn/
 │   ├── build.gradle.kts
 │   ├── docker-compose.yml
-│   └── start-dev.sh
+│   ├── start-dev.sh
+│   ├── start-full.sh
+│   ├── setup-secure-env.sh
+│   └── docker-compose.deps.yml
 ├── webauthn-test-service/                        # Cross-platform test service
 │   ├── src/main/kotlin/com/vmenon/webauthn/testservice/
 │   └── build.gradle.kts

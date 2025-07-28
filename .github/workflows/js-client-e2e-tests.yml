@@ -104,18 +104,20 @@ jobs:
 
       - name: Set up environment and start services
         run: |
-          ./scripts/setup-secure-env.sh
-          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose -f webauthn-server/docker-compose.yml up -d --build
+          cd webauthn-server
+          ./setup-secure-env.sh
+          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose up -d --build
 
           # Wait for services
           for i in {1..60}; do
-            healthy_count=$(docker compose -f webauthn-server/docker-compose.yml ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
+            healthy_count=$(docker compose ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
             if [ "$healthy_count" -eq 4 ]; then
               echo "✅ All services ready"
               break
             fi
             sleep 0.5
           done
+          cd ..
 
       - name: Run E2E tests
         id: run-tests
@@ -141,9 +143,10 @@ jobs:
         if: always()
         run: |
           echo "Capturing Docker Compose logs..."
-          docker compose -f webauthn-server/docker-compose.yml logs > docker-compose-logs.txt 2>&1
+          cd webauthn-server
+          docker compose logs > ../docker-compose-logs.txt 2>&1
           echo "Stopping Docker Compose services..."
-          docker compose -f webauthn-server/docker-compose.yml down -v
+          docker compose down -v
           echo "✅ Docker Compose services stopped"
 
       - name: Upload Playwright Report

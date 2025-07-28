@@ -52,9 +52,9 @@ This project follows a multi-module Gradle structure for clear separation of con
 - **Build**: `./gradlew :webauthn-test-service:build`
 - **Run**: `./gradlew :webauthn-test-service:run`
 
-#### Android Client
-- **Tests**: `./gradlew :android-test-client:app:test`
-- **Build**: `./gradlew :android-test-client:app:build`
+#### Android Client (Standalone Project)
+- **Tests**: `cd android-test-client && ./gradlew test`
+- **Build**: `cd android-test-client && ./gradlew build`
 - **Generate Client**: `./gradlew :webauthn-server:copyGeneratedClientToLibrary`
 
 #### All Modules
@@ -279,6 +279,13 @@ The project was restructured from a single-module to multi-module architecture t
 - **Old**: `./gradlew test`
 - **New**: `./gradlew :webauthn-server:test`
 - **Pattern**: All commands now require module prefixes (`:webauthn-server:`, `:android-test-client:app:`)
+
+#### **☕ JVM Target Configuration Drift**
+- **Problem**: During restructuring, server modules were upgraded to JVM target 21 but GitHub workflows still used JDK 17
+- **Root Cause**: Before restructuring, project used default JVM target (≤17), compatible with JDK 17 in CI
+- **Fix**: Updated all GitHub workflows from `java-version: '17'` to `java-version: '21'`
+- **Lesson**: Always update CI/CD JDK version when changing `kotlinOptions.jvmTarget` in build files
+- **Prevention**: JDK version in workflows must be ≥ JVM target version in Kotlin configuration
 
 #### **🐳 Docker Context Changes**
 - **Old**: `docker-compose up` (root level)

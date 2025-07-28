@@ -34,7 +34,7 @@ cd webauthn-server
 ./gradlew :webauthn-server:test
 
 # Android client tests  
-./gradlew :android-test-client:app:test
+cd android-test-client && ./gradlew test
 
 # Web E2E tests (requires server running)
 cd test-client
@@ -121,8 +121,8 @@ The project includes a dedicated test service for generating WebAuthn credential
 ./gradlew :webauthn-test-service:run
 
 # Android client
-./gradlew :android-test-client:app:test
-./gradlew :android-test-client:client-library:publish
+cd android-test-client && ./gradlew test
+cd android-test-client && ./gradlew client-library:publish
 ```
 
 ### Docker Development

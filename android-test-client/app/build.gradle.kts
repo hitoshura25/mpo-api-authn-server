@@ -66,7 +66,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-fido:20.1.0")
 
     // Local generated Android client library module (includes all necessary dependencies)
-    implementation(project(":android-test-client:client-library"))
+    implementation(project(":client-library"))
     
     // Explicitly add Gson for ViewModel usage
     implementation("com.google.code.gson:gson:2.10.1")

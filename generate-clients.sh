@@ -33,7 +33,7 @@ check_server() {
 start_server_if_needed() {
     if ! check_server; then
         echo "🔄 Starting server in background..."
-        ./gradlew run &
+        ./gradlew :webauthn-server:run &
         SERVER_PID=$!
 
         # Wait for server to start
@@ -70,16 +70,16 @@ generate_clients() {
     echo "🏗️  Generating client libraries..."
 
     echo "  📦 Generating TypeScript client..."
-    ./gradlew generateTsClient
+    ./gradlew :webauthn-server:generateTsClient
 
     echo "  ☕ Generating Java client..."
-    ./gradlew generateJavaClient
+    ./gradlew :webauthn-server:generateJavaClient
 
     echo "  🐍 Generating Python client..."
-    ./gradlew generatePythonClient
+    ./gradlew :webauthn-server:generatePythonClient
 
     echo "  🔷 Generating C# client..."
-    ./gradlew generateCsharpClient
+    ./gradlew :webauthn-server:generateCsharpClient
 
     echo "✅ All client libraries generated successfully"
 }

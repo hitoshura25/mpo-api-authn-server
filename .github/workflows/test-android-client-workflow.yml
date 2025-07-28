@@ -14,8 +14,8 @@ on:
   pull_request:
     branches: [ main ]
     paths:
-      - 'src/main/resources/openapi/**'
-      - 'build.gradle.kts'
+      - 'webauthn-server/src/main/resources/openapi/**'
+      - 'webauthn-server/build.gradle.kts'
       - 'android-test-client/**'
       - '.github/workflows/test-android-client-workflow.yml'
 
@@ -56,7 +56,7 @@ jobs:
       - name: Test Android client generation
         run: |
           echo "🔨 Testing Android client generation..."
-          ./gradlew copyGeneratedClientToLibrary --info
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --info
           
           # Check if the client was generated and copied
           if [ -d "android-test-client/client-library/src/main/java" ]; then
@@ -66,15 +66,15 @@ jobs:
             echo "📁 Generated files:"
             find android-test-client/client-library/src/main/java -name "*.java" | head -10
             
-            # Check for key API classes
-            if [ -f "android-test-client/client-library/src/main/java/org/openapitools/client/api/RegistrationApi.java" ]; then
+            # Check for key API classes (correct package structure)
+            if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/RegistrationApi.java" ]; then
               echo "✅ RegistrationApi.java found"
             else
               echo "❌ RegistrationApi.java not found"
               exit 1
             fi
             
-            if [ -f "android-test-client/client-library/src/main/java/org/openapitools/client/api/AuthenticationApi.java" ]; then
+            if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/AuthenticationApi.java" ]; then
               echo "✅ AuthenticationApi.java found"
             else
               echo "❌ AuthenticationApi.java not found"
@@ -179,7 +179,7 @@ jobs:
           sleep 30
           
           # Start the server in background
-          ./gradlew run &
+          ./gradlew :webauthn-server:run &
           SERVER_PID=$!
           echo "SERVER_PID=$SERVER_PID" >> $GITHUB_ENV
           

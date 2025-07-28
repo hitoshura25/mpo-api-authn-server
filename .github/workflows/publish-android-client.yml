@@ -36,8 +36,8 @@ jobs:
         with:
           filters: |
             api:
-              - 'src/main/resources/openapi/**'
-              - 'build.gradle.kts'
+              - 'webauthn-server/src/main/resources/openapi/**'
+              - 'webauthn-server/build.gradle.kts'
               - '.github/workflows/publish-android-client.yml'
               - 'android-test-client/**'
 
@@ -128,7 +128,7 @@ jobs:
           echo "📝 Generating Android client with version: $VERSION"
           
           # Generate the client from main project
-          ./gradlew copyGeneratedClientToLibrary --info
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --info
           
           echo "✅ Android client generated and copied to library module"
 

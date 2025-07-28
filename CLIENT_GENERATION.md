@@ -13,37 +13,37 @@ The server uses OpenAPI 3.0 specifications to automatically generate client libr
 
 ## Quick Start
 
-### 1. Generate All Client Libraries
+### 1. Generate Android Client (Currently Available)
 
 ```bash
 # Make sure your server is running on localhost:8080
-./gradlew run
+./gradlew :webauthn-server:run
 
-# In another terminal, generate all clients
-./generate-clients.sh
+# In another terminal, generate Android client
+./gradlew :webauthn-server:copyGeneratedClientToLibrary
 ```
 
-### 2. Generate Specific Client
+### 2. Generate Other Clients (Future Implementation)
 
 ```bash
-# TypeScript client only
-./gradlew generateTsClient
+# TypeScript client (when implemented)
+./gradlew :webauthn-server:generateTsClient
 
-# Java client only  
-./gradlew generateJavaClient
+# Java client (when implemented)
+./gradlew :webauthn-server:generateJavaClient
 
-# Python client only
-./gradlew generatePythonClient
+# Python client (when implemented)
+./gradlew :webauthn-server:generatePythonClient
 
-# C# client only
-./gradlew generateCsharpClient
+# C# client (when implemented)
+./gradlew :webauthn-server:generateCsharpClient
 ```
 
-### 3. Package for Distribution
+### 3. Package for Distribution (Future Implementation)
 
 ```bash
-# Generate and package all clients
-./generate-clients.sh --package
+# Generate and package all clients (when implemented)
+./gradlew :webauthn-server:generateAllClients
 ```
 
 ## Generated Client Locations
@@ -51,21 +51,27 @@ The server uses OpenAPI 3.0 specifications to automatically generate client libr
 After generation, client libraries will be available in:
 
 ```
-build/generated-clients/
-├── typescript/          # TypeScript/JavaScript client
-├── java/               # Java client
-├── android/            # Android-specific Java client
-├── python/             # Python client
-└── csharp/             # C# client
+webauthn-server/build/generated-clients/
+├── android/            # Android-specific Java client (currently implemented)
+├── typescript/         # TypeScript/JavaScript client (future)
+├── java/               # Java client (future)  
+├── python/             # Python client (future)
+└── csharp/             # C# client (future)
+```
+
+**Android Client Integration:**
+The Android client is automatically copied to:
+```
+android-test-client/client-library/src/main/java/
 ```
 
 ## Client Publishing
 
-### Build and Publish All Clients
+### Build and Publish All Clients (Future Implementation)
 
 ```bash
-# Generate, build, and prepare all clients for publishing
-./gradlew prepareClientPublishing
+# Generate, build, and prepare all clients for publishing (when implemented)
+./gradlew :webauthn-server:prepareClientPublishing
 ```
 
 This will:

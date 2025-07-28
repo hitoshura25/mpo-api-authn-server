@@ -15,23 +15,51 @@ implementation.
 - **Build**: Gradle with Kotlin DSL
 - **Containerization**: Docker with docker-compose
 
-## Development Commands
+## Multi-Module Project Structure
 
-- **Tests**: `./gradlew test`
-- **Build**: `./gradlew build`
-- **Run**: `./gradlew run` or `./start-dev.sh`
-- **Verification**: `./gradlew check` (runs all checks including tests)
-- **Coverage Report**: `./gradlew koverHtmlReport` (generates HTML coverage report)
+This project follows a multi-module Gradle structure for clear separation of concerns:
 
-## Project Structure
+### Main Modules
+- **webauthn-server/** - Main WebAuthn KTor server
+    - `src/main/kotlin/com/vmenon/mpo/api/authn/` - Main application code
+        - `routes/` - HTTP endpoint handlers
+        - `storage/` - Data persistence layer
+        - `security/` - Security-related services
+        - `yubico/` - WebAuthn implementation using Yubico library
+    - `src/test/kotlin/` - Test suites
+        - `security/VulnerabilityProtectionTest.kt` - Comprehensive security validation
+    - `docker-compose.yml`, `Dockerfile`, `start-dev.sh` - Deployment files
 
-- `src/main/kotlin/com/vmenon/mpo/api/authn/` - Main application code
-    - `routes/` - HTTP endpoint handlers
-    - `storage/` - Data persistence layer
-    - `security/` - Security-related services
-    - `yubico/` - WebAuthn implementation using Yubico library
-- `src/test/kotlin/` - Test suites
-    - `security/VulnerabilityProtectionTest.kt` - Comprehensive security validation
+- **webauthn-test-service/** - HTTP service for cross-platform testing
+    - `src/main/kotlin/com/vmenon/webauthn/testservice/` - Test credential generation
+        - `testutils/SimpleTestAuthenticator.kt` - WebAuthn credential generation for testing
+        - `routes/TestRoutes.kt` - HTTP endpoints for test credentials
+        - `models/TestModels.kt` - Request/response models
+
+- **android-test-client/** - Android client with generated API library
+    - `app/` - Android test application
+    - `client-library/` - Generated OpenAPI client library module
+
+### Development Commands
+
+#### Main Server
+- **Tests**: `./gradlew :webauthn-server:test`
+- **Build**: `./gradlew :webauthn-server:build`
+- **Run**: `./gradlew :webauthn-server:run` or `./webauthn-server/start-dev.sh`
+- **Coverage**: `./gradlew :webauthn-server:koverHtmlReport`
+
+#### Test Service
+- **Build**: `./gradlew :webauthn-test-service:build`
+- **Run**: `./gradlew :webauthn-test-service:run`
+
+#### Android Client
+- **Tests**: `./gradlew :android-test-client:app:test`
+- **Build**: `./gradlew :android-test-client:app:build`
+- **Generate Client**: `./gradlew :webauthn-server:copyGeneratedClientToLibrary`
+
+#### All Modules
+- **Full Build**: `./gradlew build`
+- **All Tests**: `./gradlew test`
 
 ## Security Focus
 
@@ -161,6 +189,15 @@ This project development followed a collaborative approach with continuous user 
 - **Build Consistency**: Kotlin DSL (.kts) preferred over Groovy for all build scripts ✅ Completed
 - **Generated Code Integrity**: Never manually modify generated code; fix generation configuration instead
 
+### File Management & Git History
+- **Preserve Git History**: Always use `git mv` instead of `mv` for file moves to maintain history
+- **Separate Move Commits**: File moves should be separate commits from content changes
+- **Multi-Step Restructuring**: For large restructuring:
+  1. `git mv` files to new locations (commit)
+  2. Update build configuration (commit)
+  3. Update imports/references (commit)
+- **Lesson Learned**: The 2025 project restructuring lost Git history due to using `mv` instead of `git mv`
+
 ### Security Implementation Patterns
 - **Comprehensive Coverage**: All 4 major WebAuthn vulnerabilities now have test coverage
 - **Automated Monitoring**: Weekly vulnerability scanning with PR generation
@@ -169,6 +206,93 @@ This project development followed a collaborative approach with continuous user 
 
 ### Android Client Publishing Architecture
 - **Structure**: Main project generates → android-test-client/client-library → GitHub Packages
-- **Workflow**: `./gradlew copyGeneratedClientToLibrary` → `./gradlew client-library:publish`
+- **Workflow**: `./gradlew :webauthn-server:copyGeneratedClientToLibrary` → `./gradlew client-library:publish`
 - **Testing**: Both unit and instrumentation tests validate generated client integration
 - **Versioning**: PR-aware versioning (1.0.0-pr-123.1) for safe testing of API changes
+
+## Multi-Module Project Restructuring (January 2025)
+
+### What Was Done
+The project was restructured from a single-module to multi-module architecture to support cross-platform testing and better separation of concerns:
+
+#### **Before (Single Module)**
+```
+/
+├── src/main/kotlin/com/vmenon/mpo/api/authn/     # Server code
+├── build.gradle.kts                              # Single build file
+├── docker-compose.yml                            # Docker config
+└── android-test-client/                          # Android client
+```
+
+#### **After (Multi-Module)**
+```
+/
+├── webauthn-server/                              # Main server module
+│   ├── src/main/kotlin/com/vmenon/mpo/api/authn/
+│   ├── build.gradle.kts
+│   ├── docker-compose.yml
+│   └── start-dev.sh
+├── webauthn-test-service/                        # Cross-platform test service
+│   ├── src/main/kotlin/com/vmenon/webauthn/testservice/
+│   └── build.gradle.kts
+├── android-test-client/                          # Android client & library
+├── test-client/                                  # Web E2E tests
+└── build.gradle.kts                              # Root multi-module config
+```
+
+### Components Updated During Restructuring
+
+#### **✅ Core Build System**
+- Root `build.gradle.kts` with plugin management
+- Module-specific build files with proper dependencies
+- `settings.gradle.kts` with module includes
+- Root `gradle.properties` for AndroidX compatibility
+
+#### **✅ GitHub Workflows** 
+- **js-client-e2e-tests.yml**: Updated server paths and Docker references
+- **publish-android-client.yml**: Fixed OpenAPI spec paths and Gradle tasks
+- **test-android-client-workflow.yml**: Updated generation tasks and API validation
+
+#### **✅ Test Infrastructure**
+- **test-client/package.json**: Updated server start/stop scripts
+- **Global test setup**: Fixed Docker compose references
+- **Git hooks**: Updated pre-commit security test command
+
+#### **✅ Documentation**
+- **README.md**: Complete rewrite for multi-module overview
+- **CLIENT_GENERATION.md**: Updated all Gradle commands with module prefixes
+- **MCP_DEVELOPMENT_GUIDE.md**: Enhanced for multi-module context
+- **CLAUDE.md**: Updated structure and commands
+
+#### **✅ Development Tools**
+- **dev-tools-mcp-server.js**: Updated all Gradle and Docker commands
+- **Scripts**: All references updated to webauthn-server paths
+
+### Lessons Learned
+
+#### **🚨 Git History Loss**
+- **Problem**: Used `mv` instead of `git mv` for file moves
+- **Impact**: Git history appears broken - `git log --follow` won't work properly
+- **Solution for Future**: Always use `git mv` for file moves to preserve history
+
+#### **🔧 Multi-Module Gradle Commands**
+- **Old**: `./gradlew test`
+- **New**: `./gradlew :webauthn-server:test`
+- **Pattern**: All commands now require module prefixes (`:webauthn-server:`, `:android-test-client:app:`)
+
+#### **🐳 Docker Context Changes**
+- **Old**: `docker-compose up` (root level)
+- **New**: `docker-compose -f webauthn-server/docker-compose.yml up`
+- **Impact**: All CI/CD and development scripts needed path updates
+
+#### **📱 Android JVM Target Conflicts**
+- **Problem**: Root build tried to apply JVM 21 to Android modules
+- **Solution**: Conditional JVM target setting based on module names
+- **Fix**: Server modules use JVM 21, Android uses JVM 1.8
+
+### Project Health After Restructuring
+- **✅ All Tests Passing**: Server, Android, and E2E tests work
+- **✅ GitHub Actions Updated**: All workflows reflect new structure  
+- **✅ Documentation Aligned**: All .md files updated
+- **✅ Development Tools Working**: MCP tools and scripts use correct paths
+- **✅ Git Hooks Fixed**: Pre-commit security tests use module syntax

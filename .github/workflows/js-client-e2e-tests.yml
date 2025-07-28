@@ -68,12 +68,12 @@ jobs:
 
       - name: Run tests, coverage, and build JAR
         shell: bash
-        run: ./gradlew koverXmlReport shadowJar --build-cache --parallel --configuration-cache
+        run: ./gradlew :webauthn-server:koverXmlReport :webauthn-server:shadowJar --build-cache --parallel --configuration-cache
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: ./build/reports/kover/report.xml
+          files: ./webauthn-server/build/reports/kover/report.xml
           flags: unit
           name: codecov-unit
           token: ${{ secrets.codecov_token }}
@@ -105,11 +105,11 @@ jobs:
       - name: Set up environment and start services
         run: |
           ./scripts/setup-secure-env.sh
-          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose up -d --build
+          DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose -f webauthn-server/docker-compose.yml up -d --build
 
           # Wait for services
           for i in {1..60}; do
-            healthy_count=$(docker compose ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
+            healthy_count=$(docker compose -f webauthn-server/docker-compose.yml ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
             if [ "$healthy_count" -eq 4 ]; then
               echo "✅ All services ready"
               break
@@ -141,9 +141,9 @@ jobs:
         if: always()
         run: |
           echo "Capturing Docker Compose logs..."
-          docker compose logs > docker-compose-logs.txt 2>&1
+          docker compose -f webauthn-server/docker-compose.yml logs > docker-compose-logs.txt 2>&1
           echo "Stopping Docker Compose services..."
-          docker compose down -v
+          docker compose -f webauthn-server/docker-compose.yml down -v
           echo "✅ Docker Compose services stopped"
 
       - name: Upload Playwright Report
@@ -175,7 +175,7 @@ jobs:
         uses: docker/build-push-action@v6
         if: github.event_name != 'pull_request'
         with:
-          context: .
+          context: ./webauthn-server
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

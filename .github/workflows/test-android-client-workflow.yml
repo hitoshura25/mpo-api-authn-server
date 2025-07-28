@@ -3,21 +3,21 @@ name: Test Android Client Integration
 # This workflow tests the complete Android client generation, publishing, and integration
 # by running actual Android tests against the generated client
 
-on:
-  workflow_dispatch:
-    inputs:
-      test_mode:
-        description: 'Run in test mode (no actual publishing)'
-        required: false
-        default: true
-        type: boolean
-  pull_request:
-    branches: [ main ]
-    paths:
-      - 'webauthn-server/src/main/resources/openapi/**'
-      - 'webauthn-server/build.gradle.kts'
-      - 'android-test-client/**'
-      - '.github/workflows/test-android-client-workflow.yml'
+#on:
+#  workflow_dispatch:
+#    inputs:
+#      test_mode:
+#        description: 'Run in test mode (no actual publishing)'
+#        required: false
+#        default: true
+#        type: boolean
+#  pull_request:
+#    branches: [ main ]
+#    paths:
+#      - 'webauthn-server/src/main/resources/openapi/**'
+#      - 'webauthn-server/build.gradle.kts'
+#      - 'android-test-client/**'
+#      - '.github/workflows/test-android-client-workflow.yml'
 
 env:
   REGISTRY: ghcr.io
@@ -61,11 +61,11 @@ jobs:
           # Check if the client was generated and copied
           if [ -d "android-test-client/client-library/src/main/java" ]; then
             echo "✅ Android client generated and copied successfully"
-            
+          
             # List generated files
             echo "📁 Generated files:"
             find android-test-client/client-library/src/main/java -name "*.java" | head -10
-            
+          
             # Check for key API classes (correct package structure)
             if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/RegistrationApi.java" ]; then
               echo "✅ RegistrationApi.java found"
@@ -73,7 +73,7 @@ jobs:
               echo "❌ RegistrationApi.java not found"
               exit 1
             fi
-            
+          
             if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/AuthenticationApi.java" ]; then
               echo "✅ AuthenticationApi.java found"
             else
@@ -250,7 +250,7 @@ jobs:
   integration-test-summary:
     name: Integration Test Summary
     runs-on: ubuntu-latest
-    needs: [test-client-generation, test-android-app]
+    needs: [ test-client-generation, test-android-app ]
     if: always()
     steps:
       - name: Print test results

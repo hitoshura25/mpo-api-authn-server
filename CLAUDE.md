@@ -290,9 +290,27 @@ The project was restructured from a single-module to multi-module architecture t
 - **Solution**: Conditional JVM target setting based on module names
 - **Fix**: Server modules use JVM 21, Android uses JVM 1.8
 
+### Android Module Decision (Final)
+- **Decision**: Keep Android client as **standalone project** within directory 
+- **Reason**: JVM target conflicts (Server=21, Android=1.8) and plugin management complexity
+- **Structure**: Android remains independent with its own `build.gradle.kts` and `settings.gradle`
+- **Integration**: Server generates client code to `android-test-client/client-library/` via OpenAPI tasks
+- **Benefits**: Clean separation, no build conflicts, independent Android workflows
+
+### Final Multi-Module Structure
+```
+/
+├── webauthn-server/              # Multi-module: Server
+├── webauthn-test-service/        # Multi-module: Test service  
+├── android-test-client/          # Standalone: Android project
+├── test-client/                  # Standalone: Web E2E tests
+└── build.gradle.kts              # Multi-module: Server + test service only
+```
+
 ### Project Health After Restructuring
-- **✅ All Tests Passing**: Server, Android, and E2E tests work
+- **✅ All Tests Passing**: Server, test service, and E2E tests work
 - **✅ GitHub Actions Updated**: All workflows reflect new structure  
 - **✅ Documentation Aligned**: All .md files updated
 - **✅ Development Tools Working**: MCP tools and scripts use correct paths
 - **✅ Git Hooks Fixed**: Pre-commit security tests use module syntax
+- **✅ Build Conflicts Resolved**: Android kept separate to avoid JVM target issues

@@ -1,16 +1,13 @@
 pluginManagement {
     repositories {
-        google()
         mavenCentral()
         gradlePluginPortal()
     }
 }
 
-rootProject.name = "webauthn-ecosystem"
+rootProject.name = "mpo-api-authn-server"
 
 include(
     ":webauthn-server",
-    ":webauthn-test-service",
-    ":android-test-client:app",
-    ":android-test-client:client-library"
+    ":webauthn-test-service"
 )

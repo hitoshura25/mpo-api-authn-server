@@ -1,32 +1,28 @@
-# Multi-stage build for optimal layer caching and minimal image size
+# Test service prioritizes debuggability while maintaining good security
+# Using Ubuntu LTS for glibc performance and debugging tools
 
-# Stage 1: Build stage (if needed for dependency extraction)
-FROM eclipse-temurin:21-jre-alpine AS base
+FROM eclipse-temurin:21-jre-jammy AS base
 
-# Install dependencies that rarely change (better layer caching)
-RUN apk add --no-cache \
+# Install debugging and monitoring tools (better layer caching)
+RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     wget \
-    && rm -rf /var/cache/apk/*
+    netcat-openbsd \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 # Stage 2: Application layer
 FROM base AS app
 
-# Create non-root user for security
-RUN addgroup -g 1001 -S appgroup && \
-    adduser -u 1001 -S appuser -G appgroup
+# Create non-root user for security  
+RUN groupadd -g 1001 appgroup && \
+    useradd -u 1001 -g appgroup -s /bin/bash -m appuser
 
 # Set working directory
 WORKDIR /app
 
-# Change ownership to non-root user
-RUN chown -R appuser:appgroup /app
-
-# Copy the shadow JAR (this layer changes when app changes)
-COPY build/libs/webauthn-test-service.jar app.jar
-
-# Ensure JAR is owned by app user
-RUN chown appuser:appgroup app.jar
+# Copy the shadow JAR with proper ownership (this layer changes when app changes)
+COPY --chown=appuser:appgroup build/libs/webauthn-test-service.jar app.jar
 
 # Switch to non-root user
 USER appuser

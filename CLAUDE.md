@@ -212,11 +212,13 @@ This project development followed a collaborative approach with continuous user 
 
 ### Docker Best Practices Implementation
 - **Multi-stage builds**: Optimal layer separation and caching
-- **Slim Alpine images**: `eclipse-temurin:21-jre-alpine` for minimal size
+- **Security-optimized images**: 
+  - Production: `gcr.io/distroless/java21-debian12` (ultra-secure, no shell)
+  - Test: `eclipse-temurin:21-jre-jammy` (debuggable with tools)
 - **Non-root user**: Security hardening with dedicated app user (uid 1001)
-- **JVM optimization**: Container-aware settings with G1GC and memory limits
+- **JVM optimization**: Container-aware settings with G1GC, JVMCI, and memory limits
 - **Layer caching**: Dependencies installed in separate layers for faster rebuilds
-- **Health checks**: Proper startup periods and retry logic
+- **External health checks**: Distroless requires external health monitoring
 - **Security**: No root processes, minimal attack surface
 
 ## Multi-Module Project Restructuring (January 2025)

@@ -26,9 +26,5 @@ services:
       jaeger:
         condition: service_healthy
     restart: unless-stopped
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080" ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
+    # Health check removed - distroless image doesn't have curl
+    # External health checking handled by start-full.sh script

@@ -38,9 +38,13 @@ implementation.
 This project emphasizes security testing and vulnerability protection:
 
 - **PoisonSeed attacks** - Cross-origin authentication abuse
-- **Username enumeration** (CVE-2024-39912)
+- **Username enumeration** (CVE-2024-39912) - Authentication start does NOT reveal user existence
 - **Replay attacks** - Challenge/response reuse
 - **Credential tampering** - Signature validation
+
+### Security Design Decisions
+
+**Authentication Start Behavior**: The `/authenticate/start` endpoint returns a valid challenge for both existing and non-existent users. This prevents username enumeration attacks by not revealing whether a username is registered. Authentication failure occurs later during credential verification, maintaining user privacy.
 
 ## MCP Integration
 

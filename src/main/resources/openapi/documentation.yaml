@@ -339,10 +339,10 @@ components:
           description: Overall health status
           example: "healthy"
         timestamp:
-          type: string
-          format: date-time
-          description: Timestamp when health was checked
-          example: "2023-11-20T10:30:00Z"
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds when health was checked
+          example: 1700473800000
         version:
           type: string
           description: API version

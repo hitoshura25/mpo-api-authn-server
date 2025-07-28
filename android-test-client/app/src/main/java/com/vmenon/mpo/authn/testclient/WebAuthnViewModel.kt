@@ -179,30 +179,102 @@ class WebAuthnViewModel : ViewModel() {
     
     
     private fun createMockCredential(): Any {
-        // Create a mock credential response for testing
-        // In a real app, this would come from the FIDO2 API
+        // Using a minimal valid CBOR attestation object from WebAuthn test vectors
+        val attestationObjectBytes = byteArrayOf(
+            // CBOR map with 3 entries: fmt, attStmt, authData
+            0xa3.toByte(),
+            // "fmt" key (3 bytes)
+            0x63, 0x66, 0x6d, 0x74,
+            // "none" value (4 bytes) 
+            0x64, 0x6e, 0x6f, 0x6e, 0x65,
+            // "attStmt" key (7 bytes)
+            0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74,
+            // empty map value (1 byte)
+            0xa0.toByte(),
+            // "authData" key (8 bytes)
+            0x68, 0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61,
+            // authData value (37 bytes minimum)
+            0x58, 0x25, // byte string of length 37
+            // RP ID hash (32 bytes) - SHA256 of "localhost"
+            0xc8.toByte(), 0x7f, 0x09.toByte(), 0x99.toByte(), 0x8a.toByte(), 0xb0.toByte(), 0x03, 0x06,
+            0x47, 0x4f, 0x8a.toByte(), 0x3c, 0x58, 0x2e, 0x8c.toByte(), 0x35,
+            0x8e.toByte(), 0x7f, 0x6d, 0x90.toByte(), 0x4e, 0x9c.toByte(), 0x5a, 0xd7.toByte(),
+            0x9c.toByte(), 0xe7.toByte(), 0x8a.toByte(), 0x15, 0x4e, 0x6b, 0x79, 0xc1.toByte(),
+            // Flags (1 byte) - UP=1, UV=1
+            0x05,
+            // Counter (4 bytes)
+            0x00, 0x00, 0x00, 0x01
+        )
+        
         return mapOf(
-            "id" to "mock-credential-id",
+            "id" to Base64.encodeToString(
+                "test-credential-id".toByteArray(),
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            ),
             "type" to "public-key",
-            "rawId" to Base64.encodeToString("mock-raw-id".toByteArray(), Base64.NO_WRAP),
+            "clientExtensionResults" to mapOf<String, Any>(),
+            "rawId" to Base64.encodeToString(
+                "test-credential-id".toByteArray(),
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            ),
             "response" to mapOf(
-                "attestationObject" to Base64.encodeToString("mock-attestation".toByteArray(), Base64.NO_WRAP),
-                "clientDataJSON" to Base64.encodeToString("mock-client-data".toByteArray(), Base64.NO_WRAP)
+                "attestationObject" to Base64.encodeToString(attestationObjectBytes, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING),
+                "clientDataJSON" to Base64.encodeToString(
+                    """{"type":"webauthn.create","challenge":"Y2hhbGxlbmdl","origin":"https://localhost"}""".toByteArray(),
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                )
             )
         )
     }
     
     private fun createMockAssertion(): Any {
-        // Create a mock assertion response for testing
-        // In a real app, this would come from the FIDO2 API
+        // Valid authenticatorData for assertion (37 bytes minimum)
+        val authenticatorDataBytes = byteArrayOf(
+            // RP ID hash (32 bytes) - SHA256 of "localhost"
+            0xc8.toByte(), 0x7f, 0x09.toByte(), 0x99.toByte(), 0x8a.toByte(), 0xb0.toByte(), 0x03, 0x06,
+            0x47, 0x4f, 0x8a.toByte(), 0x3c, 0x58, 0x2e, 0x8c.toByte(), 0x35,
+            0x8e.toByte(), 0x7f, 0x6d, 0x90.toByte(), 0x4e, 0x9c.toByte(), 0x5a, 0xd7.toByte(),
+            0x9c.toByte(), 0xe7.toByte(), 0x8a.toByte(), 0x15, 0x4e, 0x6b, 0x79, 0xc1.toByte(),
+            // Flags (1 byte) - UP=1, UV=1
+            0x05,
+            // Counter (4 bytes) - incremented from registration
+            0x00, 0x00, 0x00, 0x02
+        )
+        
+        // Simple signature - in reality this would be computed, but for testing we use a fixed value
+        val signatureBytes = byteArrayOf(
+            0x30, 0x44, 0x02, 0x20, 0x12, 0x34, 0x56, 0x78, 0x9a.toByte(), 0xbc.toByte(), 0xde.toByte(), 0xf0.toByte(),
+            0x12, 0x34, 0x56, 0x78, 0x9a.toByte(), 0xbc.toByte(), 0xde.toByte(), 0xf0.toByte(), 0x12, 0x34, 0x56, 0x78,
+            0x9a.toByte(), 0xbc.toByte(), 0xde.toByte(), 0xf0.toByte(), 0x12, 0x34, 0x56, 0x78, 0x9a.toByte(), 0xbc.toByte(), 0xde.toByte(), 0xf0.toByte(),
+            0x02, 0x20, 0xfe.toByte(), 0xdc.toByte(), 0xba.toByte(), 0x98.toByte(), 0x76, 0x54, 0x32, 0x10,
+            0xfe.toByte(), 0xdc.toByte(), 0xba.toByte(), 0x98.toByte(), 0x76, 0x54, 0x32, 0x10, 0xfe.toByte(), 0xdc.toByte(), 0xba.toByte(), 0x98.toByte(),
+            0x76, 0x54, 0x32, 0x10, 0xfe.toByte(), 0xdc.toByte(), 0xba.toByte(), 0x98.toByte(), 0x76, 0x54, 0x32, 0x10
+        )
+        
         return mapOf(
-            "id" to "mock-credential-id",
+            "id" to Base64.encodeToString(
+                "test-credential-id".toByteArray(),
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            ),
             "type" to "public-key",
-            "rawId" to Base64.encodeToString("mock-raw-id".toByteArray(), Base64.NO_WRAP),
+            "clientExtensionResults" to mapOf<String, Any>(),
+            "rawId" to Base64.encodeToString(
+                "test-credential-id".toByteArray(),
+                Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+            ),
             "response" to mapOf(
-                "authenticatorData" to Base64.encodeToString("mock-auth-data".toByteArray(), Base64.NO_WRAP),
-                "clientDataJSON" to Base64.encodeToString("mock-client-data".toByteArray(), Base64.NO_WRAP),
-                "signature" to Base64.encodeToString("mock-signature".toByteArray(), Base64.NO_WRAP)
+                "authenticatorData" to Base64.encodeToString(
+                    authenticatorDataBytes,
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                ),
+                "clientDataJSON" to Base64.encodeToString(
+                    """{"type":"webauthn.get","challenge":"Y2hhbGxlbmdl","origin":"https://localhost"}""".toByteArray(),
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                ),
+                "signature" to Base64.encodeToString(
+                    signatureBytes,
+                    Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING
+                )
             )
         )
     }

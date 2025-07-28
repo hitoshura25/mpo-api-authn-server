@@ -3,21 +3,21 @@ name: Test Android Client Integration
 # This workflow tests the complete Android client generation, publishing, and integration
 # by running actual Android tests against the generated client
 
-#on:
-#  workflow_dispatch:
-#    inputs:
-#      test_mode:
-#        description: 'Run in test mode (no actual publishing)'
-#        required: false
-#        default: true
-#        type: boolean
-#  pull_request:
-#    branches: [ main ]
-#    paths:
-#      - 'webauthn-server/src/main/resources/openapi/**'
-#      - 'webauthn-server/build.gradle.kts'
-#      - 'android-test-client/**'
-#      - '.github/workflows/test-android-client-workflow.yml'
+on:
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run in test mode (no actual publishing)'
+        required: false
+        default: true
+        type: boolean
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'webauthn-server/src/main/resources/openapi/**'
+      - 'webauthn-server/build.gradle.kts'
+      - 'android-test-client/**'
+      - '.github/workflows/test-android-client-workflow.yml'
 
 env:
   REGISTRY: ghcr.io

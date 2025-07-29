@@ -43,13 +43,8 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
         
-      - name: Run webauthn-test-service tests
-        run: ./gradlew :webauthn-test-service:test --build-cache --parallel --configuration-cache
-        continue-on-error: true
-        
-      - name: Generate coverage report
-        run: ./gradlew :webauthn-test-service:koverXmlReport --continue
-        continue-on-error: true
+      - name: Run webauthn-test-service tests and generate coverage
+        run: ./gradlew :webauthn-test-service:test :webauthn-test-service:koverXmlReport --build-cache --parallel --configuration-cache
         
       - name: Upload test and coverage reports
         uses: actions/upload-artifact@v4

@@ -122,6 +122,16 @@ tasks.withType<Test> {
     useJUnitPlatform()
 }
 
+kover {
+    reports {
+        filters {
+            excludes {
+                classes("com.vmenon.webauthn.testservice.*")
+            }
+        }
+    }
+}
+
 // OpenAPI specification file location - use the static file instead of fetching from server
 val openApiSpecFile = layout.buildDirectory.file("openapi/openapi.yaml")
 val staticOpenApiSpecFile = file("src/main/resources/openapi/documentation.yaml")

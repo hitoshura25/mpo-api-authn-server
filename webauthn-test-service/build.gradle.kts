@@ -55,19 +55,8 @@ kotlin {
     jvmToolchain(21)
 }
 
-tasks.test {
+tasks.withType<Test> {
     useJUnitPlatform()
-    finalizedBy(tasks.koverXmlReport) // Generate coverage even on test failure
-}
-
-kover {
-    reports {
-        total {
-            xml {
-                onCheck = false // Don't fail build on coverage threshold
-            }
-        }
-    }
 }
 
 // Shadow JAR configuration for easy deployment

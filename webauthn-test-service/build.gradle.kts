@@ -3,6 +3,7 @@ plugins {
     kotlin("plugin.serialization") version "1.9.23"
     application
     id("com.github.johnrengelman.shadow") version "8.1.1"
+    id("org.jetbrains.kotlinx.kover") version "0.9.1"
 }
 
 group = "com.vmenon.webauthn"
@@ -40,7 +41,9 @@ dependencies {
     
     // Testing
     testImplementation("io.ktor:ktor-server-tests-jvm:2.3.8")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:1.9.23")
+    testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.23")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.10.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.10.0")
     testImplementation("io.ktor:ktor-client-content-negotiation:2.3.8")
 }
 
@@ -54,6 +57,17 @@ kotlin {
 
 tasks.test {
     useJUnitPlatform()
+    finalizedBy(tasks.koverXmlReport) // Generate coverage even on test failure
+}
+
+kover {
+    reports {
+        total {
+            xml {
+                onCheck = false // Don't fail build on coverage threshold
+            }
+        }
+    }
 }
 
 // Shadow JAR configuration for easy deployment

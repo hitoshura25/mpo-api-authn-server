@@ -53,7 +53,7 @@ This project follows a multi-module Gradle structure for clear separation of con
 - **Coverage**: `./gradlew :webauthn-server:koverHtmlReport` (excludes test-service code from reports)
 
 #### Test Service
-- **Tests**: `./gradlew :webauthn-test-service:test`
+- **Tests**: `./gradlew :webauthn-test-service:test` ⚠️ **MUST verify 100% pass rate**
 - **Build**: `./gradlew :webauthn-test-service:build`
 - **Run**: `./gradlew :webauthn-test-service:run`
 - **Coverage XML**: `./gradlew :webauthn-test-service:koverXmlReport`
@@ -94,6 +94,8 @@ This project emphasizes security testing and vulnerability protection:
 - The Yubico library handles most WebAuthn security automatically
 - Use `testStorageModule` for integration tests (in-memory storage)
 - Use `storageModule` for real container-based testing
+- **🚨 CRITICAL: When implementing tests, ALWAYS verify they pass with `./gradlew test` before claiming completion**
+- **Test verification must show 100% pass rate - anything less than 100% means the implementation is incomplete**
 
 ## JSON Structure Gotcha
 
@@ -221,6 +223,19 @@ This project development followed a collaborative approach with continuous user 
 - **CI/CD Resilience**: Made workflow robust to handle test failures while still generating coverage reports
 - **Gradle Multi-Module**: Successfully configured test service as independent module with own test suite
 - **Verification Required**: Always test Gradle tasks before assuming they work - koverXmlReport initially failed due to test dependencies
+
+#### 10. **Critical Lesson: Always Verify Tests Pass Before Claiming Completion**
+- **Problem**: Initial test implementation claimed to be complete but 4/10 tests were actually failing (60% pass rate)
+- **Root Causes**: 
+  - Custom CBOR encoder incorrectly handled Yubico ByteArray objects (treated as NUMBER instead of byte array)
+  - Missing Jackson JDK8 module for Optional type serialization in WebAuthn objects
+  - Runtime failures only discovered during actual test execution, not compilation
+- **Solution**: 
+  - Replaced custom CBOR encoding with proper CBOR library (`com.upokecenter.cbor`)
+  - Added `jackson-datatype-jdk8` dependency and registered `Jdk8Module()` in ObjectMapper
+- **Key Learning**: **ALWAYS run `./gradlew test` and verify 100% pass rate before claiming test implementation is complete**
+- **Final Result**: All 10 tests now pass (100% success rate) with proper WebAuthn credential generation
+- **Process Improvement**: Added explicit test verification step to development workflow
 
 ### Code Quality Preferences
 - **Self-Documenting Code**: "Going forward I prefer self-documentation of code versus explicit comments if possible"

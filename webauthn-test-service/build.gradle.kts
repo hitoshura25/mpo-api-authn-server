@@ -28,6 +28,7 @@ dependencies {
     // Jackson for JSON
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.16.1")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.16.1")
+    implementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.16.1")
     
     // BouncyCastle for cryptography
     implementation("org.bouncycastle:bcprov-jdk18on:1.77")

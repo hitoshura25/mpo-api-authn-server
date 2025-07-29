@@ -4,6 +4,7 @@ import com.vmenon.webauthn.testservice.models.*
 import com.vmenon.webauthn.testservice.testutils.SimpleTestAuthenticator
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.yubico.webauthn.data.ByteArray
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.*
@@ -19,7 +20,9 @@ import java.util.*
  */
 fun Application.configureTestRoutes() {
     val logger = LoggerFactory.getLogger("TestRoutes")
-    val objectMapper = ObjectMapper().registerKotlinModule()
+    val objectMapper = ObjectMapper()
+        .registerKotlinModule()
+        .registerModule(Jdk8Module())
     
     // In-memory storage for test key pairs (for linking registration and authentication)
     val testKeyPairs = mutableMapOf<String, KeyPair>()

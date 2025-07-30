@@ -5,6 +5,7 @@ import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
+import com.vmenon.mpo.api.authn.storage.postgresql.DatabaseConfig
 import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisAssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisRegistrationRequestStorage
@@ -242,12 +243,14 @@ val storageModule =
             val maxPoolSize: Int by inject(named("dbMaxPoolSize"))
 
             QuantumSafeCredentialStorage.create(
-                host = host,
-                port = port,
-                database = database,
-                username = username,
-                password = password,
-                maxPoolSize = maxPoolSize,
+                DatabaseConfig(
+                    host = host,
+                    port = port,
+                    database = database,
+                    username = username,
+                    password = password,
+                    maxPoolSize = maxPoolSize,
+                )
             )
         }.onClose { it?.close() }
     }

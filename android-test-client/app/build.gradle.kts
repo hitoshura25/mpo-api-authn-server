@@ -68,20 +68,20 @@ dependencies {
     // Local generated Android client library module (includes all necessary dependencies)
     implementation(project(":client-library"))
     
-    // Explicitly add Gson for ViewModel usage
+    // JSON Processing
     implementation("com.google.code.gson:gson:2.10.1")
-    
-    // HTTP client for test service communication
-    androidTestImplementation("com.squareup.okhttp3:okhttp:4.12.0")
 
-    // Testing
+    // Unit Testing
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.mockito:mockito-core:5.8.0")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
     testImplementation("androidx.arch.core:core-testing:2.2.0") // For InstantTaskExecutorRule
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3") // For StandardTestDispatcher
+
+    // Instrumentation Testing
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
     androidTestImplementation("androidx.test:runner:1.5.2")
     androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("com.squareup.okhttp3:okhttp:4.12.0") // HTTP client for test service communication
 }

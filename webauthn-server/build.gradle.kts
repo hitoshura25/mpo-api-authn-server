@@ -32,30 +32,39 @@ repositories {
 }
 
 dependencies {
-    // Shared WebAuthn test library (for tests only)
-    testImplementation(project(":webauthn-test-lib"))
-    
+    // Kotlin Standard Library
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
+
+    // WebAuthn Core
     implementation("com.yubico:webauthn-server-core:$webauthnVersion")
+
+    // Ktor Framework
     implementation("io.ktor:ktor-server-netty:$ktorVersion")
     implementation("io.ktor:ktor-server-core:$ktorVersion")
     implementation("io.ktor:ktor-server-content-negotiation:$ktorVersion")
     implementation("io.ktor:ktor-serialization-jackson:$ktorVersion")
     implementation("io.ktor:ktor-server-status-pages:$ktorVersion")
     implementation("io.ktor:ktor-server-cors:$ktorVersion")
+    implementation("io.ktor:ktor-server-metrics-micrometer:$ktorVersion")
+    implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
+    implementation("io.ktor:ktor-server-openapi:$ktorVersion")
+    implementation("io.ktor:ktor-server-swagger:$ktorVersion")
+
+    // JSON Processing (Jackson)
     implementation("com.fasterxml.jackson.core:jackson-databind:$jacksonVersion")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVersion")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
     implementation("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:$jacksonVersion")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-cbor:$jacksonVersion")
-
-    implementation("ch.qos.logback:logback-classic:$logbackVersion")
-
-    // Redis for scalable storage
-    implementation("redis.clients:jedis:$jedisVersion")
     implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-smile:$jacksonVersion")
 
-    // PostgreSQL for credential storage
+    // Logging
+    implementation("ch.qos.logback:logback-classic:$logbackVersion")
+
+    // Database - Redis (Session Storage)
+    implementation("redis.clients:jedis:$jedisVersion")
+
+    // Database - PostgreSQL (Credential Storage)
     implementation("org.postgresql:postgresql:$postgresqlVersion")
     implementation("com.zaxxer:HikariCP:$hikariCpVersion")
 
@@ -63,17 +72,15 @@ dependencies {
     implementation("org.bouncycastle:bcprov-jdk18on:$bouncyCastleVersion")
     implementation("org.bouncycastle:bcpkix-jdk18on:$bouncyCastleVersion")
 
-    // Dependency Injection
+    // Dependency Injection (Koin)
     implementation("io.insert-koin:koin-ktor:$koinVersion")
     implementation("io.insert-koin:koin-logger-slf4j:$koinVersion")
     implementation("io.insert-koin:koin-core:$koinVersion")
 
-    // Monitoring dependencies
-    implementation("io.ktor:ktor-server-metrics-micrometer:$ktorVersion")
-    implementation("io.ktor:ktor-server-call-logging:$ktorVersion")
+    // Monitoring & Metrics
     implementation("io.micrometer:micrometer-registry-prometheus:$micrometerVersion")
 
-    // OpenTelemetry for tracing
+    // OpenTelemetry Tracing
     implementation("io.opentelemetry:opentelemetry-api:$openTelemetryVersion")
     implementation("io.opentelemetry:opentelemetry-sdk:$openTelemetryVersion")
     implementation("io.opentelemetry:opentelemetry-extension-trace-propagators:$openTelemetryVersion")
@@ -82,26 +89,32 @@ dependencies {
     implementation("io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$openTelemetryVersion")
     runtimeOnly("io.opentelemetry.semconv:opentelemetry-semconv:$openTelemetryVersion")
 
-    // OpenAPI/Swagger support
-    implementation("io.ktor:ktor-server-openapi:$ktorVersion")
-    implementation("io.ktor:ktor-server-swagger:$ktorVersion")
+    // OpenAPI/Swagger Documentation
     implementation("io.swagger.core.v3:swagger-core:2.2.19")
 
-    // Test dependencies
+    // Unit Testing Framework
     testImplementation("org.junit.jupiter:junit-jupiter-api:$junitVersion")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
+    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion")
+
+    // Test Doubles & Mocking
+    testImplementation("io.mockk:mockk:$mockkVersion")
+
+    // Ktor Testing
+    testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
+
+    // Dependency Injection Testing
     testImplementation("io.insert-koin:koin-test:$koinVersion")
     testImplementation("io.insert-koin:koin-test-junit5:$koinVersion")
 
-    // Testcontainers for end-to-end testing with real databases
+    // Integration Testing with TestContainers
     testImplementation("org.testcontainers:junit-jupiter:$testContainersVersion")
     testImplementation("org.testcontainers:postgresql:$testContainersVersion")
     testImplementation("org.testcontainers:testcontainers:$testContainersVersion")
     testImplementation("com.redis:testcontainers-redis:$testContainersRedisVersion")
 
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:$junitVersion")
-    testImplementation("io.ktor:ktor-server-test-host:$ktorVersion")
-    testImplementation("org.jetbrains.kotlin:kotlin-test-junit:$kotlinVersion")
-    testImplementation("io.mockk:mockk:$mockkVersion")
+    // WebAuthn Test Utilities
+    testImplementation(project(":webauthn-test-lib"))
     testImplementation("com.upokecenter:cbor")
     testImplementation("com.google.guava:guava")
 }

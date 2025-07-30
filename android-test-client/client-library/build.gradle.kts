@@ -41,24 +41,30 @@ android {
 }
 
 dependencies {
-    // Generated API Client Dependencies
+    // HTTP Client Dependencies
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    // JSON Processing
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("io.gsonfire:gson-fire:1.9.0")
-    implementation("javax.ws.rs:javax.ws.rs-api:2.1.1")
     implementation("org.openapitools:jackson-databind-nullable:0.2.6")
+
+    // Web Service Support
+    implementation("javax.ws.rs:javax.ws.rs-api:2.1.1")
+
+    // Utilities
     implementation("org.apache.commons:commons-lang3:3.14.0")
 
-    // Use AndroidX annotations instead of javax.annotation
+    // Annotation Support (Android-compatible)
     implementation("androidx.annotation:annotation:1.7.1")
-
-    // Provide javax.annotation classes to avoid compilation errors
     implementation("com.google.code.findbugs:jsr305:3.0.2")
     implementation("javax.annotation:javax.annotation-api:1.3.2")
 
-    // Testing
+    // Unit Testing
     testImplementation("junit:junit:4.13.2")
+
+    // Instrumentation Testing
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }

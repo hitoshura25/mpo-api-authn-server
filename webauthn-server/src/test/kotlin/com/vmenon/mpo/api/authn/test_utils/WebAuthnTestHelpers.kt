@@ -6,7 +6,7 @@ import com.vmenon.mpo.api.authn.AuthenticationCompleteRequest
 import com.vmenon.mpo.api.authn.AuthenticationRequest
 import com.vmenon.mpo.api.authn.RegistrationCompleteRequest
 import com.vmenon.mpo.api.authn.RegistrationRequest
-import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator
+import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.data.ByteArray
 import io.ktor.client.HttpClient
@@ -91,14 +91,14 @@ object WebAuthnTestHelpers {
         val requestId = startRegBody.get("requestId").asText()
         val challenge = extractChallenge(startRegBody, "publicKeyCredentialCreationOptions")
 
-        val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
-            ByteArray.fromBase64Url(challenge),
+        val credential = WebAuthnTestAuthenticator.createRegistrationCredential(
+            ByteArray.fromBase64Url(challenge).bytes,
             keyPair
         )
 
         val completeRegRequest = RegistrationCompleteRequest(
             requestId = requestId,
-            credential = objectMapper.writeValueAsString(credential.first)
+            credential = objectMapper.writeValueAsString(credential)
         )
 
         return client.post("/register/complete") {
@@ -142,9 +142,9 @@ object WebAuthnTestHelpers {
 
         val actualCredentialId = credentialId ?: extractCredentialId(startAuthBody)
 
-        val authCredential = TestAuthenticator.createUnattestedCredentialForAuthentication(
-            ByteArray.fromBase64Url(authChallenge),
-            ByteArray.fromBase64Url(actualCredentialId),
+        val authCredential = WebAuthnTestAuthenticator.createAuthenticationCredential(
+            ByteArray.fromBase64Url(authChallenge).bytes,
+            ByteArray.fromBase64Url(actualCredentialId).bytes,
             keyPair
         )
 
@@ -211,9 +211,9 @@ object WebAuthnTestHelpers {
         keyPair: KeyPair,
         maliciousOrigin: String
     ): String {
-        val credential = TestAuthenticator.createUnattestedCredentialForAuthentication(
-            ByteArray.fromBase64Url(challenge),
-            ByteArray.fromBase64Url("test-credential-id"),
+        val credential = WebAuthnTestAuthenticator.createAuthenticationCredential(
+            ByteArray.fromBase64Url(challenge).bytes,
+            ByteArray.fromBase64Url("test-credential-id").bytes,
             keyPair
         )
 
@@ -253,6 +253,6 @@ object WebAuthnTestHelpers {
      * @return Test key pair using default algorithm
      */
     fun generateTestKeypair(): KeyPair {
-        return TestAuthenticator.generateKeypair(algorithm = TestAuthenticator.Defaults.keyAlgorithm)
+        return WebAuthnTestAuthenticator.generateKeyPair()
     }
 }

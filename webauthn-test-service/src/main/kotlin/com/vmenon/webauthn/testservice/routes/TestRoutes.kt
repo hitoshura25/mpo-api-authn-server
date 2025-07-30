@@ -1,7 +1,7 @@
 package com.vmenon.webauthn.testservice.routes
 
 import com.vmenon.webauthn.testservice.models.*
-import com.vmenon.webauthn.testservice.testutils.SimpleTestAuthenticator
+import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
@@ -44,12 +44,12 @@ fun Application.configureTestRoutes() {
                 logger.info("Generating registration credential for challenge: ${request.challenge}")
                 
                 // Generate keypair for this test
-                val keyPair = SimpleTestAuthenticator.generateKeyPair()
+                val keyPair = WebAuthnTestAuthenticator.generateKeyPair()
                 val keyPairId = UUID.randomUUID().toString()
                 testKeyPairs[keyPairId] = keyPair
                 
-                // Create test credential using SimpleTestAuthenticator
-                val credential = SimpleTestAuthenticator.createRegistrationCredential(
+                // Create test credential using WebAuthnTestAuthenticator
+                val credential = WebAuthnTestAuthenticator.createRegistrationCredential(
                     challenge = ByteArray.fromBase64Url(request.challenge).bytes,
                     keyPair = keyPair,
                     rpId = request.rpId,
@@ -102,7 +102,7 @@ fun Application.configureTestRoutes() {
                 }
                 
                 // Create test authentication credential
-                val credential = SimpleTestAuthenticator.createAuthenticationCredential(
+                val credential = WebAuthnTestAuthenticator.createAuthenticationCredential(
                     challenge = ByteArray.fromBase64Url(request.challenge).bytes,
                     credentialId = ByteArray.fromBase64Url(request.credentialId).bytes,
                     keyPair = keyPair,

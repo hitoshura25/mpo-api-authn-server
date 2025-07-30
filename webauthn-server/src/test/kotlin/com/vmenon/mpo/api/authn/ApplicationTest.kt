@@ -3,9 +3,7 @@ package com.vmenon.mpo.api.authn
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
-import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator
-import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.Defaults
-import com.vmenon.mpo.api.authn.test_utils.yubico.TestAuthenticator.generateKeypair
+import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.yubico.webauthn.RelyingParty
 import com.yubico.webauthn.data.ByteArray
@@ -45,7 +43,7 @@ class ApplicationTest : KoinTest {
     private val mockRegistrationStorage = mockk<RegistrationRequestStorage>()
     private val mockAssertionStorage = mockk<AssertionRequestStorage>()
     private val mockCredentialStorage = mockk<CredentialStorage>()
-    private val keyPair = generateKeypair(algorithm = Defaults.keyAlgorithm)
+    private val keyPair = WebAuthnTestAuthenticator.generateKeyPair()
 
     @BeforeEach
     fun setup() {
@@ -411,8 +409,9 @@ class ApplicationTest : KoinTest {
 
     @Test
     fun testRegistrationCompleteWithUserThatAlreadyExists() = testApplication {
-        val credential = TestAuthenticator.createUnattestedCredentialForRegistration(
-            Defaults.challenge,
+        val testChallenge = ByteArray.fromBase64Url("test-challenge").bytes
+        val credential = WebAuthnTestAuthenticator.createRegistrationCredential(
+            testChallenge,
             keyPair,
         )
 
@@ -429,12 +428,12 @@ class ApplicationTest : KoinTest {
                 any(),
             )
         } returns mockk<PublicKeyCredentialCreationOptions> {
-            every { challenge } returns Defaults.challenge
+            every { challenge } returns ByteArray.fromBase64Url("test-challenge")
             every { authenticatorSelection } returns Optional.of(mockk {
                 every { userVerification } returns Optional.of(mockk())
             })
             every { pubKeyCredParams } returns listOf(mockk {
-                every { alg } returns Defaults.keyAlgorithm
+                every { alg } returns com.yubico.webauthn.data.COSEAlgorithmIdentifier.ES256
             })
             every { user } returns mockk {
                 every { name } returns "testuser"
@@ -456,7 +455,7 @@ class ApplicationTest : KoinTest {
 
         val regRequest = RegistrationCompleteRequest(
             requestId = "testRequest",
-            credential = objectMapper.writeValueAsString(credential.first)
+            credential = objectMapper.writeValueAsString(credential)
         )
         val response = client.post("/register/complete") {
             contentType(ContentType.Application.Json)

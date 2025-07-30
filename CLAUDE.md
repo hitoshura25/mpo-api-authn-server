@@ -32,13 +32,18 @@ This project follows a multi-module Gradle structure for clear separation of con
 
 - **webauthn-test-service/** - HTTP service for cross-platform testing
     - `src/main/kotlin/com/vmenon/webauthn/testservice/` - Test credential generation
-        - `testutils/SimpleTestAuthenticator.kt` - WebAuthn credential generation for testing
         - `routes/TestRoutes.kt` - HTTP endpoints for test credentials
         - `models/TestModels.kt` - Request/response models
-    - `src/test/kotlin/` - Comprehensive unit tests (10 test cases, 60% passing)
+    - `src/test/kotlin/` - Comprehensive unit tests (10 test cases, 100% passing)
         - `routes/TestRoutesTest.kt` - Endpoint validation and error handling tests
     - `Dockerfile` - Multi-stage build with debugging tools and security hardening
     - `docker-compose.yml` - Local development setup
+
+- **webauthn-test-lib/** - Shared WebAuthn test utilities library
+    - `src/main/kotlin/com/vmenon/webauthn/testlib/` - Consolidated test authenticator
+        - `WebAuthnTestAuthenticator.kt` - Unified WebAuthn credential generation
+    - Used by both webauthn-server tests and webauthn-test-service
+    - Eliminates code duplication between TestAuthenticator implementations
 
 - **android-test-client/** - Android client with generated API library
     - `app/` - Android test application
@@ -53,12 +58,16 @@ This project follows a multi-module Gradle structure for clear separation of con
 - **Coverage**: `./gradlew :webauthn-server:koverHtmlReport` (excludes test-service code from reports)
 
 #### Test Service
-- **Tests**: `./gradlew :webauthn-test-service:test` ⚠️ **MUST verify 100% pass rate**
+- **Tests**: `./gradlew :webauthn-test-service:test` ✅ **100% pass rate achieved**
 - **Build**: `./gradlew :webauthn-test-service:build`
 - **Run**: `./gradlew :webauthn-test-service:run`
 - **Coverage XML**: `./gradlew :webauthn-test-service:koverXmlReport`
 - **Coverage HTML**: `./gradlew :webauthn-test-service:koverHtmlReport`
 - **Docker Build**: `cd webauthn-test-service && docker build -t webauthn-test-service .`
+
+#### Shared Test Library
+- **Build**: `./gradlew :webauthn-test-lib:build`
+- **Dependencies**: Used by both webauthn-server (testImplementation) and webauthn-test-service (implementation)
 
 #### Android Client (Standalone Project)
 - **Tests**: `cd android-test-client && ./gradlew test`
@@ -169,7 +178,10 @@ This project development followed a collaborative approach with continuous user 
 
 ### Key Implementation Lessons
 
-#### 1. **Testing Philosophy**
+#### 1. **Testing Philosophy - CRITICAL**
+- **ALWAYS run tests immediately after ANY refactoring before claiming completion**
+- **NEVER assume refactoring is complete without verifying all tests pass**
+- User feedback: "please make sure tests when doing a refactoring like this before considering it complete"
 - Always test scripts/functionality before claiming they work
 - User preference: "Can we try actually running the scripts to make sure before we say it is complete?"
 - ES module compatibility issues revealed through actual execution

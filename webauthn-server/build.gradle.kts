@@ -32,6 +32,9 @@ repositories {
 }
 
 dependencies {
+    // Shared WebAuthn test library (for tests only)
+    testImplementation(project(":webauthn-test-lib"))
+    
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
     implementation("com.yubico:webauthn-server-core:$webauthnVersion")
     implementation("io.ktor:ktor-server-netty:$ktorVersion")

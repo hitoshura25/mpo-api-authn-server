@@ -9,5 +9,6 @@ rootProject.name = "mpo-api-authn-server"
 
 include(
     ":webauthn-server",
-    ":webauthn-test-service"
+    ":webauthn-test-service",
+    ":webauthn-test-lib"
 )

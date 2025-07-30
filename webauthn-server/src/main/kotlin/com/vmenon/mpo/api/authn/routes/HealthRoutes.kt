@@ -30,7 +30,7 @@ fun Application.configureHealthRoutes() {
                 logger.error("Metrics endpoint failed", e)
                 call.respond(
                     HttpStatusCode.InternalServerError,
-                    mapOf("error" to "Metrics unavailable")
+                    mapOf("error" to "Metrics unavailable"),
                 )
             }
         }
@@ -40,8 +40,8 @@ fun Application.configureHealthRoutes() {
             call.respond(
                 mapOf(
                     "status" to "healthy",
-                    "timestamp" to System.currentTimeMillis()
-                )
+                    "timestamp" to System.currentTimeMillis(),
+                ),
             )
         }
 

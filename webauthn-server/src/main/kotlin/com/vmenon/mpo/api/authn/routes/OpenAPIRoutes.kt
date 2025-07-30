@@ -13,10 +13,11 @@ fun Application.configureOpenAPIRoutes() {
     routing {
         // Serve the static OpenAPI specification
         get("/openapi") {
-            val openApiContent = this::class.java.classLoader
-                .getResourceAsStream("openapi/documentation.yaml")!!
-                .readBytes()
-                .toString(Charsets.UTF_8)
+            val openApiContent =
+                this::class.java.classLoader
+                    .getResourceAsStream("openapi/documentation.yaml")!!
+                    .readBytes()
+                    .toString(Charsets.UTF_8)
 
             call.respondText(openApiContent, ContentType.Text.Plain)
         }

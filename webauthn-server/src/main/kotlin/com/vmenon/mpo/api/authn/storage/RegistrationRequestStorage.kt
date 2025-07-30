@@ -6,7 +6,6 @@ import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
  * Interface for storing temporary WebAuthn registration requests with TTL support
  */
 interface RegistrationRequestStorage {
-
     /**
      * Store a registration request with TTL
      * @param requestId unique identifier for the request
@@ -16,7 +15,7 @@ interface RegistrationRequestStorage {
     suspend fun storeRegistrationRequest(
         requestId: String,
         options: PublicKeyCredentialCreationOptions,
-        ttlSeconds: Long = 300
+        ttlSeconds: Long = 300,
     )
 
     /**

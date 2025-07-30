@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.test_utils
+package com.vmenon.mpo.api.authn.testutils
 
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
@@ -34,7 +34,10 @@ class InMemoryCredentialStorage : CredentialStorage {
         return storage.containsKey(username)
     }
 
-    override fun lookup(credentialId: ByteArray, userHandle: ByteArray): Optional<RegisteredCredential> {
+    override fun lookup(
+        credentialId: ByteArray,
+        userHandle: ByteArray,
+    ): Optional<RegisteredCredential> {
         val userAccount = getUserByHandle(userHandle) ?: return Optional.empty()
 
         return getRegistrationsByUsername(userAccount.username)

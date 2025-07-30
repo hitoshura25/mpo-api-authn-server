@@ -6,14 +6,17 @@ import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
 import com.vmenon.mpo.api.authn.client.api.RegistrationApi
 import com.vmenon.mpo.api.authn.client.api.AuthenticationApi
-import com.vmenon.mpo.api.authn.client.model.*
+import com.vmenon.mpo.api.authn.client.model.RegistrationRequest
+import com.vmenon.mpo.api.authn.client.model.RegistrationCompleteRequest
+import com.vmenon.mpo.api.authn.client.model.AuthenticationRequest
+import com.vmenon.mpo.api.authn.client.model.AuthenticationCompleteRequest
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import com.vmenon.mpo.api.authn.client.ApiClient
-import java.util.*
+import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
 @LargeTest

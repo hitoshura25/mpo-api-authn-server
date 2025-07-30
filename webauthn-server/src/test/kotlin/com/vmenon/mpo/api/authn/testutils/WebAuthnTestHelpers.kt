@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.test_utils
+package com.vmenon.mpo.api.authn.testutils
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -6,8 +6,8 @@ import com.vmenon.mpo.api.authn.AuthenticationCompleteRequest
 import com.vmenon.mpo.api.authn.AuthenticationRequest
 import com.vmenon.mpo.api.authn.RegistrationCompleteRequest
 import com.vmenon.mpo.api.authn.RegistrationRequest
-import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
+import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
 import com.yubico.webauthn.data.ByteArray
 import io.ktor.client.HttpClient
 import io.ktor.client.request.post
@@ -29,7 +29,6 @@ import kotlin.test.assertEquals
  * - Other WebAuthn test classes
  */
 object WebAuthnTestHelpers {
-
     private val objectMapper = JacksonUtils.objectMapper
 
     /**
@@ -44,7 +43,7 @@ object WebAuthnTestHelpers {
         client: HttpClient,
         username: String,
         displayName: String,
-        keyPair: KeyPair
+        keyPair: KeyPair,
     ): HttpResponse {
         val startRegResponse = startRegistration(client, username, displayName)
         assertEquals(HttpStatusCode.OK, startRegResponse.status, "Registration start should succeed")
@@ -62,12 +61,13 @@ object WebAuthnTestHelpers {
     suspend fun startRegistration(
         client: HttpClient,
         username: String,
-        displayName: String
+        displayName: String,
     ): HttpResponse {
-        val registrationRequest = RegistrationRequest(
-            username = username,
-            displayName = displayName
-        )
+        val registrationRequest =
+            RegistrationRequest(
+                username = username,
+                displayName = displayName,
+            )
 
         return client.post("/register/start") {
             contentType(ContentType.Application.Json)
@@ -85,21 +85,23 @@ object WebAuthnTestHelpers {
     suspend fun completeRegistration(
         client: HttpClient,
         startRegResponse: HttpResponse,
-        keyPair: KeyPair
+        keyPair: KeyPair,
     ): HttpResponse {
         val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
         val requestId = startRegBody.get("requestId").asText()
         val challenge = extractChallenge(startRegBody, "publicKeyCredentialCreationOptions")
 
-        val credential = WebAuthnTestAuthenticator.createRegistrationCredential(
-            ByteArray.fromBase64Url(challenge).bytes,
-            keyPair
-        )
+        val credential =
+            WebAuthnTestAuthenticator.createRegistrationCredential(
+                ByteArray.fromBase64Url(challenge).bytes,
+                keyPair,
+            )
 
-        val completeRegRequest = RegistrationCompleteRequest(
-            requestId = requestId,
-            credential = objectMapper.writeValueAsString(credential)
-        )
+        val completeRegRequest =
+            RegistrationCompleteRequest(
+                requestId = requestId,
+                credential = objectMapper.writeValueAsString(credential),
+            )
 
         return client.post("/register/complete") {
             contentType(ContentType.Application.Json)
@@ -113,7 +115,10 @@ object WebAuthnTestHelpers {
      * @param username Username to authenticate
      * @return Authentication start response
      */
-    suspend fun startAuthentication(client: HttpClient, username: String): HttpResponse {
+    suspend fun startAuthentication(
+        client: HttpClient,
+        username: String,
+    ): HttpResponse {
         val authRequest = AuthenticationRequest(username = username)
 
         return client.post("/authenticate/start") {
@@ -134,7 +139,7 @@ object WebAuthnTestHelpers {
         client: HttpClient,
         startAuthResponse: HttpResponse,
         keyPair: KeyPair,
-        credentialId: String? = null
+        credentialId: String? = null,
     ): HttpResponse {
         val startAuthBody = objectMapper.readTree(startAuthResponse.bodyAsText())
         val authRequestId = startAuthBody.get("requestId").asText()
@@ -142,16 +147,18 @@ object WebAuthnTestHelpers {
 
         val actualCredentialId = credentialId ?: extractCredentialId(startAuthBody)
 
-        val authCredential = WebAuthnTestAuthenticator.createAuthenticationCredential(
-            ByteArray.fromBase64Url(authChallenge).bytes,
-            ByteArray.fromBase64Url(actualCredentialId).bytes,
-            keyPair
-        )
+        val authCredential =
+            WebAuthnTestAuthenticator.createAuthenticationCredential(
+                ByteArray.fromBase64Url(authChallenge).bytes,
+                ByteArray.fromBase64Url(actualCredentialId).bytes,
+                keyPair,
+            )
 
-        val completeAuthRequest = AuthenticationCompleteRequest(
-            requestId = authRequestId,
-            credential = objectMapper.writeValueAsString(authCredential)
-        )
+        val completeAuthRequest =
+            AuthenticationCompleteRequest(
+                requestId = authRequestId,
+                credential = objectMapper.writeValueAsString(authCredential),
+            )
 
         return client.post("/authenticate/complete") {
             contentType(ContentType.Application.Json)
@@ -166,7 +173,10 @@ object WebAuthnTestHelpers {
      * @param optionsField Name of the options field (e.g., "publicKeyCredentialCreationOptions")
      * @return Base64URL encoded challenge
      */
-    fun extractChallenge(responseData: JsonNode, optionsField: String): String {
+    fun extractChallenge(
+        responseData: JsonNode,
+        optionsField: String,
+    ): String {
         return responseData.get(optionsField)
             ?.get("publicKey")
             ?.get("challenge")
@@ -180,10 +190,11 @@ object WebAuthnTestHelpers {
      * @return Base64URL encoded credential ID
      */
     fun extractCredentialId(authStartResponse: JsonNode): String {
-        val allowCredentials = authStartResponse
-            .get("publicKeyCredentialRequestOptions")
-            ?.get("publicKey")
-            ?.get("allowCredentials")
+        val allowCredentials =
+            authStartResponse
+                .get("publicKeyCredentialRequestOptions")
+                ?.get("publicKey")
+                ?.get("allowCredentials")
 
         return allowCredentials?.firstOrNull()?.get("id")?.asText()
             ?: "test-credential-id" // Fallback for tests
@@ -209,13 +220,14 @@ object WebAuthnTestHelpers {
     fun createTamperedCredentialWithOrigin(
         challenge: String,
         keyPair: KeyPair,
-        maliciousOrigin: String
+        maliciousOrigin: String,
     ): String {
-        val credential = WebAuthnTestAuthenticator.createAuthenticationCredential(
-            ByteArray.fromBase64Url(challenge).bytes,
-            ByteArray.fromBase64Url("test-credential-id").bytes,
-            keyPair
-        )
+        val credential =
+            WebAuthnTestAuthenticator.createAuthenticationCredential(
+                ByteArray.fromBase64Url(challenge).bytes,
+                ByteArray.fromBase64Url("test-credential-id").bytes,
+                keyPair,
+            )
 
         val credentialJson = objectMapper.writeValueAsString(credential)
         val credentialNode = objectMapper.readTree(credentialJson) as ObjectNode

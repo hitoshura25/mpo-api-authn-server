@@ -4,6 +4,15 @@ plugins {
     application
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("org.jetbrains.kotlinx.kover") version "0.9.1"
+    id("io.gitlab.arturbosch.detekt") version "1.23.7"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
+}
+
+// Detekt configuration
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom("$rootDir/detekt.yaml")
+    parallel = true
 }
 
 group = "com.vmenon.webauthn"
@@ -16,7 +25,7 @@ repositories {
 dependencies {
     // Shared WebAuthn test library
     implementation(project(":webauthn-test-lib"))
-    
+
     // Ktor Server
     implementation("io.ktor:ktor-server-core-jvm:2.3.8")
     implementation("io.ktor:ktor-server-netty-jvm:2.3.8")
@@ -24,10 +33,10 @@ dependencies {
     implementation("io.ktor:ktor-serialization-jackson-jvm:2.3.8")
     implementation("io.ktor:ktor-server-cors-jvm:2.3.8")
     implementation("io.ktor:ktor-server-status-pages-jvm:2.3.8")
-    
+
     // Logging
     implementation("ch.qos.logback:logback-classic:1.4.14")
-    
+
     // Testing
     testImplementation("io.ktor:ktor-server-tests-jvm:2.3.8")
     testImplementation("org.jetbrains.kotlin:kotlin-test:1.9.23")

@@ -3,10 +3,9 @@ package com.vmenon.mpo.api.authn.monitoring
 import com.vmenon.mpo.api.authn.di.appModule
 import com.vmenon.mpo.api.authn.di.monitoringModule
 import com.vmenon.mpo.api.authn.di.storageModule
-import com.vmenon.mpo.api.authn.test_utils.BaseIntegrationTest
+import com.vmenon.mpo.api.authn.testutils.BaseIntegrationTest
 import io.ktor.server.testing.testApplication
 import io.opentelemetry.api.trace.Tracer
-import java.util.UUID
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -16,6 +15,7 @@ import org.koin.core.context.stopKoin
 import org.koin.test.get
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.exceptions.JedisConnectionException
+import java.util.UUID
 
 class OpenTelemetryTracerTest : BaseIntegrationTest() {
     lateinit var openTelemetryTracer: OpenTelemetryTracer
@@ -38,11 +38,12 @@ class OpenTelemetryTracerTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `given Redis down when calling delete should throw connection exception`() = testApplication {
-        redis.close()
-        assertThrows<JedisConnectionException> {
-            openTelemetryTracer.del(jedisPool, UUID.randomUUID().toString())
+    fun `given Redis down when calling delete should throw connection exception`() =
+        testApplication {
+            redis.close()
+            assertThrows<JedisConnectionException> {
+                openTelemetryTracer.del(jedisPool, UUID.randomUUID().toString())
+            }
+            redis.start()
         }
-        redis.start()
-    }
 }

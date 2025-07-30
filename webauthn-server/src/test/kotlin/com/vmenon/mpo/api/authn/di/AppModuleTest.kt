@@ -1,7 +1,6 @@
 package com.vmenon.mpo.api.authn.di
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
-import kotlin.test.assertEquals
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -11,10 +10,10 @@ import org.koin.core.context.stopKoin
 import org.koin.core.qualifier.named
 import org.koin.test.KoinTest
 import org.koin.test.get
+import kotlin.test.assertEquals
 
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
 class AppModuleTest : KoinTest {
-
     @AfterEach
     fun cleanup() {
         clearAllTestProperties()
@@ -127,7 +126,7 @@ class AppModuleTest : KoinTest {
     fun `Relying Party Name should support special characters and spaces`() {
         System.setProperty(
             EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME,
-            "My WebAuthn Service™ - Test Environment"
+            "My WebAuthn Service™ - Test Environment",
         )
 
         startKoin {
@@ -139,10 +138,11 @@ class AppModuleTest : KoinTest {
     }
 
     private fun clearAllTestProperties() {
-        val properties = listOf(
-            EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID,
-            EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME
-        )
+        val properties =
+            listOf(
+                EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID,
+                EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME,
+            )
         properties.forEach { System.clearProperty(it) }
     }
 }

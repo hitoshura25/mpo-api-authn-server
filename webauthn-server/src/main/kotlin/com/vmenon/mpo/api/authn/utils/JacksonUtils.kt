@@ -9,13 +9,13 @@ import com.fasterxml.jackson.module.kotlin.KotlinModule
  * Shared test utilities to avoid duplication across test classes
  */
 object JacksonUtils {
-
     /**
      * Pre-configured ObjectMapper for WebAuthn testing with all necessary modules
      */
-    val objectMapper: ObjectMapper = ObjectMapper().apply {
-        registerModule(KotlinModule.Builder().build())
-        registerModule(JavaTimeModule())
-        registerModule(Jdk8Module())
-    }
+    val objectMapper: ObjectMapper =
+        ObjectMapper().apply {
+            registerModule(KotlinModule.Builder().build())
+            registerModule(JavaTimeModule())
+            registerModule(Jdk8Module())
+        }
 }

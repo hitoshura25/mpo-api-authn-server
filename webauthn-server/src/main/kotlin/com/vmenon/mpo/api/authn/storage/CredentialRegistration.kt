@@ -5,5 +5,5 @@ import com.yubico.webauthn.RegisteredCredential
 data class CredentialRegistration(
     val userAccount: UserAccount,
     val credential: RegisteredCredential,
-    val registrationTime: Long = System.currentTimeMillis()
+    val registrationTime: Long = System.currentTimeMillis(),
 )

@@ -18,12 +18,13 @@ fun Application.configureMetrics() {
     install(MicrometerMetrics) {
         registry = prometheusRegistry
 
-        meterBinders = listOf(
-            JvmMemoryMetrics(),
-            JvmGcMetrics(),
-            JvmThreadMetrics(),
-            ProcessorMetrics()
-        )
+        meterBinders =
+            listOf(
+                JvmMemoryMetrics(),
+                JvmGcMetrics(),
+                JvmThreadMetrics(),
+                ProcessorMetrics(),
+            )
 
         // Custom metrics
         timers { call, _ ->

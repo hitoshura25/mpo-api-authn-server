@@ -1,7 +1,6 @@
 package com.vmenon.mpo.api.authn.di
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
-import kotlin.test.assertEquals
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -12,10 +11,10 @@ import org.koin.core.error.InstanceCreationException
 import org.koin.core.qualifier.named
 import org.koin.test.KoinTest
 import org.koin.test.get
+import kotlin.test.assertEquals
 
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
 class StorageModuleTest : KoinTest {
-
     @AfterEach
     fun cleanup() {
         clearAllTestProperties()
@@ -537,19 +536,20 @@ class StorageModuleTest : KoinTest {
     }
 
     private fun clearAllTestProperties() {
-        val properties = listOf(
-            EnvironmentVariables.MPO_AUTHN_REDIS_HOST,
-            EnvironmentVariables.MPO_AUTHN_REDIS_PORT,
-            EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD,
-            EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE,
-            EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS,
-            EnvironmentVariables.MPO_AUTHN_DB_HOST,
-            EnvironmentVariables.MPO_AUTHN_DB_PORT,
-            EnvironmentVariables.MPO_AUTHN_DB_NAME,
-            EnvironmentVariables.MPO_AUTHN_DB_USERNAME,
-            EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
-            EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE
-        )
+        val properties =
+            listOf(
+                EnvironmentVariables.MPO_AUTHN_REDIS_HOST,
+                EnvironmentVariables.MPO_AUTHN_REDIS_PORT,
+                EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD,
+                EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE,
+                EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS,
+                EnvironmentVariables.MPO_AUTHN_DB_HOST,
+                EnvironmentVariables.MPO_AUTHN_DB_PORT,
+                EnvironmentVariables.MPO_AUTHN_DB_NAME,
+                EnvironmentVariables.MPO_AUTHN_DB_USERNAME,
+                EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
+                EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE,
+            )
         properties.forEach { System.clearProperty(it) }
     }
 }

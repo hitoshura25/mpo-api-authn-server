@@ -10,7 +10,10 @@ import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import com.vmenon.mpo.api.authn.client.api.RegistrationApi
 import com.vmenon.mpo.api.authn.client.api.AuthenticationApi
-import com.vmenon.mpo.api.authn.client.model.*
+import com.vmenon.mpo.api.authn.client.model.RegistrationRequest
+import com.vmenon.mpo.api.authn.client.model.RegistrationCompleteRequest
+import com.vmenon.mpo.api.authn.client.model.AuthenticationRequest
+import com.vmenon.mpo.api.authn.client.model.AuthenticationCompleteRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.vmenon.mpo.api.authn.client.ApiClient

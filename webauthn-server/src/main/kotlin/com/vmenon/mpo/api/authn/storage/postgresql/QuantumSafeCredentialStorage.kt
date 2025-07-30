@@ -18,9 +18,8 @@ import javax.sql.DataSource
  * Uses Kyber768 + AES-256-GCM hybrid encryption for all data
  */
 class QuantumSafeCredentialStorage(
-    private val dataSource: DataSource
+    private val dataSource: DataSource,
 ) : CredentialStorage {
-
     private val cryptoService = PostQuantumCryptographyService()
 
     companion object {
@@ -30,19 +29,20 @@ class QuantumSafeCredentialStorage(
             database: String,
             username: String,
             password: String,
-            maxPoolSize: Int
+            maxPoolSize: Int,
         ): QuantumSafeCredentialStorage {
-            val config = HikariConfig().apply {
-                jdbcUrl = "jdbc:postgresql://$host:$port/$database?sslmode=disable"
-                this.username = username
-                this.password = password
-                maximumPoolSize = maxPoolSize
-                minimumIdle = 2
-                connectionTimeout = 30000
-                idleTimeout = 600000
-                maxLifetime = 1800000
-                leakDetectionThreshold = 60000
-            }
+            val config =
+                HikariConfig().apply {
+                    jdbcUrl = "jdbc:postgresql://$host:$port/$database?sslmode=disable"
+                    this.username = username
+                    this.password = password
+                    maximumPoolSize = maxPoolSize
+                    minimumIdle = 2
+                    connectionTimeout = 30000
+                    idleTimeout = 600000
+                    maxLifetime = 1800000
+                    leakDetectionThreshold = 60000
+                }
 
             val dataSource = HikariDataSource(config)
             return QuantumSafeCredentialStorage(dataSource)
@@ -58,20 +58,23 @@ class QuantumSafeCredentialStorage(
         val method = parts[0]
         val data = parts[1]
         val keyMaterial = parts[2]
-        val metadata = if (parts.size > 3) {
-            parts[3].split(",").associate {
-                val kv = it.split("=", limit = 2)
-                if (kv.size == 2) kv[0] to kv[1] else kv[0] to ""
+        val metadata =
+            if (parts.size > 3) {
+                parts[3].split(",").associate {
+                    val kv = it.split("=", limit = 2)
+                    if (kv.size == 2) kv[0] to kv[1] else kv[0] to ""
+                }
+            } else {
+                emptyMap()
             }
-        } else emptyMap()
 
         return cryptoService.decrypt(
             com.vmenon.mpo.api.authn.security.EncryptedData(
                 method,
                 data,
                 keyMaterial,
-                metadata
-            )
+                metadata,
+            ),
         )
     }
 
@@ -95,17 +98,19 @@ class QuantumSafeCredentialStorage(
                 val credentialIdHash = hash(registration.credential.credentialId.base64Url)
 
                 // Encrypt user data with quantum-safe encryption
-                val encryptedUserData = encryptedDataToString(
-                    encrypt(objectMapper.writeValueAsString(registration.userAccount))
-                )
+                val encryptedUserData =
+                    encryptedDataToString(
+                        encrypt(objectMapper.writeValueAsString(registration.userAccount)),
+                    )
 
                 // Insert or update user
-                val insertUserSQL = """
+                val insertUserSQL =
+                    """
                     INSERT INTO webauthn_users_secure (user_handle_hash, username_hash, encrypted_user_data) 
                     VALUES (?, ?, ?) 
                     ON CONFLICT (username_hash) DO UPDATE SET 
                         encrypted_user_data = EXCLUDED.encrypted_user_data
-                """.trimIndent()
+                    """.trimIndent()
 
                 connection.prepareStatement(insertUserSQL).use { statement ->
                     statement.setString(1, userHandleHash)
@@ -115,18 +120,20 @@ class QuantumSafeCredentialStorage(
                 }
 
                 // Encrypt credential data with quantum-safe encryption
-                val encryptedCredentialData = encryptedDataToString(
-                    encrypt(objectMapper.writeValueAsString(registration))
-                )
+                val encryptedCredentialData =
+                    encryptedDataToString(
+                        encrypt(objectMapper.writeValueAsString(registration)),
+                    )
 
                 // Insert credential
-                val insertCredentialSQL = """
+                val insertCredentialSQL =
+                    """
                     INSERT INTO webauthn_credentials_secure 
                     (credential_id_hash, user_handle_hash, encrypted_credential_data) 
                     VALUES (?, ?, ?)
                     ON CONFLICT (credential_id_hash) DO UPDATE SET
                         encrypted_credential_data = EXCLUDED.encrypted_credential_data
-                """.trimIndent()
+                    """.trimIndent()
 
                 connection.prepareStatement(insertCredentialSQL).use { statement ->
                     statement.setString(1, credentialIdHash)
@@ -145,12 +152,13 @@ class QuantumSafeCredentialStorage(
 
     override fun getRegistrationsByUsername(username: String): Set<CredentialRegistration> {
         val usernameHash = hash(username)
-        val sql = """
+        val sql =
+            """
             SELECT c.encrypted_credential_data 
             FROM webauthn_credentials_secure c
             JOIN webauthn_users_secure u ON c.user_handle_hash = u.user_handle_hash
             WHERE u.username_hash = ?
-        """.trimIndent()
+            """.trimIndent()
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
@@ -180,7 +188,9 @@ class QuantumSafeCredentialStorage(
                         val encryptedData = resultSet.getString("encrypted_user_data")
                         val userJson = decrypt(encryptedData)
                         objectMapper.readValue(userJson, UserAccount::class.java)
-                    } else null
+                    } else {
+                        null
+                    }
                 }
             }
         }
@@ -198,7 +208,9 @@ class QuantumSafeCredentialStorage(
                         val encryptedData = resultSet.getString("encrypted_user_data")
                         val userJson = decrypt(encryptedData)
                         objectMapper.readValue(userJson, UserAccount::class.java)
-                    } else null
+                    } else {
+                        null
+                    }
                 }
             }
         }
@@ -220,16 +232,17 @@ class QuantumSafeCredentialStorage(
 
     override fun lookup(
         credentialId: com.yubico.webauthn.data.ByteArray,
-        userHandle: com.yubico.webauthn.data.ByteArray
+        userHandle: com.yubico.webauthn.data.ByteArray,
     ): Optional<RegisteredCredential> {
         val credentialIdHash = hash(credentialId.base64Url)
         val userHandleHash = hash(userHandle.base64Url)
 
-        val sql = """
+        val sql =
+            """
             SELECT encrypted_credential_data 
             FROM webauthn_credentials_secure 
             WHERE credential_id_hash = ? AND user_handle_hash = ?
-        """.trimIndent()
+            """.trimIndent()
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->

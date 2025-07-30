@@ -13,11 +13,10 @@ class RedisRegistrationRequestStorage(
     private val openTelemetryTracer: OpenTelemetryTracer,
     private val keyPrefix: String = "webauthn:reg:",
 ) : RegistrationRequestStorage {
-
     override suspend fun storeRegistrationRequest(
         requestId: String,
         options: PublicKeyCredentialCreationOptions,
-        ttlSeconds: Long
+        ttlSeconds: Long,
     ) {
         openTelemetryTracer.traceOperation("RedisRegistrationRequestStorage.storeRegistrationRequest") {
             val key = "$keyPrefix$requestId"

@@ -267,6 +267,22 @@ This project development followed a collaborative approach with continuous user 
 - **Final Result**: All 10 tests now pass (100% success rate) with proper WebAuthn credential generation
 - **Process Improvement**: Added explicit test verification step to development workflow
 
+#### 11. **Critical Lesson: Test Failures During Refactoring Must Be Fixed Immediately**
+- **Problem**: During Detekt linting refactoring, changed exception handling from generic `Exception` to specific `SecurityException`, causing 2 test failures
+- **Root Cause**: Tests expected specific error handling for `Base64UrlException` and `IllegalArgumentException` but refactored code only caught `SecurityException`
+- **Failed Tests**: 
+  - `generate registration credential with invalid challenge returns error`
+  - `authentication credential with invalid challenge format returns error`
+- **Solution**: Extended exception handling to catch the specific exceptions that tests expected:
+  ```kotlin
+  } catch (e: IllegalArgumentException) { ... }
+  } catch (e: com.yubico.webauthn.data.exception.Base64UrlException) { ... }
+  } catch (e: SecurityException) { ... }
+  ```
+- **Key Learning**: **When refactoring code (especially exception handling), ALWAYS run tests immediately to verify no behavioral changes**
+- **Process**: Refactor → Test → Fix Broken Tests → Continue
+- **Result**: All tests now pass after adding proper exception handling for the specific exceptions tests expected
+
 ### Code Quality Preferences
 - **Self-Documenting Code**: "Going forward I prefer self-documentation of code versus explicit comments if possible"
 - **Explicit Imports**: "Going forward please make sure we use explicit imports and not wildcard imports" - Always use explicit imports like `import io.ktor.client.request.get` instead of `import io.ktor.client.request.*`
@@ -274,6 +290,18 @@ This project development followed a collaborative approach with continuous user 
 - **Real Integration**: Actual API calls and git operations over mocked behaviors
 - **Build Consistency**: Kotlin DSL (.kts) preferred over Groovy for all build scripts ✅ Completed
 - **Generated Code Integrity**: Never manually modify generated code; fix generation configuration instead
+
+## Coding Standards ✅ Implemented
+
+**See [CODING_STANDARDS.md](./CODING_STANDARDS.md) for comprehensive coding standards.**
+
+### Applied Standards:
+- **Explicit Imports**: No wildcard imports (`import package.*`) - all wildcard imports replaced with specific class imports
+- **No Unused Imports**: All unused imports removed to keep code clean and avoid unnecessary dependencies
+- **Version Variables**: All dependency versions consistently referenced via variables in build files
+- **Dependency Organization**: Non-test dependencies first, then `testImplementation`, then `androidTestImplementation`
+- **Version Consistency**: Related projects use consistent library versions (WebAuthn 2.6.0, BouncyCastle 1.78, Jackson 2.16.1)
+- **Build File Structure**: Standardized order (plugins → versions → config → dependencies → tasks)
 
 ### File Management & Git History
 - **Preserve Git History**: Always use `git mv` instead of `mv` for file moves to maintain history

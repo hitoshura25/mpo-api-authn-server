@@ -1,5 +1,13 @@
 package com.vmenon.mpo.api.authn.security
 
+import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMExtractor
+import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMGenerator
+import org.bouncycastle.pqc.crypto.crystals.kyber.KyberPrivateKeyParameters
+import org.bouncycastle.pqc.crypto.util.PrivateKeyFactory
+import org.bouncycastle.pqc.crypto.util.PublicKeyFactory
+import org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider
+import org.bouncycastle.pqc.jcajce.spec.KyberParameterSpec
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.SecureRandom
@@ -10,21 +18,12 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 import javax.crypto.spec.SecretKeySpec
-import org.bouncycastle.jce.provider.BouncyCastleProvider
-import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMExtractor
-import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMGenerator
-import org.bouncycastle.pqc.crypto.crystals.kyber.KyberPrivateKeyParameters
-import org.bouncycastle.pqc.crypto.util.PrivateKeyFactory
-import org.bouncycastle.pqc.crypto.util.PublicKeyFactory
-import org.bouncycastle.pqc.jcajce.provider.BouncyCastlePQCProvider
-import org.bouncycastle.pqc.jcajce.spec.KyberParameterSpec
 
 /**
  * Post-Quantum Cryptography service providing quantum-resistant encryption by default
  * Uses Kyber768 KEM + AES-256-GCM hybrid approach for optimal security and performance
  */
 class PostQuantumCryptographyService {
-
     companion object {
         // Hybrid approach: AES-256-GCM for data + Kyber768 for key encapsulation
         private const val AES_ALGORITHM = "AES/GCM/NoPadding"
@@ -86,13 +85,14 @@ class PostQuantumCryptographyService {
                 method = "KYBER768-AES256-GCM",
                 data = Base64.getEncoder().encodeToString(payload),
                 keyMaterial = Base64.getEncoder().encodeToString(keyMaterial),
-                metadata = mapOf(
-                    "aes_algorithm" to AES_ALGORITHM,
-                    "kem_algorithm" to PQ_KEM_SPEC,
-                    "security_level" to "post-quantum",
-                    "nist_level" to "3",
-                    "created" to System.currentTimeMillis().toString()
-                )
+                metadata =
+                    mapOf(
+                        "aes_algorithm" to AES_ALGORITHM,
+                        "kem_algorithm" to PQ_KEM_SPEC,
+                        "security_level" to "post-quantum",
+                        "nist_level" to "3",
+                        "created" to System.currentTimeMillis().toString(),
+                    ),
             )
         } catch (e: Exception) {
             throw RuntimeException("Failed to encrypt data with quantum-safe encryption", e)
@@ -169,8 +169,12 @@ class PostQuantumCryptographyService {
  * Data class representing encrypted data with metadata
  */
 data class EncryptedData(
-    val method: String,              // Encryption method used
-    val data: String,                // Base64 encoded encrypted data
-    val keyMaterial: String,         // Base64 encoded key material
-    val metadata: Map<String, String> = emptyMap()  // Additional metadata
+    // Encryption method used
+    val method: String,
+    // Base64 encoded encrypted data
+    val data: String,
+    // Base64 encoded key material
+    val keyMaterial: String,
+    // Additional metadata
+    val metadata: Map<String, String> = emptyMap(),
 )

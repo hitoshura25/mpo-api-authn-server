@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.test_utils
+package com.vmenon.mpo.api.authn.testutils
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import io.opentelemetry.api.GlobalOpenTelemetry
@@ -22,23 +22,26 @@ import org.testcontainers.utility.DockerImageName
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 abstract class BaseIntegrationTest : KoinTest {
-    val postgres: PostgreSQLContainer<*> = PostgreSQLContainer(DockerImageName.parse("postgres:15-alpine"))
-        .withDatabaseName("webauthn_test")
-        .withUsername("test_user")
-        .withPassword("test_password")
-        .withFileSystemBind(
-            "src/main/resources/db/migration",
-            "/docker-entrypoint-initdb.d",
-            BindMode.READ_ONLY
-        )
+    val postgres: PostgreSQLContainer<*> =
+        PostgreSQLContainer(DockerImageName.parse("postgres:15-alpine"))
+            .withDatabaseName("webauthn_test")
+            .withUsername("test_user")
+            .withPassword("test_password")
+            .withFileSystemBind(
+                "src/main/resources/db/migration",
+                "/docker-entrypoint-initdb.d",
+                BindMode.READ_ONLY,
+            )
 
-    val redis: GenericContainer<*> = GenericContainer(DockerImageName.parse("redis:7-alpine"))
-        .withExposedPorts(6379)
-        .withCommand("redis-server --requirepass test_password")
+    val redis: GenericContainer<*> =
+        GenericContainer(DockerImageName.parse("redis:7-alpine"))
+            .withExposedPorts(6379)
+            .withCommand("redis-server --requirepass test_password")
 
-    val jaeger: GenericContainer<*> = GenericContainer(DockerImageName.parse("jaegertracing/all-in-one:1.53"))
-        .withExposedPorts(14250, 16686)
-        .withEnv("COLLECTOR_OTLP_ENABLED", "true")
+    val jaeger: GenericContainer<*> =
+        GenericContainer(DockerImageName.parse("jaegertracing/all-in-one:1.53"))
+            .withExposedPorts(14250, 16686)
+            .withEnv("COLLECTOR_OTLP_ENABLED", "true")
 
     @BeforeAll
     fun startContainers() {
@@ -81,7 +84,7 @@ abstract class BaseIntegrationTest : KoinTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_HOST, redis.host)
         System.setProperty(
             EnvironmentVariables.MPO_AUTHN_REDIS_PORT,
-            redis.getMappedPort(6379).toString()
+            redis.getMappedPort(6379).toString(),
         )
         System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD, "test_password")
         System.setProperty(EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE, "0")
@@ -90,7 +93,7 @@ abstract class BaseIntegrationTest : KoinTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_HOST, postgres.host)
         System.setProperty(
             EnvironmentVariables.MPO_AUTHN_DB_PORT,
-            postgres.getMappedPort(5432).toString()
+            postgres.getMappedPort(5432).toString(),
         )
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_NAME, postgres.databaseName)
         System.setProperty(EnvironmentVariables.MPO_AUTHN_DB_USERNAME, postgres.username)
@@ -99,7 +102,7 @@ abstract class BaseIntegrationTest : KoinTest {
         // OpenTelemetry/Jaeger configuration
         System.setProperty(
             EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
-            "http://${jaeger.host}:${jaeger.getMappedPort(14250)}"
+            "http://${jaeger.host}:${jaeger.getMappedPort(14250)}",
         )
         System.setProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME, "mpo-authn-server-test")
     }
@@ -111,19 +114,20 @@ abstract class BaseIntegrationTest : KoinTest {
     private fun clearTestEnvironmentVariables() {
         stopKoin()
 
-        val properties = listOf(
-            EnvironmentVariables.MPO_AUTHN_REDIS_HOST,
-            EnvironmentVariables.MPO_AUTHN_REDIS_PORT,
-            EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD,
-            EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE,
-            EnvironmentVariables.MPO_AUTHN_DB_HOST,
-            EnvironmentVariables.MPO_AUTHN_DB_PORT,
-            EnvironmentVariables.MPO_AUTHN_DB_NAME,
-            EnvironmentVariables.MPO_AUTHN_DB_USERNAME,
-            EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
-            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
-            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME
-        )
+        val properties =
+            listOf(
+                EnvironmentVariables.MPO_AUTHN_REDIS_HOST,
+                EnvironmentVariables.MPO_AUTHN_REDIS_PORT,
+                EnvironmentVariables.MPO_AUTHN_REDIS_PASSWORD,
+                EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE,
+                EnvironmentVariables.MPO_AUTHN_DB_HOST,
+                EnvironmentVariables.MPO_AUTHN_DB_PORT,
+                EnvironmentVariables.MPO_AUTHN_DB_NAME,
+                EnvironmentVariables.MPO_AUTHN_DB_USERNAME,
+                EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
+                EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
+                EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME,
+            )
         properties.forEach { System.clearProperty(it) }
     }
 

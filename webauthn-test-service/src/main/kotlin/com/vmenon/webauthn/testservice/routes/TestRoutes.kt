@@ -1,155 +1,207 @@
 package com.vmenon.webauthn.testservice.routes
 
-import com.vmenon.webauthn.testservice.models.*
-import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
+import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
+import com.vmenon.webauthn.testservice.models.ErrorResponse
+import com.vmenon.webauthn.testservice.models.HealthResponse
+import com.vmenon.webauthn.testservice.models.TestAuthenticationRequest
+import com.vmenon.webauthn.testservice.models.TestCredentialResponse
+import com.vmenon.webauthn.testservice.models.TestRegistrationRequest
 import com.yubico.webauthn.data.ByteArray
 import io.ktor.http.HttpStatusCode
-import io.ktor.server.application.*
-import io.ktor.server.request.*
-import io.ktor.server.response.*
-import io.ktor.server.routing.*
+import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationCall
+import io.ktor.server.application.call
+import io.ktor.server.request.receive
+import io.ktor.server.response.respond
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.routing
+import org.slf4j.Logger
 import org.slf4j.LoggerFactory
 import java.security.KeyPair
-import java.util.*
+import java.util.UUID
 
 /**
  * Routes for generating WebAuthn test credentials
  */
 fun Application.configureTestRoutes() {
     val logger = LoggerFactory.getLogger("TestRoutes")
-    val objectMapper = ObjectMapper()
-        .registerKotlinModule()
-        .registerModule(Jdk8Module())
-    
-    // In-memory storage for test key pairs (for linking registration and authentication)
+    val objectMapper = createObjectMapper()
     val testKeyPairs = mutableMapOf<String, KeyPair>()
-    
+
     routing {
-        
-        // Health check endpoint
         get("/health") {
-            call.respond(HealthResponse(
-                status = "healthy",
-                timestamp = System.currentTimeMillis()
-            ))
+            call.handleHealthCheck()
         }
-        
-        // Generate registration credential
+
         post("/test/generate-registration-credential") {
-            try {
-                val request = call.receive<TestRegistrationRequest>()
-                logger.info("Generating registration credential for challenge: ${request.challenge}")
-                
-                // Generate keypair for this test
-                val keyPair = WebAuthnTestAuthenticator.generateKeyPair()
-                val keyPairId = UUID.randomUUID().toString()
-                testKeyPairs[keyPairId] = keyPair
-                
-                // Create test credential using WebAuthnTestAuthenticator
-                val credential = WebAuthnTestAuthenticator.createRegistrationCredential(
-                    challenge = ByteArray.fromBase64Url(request.challenge).bytes,
-                    keyPair = keyPair,
-                    rpId = request.rpId,
-                    origin = request.origin
-                )
-                
-                // Convert to JSON string
-                val credentialJson = objectMapper.writeValueAsString(credential)
-                
-                // Extract credential ID for future authentication
-                val credentialId = credential.id.base64Url
-                
-                call.respond(TestCredentialResponse(
-                    credential = credentialJson,
-                    keyPairId = keyPairId,
-                    credentialId = credentialId
-                ))
-                
-                logger.info("Successfully generated registration credential with keyPairId: $keyPairId")
-                
-            } catch (e: Exception) {
-                logger.error("Failed to generate registration credential", e)
-                call.respond(
-                    HttpStatusCode.InternalServerError,
-                    ErrorResponse(
-                        error = "Failed to generate registration credential", 
-                        details = e.message
-                    )
-                )
-            }
+            call.handleRegistrationCredential(testKeyPairs, objectMapper, logger)
         }
-        
-        // Generate authentication credential
+
         post("/test/generate-authentication-credential") {
-            try {
-                val request = call.receive<TestAuthenticationRequest>()
-                logger.info("Generating authentication credential for keyPairId: ${request.keyPairId}")
-                
-                // Retrieve the keypair for this test
-                val keyPair = testKeyPairs[request.keyPairId]
-                if (keyPair == null) {
-                    call.respond(
-                        HttpStatusCode.BadRequest,
-                        ErrorResponse(
-                            error = "Invalid keyPairId", 
-                            details = "KeyPair ${request.keyPairId} not found"
-                        )
-                    )
-                    return@post
-                }
-                
-                // Create test authentication credential
-                val credential = WebAuthnTestAuthenticator.createAuthenticationCredential(
-                    challenge = ByteArray.fromBase64Url(request.challenge).bytes,
-                    credentialId = ByteArray.fromBase64Url(request.credentialId).bytes,
-                    keyPair = keyPair,
-                    rpId = request.rpId,
-                    origin = request.origin
-                )
-                
-                // Convert to JSON string
-                val credentialJson = objectMapper.writeValueAsString(credential)
-                
-                call.respond(TestCredentialResponse(
-                    credential = credentialJson,
-                    keyPairId = request.keyPairId,
-                    credentialId = request.credentialId
-                ))
-                
-                logger.info("Successfully generated authentication credential")
-                
-            } catch (e: Exception) {
-                logger.error("Failed to generate authentication credential", e)
-                call.respond(
-                    HttpStatusCode.InternalServerError,
-                    ErrorResponse(
-                        error = "Failed to generate authentication credential",
-                        details = e.message
-                    )
-                )
-            }
+            call.handleAuthenticationCredential(testKeyPairs, objectMapper, logger)
         }
-        
-        // Clear test data (useful for test cleanup)
+
         post("/test/clear") {
-            val clearedCount = testKeyPairs.size
-            testKeyPairs.clear()
-            logger.info("Cleared $clearedCount test key pairs")
-            call.respond(mapOf(
-                "message" to "Test data cleared",
-                "clearedKeyPairs" to clearedCount
-            ))
+            call.handleClearTestData(testKeyPairs, logger)
         }
-        
-        // List active test sessions (for debugging)
+
         get("/test/sessions") {
-            call.respond(mapOf(
-                "activeKeyPairs" to testKeyPairs.keys.toList(),
-                "count" to testKeyPairs.size
-            ))
+            call.handleListSessions(testKeyPairs)
         }
     }
+}
+
+private fun createObjectMapper(): ObjectMapper =
+    ObjectMapper()
+        .registerKotlinModule()
+        .registerModule(Jdk8Module())
+
+private suspend fun ApplicationCall.handleHealthCheck() {
+    respond(
+        HealthResponse(
+            status = "healthy",
+            timestamp = System.currentTimeMillis(),
+        ),
+    )
+}
+
+private suspend fun ApplicationCall.handleRegistrationCredential(
+    testKeyPairs: MutableMap<String, KeyPair>,
+    objectMapper: ObjectMapper,
+    logger: Logger,
+) {
+    try {
+        val request = receive<TestRegistrationRequest>()
+        logger.info("Generating registration credential for challenge: ${request.challenge}")
+
+        val keyPair = WebAuthnTestAuthenticator.generateKeyPair()
+        val keyPairId = UUID.randomUUID().toString()
+        testKeyPairs[keyPairId] = keyPair
+
+        val credential = WebAuthnTestAuthenticator.createRegistrationCredential(
+            challenge = ByteArray.fromBase64Url(request.challenge).bytes,
+            keyPair = keyPair,
+            rpId = request.rpId,
+            origin = request.origin,
+        )
+
+        val credentialJson = objectMapper.writeValueAsString(credential)
+        val credentialId = credential.id.base64Url
+
+        respond(
+            TestCredentialResponse(
+                credential = credentialJson,
+                keyPairId = keyPairId,
+                credentialId = credentialId,
+            ),
+        )
+
+        logger.info("Successfully generated registration credential with keyPairId: $keyPairId")
+    } catch (e: JsonProcessingException) {
+        logger.error("Failed to serialize registration credential", e)
+        respondWithError("Failed to serialize credential", e.message)
+    } catch (e: IllegalArgumentException) {
+        logger.error("Invalid request for registration credential", e)
+        respondWithError("Invalid request parameters", e.message)
+    } catch (e: com.yubico.webauthn.data.exception.Base64UrlException) {
+        logger.error("Invalid base64 challenge for registration credential", e)
+        respondWithError("Failed to generate registration credential", e.message)
+    } catch (e: SecurityException) {
+        logger.error("Security error generating registration credential", e)
+        respondWithError("Failed to generate registration credential", e.message)
+    }
+}
+
+private suspend fun ApplicationCall.handleAuthenticationCredential(
+    testKeyPairs: MutableMap<String, KeyPair>,
+    objectMapper: ObjectMapper,
+    logger: Logger,
+) {
+    try {
+        val request = receive<TestAuthenticationRequest>()
+        logger.info("Generating authentication credential for keyPairId: ${request.keyPairId}")
+
+        val keyPair = testKeyPairs[request.keyPairId]
+        if (keyPair == null) {
+            respond(
+                HttpStatusCode.BadRequest,
+                ErrorResponse(
+                    error = "Invalid keyPairId",
+                    details = "KeyPair ${request.keyPairId} not found",
+                ),
+            )
+            return
+        }
+
+        val credential = WebAuthnTestAuthenticator.createAuthenticationCredential(
+            challenge = ByteArray.fromBase64Url(request.challenge).bytes,
+            credentialId = ByteArray.fromBase64Url(request.credentialId).bytes,
+            keyPair = keyPair,
+            rpId = request.rpId,
+            origin = request.origin,
+        )
+
+        val credentialJson = objectMapper.writeValueAsString(credential)
+
+        respond(
+            TestCredentialResponse(
+                credential = credentialJson,
+                keyPairId = request.keyPairId,
+                credentialId = request.credentialId,
+            ),
+        )
+
+        logger.info("Successfully generated authentication credential")
+    } catch (e: JsonProcessingException) {
+        logger.error("Failed to serialize authentication credential", e)
+        respondWithError("Failed to serialize credential", e.message)
+    } catch (e: IllegalArgumentException) {
+        logger.error("Invalid request for authentication credential", e)
+        respondWithError("Invalid request parameters", e.message)
+    } catch (e: com.yubico.webauthn.data.exception.Base64UrlException) {
+        logger.error("Invalid base64 challenge for authentication credential", e)
+        respondWithError("Failed to generate authentication credential", e.message)
+    } catch (e: SecurityException) {
+        logger.error("Security error generating authentication credential", e)
+        respondWithError("Failed to generate authentication credential", e.message)
+    }
+}
+
+private suspend fun ApplicationCall.handleClearTestData(
+    testKeyPairs: MutableMap<String, KeyPair>,
+    logger: Logger,
+) {
+    val clearedCount = testKeyPairs.size
+    testKeyPairs.clear()
+    logger.info("Cleared $clearedCount test key pairs")
+    respond(
+        mapOf(
+            "message" to "Test data cleared",
+            "clearedKeyPairs" to clearedCount,
+        ),
+    )
+}
+
+private suspend fun ApplicationCall.handleListSessions(testKeyPairs: Map<String, KeyPair>) {
+    respond(
+        mapOf(
+            "activeKeyPairs" to testKeyPairs.keys.toList(),
+            "count" to testKeyPairs.size,
+        ),
+    )
+}
+
+private suspend fun ApplicationCall.respondWithError(error: String, details: String?) {
+    respond(
+        HttpStatusCode.InternalServerError,
+        ErrorResponse(
+            error = error,
+            details = details,
+        ),
+    )
 }

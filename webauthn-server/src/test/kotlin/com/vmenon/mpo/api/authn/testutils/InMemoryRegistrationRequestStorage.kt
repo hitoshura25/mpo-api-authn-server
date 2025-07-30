@@ -1,4 +1,4 @@
-package com.vmenon.mpo.api.authn.test_utils
+package com.vmenon.mpo.api.authn.testutils
 
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
@@ -12,10 +12,9 @@ import java.util.concurrent.TimeUnit
  * NOTE: This should NOT be used in production multi-instance deployments
  */
 class InMemoryRegistrationRequestStorage : RegistrationRequestStorage {
-
     private data class StoredItem<T>(
         val value: T,
-        val expirationTime: Long
+        val expirationTime: Long,
     )
 
     private val storage = ConcurrentHashMap<String, StoredItem<PublicKeyCredentialCreationOptions>>()
@@ -31,7 +30,7 @@ class InMemoryRegistrationRequestStorage : RegistrationRequestStorage {
     override suspend fun storeRegistrationRequest(
         requestId: String,
         options: PublicKeyCredentialCreationOptions,
-        ttlSeconds: Long
+        ttlSeconds: Long,
     ) {
         val expirationTime = System.currentTimeMillis() + (ttlSeconds * 1000)
         storage[requestId] = StoredItem(options, expirationTime)

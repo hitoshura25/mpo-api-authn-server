@@ -22,10 +22,10 @@ import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
-import java.util.Base64
-import java.util.UUID
 import org.koin.ktor.ext.inject
 import org.slf4j.LoggerFactory
+import java.util.Base64
+import java.util.UUID
 
 fun Application.configureRegistrationRoutes() {
     val logger = LoggerFactory.getLogger("RegistrationRoutes")
@@ -38,15 +38,16 @@ fun Application.configureRegistrationRoutes() {
 
         post("/register/start") {
             try {
-                val request = openTelemetryTracer.traceOperation("call.receive") {
-                    call.receive<RegistrationRequest>()
-                }
+                val request =
+                    openTelemetryTracer.traceOperation("call.receive") {
+                        call.receive<RegistrationRequest>()
+                    }
 
                 // Validate input
                 if (request.username.isBlank()) {
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to "Username is required")
+                        mapOf("error" to "Username is required"),
                     )
                     return@post
                 }
@@ -54,67 +55,72 @@ fun Application.configureRegistrationRoutes() {
                 if (request.displayName.isBlank()) {
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to "Display name is required")
+                        mapOf("error" to "Display name is required"),
                     )
                     return@post
                 }
 
                 // Check for duplicate user
-                val userAlreadyExists = openTelemetryTracer.traceOperation("checkUserExists") {
-                    credentialStorage.userExists(request.username)
-                }
+                val userAlreadyExists =
+                    openTelemetryTracer.traceOperation("checkUserExists") {
+                        credentialStorage.userExists(request.username)
+                    }
 
                 if (userAlreadyExists) {
                     logger.info("Registration attempt for existing user: ${request.username}")
                     call.respond(
                         HttpStatusCode.Conflict,
-                        mapOf("error" to "Username is already registered")
+                        mapOf("error" to "Username is already registered"),
                     )
                     return@post
                 }
 
                 val requestId = UUID.randomUUID().toString()
-                val userHandle = ByteArray.fromBase64Url(
-                    Base64.getUrlEncoder().withoutPadding()
-                        .encodeToString(UUID.randomUUID().toString().toByteArray())
-                )
-
-                val user = openTelemetryTracer.traceOperation("buildUserIdentity") {
-                    UserIdentity.builder()
-                        .name(request.username)
-                        .displayName(request.displayName)
-                        .id(userHandle)
-                        .build()
-                }
-
-                val startRegistrationOptions = openTelemetryTracer.traceOperation("relyingParty.startRegistration") {
-                    relyingParty.startRegistration(
-                        StartRegistrationOptions.builder()
-                            .user(user)
-                            .build()
+                val userHandle =
+                    ByteArray.fromBase64Url(
+                        Base64.getUrlEncoder().withoutPadding()
+                            .encodeToString(UUID.randomUUID().toString().toByteArray()),
                     )
-                }
+
+                val user =
+                    openTelemetryTracer.traceOperation("buildUserIdentity") {
+                        UserIdentity.builder()
+                            .name(request.username)
+                            .displayName(request.displayName)
+                            .id(userHandle)
+                            .build()
+                    }
+
+                val startRegistrationOptions =
+                    openTelemetryTracer.traceOperation("relyingParty.startRegistration") {
+                        relyingParty.startRegistration(
+                            StartRegistrationOptions.builder()
+                                .user(user)
+                                .build(),
+                        )
+                    }
 
                 registrationStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
 
-                val credentialsJson = openTelemetryTracer.traceOperation("toCredentialsCreateJson") {
-                    startRegistrationOptions.toCredentialsCreateJson()
-                }
+                val credentialsJson =
+                    openTelemetryTracer.traceOperation("toCredentialsCreateJson") {
+                        startRegistrationOptions.toCredentialsCreateJson()
+                    }
                 val credentialsObject = openTelemetryTracer.readTree(credentialsJson)
 
                 openTelemetryTracer.traceOperation("call.response") {
-                    val registrationResponse = RegistrationResponse(
-                        requestId = requestId,
-                        publicKeyCredentialCreationOptions = credentialsObject
-                    )
+                    val registrationResponse =
+                        RegistrationResponse(
+                            requestId = requestId,
+                            publicKeyCredentialCreationOptions = credentialsObject,
+                        )
                     call.respond(registrationResponse)
                 }
-
             } catch (e: Exception) {
                 logger.error("Registration start failed", e)
                 call.respond(
                     HttpStatusCode.InternalServerError,
-                    mapOf("error" to "Registration failed. Please try again.")
+                    mapOf("error" to "Registration failed. Please try again."),
                 )
             }
         }
@@ -128,44 +134,48 @@ fun Application.configureRegistrationRoutes() {
                 if (startRegistrationOptions == null) {
                     call.respond(
                         HttpStatusCode.BadRequest,
-                        mapOf("error" to "Invalid or expired request ID")
+                        mapOf("error" to "Invalid or expired request ID"),
                     )
                     return@post
                 }
 
-                val finishRegistrationOptions = relyingParty.finishRegistration(
-                    FinishRegistrationOptions.builder()
-                        .request(startRegistrationOptions)
-                        .response(
-                            PublicKeyCredential.parseRegistrationResponseJson(
-                                request.credential
+                val finishRegistrationOptions =
+                    relyingParty.finishRegistration(
+                        FinishRegistrationOptions.builder()
+                            .request(startRegistrationOptions)
+                            .response(
+                                PublicKeyCredential.parseRegistrationResponseJson(
+                                    request.credential,
+                                ),
                             )
-                        )
-                        .build()
-                )
+                            .build(),
+                    )
 
-                val userAccount = UserAccount(
-                    username = startRegistrationOptions.user.name,
-                    displayName = startRegistrationOptions.user.displayName,
-                    userHandle = startRegistrationOptions.user.id
-                )
+                val userAccount =
+                    UserAccount(
+                        username = startRegistrationOptions.user.name,
+                        displayName = startRegistrationOptions.user.displayName,
+                        userHandle = startRegistrationOptions.user.id,
+                    )
 
-                val registration = CredentialRegistration(
-                    userAccount = userAccount,
-                    credential = RegisteredCredential.builder()
-                        .credentialId(finishRegistrationOptions.keyId.id)
-                        .userHandle(userAccount.userHandle)
-                        .publicKeyCose(finishRegistrationOptions.publicKeyCose)
-                        .signatureCount(finishRegistrationOptions.signatureCount)
-                        .build()
-                )
+                val registration =
+                    CredentialRegistration(
+                        userAccount = userAccount,
+                        credential =
+                            RegisteredCredential.builder()
+                                .credentialId(finishRegistrationOptions.keyId.id)
+                                .userHandle(userAccount.userHandle)
+                                .publicKeyCose(finishRegistrationOptions.publicKeyCose)
+                                .signatureCount(finishRegistrationOptions.signatureCount)
+                                .build(),
+                    )
 
                 // Double-check for race condition - user might have been created between start and complete
                 if (credentialStorage.userExists(userAccount.username)) {
                     logger.warn("Race condition detected: User ${userAccount.username} was created during registration")
                     call.respond(
                         HttpStatusCode.Conflict,
-                        mapOf("error" to "Username is already registered")
+                        mapOf("error" to "Username is already registered"),
                     )
                     return@post
                 }
@@ -178,7 +188,7 @@ fun Application.configureRegistrationRoutes() {
                 logger.error("Registration complete failed", e)
                 call.respond(
                     HttpStatusCode.InternalServerError,
-                    mapOf("error" to "Registration failed. Please try again.")
+                    mapOf("error" to "Registration failed. Please try again."),
                 )
             }
         }

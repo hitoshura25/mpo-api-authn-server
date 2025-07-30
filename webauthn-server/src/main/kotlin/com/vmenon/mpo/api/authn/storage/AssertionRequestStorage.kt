@@ -6,7 +6,6 @@ import com.yubico.webauthn.AssertionRequest
  * Interface for storing temporary WebAuthn assertion requests with TTL support
  */
 interface AssertionRequestStorage {
-
     /**
      * Store an assertion request with TTL
      * @param requestId unique identifier for the request
@@ -16,7 +15,7 @@ interface AssertionRequestStorage {
     suspend fun storeAssertionRequest(
         requestId: String,
         request: AssertionRequest,
-        ttlSeconds: Long = 300
+        ttlSeconds: Long = 300,
     )
 
     /**

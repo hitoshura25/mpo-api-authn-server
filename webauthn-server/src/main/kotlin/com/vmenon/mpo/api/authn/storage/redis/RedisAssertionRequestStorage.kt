@@ -13,11 +13,10 @@ class RedisAssertionRequestStorage(
     private val openTelemetryTracer: OpenTelemetryTracer,
     private val keyPrefix: String = "webauthn:auth:",
 ) : AssertionRequestStorage {
-
     override suspend fun storeAssertionRequest(
         requestId: String,
         request: AssertionRequest,
-        ttlSeconds: Long
+        ttlSeconds: Long,
     ) {
         openTelemetryTracer.traceOperation("RedisAssertionRequestStorage.storeAssertionRequest") {
             val key = "$keyPrefix$requestId"

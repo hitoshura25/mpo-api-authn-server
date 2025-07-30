@@ -5,5 +5,5 @@ import com.yubico.webauthn.data.ByteArray
 data class UserAccount(
     val username: String,
     val displayName: String,
-    val userHandle: ByteArray
+    val userHandle: ByteArray,
 )

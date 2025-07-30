@@ -4,30 +4,30 @@ import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
-import com.vmenon.mpo.api.authn.test_utils.BaseIntegrationTest
+import com.vmenon.mpo.api.authn.testutils.BaseIntegrationTest
 import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.data.ByteArray
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 import java.security.SecureRandom
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
-import org.junit.jupiter.api.BeforeEach
-import org.junit.jupiter.api.Test
 
 class CredentialsRepositoryImplTest : BaseIntegrationTest() {
-
     private lateinit var credentialStorage: CredentialStorage
     private lateinit var credentialRepositoryImpl: CredentialRepositoryImpl
 
     @BeforeEach
     fun setupTest() {
-        credentialStorage = QuantumSafeCredentialStorage.create(
-            host = postgres.host,
-            port = postgres.getMappedPort(5432),
-            database = postgres.databaseName,
-            username = postgres.username,
-            password = postgres.password,
-            maxPoolSize = 5
-        )
+        credentialStorage =
+            QuantumSafeCredentialStorage.create(
+                host = postgres.host,
+                port = postgres.getMappedPort(5432),
+                database = postgres.databaseName,
+                username = postgres.username,
+                password = postgres.password,
+                maxPoolSize = 5,
+            )
 
         credentialRepositoryImpl = CredentialRepositoryImpl(credentialStorage)
     }
@@ -94,13 +94,13 @@ class CredentialsRepositoryImplTest : BaseIntegrationTest() {
         val userHandle = ByteArray(64)
         SecureRandom().nextBytes(userHandle)
 
-        val storedCredential = credentialRepositoryImpl.lookup(
-            ByteArray(credentialId),
-            ByteArray(userHandle)
-        )
+        val storedCredential =
+            credentialRepositoryImpl.lookup(
+                ByteArray(credentialId),
+                ByteArray(userHandle),
+            )
         assertTrue(storedCredential.isEmpty)
     }
-
 
     private fun addRegistration(
         username: String,
@@ -113,21 +113,24 @@ class CredentialsRepositoryImplTest : BaseIntegrationTest() {
         SecureRandom().nextBytes(credentialId)
         SecureRandom().nextBytes(publicKeyCose)
 
-        val userAccount = UserAccount(
-            username = username,
-            displayName = userDisplayName,
-            userHandle = userHandle
-        )
+        val userAccount =
+            UserAccount(
+                username = username,
+                displayName = userDisplayName,
+                userHandle = userHandle,
+            )
 
-        val registration = CredentialRegistration(
-            userAccount = userAccount,
-            credential = RegisteredCredential.builder()
-                .credentialId(ByteArray(credentialId))
-                .userHandle(userAccount.userHandle)
-                .publicKeyCose(ByteArray(publicKeyCose))
-                .signatureCount(1337)
-                .build()
-        )
+        val registration =
+            CredentialRegistration(
+                userAccount = userAccount,
+                credential =
+                    RegisteredCredential.builder()
+                        .credentialId(ByteArray(credentialId))
+                        .userHandle(userAccount.userHandle)
+                        .publicKeyCose(ByteArray(publicKeyCose))
+                        .signatureCount(1337)
+                        .build(),
+            )
 
         credentialStorage.addRegistration(registration)
         return registration

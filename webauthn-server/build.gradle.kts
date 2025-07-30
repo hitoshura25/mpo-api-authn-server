@@ -4,6 +4,15 @@ plugins {
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("org.jetbrains.kotlinx.kover") version "0.9.1"
     id("org.openapi.generator") version "7.2.0"
+    id("io.gitlab.arturbosch.detekt") version "1.23.7"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
+}
+
+// Detekt configuration
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom("$rootDir/detekt.yaml")
+    parallel = true
 }
 
 val kotlinVersion = "1.9.23"
@@ -190,8 +199,8 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
             "withXml" to "false",
             "hideGenerationTimestamp" to "true",
             "useJakartaEe" to "false",
-            "annotationLibrary" to "none"
-        )
+            "annotationLibrary" to "none",
+        ),
     )
 
     inputs.file(staticOpenApiSpecFile)

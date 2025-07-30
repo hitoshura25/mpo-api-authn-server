@@ -28,7 +28,7 @@ class CredentialRepositoryImpl(private val credentialStorage: CredentialStorage)
 
     override fun lookup(
         credentialId: ByteArray,
-        userHandle: ByteArray
+        userHandle: ByteArray,
     ): Optional<RegisteredCredential> {
         return credentialStorage.lookup(credentialId, userHandle)
     }

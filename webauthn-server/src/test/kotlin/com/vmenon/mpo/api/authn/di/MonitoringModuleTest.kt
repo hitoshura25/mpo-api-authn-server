@@ -1,10 +1,6 @@
 package com.vmenon.mpo.api.authn.di
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
-import java.util.Optional
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -15,10 +11,13 @@ import org.koin.core.error.InstanceCreationException
 import org.koin.core.qualifier.named
 import org.koin.test.KoinTest
 import org.koin.test.get
+import java.util.Optional
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
 class MonitoringModuleTest : KoinTest {
-
     @AfterEach
     fun cleanup() {
         clearAllTestProperties()
@@ -125,10 +124,11 @@ class MonitoringModuleTest : KoinTest {
     }
 
     private fun clearAllTestProperties() {
-        val properties = listOf(
-            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME,
-            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT
-        )
+        val properties =
+            listOf(
+                EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME,
+                EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
+            )
         properties.forEach { System.clearProperty(it) }
     }
 }

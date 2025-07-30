@@ -1,5 +1,14 @@
 plugins {
     kotlin("jvm") version "1.9.23"
+    id("io.gitlab.arturbosch.detekt") version "1.23.7"
+    id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
+}
+
+// Detekt configuration
+detekt {
+    buildUponDefaultConfig = true
+    config.setFrom("$rootDir/detekt.yaml")
+    parallel = true
 }
 
 // Version constants
@@ -19,19 +28,19 @@ repositories {
 dependencies {
     // WebAuthn Core (exposed as API for dependent projects)
     api("com.yubico:webauthn-server-core:$webauthnVersion")
-    
+
     // JSON Processing (exposed as API for dependent projects)
     api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVersion")
     api("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
     api("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:$jacksonVersion")
-    
+
     // Cryptography (exposed as API for dependent projects)
     api("org.bouncycastle:bcprov-jdk18on:$bouncyCastleVersion")
     api("org.bouncycastle:bcpkix-jdk18on:$bouncyCastleVersion")
-    
+
     // CBOR for WebAuthn Data Encoding (exposed as API for dependent projects)
     api("com.upokecenter:cbor:$cborVersion")
-    
+
     // HTTP Client for Test Flows
     implementation("io.ktor:ktor-client-core:$ktorClientVersion")
     implementation("io.ktor:ktor-client-content-negotiation:$ktorClientVersion")

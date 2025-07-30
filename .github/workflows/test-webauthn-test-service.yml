@@ -1,22 +1,26 @@
 name: Test WebAuthn Test Service
 
-# Define paths that affect webauthn-test-service
-x-test-service-paths: &test-service-paths
-  - 'webauthn-test-service/**'
-  - 'webauthn-test-lib/**'
-  - 'settings.gradle.kts'
-  - 'build.gradle.kts'
-  - 'gradle.properties'
-  - 'gradle/**'
-  - '.github/workflows/test-webauthn-test-service.yml'
-
 on:
   pull_request:
-    paths: *test-service-paths
+    paths:
+      - 'webauthn-test-service/**'
+      - 'webauthn-test-lib/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/test-webauthn-test-service.yml'
   push:
     branches:
       - main
-    paths: *test-service-paths
+    paths:
+      - 'webauthn-test-service/**'
+      - 'webauthn-test-lib/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/test-webauthn-test-service.yml'
   workflow_dispatch: # Allow manual triggering
 
 jobs:

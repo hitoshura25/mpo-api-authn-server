@@ -42,8 +42,11 @@ This project follows a multi-module Gradle structure for clear separation of con
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
     - `src/main/kotlin/com/vmenon/webauthn/testlib/` - Consolidated test authenticator
         - `WebAuthnTestAuthenticator.kt` - Unified WebAuthn credential generation
-    - Used by both webauthn-server tests and webauthn-test-service
-    - Eliminates code duplication between TestAuthenticator implementations
+    - **Usage Pattern**:
+        - webauthn-server tests: Direct library usage (testImplementation dependency)
+        - webauthn-test-service: HTTP wrapper around library (implementation dependency)
+        - External clients: HTTP API via webauthn-test-service
+    - Eliminates code duplication while supporting both internal and external access patterns
 
 - **android-test-client/** - Android client with generated API library
     - `app/` - Android test application
@@ -67,7 +70,10 @@ This project follows a multi-module Gradle structure for clear separation of con
 
 #### Shared Test Library
 - **Build**: `./gradlew :webauthn-test-lib:build`
-- **Dependencies**: Used by both webauthn-server (testImplementation) and webauthn-test-service (implementation)
+- **Dependencies**: 
+  - webauthn-server: `testImplementation(project(":webauthn-test-lib"))` - For integration tests
+  - webauthn-test-service: `implementation(project(":webauthn-test-lib"))` - For HTTP API endpoints
+- **Architecture**: Internal library used by both projects, but accessed differently based on use case
 
 #### Android Client (Standalone Project)
 - **Tests**: `cd android-test-client && ./gradlew test`
@@ -90,6 +96,7 @@ This project emphasizes security testing and vulnerability protection:
 ### Security Design Decisions
 
 **Authentication Start Behavior**: The `/authenticate/start` endpoint returns a valid challenge for both existing and non-existent users. This prevents username enumeration attacks by not revealing whether a username is registered. Authentication failure occurs later during credential verification, maintaining user privacy.
+
 
 ## MCP Integration
 
@@ -119,9 +126,10 @@ val challenge = response.get("publicKeyCredentialRequestOptions")
 ## Testing Strategy
 
 - **VulnerabilityProtectionTest**: Comprehensive security validation (7 tests)
-- **Integration tests**: Use BaseIntegrationTest with real containers
+- **Integration tests**: Use BaseIntegrationTest with real containers + webauthn-test-lib for credentials
 - **Unit tests**: Mock dependencies with testStorageModule
 - **WebAuthnTestHelpers**: Shared test utilities for registration/authentication flows
+- **Shared Library Usage**: All webauthn-server tests use webauthn-test-lib directly via testImplementation
 
 ## Code Coverage Configuration
 
@@ -145,16 +153,26 @@ Both webauthn-server and webauthn-test-service use Kover 0.9.1 for code coverage
 
 ## Test Utilities
 
-Use `WebAuthnTestHelpers` for common WebAuthn operations:
+### WebAuthnTestHelpers (webauthn-server internal)
+High-level test utilities for integration tests:
 
-- `registerUser(client, username, displayName, keyPair)` - Complete registration
-- `authenticateUser(client, username, keyPair)` - Complete authentication
-- `startRegistration/completeRegistration` - Individual steps
-- `startAuthentication/completeAuthentication` - Individual steps
+- `registerUser(client, username, displayName, keyPair)` - Complete registration flow
+- `authenticateUser(client, username, keyPair)` - Complete authentication flow
+- `startRegistration/completeRegistration` - Individual WebAuthn steps
+- `startAuthentication/completeAuthentication` - Individual WebAuthn steps
 - `generateTestUsername(prefix)` - Unique test usernames
-- `generateTestKeypair()` - Test key pairs
+- `generateTestKeypair()` - Test key pairs (delegates to WebAuthnTestAuthenticator)
 - `extractChallenge/extractRequestId` - JSON parsing helpers
 - `createTamperedCredentialWithOrigin` - Security testing helpers
+
+### WebAuthnTestAuthenticator (webauthn-test-lib shared)
+Low-level credential generation library:
+
+- `generateKeyPair()` - Generate EC P-256 key pairs
+- `createRegistrationCredential(challenge, keyPair, rpId, origin)` - Registration credentials
+- `createAuthenticationCredential(challenge, credentialId, keyPair, rpId, origin)` - Authentication credentials
+- **Usage**: Direct import `import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator`
+- **Dependencies**: Handles CBOR encoding, Jackson serialization, crypto operations
 
 ## Vulnerability Monitoring
 
@@ -288,6 +306,14 @@ This project development followed a collaborative approach with continuous user 
 - **Layer caching**: Dependencies installed in separate layers for faster rebuilds
 - **External health checks**: Distroless requires external health monitoring
 - **Security**: No root processes, minimal attack surface
+
+## Testing Architecture Implementation Notes
+
+**Key Implementation Details:**
+- **webauthn-server tests** use `testImplementation(project(":webauthn-test-lib"))` dependency
+- **webauthn-test-service** uses `implementation(project(":webauthn-test-lib"))` dependency  
+- **No container orchestration** needed for internal testing (performance optimization)
+- **HTTP service layer** serves external clients without impacting test performance
 
 ## Multi-Module Project Restructuring (January 2025)
 

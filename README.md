@@ -7,7 +7,8 @@ A production-ready WebAuthn (FIDO2/Passkeys) authentication server built with KT
 This project follows a multi-module architecture for clear separation of concerns:
 
 - **webauthn-server/** - Main WebAuthn KTor server with production features
-- **webauthn-test-service/** - HTTP service for cross-platform testing credentials  
+- **webauthn-test-service/** - HTTP service for cross-platform testing credentials
+- **webauthn-test-lib/** - Shared WebAuthn test utilities library
 - **android-test-client/** - Android client with generated API library
 - **test-client/** - Web-based Playwright E2E tests
 
@@ -62,18 +63,30 @@ Generate client libraries for multiple platforms:
 ./gradlew :webauthn-server:generateAllClients
 ```
 
-## 🧪 Cross-Platform Testing
+## 🧪 Testing Architecture
 
-The project includes a dedicated test service for generating WebAuthn credentials across platforms:
+The project uses a **layered testing approach** with different access patterns:
+
+### Testing Layers
+1. **webauthn-test-lib** - Shared credential generation library
+2. **webauthn-test-service** - HTTP API wrapper (port 8080)  
+3. **Integration tests** - Use shared library directly for performance
+
+### Cross-Platform Testing
+Start the test service for external clients:
 
 ```bash
 # Start test service
 ./gradlew :webauthn-test-service:run
 
-# Test endpoints available at http://localhost:8081
+# Test endpoints available at http://localhost:8080
 # - POST /test/generate-registration-credential
 # - POST /test/generate-authentication-credential
+# - POST /test/clear
+# - GET /test/sessions
 ```
+
+**Architecture Decision**: Integration tests use the shared library directly rather than HTTP calls for better performance and reliability.
 
 ## 📊 Monitoring & Observability
 
@@ -119,6 +132,9 @@ The project includes a dedicated test service for generating WebAuthn credential
 # Test service  
 ./gradlew :webauthn-test-service:build
 ./gradlew :webauthn-test-service:run
+
+# Shared test library
+./gradlew :webauthn-test-lib:build
 
 # Android client
 cd android-test-client && ./gradlew test

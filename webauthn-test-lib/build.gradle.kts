@@ -2,6 +2,13 @@ plugins {
     kotlin("jvm") version "1.9.23"
 }
 
+// Version constants
+val webauthnVersion = "2.6.0"
+val jacksonVersion = "2.16.1"
+val bouncyCastleVersion = "1.78"
+val cborVersion = "4.5.2"
+val ktorClientVersion = "2.3.8"
+
 group = "com.vmenon.webauthn"
 version = "1.0.0"
 
@@ -11,24 +18,24 @@ repositories {
 
 dependencies {
     // WebAuthn Core (exposed as API for dependent projects)
-    api("com.yubico:webauthn-server-core:2.5.0")
+    api("com.yubico:webauthn-server-core:$webauthnVersion")
     
     // JSON Processing (exposed as API for dependent projects)
-    api("com.fasterxml.jackson.module:jackson-module-kotlin:2.16.1")
-    api("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:2.16.1")
-    api("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:2.16.1")
+    api("com.fasterxml.jackson.module:jackson-module-kotlin:$jacksonVersion")
+    api("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jacksonVersion")
+    api("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:$jacksonVersion")
     
     // Cryptography (exposed as API for dependent projects)
-    api("org.bouncycastle:bcprov-jdk18on:1.77")
-    api("org.bouncycastle:bcpkix-jdk18on:1.77")
+    api("org.bouncycastle:bcprov-jdk18on:$bouncyCastleVersion")
+    api("org.bouncycastle:bcpkix-jdk18on:$bouncyCastleVersion")
     
     // CBOR for WebAuthn Data Encoding (exposed as API for dependent projects)
-    api("com.upokecenter:cbor:4.5.2")
+    api("com.upokecenter:cbor:$cborVersion")
     
     // HTTP Client for Test Flows
-    implementation("io.ktor:ktor-client-core:2.3.8")
-    implementation("io.ktor:ktor-client-content-negotiation:2.3.8")
-    implementation("io.ktor:ktor-serialization-jackson:2.3.8")
+    implementation("io.ktor:ktor-client-core:$ktorClientVersion")
+    implementation("io.ktor:ktor-client-content-negotiation:$ktorClientVersion")
+    implementation("io.ktor:ktor-serialization-jackson:$ktorClientVersion")
 }
 
 kotlin {

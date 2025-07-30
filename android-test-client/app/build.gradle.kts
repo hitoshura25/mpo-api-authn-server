@@ -3,6 +3,26 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Version constants
+val androidxCoreVersion = "1.12.0"
+val androidxAppCompatVersion = "1.6.1"
+val materialVersion = "1.11.0"
+val constraintLayoutVersion = "2.1.4"
+val lifecycleVersion = "2.7.0"
+val biometricVersion = "1.1.0"
+val playServicesFidoVersion = "20.1.0"
+val gsonVersion = "2.10.1"
+val junitVersion = "4.13.2"
+val mockitoVersion = "5.8.0"
+val mockitoKotlinVersion = "5.2.1"
+val archCoreTestingVersion = "2.2.0"
+val coroutinesTestVersion = "1.7.3"
+val androidxTestJunitVersion = "1.1.5"
+val espressoVersion = "3.5.1"
+val androidxTestRunnerVersion = "1.5.2"
+val androidxTestRulesVersion = "1.5.0"
+val okhttpVersion = "4.12.0"
+
 android {
     namespace = "com.vmenon.mpo.authn.testclient"
     compileSdk = 34
@@ -54,34 +74,34 @@ android {
 
 dependencies {
     // Android Core
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("com.google.android.material:material:1.11.0")
-    implementation("androidx.constraintlayout:constraintlayout:2.1.4")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:2.7.0")
+    implementation("androidx.core:core-ktx:$androidxCoreVersion")
+    implementation("androidx.appcompat:appcompat:$androidxAppCompatVersion")
+    implementation("com.google.android.material:material:$materialVersion")
+    implementation("androidx.constraintlayout:constraintlayout:$constraintLayoutVersion")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion")
+    implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
 
     // WebAuthn/FIDO2 Support
-    implementation("androidx.biometric:biometric:1.1.0")
-    implementation("com.google.android.gms:play-services-fido:20.1.0")
+    implementation("androidx.biometric:biometric:$biometricVersion")
+    implementation("com.google.android.gms:play-services-fido:$playServicesFidoVersion")
 
     // Local generated Android client library module (includes all necessary dependencies)
     implementation(project(":client-library"))
     
     // JSON Processing
-    implementation("com.google.code.gson:gson:2.10.1")
+    implementation("com.google.code.gson:gson:$gsonVersion")
 
     // Unit Testing
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.mockito:mockito-core:5.8.0")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
-    testImplementation("androidx.arch.core:core-testing:2.2.0") // For InstantTaskExecutorRule
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.3") // For StandardTestDispatcher
+    testImplementation("junit:junit:$junitVersion")
+    testImplementation("org.mockito:mockito-core:$mockitoVersion")
+    testImplementation("org.mockito.kotlin:mockito-kotlin:$mockitoKotlinVersion")
+    testImplementation("androidx.arch.core:core-testing:$archCoreTestingVersion") // For InstantTaskExecutorRule
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:$coroutinesTestVersion") // For StandardTestDispatcher
 
     // Instrumentation Testing
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation("androidx.test:runner:1.5.2")
-    androidTestImplementation("androidx.test:rules:1.5.0")
-    androidTestImplementation("com.squareup.okhttp3:okhttp:4.12.0") // HTTP client for test service communication
+    androidTestImplementation("androidx.test.ext:junit:$androidxTestJunitVersion")
+    androidTestImplementation("androidx.test.espresso:espresso-core:$espressoVersion")
+    androidTestImplementation("androidx.test:runner:$androidxTestRunnerVersion")
+    androidTestImplementation("androidx.test:rules:$androidxTestRulesVersion")
+    androidTestImplementation("com.squareup.okhttp3:okhttp:$okhttpVersion") // HTTP client for test service communication
 }

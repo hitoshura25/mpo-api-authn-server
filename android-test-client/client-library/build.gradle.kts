@@ -4,6 +4,20 @@ plugins {
     id("maven-publish")
 }
 
+// Version constants
+val okhttpVersion = "4.12.0"
+val gsonVersion = "2.10.1"
+val gsonFireVersion = "1.9.0"
+val openApiToolsVersion = "0.2.6"
+val javaxWsRsVersion = "2.1.1"
+val commonsLang3Version = "3.14.0"
+val androidxAnnotationVersion = "1.7.1"
+val jsr305Version = "3.0.2"
+val javaxAnnotationVersion = "1.3.2"
+val junitVersion = "4.13.2"
+val androidxTestJunitVersion = "1.1.5"
+val espressoVersion = "3.5.1"
+
 android {
     namespace = "com.vmenon.mpo.api.authn.client"
     compileSdk = 34
@@ -42,31 +56,31 @@ android {
 
 dependencies {
     // HTTP Client Dependencies
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+    implementation("com.squareup.okhttp3:okhttp:$okhttpVersion")
+    implementation("com.squareup.okhttp3:logging-interceptor:$okhttpVersion")
 
     // JSON Processing
-    implementation("com.google.code.gson:gson:2.10.1")
-    implementation("io.gsonfire:gson-fire:1.9.0")
-    implementation("org.openapitools:jackson-databind-nullable:0.2.6")
+    implementation("com.google.code.gson:gson:$gsonVersion")
+    implementation("io.gsonfire:gson-fire:$gsonFireVersion")
+    implementation("org.openapitools:jackson-databind-nullable:$openApiToolsVersion")
 
     // Web Service Support
-    implementation("javax.ws.rs:javax.ws.rs-api:2.1.1")
+    implementation("javax.ws.rs:javax.ws.rs-api:$javaxWsRsVersion")
 
     // Utilities
-    implementation("org.apache.commons:commons-lang3:3.14.0")
+    implementation("org.apache.commons:commons-lang3:$commonsLang3Version")
 
     // Annotation Support (Android-compatible)
-    implementation("androidx.annotation:annotation:1.7.1")
-    implementation("com.google.code.findbugs:jsr305:3.0.2")
-    implementation("javax.annotation:javax.annotation-api:1.3.2")
+    implementation("androidx.annotation:annotation:$androidxAnnotationVersion")
+    implementation("com.google.code.findbugs:jsr305:$jsr305Version")
+    implementation("javax.annotation:javax.annotation-api:$javaxAnnotationVersion")
 
     // Unit Testing
-    testImplementation("junit:junit:4.13.2")
+    testImplementation("junit:junit:$junitVersion")
 
     // Instrumentation Testing
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+    androidTestImplementation("androidx.test.ext:junit:$androidxTestJunitVersion")
+    androidTestImplementation("androidx.test.espresso:espresso-core:$espressoVersion")
 }
 
 // Configure version from parent project or environment

@@ -272,8 +272,8 @@ components:
           example: true
         credentialId:
           type: string
-          description: The ID of the newly registered credential
-          example: "Y3JlZGVudGlhbElk"
+          description: The base64url-encoded credential ID of the registered credential
+          example: "2RVLo5tYEw6jvQ8ccCDTszdbKPF3j7XMVu_w_5lB2mM"
 
     AuthenticationRequest:
       type: object
@@ -316,12 +316,17 @@ components:
       type: object
       required:
         - success
+        - message
         - username
       properties:
         success:
           type: boolean
           description: Whether authentication was successful
           example: true
+        message:
+          type: string
+          description: Success message confirming authentication
+          example: "Authentication successful"
         username:
           type: string
           description: The authenticated username

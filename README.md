@@ -86,7 +86,9 @@ Start the test service for external clients:
 # - GET /test/sessions
 ```
 
-**Architecture Decision**: Integration tests use the shared library directly rather than HTTP calls for better performance and reliability.
+**Architecture Decisions**: 
+- **webauthn-server integration tests**: Use shared library directly for performance and reliability
+- **Android client tests**: Use HTTP API calls to webauthn-test-service for realistic cross-platform testing
 
 ## 📊 Monitoring & Observability
 

@@ -23,6 +23,25 @@ class QuantumSafeCredentialStorage(
     private val cryptoService = PostQuantumCryptographyService()
 
     companion object {
+        // Connection pool constants
+        private const val MINIMUM_IDLE_CONNECTIONS = 2
+        private const val CONNECTION_TIMEOUT_MS = 30000 // 30 seconds
+        private const val IDLE_TIMEOUT_MS = 600000 // 10 minutes  
+        private const val MAX_LIFETIME_MS = 1800000 // 30 minutes
+        private const val LEAK_DETECTION_THRESHOLD_MS = 60000 // 1 minute
+        
+        // Data parsing constants
+        private const val MINIMUM_ENCRYPTED_PARTS = 4
+        private const val METADATA_PART_THRESHOLD = 3
+        private const val METADATA_PART_INDEX = 3
+        private const val KEY_VALUE_SPLIT_LIMIT = 2
+        private const val EXPECTED_KV_PARTS = 2
+        
+        // SQL parameter indices
+        private const val PARAM_1 = 1
+        private const val PARAM_2 = 2
+        private const val PARAM_3 = 3
+        
         fun create(
             host: String,
             port: Int,
@@ -37,11 +56,11 @@ class QuantumSafeCredentialStorage(
                     this.username = username
                     this.password = password
                     maximumPoolSize = maxPoolSize
-                    minimumIdle = 2
-                    connectionTimeout = 30000
-                    idleTimeout = 600000
-                    maxLifetime = 1800000
-                    leakDetectionThreshold = 60000
+                    minimumIdle = MINIMUM_IDLE_CONNECTIONS
+                    connectionTimeout = CONNECTION_TIMEOUT_MS.toLong()
+                    idleTimeout = IDLE_TIMEOUT_MS.toLong()
+                    maxLifetime = MAX_LIFETIME_MS.toLong()
+                    leakDetectionThreshold = LEAK_DETECTION_THRESHOLD_MS.toLong()
                 }
 
             val dataSource = HikariDataSource(config)
@@ -53,16 +72,16 @@ class QuantumSafeCredentialStorage(
 
     private fun decrypt(encryptedDataString: String): String {
         val parts = encryptedDataString.split("|")
-        require(parts.size >= 4) { "Invalid encrypted data format" }
+        require(parts.size >= MINIMUM_ENCRYPTED_PARTS) { "Invalid encrypted data format" }
 
         val method = parts[0]
         val data = parts[1]
         val keyMaterial = parts[2]
         val metadata =
-            if (parts.size > 3) {
-                parts[3].split(",").associate {
-                    val kv = it.split("=", limit = 2)
-                    if (kv.size == 2) kv[0] to kv[1] else kv[0] to ""
+            if (parts.size > METADATA_PART_THRESHOLD) {
+                parts[METADATA_PART_INDEX].split(",").associate {
+                    val kv = it.split("=", limit = KEY_VALUE_SPLIT_LIMIT)
+                    if (kv.size == EXPECTED_KV_PARTS) kv[0] to kv[1] else kv[0] to ""
                 }
             } else {
                 emptyMap()
@@ -113,9 +132,9 @@ class QuantumSafeCredentialStorage(
                     """.trimIndent()
 
                 connection.prepareStatement(insertUserSQL).use { statement ->
-                    statement.setString(1, userHandleHash)
-                    statement.setString(2, usernameHash)
-                    statement.setString(3, encryptedUserData)
+                    statement.setString(PARAM_1, userHandleHash)
+                    statement.setString(PARAM_2, usernameHash)
+                    statement.setString(PARAM_3, encryptedUserData)
                     statement.executeUpdate()
                 }
 
@@ -136,9 +155,9 @@ class QuantumSafeCredentialStorage(
                     """.trimIndent()
 
                 connection.prepareStatement(insertCredentialSQL).use { statement ->
-                    statement.setString(1, credentialIdHash)
-                    statement.setString(2, userHandleHash)
-                    statement.setString(3, encryptedCredentialData)
+                    statement.setString(PARAM_1, credentialIdHash)
+                    statement.setString(PARAM_2, userHandleHash)
+                    statement.setString(PARAM_3, encryptedCredentialData)
                     statement.executeUpdate()
                 }
 
@@ -162,7 +181,7 @@ class QuantumSafeCredentialStorage(
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
-                statement.setString(1, usernameHash)
+                statement.setString(PARAM_1, usernameHash)
                 statement.executeQuery().use { resultSet ->
                     buildSet {
                         while (resultSet.next()) {
@@ -182,7 +201,7 @@ class QuantumSafeCredentialStorage(
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
-                statement.setString(1, userHandleHash)
+                statement.setString(PARAM_1, userHandleHash)
                 statement.executeQuery().use { resultSet ->
                     if (resultSet.next()) {
                         val encryptedData = resultSet.getString("encrypted_user_data")
@@ -202,7 +221,7 @@ class QuantumSafeCredentialStorage(
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
-                statement.setString(1, usernameHash)
+                statement.setString(PARAM_1, usernameHash)
                 statement.executeQuery().use { resultSet ->
                     if (resultSet.next()) {
                         val encryptedData = resultSet.getString("encrypted_user_data")
@@ -222,7 +241,7 @@ class QuantumSafeCredentialStorage(
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
-                statement.setString(1, usernameHash)
+                statement.setString(PARAM_1, usernameHash)
                 statement.executeQuery().use { resultSet ->
                     resultSet.next()
                 }
@@ -246,8 +265,8 @@ class QuantumSafeCredentialStorage(
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
-                statement.setString(1, credentialIdHash)
-                statement.setString(2, userHandleHash)
+                statement.setString(PARAM_1, credentialIdHash)
+                statement.setString(PARAM_2, userHandleHash)
                 statement.executeQuery().use { resultSet ->
                     if (resultSet.next()) {
                         val encryptedData = resultSet.getString("encrypted_credential_data")
@@ -268,7 +287,7 @@ class QuantumSafeCredentialStorage(
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
-                statement.setString(1, credentialIdHash)
+                statement.setString(PARAM_1, credentialIdHash)
                 statement.executeQuery().use { resultSet ->
                     buildSet {
                         while (resultSet.next()) {

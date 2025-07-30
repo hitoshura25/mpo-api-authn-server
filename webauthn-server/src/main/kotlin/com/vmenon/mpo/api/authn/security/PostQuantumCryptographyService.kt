@@ -31,6 +31,10 @@ class PostQuantumCryptographyService {
         private const val GCM_TAG_LENGTH = 16
         private const val PQ_KEM_ALGORITHM = "Kyber"
         private const val PQ_KEM_SPEC = "kyber768" // NIST Level 3 security
+        private const val AES_KEY_SIZE_BYTES = 32 // 256 bits / 8
+        private const val BITS_PER_BYTE = 8
+        private const val KYBER768_ENCAPSULATION_SIZE = 1088 // Kyber768 specific
+        private const val AES_KEY_SIZE_BITS = 256 // AES-256
 
         init {
             // Register BouncyCastle post-quantum provider
@@ -52,7 +56,7 @@ class PostQuantumCryptographyService {
             val iv = ByteArray(GCM_IV_LENGTH)
             SecureRandom().nextBytes(iv)
 
-            val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
+            val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, iv)
             cipher.init(Cipher.ENCRYPT_MODE, aesKey, parameterSpec)
             val encryptedData = cipher.doFinal(data.toByteArray())
 
@@ -68,12 +72,12 @@ class PostQuantumCryptographyService {
             val kemEncapsulation = secretWithEncapsulation.encapsulation
 
             // Use the KEM shared secret to encrypt our AES key
-            val kemAesKey = SecretKeySpec(kemSharedSecret.sliceArray(0..31), "AES") // Use first 32 bytes
+            val kemAesKey = SecretKeySpec(kemSharedSecret.sliceArray(0 until AES_KEY_SIZE_BYTES), "AES")
             val kemCipher = Cipher.getInstance(AES_ALGORITHM)
             val kemIv = ByteArray(GCM_IV_LENGTH)
             SecureRandom().nextBytes(kemIv)
 
-            val kemParamSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, kemIv)
+            val kemParamSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, kemIv)
             kemCipher.init(Cipher.ENCRYPT_MODE, kemAesKey, kemParamSpec)
             val encryptedAESKey = kemCipher.doFinal(aesKey.encoded)
 
@@ -117,11 +121,11 @@ class PostQuantumCryptographyService {
 
             // Extract components from keyMaterial
             val kemIv = keyMaterial.sliceArray(0 until GCM_IV_LENGTH)
-            val encryptedAESKeySize = 32 + GCM_TAG_LENGTH // AES key + GCM tag
+            val encryptedAESKeySize = AES_KEY_SIZE_BYTES + GCM_TAG_LENGTH
             val encryptedAESKey = keyMaterial.sliceArray(GCM_IV_LENGTH until GCM_IV_LENGTH + encryptedAESKeySize)
 
             val kemEncapsulationStart = GCM_IV_LENGTH + encryptedAESKeySize
-            val kemEncapsulationSize = 1088 // Kyber768 encapsulation size
+            val kemEncapsulationSize = KYBER768_ENCAPSULATION_SIZE
             val kemEncapsulation =
                 keyMaterial.sliceArray(kemEncapsulationStart until kemEncapsulationStart + kemEncapsulationSize)
 
@@ -134,16 +138,16 @@ class PostQuantumCryptographyService {
             val kemSharedSecret = kemExtractor.extractSecret(kemEncapsulation)
 
             // Use KEM shared secret to decrypt the AES key
-            val kemAesKey = SecretKeySpec(kemSharedSecret.sliceArray(0..31), "AES")
+            val kemAesKey = SecretKeySpec(kemSharedSecret.sliceArray(0 until AES_KEY_SIZE_BYTES), "AES")
             val kemCipher = Cipher.getInstance(AES_ALGORITHM)
-            val kemParamSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, kemIv)
+            val kemParamSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, kemIv)
             kemCipher.init(Cipher.DECRYPT_MODE, kemAesKey, kemParamSpec)
             val aesKeyBytes = kemCipher.doFinal(encryptedAESKey)
 
             // Decrypt the actual data
             val aesKey = SecretKeySpec(aesKeyBytes, "AES")
             val cipher = Cipher.getInstance(AES_ALGORITHM)
-            val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * 8, iv)
+            val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, iv)
             cipher.init(Cipher.DECRYPT_MODE, aesKey, parameterSpec)
 
             return String(cipher.doFinal(encrypted))
@@ -154,7 +158,7 @@ class PostQuantumCryptographyService {
 
     private fun generateAESKey(): SecretKey {
         val keyGen = KeyGenerator.getInstance("AES")
-        keyGen.init(256)
+        keyGen.init(AES_KEY_SIZE_BITS)
         return keyGen.generateKey()
     }
 

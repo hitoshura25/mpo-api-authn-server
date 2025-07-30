@@ -14,6 +14,17 @@ import org.koin.dsl.onClose
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.JedisPoolConfig
 
+// Constants for default values
+private const val DEFAULT_REDIS_PORT = 6379
+private const val DEFAULT_REDIS_DATABASE = 0
+private const val DEFAULT_REDIS_MAX_CONNECTIONS = 10
+private const val DEFAULT_POSTGRES_PORT = 5432
+private const val DEFAULT_DB_MAX_POOL_SIZE = 10
+private const val REDIS_DATABASE_MAX = 15
+private const val MIN_PORT = 1
+private const val MAX_PORT = 65535
+private const val REDIS_TIMEOUT_MS = 2000
+
 val storageModule =
     module {
         single(named("redisHost")) {
@@ -40,13 +51,14 @@ val storageModule =
                             "${EnvironmentVariables.MPO_AUTHN_REDIS_PORT} must be a valid integer, got: '$portString'",
                         )
                 require(
-                    port in 1..65535,
+                    port in MIN_PORT..MAX_PORT,
                 ) {
-                    "${EnvironmentVariables.MPO_AUTHN_REDIS_PORT} must be a valid port number (1-65535), got: $port"
+                    "${EnvironmentVariables.MPO_AUTHN_REDIS_PORT} must be a valid port number " +
+                        "($MIN_PORT-$MAX_PORT), got: $port"
                 }
                 port
             } else {
-                6379
+                DEFAULT_REDIS_PORT
             }
         }
 
@@ -70,19 +82,25 @@ val storageModule =
                     EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE,
                 )
             if (databaseString != null) {
-                require(databaseString.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} cannot be blank" }
+                require(databaseString.isNotBlank()) { 
+                    "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} cannot be blank" 
+                }
                 val database =
                     databaseString.toIntOrNull()
                         ?: throw IllegalArgumentException(
-                            "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be a valid integer, got: '$databaseString'",
+                            "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be a valid integer, " +
+                                "got: '$databaseString'",
                         )
-                require(database >= 0) { "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be non-negative, got: $database" }
-                require(database <= 15) {
-                    "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be between 0-15 (standard Redis database range), got: $database"
+                require(database >= DEFAULT_REDIS_DATABASE) { 
+                    "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be non-negative, got: $database" 
+                }
+                require(database <= REDIS_DATABASE_MAX) {
+                    "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be between " +
+                        "$DEFAULT_REDIS_DATABASE-$REDIS_DATABASE_MAX (standard Redis database range), got: $database"
                 }
                 database
             } else {
-                0
+                DEFAULT_REDIS_DATABASE
             }
         }
 
@@ -97,10 +115,11 @@ val storageModule =
                 }
                 connectionsString.toIntOrNull()
                     ?: throw IllegalArgumentException(
-                        "${EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS} must be a valid integer, got: '$connectionsString'",
+                        "${EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS} must be a valid integer, " +
+                            "got: '$connectionsString'",
                     )
             } else {
-                10
+                DEFAULT_REDIS_MAX_CONNECTIONS
             }
         }
 
@@ -125,10 +144,13 @@ val storageModule =
                         ?: throw IllegalArgumentException(
                             "${EnvironmentVariables.MPO_AUTHN_DB_PORT} must be a valid integer, got: '$portString'",
                         )
-                require(port in 1..65535) { "${EnvironmentVariables.MPO_AUTHN_DB_PORT} must be a valid port number (1-65535), got: $port" }
+                require(port in MIN_PORT..MAX_PORT) { 
+                    "${EnvironmentVariables.MPO_AUTHN_DB_PORT} must be a valid port number " +
+                        "($MIN_PORT-$MAX_PORT), got: $port" 
+                }
                 port
             } else {
-                5432
+                DEFAULT_POSTGRES_PORT
             }
         }
 
@@ -168,13 +190,16 @@ val storageModule =
                     EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE,
                 )
             if (poolSizeString != null) {
-                require(poolSizeString.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} cannot be blank" }
+                require(poolSizeString.isNotBlank()) { 
+                    "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} cannot be blank" 
+                }
                 poolSizeString.toIntOrNull()
                     ?: throw IllegalArgumentException(
-                        "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} must be a valid integer, got: '$poolSizeString'",
+                        "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} must be a valid integer, " +
+                            "got: '$poolSizeString'",
                     )
             } else {
-                10
+                DEFAULT_DB_MAX_POOL_SIZE
             }
         }
 
@@ -193,7 +218,7 @@ val storageModule =
                     testOnReturn = true
                 }
 
-            JedisPool(config, host, port, 2000, password, database)
+            JedisPool(config, host, port, REDIS_TIMEOUT_MS, password, database)
         }
 
         single<RegistrationRequestStorage> {

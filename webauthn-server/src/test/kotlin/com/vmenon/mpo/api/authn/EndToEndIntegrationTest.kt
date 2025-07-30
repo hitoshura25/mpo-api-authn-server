@@ -256,8 +256,14 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
                 // Verify data is quantum-safe encrypted (should contain method signature)
                 assertTrue(encryptedUserData.isNotEmpty())
                 assertTrue(encryptedCredentialData.isNotEmpty())
-                assertTrue(encryptedUserData.contains("KYBER768-AES256-GCM"), "Should use quantum-safe encryption")
-                assertTrue(encryptedCredentialData.contains("KYBER768-AES256-GCM"), "Should use quantum-safe encryption")
+                assertTrue(
+                    encryptedUserData.contains("KYBER768-AES256-GCM"), 
+                    "Should use quantum-safe encryption"
+                )
+                assertTrue(
+                    encryptedCredentialData.contains("KYBER768-AES256-GCM"), 
+                    "Should use quantum-safe encryption"
+                )
                 assertFalse(encryptedUserData.contains(username), "Username should not be in plaintext")
                 assertFalse(encryptedUserData.contains(displayName), "Display name should not be in plaintext")
             }

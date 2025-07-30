@@ -23,8 +23,11 @@ val monitoringModule =
         single(named("openTelemetryServiceName")) {
             val value =
                 System.getProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME)
-                    ?: System.getenv(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME) ?: "MPO-API-AUTHN"
-            require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME} cannot be blank" }
+                    ?: System.getenv(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME) 
+                    ?: "MPO-API-AUTHN"
+            require(value.isNotBlank()) { 
+                "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME} cannot be blank" 
+            }
             value
         }
 
@@ -33,7 +36,9 @@ val monitoringModule =
                 System.getProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT)
                     ?: System.getenv(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT)
             if (value != null) {
-                require(value.isNotBlank()) { "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT} cannot be blank" }
+                require(value.isNotBlank()) { 
+                    "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT} cannot be blank" 
+                }
             }
             Optional.ofNullable(value)
         }

@@ -242,7 +242,10 @@ class ApplicationTest : KoinTest {
             )
 
             // Verify it's valid YAML format (basic check)
-            assertTrue(responseBody.lines().any { it.trim().startsWith("openapi:") }, "Should start with openapi version")
+            assertTrue(
+                responseBody.lines().any { it.trim().startsWith("openapi:") }, 
+                "Should start with openapi version"
+            )
         }
 
     @Test
@@ -346,7 +349,8 @@ class ApplicationTest : KoinTest {
     fun testRegistrationStartWithRelyingPartyFailure() =
         testApplication {
             // Mock RelyingParty to throw an exception
-            every { mockRelyingParty.startRegistration(any()) } throws RuntimeException("RelyingParty configuration error")
+            every { mockRelyingParty.startRegistration(any()) } throws 
+                RuntimeException("RelyingParty configuration error")
 
             application {
                 module(testStorageModule)
@@ -537,7 +541,8 @@ class ApplicationTest : KoinTest {
     fun testAuthenticationCompleteWithRelyingPartyFailure() =
         testApplication {
             // Mock RelyingParty to throw an exception
-            every { mockRelyingParty.finishAssertion(any()) } throws RuntimeException("RelyingParty service unavailable")
+            every { mockRelyingParty.finishAssertion(any()) } throws 
+                RuntimeException("RelyingParty service unavailable")
 
             application {
                 module(testStorageModule)

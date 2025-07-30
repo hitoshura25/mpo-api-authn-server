@@ -26,7 +26,9 @@ class RedisRegistrationRequestStorage(
     }
 
     override suspend fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
-        return openTelemetryTracer.traceOperation("RedisRegistrationRequestStorage.retrieveAndRemoveRegistrationRequest") {
+        return openTelemetryTracer.traceOperation(
+            "RedisRegistrationRequestStorage.retrieveAndRemoveRegistrationRequest"
+        ) {
             val key = "$keyPrefix$requestId"
             val value = openTelemetryTracer.get(jedisPool, key)
             if (value != null) {

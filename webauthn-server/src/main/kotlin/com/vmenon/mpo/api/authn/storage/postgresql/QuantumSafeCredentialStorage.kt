@@ -26,6 +26,61 @@ data class DatabaseConfig(
 )
 
 /**
+ * Helper for user-related database operations
+ */
+internal class UserDataManager(
+    private val dataSource: DataSource,
+    private val cryptoHelper: QuantumCryptoHelper,
+) {
+    fun getUserByHandle(userHandle: com.yubico.webauthn.data.ByteArray): UserAccount? {
+        val userHandleHash = cryptoHelper.hash(userHandle.base64Url)
+        val sql = "SELECT encrypted_user_data FROM webauthn_users_secure WHERE user_handle_hash = ?"
+        return executeQueryForUser(sql, userHandleHash)
+    }
+
+    fun getUserByUsername(username: String): UserAccount? {
+        val usernameHash = cryptoHelper.hash(username)
+        val sql = "SELECT encrypted_user_data FROM webauthn_users_secure WHERE username_hash = ?"
+        return executeQueryForUser(sql, usernameHash)
+    }
+
+    fun userExists(username: String): Boolean {
+        val usernameHash = cryptoHelper.hash(username)
+        val sql = "SELECT 1 FROM webauthn_users_secure WHERE username_hash = ? LIMIT 1"
+
+        return dataSource.connection.use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setString(1, usernameHash)
+                statement.executeQuery().use { resultSet ->
+                    resultSet.next()
+                }
+            }
+        }
+    }
+
+    private fun executeQueryForUser(sql: String, parameter: String): UserAccount? {
+        return dataSource.connection.use { connection ->
+            connection.prepareStatement(sql).use { statement ->
+                statement.setString(1, parameter)
+                statement.executeQuery().use { resultSet ->
+                    extractUserFromResultSet(resultSet)
+                }
+            }
+        }
+    }
+
+    private fun extractUserFromResultSet(resultSet: java.sql.ResultSet): UserAccount? {
+        return if (resultSet.next()) {
+            val encryptedData = resultSet.getString("encrypted_user_data")
+            val userJson = cryptoHelper.decrypt(encryptedData)
+            com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper.readValue(userJson, UserAccount::class.java)
+        } else {
+            null
+        }
+    }
+}
+
+/**
  * Helper for encryption/decryption operations
  */
 internal class QuantumCryptoHelper(private val cryptoService: PostQuantumCryptographyService) {
@@ -87,6 +142,7 @@ class QuantumSafeCredentialStorage(
     private val dataSource: DataSource,
 ) : CredentialStorage {
     private val cryptoHelper = QuantumCryptoHelper(PostQuantumCryptographyService())
+    private val userDataManager = UserDataManager(dataSource, cryptoHelper)
 
     companion object {
         // SQL parameter indices
@@ -183,52 +239,14 @@ class QuantumSafeCredentialStorage(
         }
     }
 
-    override fun getUserByHandle(userHandle: com.yubico.webauthn.data.ByteArray): UserAccount? {
-        val userHandleHash = cryptoHelper.hash(userHandle.base64Url)
-        val sql = "SELECT encrypted_user_data FROM webauthn_users_secure WHERE user_handle_hash = ?"
-        return executeQueryForUser(sql, userHandleHash)
-    }
+    override fun getUserByHandle(userHandle: com.yubico.webauthn.data.ByteArray): UserAccount? =
+        userDataManager.getUserByHandle(userHandle)
 
-    private fun executeQueryForUser(sql: String, parameter: String): UserAccount? {
-        return dataSource.connection.use { connection ->
-            connection.prepareStatement(sql).use { statement ->
-                statement.setString(PARAM_1, parameter)
-                statement.executeQuery().use { resultSet ->
-                    extractUserFromResultSet(resultSet)
-                }
-            }
-        }
-    }
+    override fun getUserByUsername(username: String): UserAccount? = 
+        userDataManager.getUserByUsername(username)
 
-    private fun extractUserFromResultSet(resultSet: java.sql.ResultSet): UserAccount? {
-        return if (resultSet.next()) {
-            val encryptedData = resultSet.getString("encrypted_user_data")
-            val userJson = cryptoHelper.decrypt(encryptedData)
-            objectMapper.readValue(userJson, UserAccount::class.java)
-        } else {
-            null
-        }
-    }
-
-    override fun getUserByUsername(username: String): UserAccount? {
-        val usernameHash = cryptoHelper.hash(username)
-        val sql = "SELECT encrypted_user_data FROM webauthn_users_secure WHERE username_hash = ?"
-        return executeQueryForUser(sql, usernameHash)
-    }
-
-    override fun userExists(username: String): Boolean {
-        val usernameHash = cryptoHelper.hash(username)
-        val sql = "SELECT 1 FROM webauthn_users_secure WHERE username_hash = ? LIMIT 1"
-
-        return dataSource.connection.use { connection ->
-            connection.prepareStatement(sql).use { statement ->
-                statement.setString(PARAM_1, usernameHash)
-                statement.executeQuery().use { resultSet ->
-                    resultSet.next()
-                }
-            }
-        }
-    }
+    override fun userExists(username: String): Boolean = 
+        userDataManager.userExists(username)
 
     override fun lookup(
         credentialId: com.yubico.webauthn.data.ByteArray,

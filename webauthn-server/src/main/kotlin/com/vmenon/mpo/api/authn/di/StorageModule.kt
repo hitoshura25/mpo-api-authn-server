@@ -7,6 +7,7 @@ import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.vmenon.mpo.api.authn.storage.postgresql.DatabaseConfig
 import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
+import com.vmenon.mpo.api.authn.storage.postgresql.createQuantumSafeCredentialStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisAssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisRegistrationRequestStorage
 import org.koin.core.qualifier.named
@@ -242,7 +243,7 @@ val storageModule =
             val password: String by inject(named("dbPassword"))
             val maxPoolSize: Int by inject(named("dbMaxPoolSize"))
 
-            QuantumSafeCredentialStorage.create(
+            createQuantumSafeCredentialStorage(
                 DatabaseConfig(
                     host = host,
                     port = port,

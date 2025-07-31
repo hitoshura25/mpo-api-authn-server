@@ -5,6 +5,7 @@ import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.vmenon.mpo.api.authn.storage.postgresql.DatabaseConfig
 import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
+import com.vmenon.mpo.api.authn.storage.postgresql.createQuantumSafeCredentialStorage
 import com.vmenon.mpo.api.authn.testutils.BaseIntegrationTest
 import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.data.ByteArray
@@ -21,7 +22,7 @@ class CredentialsRepositoryImplTest : BaseIntegrationTest() {
     @BeforeEach
     fun setupTest() {
         credentialStorage =
-            QuantumSafeCredentialStorage.create(
+            createQuantumSafeCredentialStorage(
                 DatabaseConfig(
                     host = postgres.host,
                     port = postgres.getMappedPort(5432),

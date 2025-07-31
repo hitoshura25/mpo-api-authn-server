@@ -89,35 +89,10 @@ class QuantumSafeCredentialStorage(
     private val cryptoHelper = QuantumCryptoHelper(PostQuantumCryptographyService())
 
     companion object {
-        // Connection pool constants
-        private const val MINIMUM_IDLE_CONNECTIONS = 2
-        private const val CONNECTION_TIMEOUT_MS = 30000 // 30 seconds
-        private const val IDLE_TIMEOUT_MS = 600000 // 10 minutes  
-        private const val MAX_LIFETIME_MS = 1800000 // 30 minutes
-        private const val LEAK_DETECTION_THRESHOLD_MS = 60000 // 1 minute
-        
         // SQL parameter indices
         private const val PARAM_1 = 1
         private const val PARAM_2 = 2
         private const val PARAM_3 = 3
-        
-        fun create(config: DatabaseConfig): QuantumSafeCredentialStorage {
-            val hikariConfig =
-                HikariConfig().apply {
-                    jdbcUrl = "jdbc:postgresql://${config.host}:${config.port}/${config.database}?sslmode=disable"
-                    this.username = config.username
-                    this.password = config.password
-                    maximumPoolSize = config.maxPoolSize
-                    minimumIdle = MINIMUM_IDLE_CONNECTIONS
-                    connectionTimeout = CONNECTION_TIMEOUT_MS.toLong()
-                    idleTimeout = IDLE_TIMEOUT_MS.toLong()
-                    maxLifetime = MAX_LIFETIME_MS.toLong()
-                    leakDetectionThreshold = LEAK_DETECTION_THRESHOLD_MS.toLong()
-                }
-
-            val dataSource = HikariDataSource(hikariConfig)
-            return QuantumSafeCredentialStorage(dataSource)
-        }
     }
 
 
@@ -320,4 +295,31 @@ class QuantumSafeCredentialStorage(
     override fun close() {
         (dataSource as Closeable).close()
     }
+}
+
+// Connection pool constants for factory function
+private const val MINIMUM_IDLE_CONNECTIONS = 2
+private const val CONNECTION_TIMEOUT_MS = 30000L // 30 seconds
+private const val IDLE_TIMEOUT_MS = 600000L // 10 minutes  
+private const val MAX_LIFETIME_MS = 1800000L // 30 minutes
+private const val LEAK_DETECTION_THRESHOLD_MS = 60000L // 1 minute
+
+/**
+ * Factory function to create QuantumSafeCredentialStorage with proper connection pooling
+ */
+fun createQuantumSafeCredentialStorage(config: DatabaseConfig): QuantumSafeCredentialStorage {
+    val hikariConfig = HikariConfig().apply {
+        jdbcUrl = "jdbc:postgresql://${config.host}:${config.port}/${config.database}?sslmode=disable"
+        this.username = config.username
+        this.password = config.password
+        maximumPoolSize = config.maxPoolSize
+        minimumIdle = MINIMUM_IDLE_CONNECTIONS
+        connectionTimeout = CONNECTION_TIMEOUT_MS
+        idleTimeout = IDLE_TIMEOUT_MS
+        maxLifetime = MAX_LIFETIME_MS
+        leakDetectionThreshold = LEAK_DETECTION_THRESHOLD_MS
+    }
+
+    val dataSource = HikariDataSource(hikariConfig)
+    return QuantumSafeCredentialStorage(dataSource)
 }

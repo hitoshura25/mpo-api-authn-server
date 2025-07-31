@@ -40,11 +40,13 @@ fun Application.configureRegistrationRoutes() {
         val openTelemetryTracer: OpenTelemetryTracer by inject()
 
         post("/register/start") {
-            handleRegistrationStart(registrationStorage, relyingParty, credentialStorage, openTelemetryTracer, logger)
+            handleRegistrationStart(
+                registrationStorage, relyingParty, credentialStorage, openTelemetryTracer, logger
+            )
         }
 
         post("/register/complete") {
-            handleRegistrationComplete(registrationStorage, relyingParty, credentialStorage, openTelemetryTracer, logger)
+            handleRegistrationComplete(registrationStorage, relyingParty, credentialStorage, logger)
         }
     }
 }
@@ -67,7 +69,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
         }
 
         val requestId = UUID.randomUUID().toString()
-        val registrationResponse = createRegistrationResponse(
+        val registrationResponse = RegistrationUtils.createRegistrationResponse(
             request, requestId, relyingParty, registrationStorage, openTelemetryTracer
         )
         
@@ -81,23 +83,21 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
     }
 }
 
-private suspend fun PipelineContext<Unit, ApplicationCall>.validateRegistrationRequest(request: RegistrationRequest): Boolean {
-    if (request.username.isBlank()) {
-        call.respond(
-            HttpStatusCode.BadRequest,
-            mapOf("error" to "Username is required"),
-        )
-        return true
+private suspend fun PipelineContext<Unit, ApplicationCall>.validateRegistrationRequest(
+    request: RegistrationRequest,
+): Boolean {
+    val errorMessage = when {
+        request.username.isBlank() -> "Username is required"
+        request.displayName.isBlank() -> "Display name is required"
+        else -> null
     }
-
-    if (request.displayName.isBlank()) {
-        call.respond(
-            HttpStatusCode.BadRequest,
-            mapOf("error" to "Display name is required"),
-        )
-        return true
+    
+    return if (errorMessage != null) {
+        call.respond(HttpStatusCode.BadRequest, mapOf("error" to errorMessage))
+        true
+    } else {
+        false
     }
-    return false
 }
 
 private suspend fun PipelineContext<Unit, ApplicationCall>.checkUserDoesNotExist(
@@ -122,52 +122,11 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.checkUserDoesNotExist
     }
 }
 
-private suspend fun createRegistrationResponse(
-    request: RegistrationRequest,
-    requestId: String,
-    relyingParty: RelyingParty,
-    registrationStorage: RegistrationRequestStorage,
-    openTelemetryTracer: OpenTelemetryTracer,
-): RegistrationResponse {
-    val userHandle = ByteArray.fromBase64Url(
-        Base64.getUrlEncoder().withoutPadding()
-            .encodeToString(UUID.randomUUID().toString().toByteArray()),
-    )
-
-    val user = openTelemetryTracer.traceOperation("buildUserIdentity") {
-        UserIdentity.builder()
-            .name(request.username)
-            .displayName(request.displayName)
-            .id(userHandle)
-            .build()
-    }
-
-    val startRegistrationOptions = openTelemetryTracer.traceOperation("relyingParty.startRegistration") {
-        relyingParty.startRegistration(
-            StartRegistrationOptions.builder()
-                .user(user)
-                .build(),
-        )
-    }
-
-    registrationStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
-
-    val credentialsJson = openTelemetryTracer.traceOperation("toCredentialsCreateJson") {
-        startRegistrationOptions.toCredentialsCreateJson()
-    }
-    val credentialsObject = openTelemetryTracer.readTree(credentialsJson)
-
-    return RegistrationResponse(
-        requestId = requestId,
-        publicKeyCredentialCreationOptions = credentialsObject,
-    )
-}
 
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationComplete(
     registrationStorage: RegistrationRequestStorage,
     relyingParty: RelyingParty,
     credentialStorage: CredentialStorage,
-    openTelemetryTracer: OpenTelemetryTracer,
     logger: org.slf4j.Logger,
 ) {
     try {
@@ -176,9 +135,11 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationCom
         val startRegistrationOptions = retrieveRegistrationRequest(request.requestId, registrationStorage)
             ?: return
 
-        val finishRegistrationResult = processRegistrationFinish(startRegistrationOptions, request, relyingParty)
-        val userAccount = createUserAccount(startRegistrationOptions)
-        val registration = createCredentialRegistration(userAccount, finishRegistrationResult)
+        val finishRegistrationResult = RegistrationUtils.processRegistrationFinish(
+            startRegistrationOptions, request, relyingParty
+        )
+        val userAccount = RegistrationUtils.createUserAccount(startRegistrationOptions)
+        val registration = RegistrationUtils.createCredentialRegistration(userAccount, finishRegistrationResult)
 
         if (checkForRaceCondition(userAccount.username, credentialStorage, logger)) {
             return
@@ -210,36 +171,6 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.retrieveRegistrationR
     return options
 }
 
-private fun processRegistrationFinish(
-    startRegistrationOptions: PublicKeyCredentialCreationOptions,
-    request: RegistrationCompleteRequest,
-    relyingParty: RelyingParty,
-) = relyingParty.finishRegistration(
-    FinishRegistrationOptions.builder()
-        .request(startRegistrationOptions)
-        .response(PublicKeyCredential.parseRegistrationResponseJson(request.credential))
-        .build(),
-)
-
-private fun createUserAccount(startRegistrationOptions: PublicKeyCredentialCreationOptions) =
-    UserAccount(
-        username = startRegistrationOptions.user.name,
-        displayName = startRegistrationOptions.user.displayName,
-        userHandle = startRegistrationOptions.user.id,
-    )
-
-private fun createCredentialRegistration(
-    userAccount: UserAccount,
-    finishRegistrationResult: com.yubico.webauthn.RegistrationResult,
-) = CredentialRegistration(
-    userAccount = userAccount,
-    credential = RegisteredCredential.builder()
-        .credentialId(finishRegistrationResult.keyId.id)
-        .userHandle(userAccount.userHandle)
-        .publicKeyCose(finishRegistrationResult.publicKeyCose)
-        .signatureCount(finishRegistrationResult.signatureCount)
-        .build(),
-)
 
 private suspend fun PipelineContext<Unit, ApplicationCall>.checkForRaceCondition(
     username: String,

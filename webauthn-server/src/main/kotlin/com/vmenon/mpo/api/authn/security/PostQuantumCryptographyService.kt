@@ -47,60 +47,56 @@ class PostQuantumCryptographyService {
      * Encrypts data using quantum-safe hybrid encryption (Kyber768 KEM + AES-256-GCM)
      */
     fun encrypt(data: String): EncryptedData {
-        try {
-            // Generate AES key for data encryption
-            val aesKey = generateAESKey()
+        // Generate AES key for data encryption
+        val aesKey = generateAESKey()
 
-            // Encrypt data with AES-256-GCM
-            val cipher = Cipher.getInstance(AES_ALGORITHM)
-            val iv = ByteArray(GCM_IV_LENGTH)
-            SecureRandom().nextBytes(iv)
+        // Encrypt data with AES-256-GCM
+        val cipher = Cipher.getInstance(AES_ALGORITHM)
+        val iv = ByteArray(GCM_IV_LENGTH)
+        SecureRandom().nextBytes(iv)
 
-            val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, iv)
-            cipher.init(Cipher.ENCRYPT_MODE, aesKey, parameterSpec)
-            val encryptedData = cipher.doFinal(data.toByteArray())
+        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, iv)
+        cipher.init(Cipher.ENCRYPT_MODE, aesKey, parameterSpec)
+        val encryptedData = cipher.doFinal(data.toByteArray())
 
-            // Generate Kyber key pair for KEM
-            val kyberKeyPair = generateKyberKeyPair()
+        // Generate Kyber key pair for KEM
+        val kyberKeyPair = generateKyberKeyPair()
 
-            // Use BouncyCastle Kyber KEM to encapsulate a shared secret
-            val kyberPublicKeyBC = PublicKeyFactory.createKey(kyberKeyPair.public.encoded)
-            val kemGenerator = KyberKEMGenerator(SecureRandom())
-            val secretWithEncapsulation = kemGenerator.generateEncapsulated(kyberPublicKeyBC)
+        // Use BouncyCastle Kyber KEM to encapsulate a shared secret
+        val kyberPublicKeyBC = PublicKeyFactory.createKey(kyberKeyPair.public.encoded)
+        val kemGenerator = KyberKEMGenerator(SecureRandom())
+        val secretWithEncapsulation = kemGenerator.generateEncapsulated(kyberPublicKeyBC)
 
-            val kemSharedSecret = secretWithEncapsulation.secret
-            val kemEncapsulation = secretWithEncapsulation.encapsulation
+        val kemSharedSecret = secretWithEncapsulation.secret
+        val kemEncapsulation = secretWithEncapsulation.encapsulation
 
-            // Use the KEM shared secret to encrypt our AES key
-            val kemAesKey = SecretKeySpec(kemSharedSecret.sliceArray(0 until AES_KEY_SIZE_BYTES), "AES")
-            val kemCipher = Cipher.getInstance(AES_ALGORITHM)
-            val kemIv = ByteArray(GCM_IV_LENGTH)
-            SecureRandom().nextBytes(kemIv)
+        // Use the KEM shared secret to encrypt our AES key
+        val kemAesKey = SecretKeySpec(kemSharedSecret.sliceArray(0 until AES_KEY_SIZE_BYTES), "AES")
+        val kemCipher = Cipher.getInstance(AES_ALGORITHM)
+        val kemIv = ByteArray(GCM_IV_LENGTH)
+        SecureRandom().nextBytes(kemIv)
 
-            val kemParamSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, kemIv)
-            kemCipher.init(Cipher.ENCRYPT_MODE, kemAesKey, kemParamSpec)
-            val encryptedAESKey = kemCipher.doFinal(aesKey.encoded)
+        val kemParamSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, kemIv)
+        kemCipher.init(Cipher.ENCRYPT_MODE, kemAesKey, kemParamSpec)
+        val encryptedAESKey = kemCipher.doFinal(aesKey.encoded)
 
-            // Combine all components
-            val payload = iv + encryptedData
-            val keyMaterial = kemIv + encryptedAESKey + kemEncapsulation + kyberKeyPair.private.encoded
+        // Combine all components
+        val payload = iv + encryptedData
+        val keyMaterial = kemIv + encryptedAESKey + kemEncapsulation + kyberKeyPair.private.encoded
 
-            return EncryptedData(
-                method = "KYBER768-AES256-GCM",
-                data = Base64.getEncoder().encodeToString(payload),
-                keyMaterial = Base64.getEncoder().encodeToString(keyMaterial),
-                metadata =
-                    mapOf(
-                        "aes_algorithm" to AES_ALGORITHM,
-                        "kem_algorithm" to PQ_KEM_SPEC,
-                        "security_level" to "post-quantum",
-                        "nist_level" to "3",
-                        "created" to System.currentTimeMillis().toString(),
-                    ),
-            )
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to encrypt data with quantum-safe encryption", e)
-        }
+        return EncryptedData(
+            method = "KYBER768-AES256-GCM",
+            data = Base64.getEncoder().encodeToString(payload),
+            keyMaterial = Base64.getEncoder().encodeToString(keyMaterial),
+            metadata =
+                mapOf(
+                    "aes_algorithm" to AES_ALGORITHM,
+                    "kem_algorithm" to PQ_KEM_SPEC,
+                    "security_level" to "post-quantum",
+                    "nist_level" to "3",
+                    "created" to System.currentTimeMillis().toString(),
+                ),
+        )
     }
 
     /**
@@ -111,49 +107,45 @@ class PostQuantumCryptographyService {
             "Unsupported encryption method: ${encryptedData.method}"
         }
 
-        try {
-            val payload = Base64.getDecoder().decode(encryptedData.data)
-            val keyMaterial = Base64.getDecoder().decode(encryptedData.keyMaterial)
+        val payload = Base64.getDecoder().decode(encryptedData.data)
+        val keyMaterial = Base64.getDecoder().decode(encryptedData.keyMaterial)
 
-            // Extract components from payload
-            val iv = payload.sliceArray(0 until GCM_IV_LENGTH)
-            val encrypted = payload.sliceArray(GCM_IV_LENGTH until payload.size)
+        // Extract components from payload
+        val iv = payload.sliceArray(0 until GCM_IV_LENGTH)
+        val encrypted = payload.sliceArray(GCM_IV_LENGTH until payload.size)
 
-            // Extract components from keyMaterial
-            val kemIv = keyMaterial.sliceArray(0 until GCM_IV_LENGTH)
-            val encryptedAESKeySize = AES_KEY_SIZE_BYTES + GCM_TAG_LENGTH
-            val encryptedAESKey = keyMaterial.sliceArray(GCM_IV_LENGTH until GCM_IV_LENGTH + encryptedAESKeySize)
+        // Extract components from keyMaterial
+        val kemIv = keyMaterial.sliceArray(0 until GCM_IV_LENGTH)
+        val encryptedAESKeySize = AES_KEY_SIZE_BYTES + GCM_TAG_LENGTH
+        val encryptedAESKey = keyMaterial.sliceArray(GCM_IV_LENGTH until GCM_IV_LENGTH + encryptedAESKeySize)
 
-            val kemEncapsulationStart = GCM_IV_LENGTH + encryptedAESKeySize
-            val kemEncapsulationSize = KYBER768_ENCAPSULATION_SIZE
-            val kemEncapsulation =
-                keyMaterial.sliceArray(kemEncapsulationStart until kemEncapsulationStart + kemEncapsulationSize)
+        val kemEncapsulationStart = GCM_IV_LENGTH + encryptedAESKeySize
+        val kemEncapsulationSize = KYBER768_ENCAPSULATION_SIZE
+        val kemEncapsulation =
+            keyMaterial.sliceArray(kemEncapsulationStart until kemEncapsulationStart + kemEncapsulationSize)
 
-            val kyberPrivateKeyBytes =
-                keyMaterial.sliceArray(kemEncapsulationStart + kemEncapsulationSize until keyMaterial.size)
+        val kyberPrivateKeyBytes =
+            keyMaterial.sliceArray(kemEncapsulationStart + kemEncapsulationSize until keyMaterial.size)
 
-            // Use BouncyCastle Kyber KEM to extract the shared secret
-            val kyberPrivateKeyBC = PrivateKeyFactory.createKey(kyberPrivateKeyBytes) as KyberPrivateKeyParameters
-            val kemExtractor = KyberKEMExtractor(kyberPrivateKeyBC)
-            val kemSharedSecret = kemExtractor.extractSecret(kemEncapsulation)
+        // Use BouncyCastle Kyber KEM to extract the shared secret
+        val kyberPrivateKeyBC = PrivateKeyFactory.createKey(kyberPrivateKeyBytes) as KyberPrivateKeyParameters
+        val kemExtractor = KyberKEMExtractor(kyberPrivateKeyBC)
+        val kemSharedSecret = kemExtractor.extractSecret(kemEncapsulation)
 
-            // Use KEM shared secret to decrypt the AES key
-            val kemAesKey = SecretKeySpec(kemSharedSecret.sliceArray(0 until AES_KEY_SIZE_BYTES), "AES")
-            val kemCipher = Cipher.getInstance(AES_ALGORITHM)
-            val kemParamSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, kemIv)
-            kemCipher.init(Cipher.DECRYPT_MODE, kemAesKey, kemParamSpec)
-            val aesKeyBytes = kemCipher.doFinal(encryptedAESKey)
+        // Use KEM shared secret to decrypt the AES key
+        val kemAesKey = SecretKeySpec(kemSharedSecret.sliceArray(0 until AES_KEY_SIZE_BYTES), "AES")
+        val kemCipher = Cipher.getInstance(AES_ALGORITHM)
+        val kemParamSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, kemIv)
+        kemCipher.init(Cipher.DECRYPT_MODE, kemAesKey, kemParamSpec)
+        val aesKeyBytes = kemCipher.doFinal(encryptedAESKey)
 
-            // Decrypt the actual data
-            val aesKey = SecretKeySpec(aesKeyBytes, "AES")
-            val cipher = Cipher.getInstance(AES_ALGORITHM)
-            val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, iv)
-            cipher.init(Cipher.DECRYPT_MODE, aesKey, parameterSpec)
+        // Decrypt the actual data
+        val aesKey = SecretKeySpec(aesKeyBytes, "AES")
+        val cipher = Cipher.getInstance(AES_ALGORITHM)
+        val parameterSpec = GCMParameterSpec(GCM_TAG_LENGTH * BITS_PER_BYTE, iv)
+        cipher.init(Cipher.DECRYPT_MODE, aesKey, parameterSpec)
 
-            return String(cipher.doFinal(encrypted))
-        } catch (e: Exception) {
-            throw RuntimeException("Failed to decrypt quantum-safe encrypted data", e)
-        }
+        return String(cipher.doFinal(encrypted))
     }
 
     private fun generateAESKey(): SecretKey {

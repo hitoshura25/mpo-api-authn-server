@@ -445,77 +445,88 @@ class ApplicationTest : KoinTest {
     fun testRegistrationCompleteWithUserThatAlreadyExists() =
         testApplication {
             val testChallenge = ByteArray.fromBase64Url("test-challenge").bytes
-            val credential =
-                WebAuthnTestAuthenticator.createRegistrationCredential(
-                    testChallenge,
-                    keyPair,
-                )
+            val credential = WebAuthnTestAuthenticator.createRegistrationCredential(testChallenge, keyPair)
 
-            every { mockRelyingParty.finishRegistration(any()) }.returns(
+            setupMocksForUserExistsScenario()
+            setupApplicationWithMocks()
+
+            val response = client.performRegistrationCompleteRequest(credential)
+
+            verifyConflictResponse(response)
+        }
+
+    private fun setupMocksForUserExistsScenario() {
+        every { mockRelyingParty.finishRegistration(any()) }.returns(
+            createMockRegistrationResult()
+        )
+        every { mockCredentialStorage.userExists("testuser") } returns true
+        coEvery {
+            mockRegistrationStorage.retrieveAndRemoveRegistrationRequest(any())
+        } returns createMockPublicKeyCredentialCreationOptions()
+    }
+
+    private fun createMockRegistrationResult() = mockk<com.yubico.webauthn.RegistrationResult> {
+        every { keyId } returns mockk {
+            every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
+        }
+        every { publicKeyCose } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
+        every { signatureCount } returns 0
+    }
+
+    private fun createMockPublicKeyCredentialCreationOptions() =
+        mockk<PublicKeyCredentialCreationOptions> {
+            every { challenge } returns ByteArray.fromBase64Url("test-challenge")
+            every { authenticatorSelection } returns Optional.of(
                 mockk {
-                    every { keyId } returns
-                        mockk {
-                            every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
-                        }
-                    every { publicKeyCose } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
-                    every { signatureCount } returns 0
-                },
-            )
-            every { mockCredentialStorage.userExists("testuser") } returns true
-            coEvery {
-                mockRegistrationStorage.retrieveAndRemoveRegistrationRequest(
-                    any(),
-                )
-            } returns
-                mockk<PublicKeyCredentialCreationOptions> {
-                    every { challenge } returns ByteArray.fromBase64Url("test-challenge")
-                    every { authenticatorSelection } returns
-                        Optional.of(
-                            mockk {
-                                every { userVerification } returns Optional.of(mockk())
-                            },
-                        )
-                    every { pubKeyCredParams } returns
-                        listOf(
-                            mockk {
-                                every { alg } returns com.yubico.webauthn.data.COSEAlgorithmIdentifier.ES256
-                            },
-                        )
-                    every { user } returns
-                        mockk {
-                            every { name } returns "testuser"
-                            every { displayName } returns "teruser displayName"
-                            every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
-                        }
+                    every { userVerification } returns Optional.of(mockk())
                 }
-            application {
-                module(testStorageModule)
-                getKoin().loadModules(
-                    listOf(
-                        module {
-                            single<CredentialStorage> { mockCredentialStorage }
-                            single<RegistrationRequestStorage> { mockRegistrationStorage }
-                            single<RelyingParty> { mockRelyingParty }
-                        },
-                    ),
-                )
+            )
+            every { pubKeyCredParams } returns listOf(
+                mockk {
+                    every { alg } returns com.yubico.webauthn.data.COSEAlgorithmIdentifier.ES256
+                }
+            )
+            every { user } returns mockk {
+                every { name } returns "testuser"
+                every { displayName } returns "teruser displayName"
+                every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
             }
+        }
 
-            val regRequest =
+    private fun io.ktor.server.testing.ApplicationTestBuilder.setupApplicationWithMocks() {
+        application {
+            module(testStorageModule)
+            getKoin().loadModules(
+                listOf(
+                    module {
+                        single<CredentialStorage> { mockCredentialStorage }
+                        single<RegistrationRequestStorage> { mockRegistrationStorage }
+                        single<RelyingParty> { mockRelyingParty }
+                    }
+                )
+            )
+        }
+    }
+
+    private suspend fun io.ktor.client.HttpClient.performRegistrationCompleteRequest(
+        credential: PublicKeyCredential<*, *>
+    ) = post("/register/complete") {
+        contentType(ContentType.Application.Json)
+        setBody(
+            objectMapper.writeValueAsString(
                 RegistrationCompleteRequest(
                     requestId = "testRequest",
-                    credential = objectMapper.writeValueAsString(credential),
+                    credential = objectMapper.writeValueAsString(credential)
                 )
-            val response =
-                client.post("/register/complete") {
-                    contentType(ContentType.Application.Json)
-                    setBody(objectMapper.writeValueAsString(regRequest))
-                }
+            )
+        )
+    }
 
-            assertEquals(HttpStatusCode.Conflict, response.status)
-            val responseBody = objectMapper.readTree(response.bodyAsText())
-            assertEquals("Username is already registered", responseBody.get("error").asText())
-        }
+    private suspend fun verifyConflictResponse(response: io.ktor.client.statement.HttpResponse) {
+        assertEquals(HttpStatusCode.Conflict, response.status)
+        val responseBody = objectMapper.readTree(response.bodyAsText())
+        assertEquals("Username is already registered", responseBody.get("error").asText())
+    }
 
     @Test
     fun testAuthenticationStartWithEmptyUsername() =

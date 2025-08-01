@@ -1,5 +1,28 @@
 # WebAuthn KTor Server - Claude Memory
 
+## Current Work (In Progress)
+
+### Detekt Code Quality Improvements ✅ COMPLETED
+- **Status**: COMPLETED - All TooGenericExceptionCaught issues resolved
+- **Focus**: Replaced generic `Exception` catches with specific exception types
+- **Files Modified**: 
+  - `webauthn-server/src/main/kotlin/com/vmenon/mpo/api/authn/routes/RegistrationRoutes.kt` ✅ Completed
+  - `webauthn-server/src/main/kotlin/com/vmenon/mpo/api/authn/routes/AuthenticationRoutes.kt` ✅ Completed  
+  - `webauthn-server/src/main/kotlin/com/vmenon/mpo/api/authn/routes/HealthRoutes.kt` ✅ Completed
+  - `webauthn-server/src/main/kotlin/com/vmenon/mpo/api/authn/monitoring/OpenTelemetryTracer.kt` ✅ Completed
+  - `webauthn-server/src/test/kotlin/com/vmenon/mpo/api/authn/ApplicationTest.kt` ✅ Tests updated
+- **Approach Applied**: 
+  - Replaced `catch (e: Exception)` with specific exceptions:
+    - `io.ktor.server.plugins.BadRequestException` for request deserialization errors
+    - `com.fasterxml.jackson.core.JsonProcessingException` for JSON processing errors
+    - `redis.clients.jedis.exceptions.JedisException` for Redis storage errors
+    - `com.fasterxml.jackson.databind.JsonMappingException` for JSON mapping errors
+    - `IllegalArgumentException` for validation errors
+  - Created centralized error handlers: `handleRegistrationError()` and `handleAuthenticationError()`
+  - Added `@Suppress("TooGenericExceptionCaught")` for legitimate cases (metrics collection, OpenTelemetry tracing)
+- **Final Status**: ✅ All 104 tests passing, TooGenericExceptionCaught issues resolved
+- **Remaining**: 1 minor TooManyFunctions warning (11 functions at threshold - acceptable)
+
 ## Project Overview
 
 This is a KTor-based WebAuthn authentication server using the Yubico java-webauthn-server library for FIDO2/WebAuthn

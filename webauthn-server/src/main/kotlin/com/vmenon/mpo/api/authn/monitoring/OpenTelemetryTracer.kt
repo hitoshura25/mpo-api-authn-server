@@ -24,7 +24,12 @@ class OpenTelemetryTracer(
         return try {
             span.setStatus(StatusCode.OK)
             block()
-        } catch (exception: Exception) {
+        } catch (exception: com.fasterxml.jackson.core.JsonProcessingException) {
+            span.setStatus(StatusCode.ERROR, getMessage(exception))
+            span.recordException(exception)
+            throw exception
+        } catch (@Suppress("TooGenericExceptionCaught") exception: Exception) {
+            // OpenTelemetry tracing must catch all exceptions to record them before re-throwing
             span.setStatus(StatusCode.ERROR, getMessage(exception))
             span.recordException(exception)
             throw exception

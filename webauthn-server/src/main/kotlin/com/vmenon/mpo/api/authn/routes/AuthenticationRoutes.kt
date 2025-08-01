@@ -60,12 +60,10 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
 
         val authResponse = createAuthenticationResponse(requestId, startAssertionOptions, openTelemetryTracer)
         call.respond(authResponse)
-    } catch (e: Exception) {
-        logger.error("Authentication start failed", e)
-        call.respond(
-            HttpStatusCode.InternalServerError,
-            mapOf("error" to "Authentication failed. Please try again."),
-        )
+    } catch (e: redis.clients.jedis.exceptions.JedisException) {
+        handleAuthenticationError(call, logger, e, "Authentication start failed")
+    } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+        handleAuthenticationError(call, logger, e, "Authentication start failed")
     }
 }
 
@@ -86,12 +84,18 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationC
         } else {
             handleFailedAuthentication(logger)
         }
-    } catch (e: Exception) {
-        logger.error("Authentication complete failed", e)
-        call.respond(
-            HttpStatusCode.InternalServerError,
-            mapOf("error" to "Authentication failed. Please try again."),
-        )
+    } catch (e: io.ktor.server.plugins.BadRequestException) {
+        handleAuthenticationError(call, logger, e, "Authentication complete failed")
+    } catch (e: redis.clients.jedis.exceptions.JedisException) {
+        handleAuthenticationError(call, logger, e, "Authentication complete failed")
+    } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+        handleAuthenticationError(call, logger, e, "Authentication complete failed")
+    } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
+        handleAuthenticationError(call, logger, e, "Authentication complete failed")
+    } catch (e: com.fasterxml.jackson.databind.exc.MismatchedInputException) {
+        handleAuthenticationError(call, logger, e, "Authentication complete failed")
+    } catch (e: IllegalArgumentException) {
+        handleAuthenticationError(call, logger, e, "Authentication complete failed")
     }
 }
 
@@ -191,5 +195,18 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleFailedAuthentic
     call.respond(
         HttpStatusCode.Unauthorized,
         mapOf("error" to "Authentication failed"),
+    )
+}
+
+private suspend fun handleAuthenticationError(
+    call: ApplicationCall,
+    logger: org.slf4j.Logger,
+    exception: Exception,
+    message: String
+) {
+    logger.error(message, exception)
+    call.respond(
+        HttpStatusCode.InternalServerError,
+        mapOf("error" to "Authentication failed. Please try again."),
     )
 }

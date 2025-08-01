@@ -589,7 +589,7 @@ class ApplicationTest : KoinTest {
                     any(),
                     any(),
                 )
-            } throws RuntimeException("Database connection failed")
+            } throws redis.clients.jedis.exceptions.JedisException("Database connection failed")
 
             application {
                 module(testStorageModule)

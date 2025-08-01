@@ -250,4 +250,5 @@ jobs:
         with:
           username: ${{ secrets.docker_hub_username }}
           password: ${{ secrets.docker_hub_token }}
+          repository: hitoshura25/webauthn-server
           short-description: ${{ github.event.repository.description }}

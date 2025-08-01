@@ -2,6 +2,58 @@
 
 ## Current Work (In Progress)
 
+### OpenTelemetry Race Condition Fix ✅ COMPLETED
+- **Status**: COMPLETED - Fixed race condition in integration tests while preserving production tracing
+- **Implementation**: Used system property approach with `isGlobalOpenTelemetryEnabled` variable
+- **Key Changes**:
+  - **MonitoringModule.kt**: Added `isGlobalOpenTelemetryEnabled = System.getProperty("otel.global.disabled") != "true"`
+  - **Production Mode**: `GlobalOpenTelemetry.set(openTelemetrySdk)` for automatic context propagation
+  - **Test Mode**: Return `openTelemetrySdk` without global registration to prevent race conditions
+  - **Build Configuration**: Added `systemProperty("otel.global.disabled", "true")` to test tasks
+  - **Test Cleanup**: Removed `GlobalOpenTelemetry.resetForTest()` calls from test classes
+- **Files Modified**:
+  - `webauthn-server/src/main/kotlin/com/vmenon/mpo/api/authn/di/MonitoringModule.kt`
+  - `webauthn-server/build.gradle.kts` - Added system property to test tasks
+  - `webauthn-test-credentials-service/build.gradle.kts` - Added system property to test tasks
+  - `webauthn-server/src/test/kotlin/com/vmenon/mpo/api/authn/testutils/BaseIntegrationTest.kt` - Removed resetForTest()
+  - `webauthn-server/src/test/kotlin/com/vmenon/mpo/api/authn/EndToEndIntegrationTest.kt` - Removed resetForTest()
+- **Benefits Achieved**:
+  - ✅ **No Race Conditions**: Tests use real OpenTelemetry without global state conflicts
+  - ✅ **Real Test Implementation**: Integration tests can verify tracing behavior and assert spans
+  - ✅ **Production Tracing Intact**: Full context propagation and trace hierarchy preserved
+  - ✅ **Parallel Safety**: Tests pass reliably when run concurrently (`./gradlew test --parallel`)
+  - ✅ **Local + CI Coverage**: Works for both local development and GitHub Actions
+- **Verification**: All tests pass successfully in parallel execution without flakiness
+
+#### **Design Decision: "Disable" vs "Enable" Property Pattern**
+
+**Chosen Pattern**: `otel.global.disabled = "true"` (disable pattern)
+**Alternative**: `otel.global.enabled = "false"` (enable pattern)
+
+**Rationale for "Disable" Pattern:**
+1. **Safe by Default**: Global registration is the **desired default behavior** for production
+2. **Explicit Opt-Out**: Tests must explicitly opt-out of global registration to prevent race conditions
+3. **Fail-Safe Production**: If property is missing/misconfigured, production gets correct behavior (global registration)
+4. **Clear Intent**: `disabled = "true"` in test config clearly shows "we're disabling something normally enabled"
+5. **Standard Convention**: Follows common patterns like `debug.disabled`, `security.disabled`, etc.
+
+**Implementation Logic:**
+```kotlin
+// Default: enabled (safe for production)
+val isGlobalOpenTelemetryEnabled = System.getProperty("otel.global.disabled") != "true"
+
+// Production: No property set → enabled = true → Global registration ✅
+// Tests: Property set to "true" → enabled = false → No global registration ✅
+```
+
+**Benefits of This Approach:**
+- **Production Safety**: Missing configuration doesn't break tracing
+- **Test Explicitness**: Tests must consciously disable to avoid race conditions  
+- **Intuitive Logic**: "Is it disabled? No → Enable it" is clear and readable
+- **Error Resilience**: Property parsing errors default to safe production behavior
+
+**Future Reference**: Always prefer "disable" patterns for features that should be enabled by default, especially for production-critical functionality like distributed tracing.
+
 ### Token Usage Optimization Strategies ✅ DOCUMENTED
 
 Based on this session's work, here are key strategies to optimize token usage in future sessions:
@@ -224,6 +276,205 @@ When ready for Detekt fixes, use this exact approach:
 3. Start with documentation fixes (least risky)
 4. Progress to imports, then formatting
 5. Verify with full test suite at end
+
+#### **13. OpenTelemetry Race Condition Fix - Test Flakiness Issue**
+
+**Problem Identified:** 
+- `buildAndRegisterGlobal()` in MonitoringModule:75 creates global singleton
+- `GlobalOpenTelemetry.resetForTest()` in BaseIntegrationTest:66 tries to clear it
+- **Race Condition**: Multiple integration tests running in parallel cause conflicts
+- CI flakiness due to global state contamination between tests
+
+**Root Cause Analysis:**
+```kotlin
+// MonitoringModule.kt:75 - PROBLEMATIC
+OpenTelemetrySdk.builder()
+    .setTracerProvider(tracerProvider)
+    .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
+    .buildAndRegisterGlobal() // ← Global registration causes race conditions
+
+// BaseIntegrationTest.kt:66 - INSUFFICIENT
+@BeforeEach
+fun setupBaseTest() {
+    GlobalOpenTelemetry.resetForTest() // ← Doesn't prevent race between tests
+}
+```
+
+**Solution Strategy Analysis: Global vs Non-Global Registration**
+
+**Critical Discovery: Context Propagation Dependency**
+After analysis, removing global registration has **significant downsides** for Jaeger tracing:
+
+**Current Code Analysis:**
+```kotlin
+// OpenTelemetryTracer.kt:22, 75, 101, 131 - CRITICAL USAGE
+.setParent(Context.current()) // ← Depends on global context propagation
+```
+
+**Downsides of Non-Global Registration:**
+
+1. **Broken Context Propagation**: `Context.current()` won't work properly
+   - HTTP request contexts won't propagate to spans
+   - Child spans won't be properly linked to parent requests
+   - Distributed tracing across services will break
+
+2. **Incomplete Trace Trees**: Without global context:
+   - Each operation creates isolated spans
+   - No hierarchical trace structure in Jaeger
+   - Difficult to follow request flows through the application
+
+3. **Manual Context Management**: Would require:
+   - Explicit context passing through all function calls
+   - Massive code changes throughout the application
+   - Complex context handling in Ktor integration
+
+**Revised Solution Strategy: Fix Race Condition While Keeping Global Registration**
+
+**Option 1: Test-Only Non-Global Registration (RECOMMENDED)**
+```kotlin
+// Add to MonitoringModule.kt
+single<OpenTelemetry> {
+    val jaegerEndpoint: Optional<String> by inject(named("openTelemetryJaegerEndpoint"))
+    
+    // Control global OpenTelemetry registration via system property
+    val isGlobalOpenTelemetryEnabled = System.getProperty("otel.global.disabled") != "true"
+    
+    if (jaegerEndpoint.isPresent) {
+        val endpoint = jaegerEndpoint.get()
+        logger.info("Using Jaeger endpoint: $endpoint")
+        val serviceName: String by inject(named("openTelemetryServiceName"))
+        val resource = Resource.getDefault()
+            .merge(
+                Resource.builder()
+                    .put(ServiceAttributes.SERVICE_NAME, serviceName)
+                    .put(ServiceAttributes.SERVICE_VERSION, "1.0.0")
+                    .build(),
+            )
+
+        val jaegerExporter = OtlpGrpcSpanExporter.builder()
+            .setEndpoint(endpoint)
+            .build()
+
+        val tracerProvider = SdkTracerProvider.builder()
+            .addSpanProcessor(BatchSpanProcessor.builder(jaegerExporter).build())
+            .setResource(resource)
+            .build()
+
+        val openTelemetrySdk = OpenTelemetrySdk.builder()
+            .setTracerProvider(tracerProvider)
+            .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
+            .build()
+
+        if (isGlobalOpenTelemetryEnabled) {
+            // Production: Register globally for automatic context propagation
+            openTelemetrySdk.also { 
+                GlobalOpenTelemetry.set(it) 
+            }
+        } else {
+            // Tests: Build without global registration (prevents race conditions)
+            openTelemetrySdk
+        }
+    } else {
+        OpenTelemetry.noop()
+    }
+}
+```
+
+**Test Configuration Setup:**
+```kotlin
+// Add to build.gradle.kts test configuration
+tasks.withType<Test> {
+    useJUnitPlatform()
+    
+    // Disable global OpenTelemetry registration in tests
+    systemProperty("otel.global.disabled", "true")
+    
+    // Optional: Set explicit test environment marker
+    systemProperty("test.environment", "true")
+}
+```
+
+**Alternative: Environment-Specific Detection (More Complex)**
+```kotlin
+// Alternative detection method if you prefer environment-based
+fun isRunningInTests(): Boolean {
+    return System.getenv("CI") != null ||  // GitHub Actions, Jenkins, etc.
+           System.getProperty("user.dir")?.contains("/.gradle/") == true ||  // Gradle daemon
+           Thread.currentThread().name.contains("Test worker") ||  // Gradle test execution
+           System.getProperty("java.class.path")?.contains("junit-platform") == true  // JUnit on classpath
+}
+```
+
+**Option 2: Synchronized Test Setup (ALTERNATIVE - Less Preferred)**
+```kotlin
+// BaseIntegrationTest.kt - Add class-level synchronization
+companion object {
+    private val globalTelemetryLock = Any()
+}
+
+@BeforeEach
+fun setupBaseTest() {
+    synchronized(globalTelemetryLock) {
+        GlobalOpenTelemetry.resetForTest()
+        setupTestEnvironmentVariables()
+        // Small delay to prevent race conditions
+        Thread.sleep(10)
+    }
+}
+```
+
+**Production Tracing Requirements:**
+- **HTTP Request Context**: Ktor automatically creates spans for incoming requests
+- **Context Propagation**: Child operations inherit parent request context via `Context.current()`
+- **Trace Hierarchy**: Redis ops, JSON parsing, etc. become children of HTTP request spans
+- **Jaeger Visualization**: Complete request flow visible as connected trace tree
+
+**Recommended Implementation (Updated):**
+
+1. **Keep Global Registration in Production**: Essential for proper tracing
+2. **Disable Tracing in Tests**: Use environment detection to return `OpenTelemetry.noop()`
+3. **Remove Test Reset Calls**: No longer needed with noop implementation
+4. **Verify CI Stability**: Tests should pass consistently without race conditions
+
+**Benefits of Test-Only Non-Global Approach:**
+- **No Race Conditions**: Tests use real OpenTelemetry but without global registration
+- **Real Test Implementation**: Can verify tracing behavior, spans, and telemetry in tests
+- **Production Tracing Intact**: Full context propagation and trace hierarchy preserved
+- **CI Reliability**: Eliminates flaky test failures without breaking production features
+- **Parallel Safety**: Tests can run concurrently without global state interference
+- **Testable Tracing**: Integration tests can assert on spans, verify Redis tracing, etc.
+- **Local + CI Coverage**: Works for both `./gradlew test` locally and GitHub Actions CI
+- **Simple Configuration**: Single system property controls behavior across all environments
+
+**Why Not Remove Global Registration:**
+- **Context.current()** calls throughout OpenTelemetryTracer would fail
+- **Trace hierarchy** would be lost (isolated spans instead of request trees)
+- **Jaeger visualization** would show disconnected spans
+- **Distributed tracing** across services would break
+- **Major refactoring** required to pass context explicitly everywhere
+
+**Updated Implementation Task for Future Session:**
+```
+Task: "Fix OpenTelemetry race condition in integration tests while preserving production tracing and enabling test verification. 
+Modify MonitoringModule to use isGlobalOpenTelemetryEnabled variable based on 'otel.global.disabled' system property. 
+When enabled (production): use GlobalOpenTelemetry.set() for automatic context propagation. 
+When disabled (tests): use build() only to prevent race conditions while keeping real OpenTelemetry implementation. 
+Update build.gradle.kts to set systemProperty('otel.global.disabled', 'true') in test tasks. 
+Remove GlobalOpenTelemetry.resetForTest() calls from test classes. 
+Verify all tests pass reliably in parallel while maintaining testable tracing functionality."
+```
+
+**Context Propagation Considerations:**
+For tests, you may need to manually pass context in some scenarios since `Context.current()` won't have 
+global automatic propagation. However, you can still create and pass contexts explicitly:
+
+```kotlin
+// In test scenarios where you need context propagation
+val context = Context.current().with(span)
+context.makeCurrent().use {
+    // Operations here will see the span context
+}
+```
 
 ### Service Renaming: webauthn-test-service → webauthn-test-credentials-service ✅ COMPLETED
 - **Status**: COMPLETED - Renamed service to better reflect its credential generation purpose

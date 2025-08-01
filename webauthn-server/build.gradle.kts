@@ -161,6 +161,9 @@ tasks.build {
 
 tasks.withType<Test> {
     useJUnitPlatform()
+    
+    // Disable global OpenTelemetry registration in tests to prevent race conditions
+    systemProperty("otel.global.disabled", "true")
 }
 
 kover {

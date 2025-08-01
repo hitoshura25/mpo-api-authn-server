@@ -12,7 +12,6 @@ import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.testing.testApplication
-import io.opentelemetry.api.GlobalOpenTelemetry
 import org.junit.jupiter.api.Test
 import org.koin.core.context.stopKoin
 import java.util.UUID
@@ -97,9 +96,8 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             // Register a user
             WebAuthnTestHelpers.registerUser(client, username, displayName, keyPair)
 
-            // Simulate application restart by stopping Koin and clearing caches
+            // Simulate application restart by stopping Koin
             stopKoin()
-            GlobalOpenTelemetry.resetForTest()
         }
 
         testApplication {

@@ -4,6 +4,7 @@ import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
 import io.micrometer.prometheus.PrometheusConfig
 import io.micrometer.prometheus.PrometheusMeterRegistry
+import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.OpenTelemetry
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.api.trace.propagation.W3CTraceContextPropagator
@@ -45,6 +46,10 @@ val monitoringModule =
 
         single<OpenTelemetry> {
             val jaegerEndpoint: Optional<String> by inject(named("openTelemetryJaegerEndpoint"))
+            
+            // Control global OpenTelemetry registration via system property
+            val isGlobalOpenTelemetryEnabled = System.getProperty("otel.global.disabled") != "true"
+            
             if (jaegerEndpoint.isPresent) {
                 val endpoint = jaegerEndpoint.get()
                 logger.info("Using Jaeger endpoint: $endpoint")
@@ -69,10 +74,20 @@ val monitoringModule =
                         .setResource(resource)
                         .build()
 
-                OpenTelemetrySdk.builder()
+                val openTelemetrySdk = OpenTelemetrySdk.builder()
                     .setTracerProvider(tracerProvider)
                     .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
-                    .buildAndRegisterGlobal()
+                    .build()
+
+                if (isGlobalOpenTelemetryEnabled) {
+                    // Production: Register globally for automatic context propagation
+                    GlobalOpenTelemetry.set(openTelemetrySdk)
+                    openTelemetrySdk
+                } else {
+                    // Tests: Build without global registration (prevents race conditions)
+                    logger.info("Global OpenTelemetry registration disabled for testing")
+                    openTelemetrySdk
+                }
             } else {
                 OpenTelemetry.noop()
             }

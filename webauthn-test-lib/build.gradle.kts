@@ -7,8 +7,24 @@ plugins {
 // Detekt configuration
 detekt {
     buildUponDefaultConfig = true
-    config.setFrom("$rootDir/detekt.yaml")
+    config.setFrom("$rootDir/detekt.yml")
     parallel = true
+}
+
+// ktlint configuration - enforce formatting and import standards
+ktlint {
+    version.set("1.0.1")
+    android.set(false)
+    ignoreFailures.set(false)
+    reporters {
+        reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
+        reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.CHECKSTYLE)
+        reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.SARIF)
+    }
+    filter {
+        exclude("**/generated/**")
+        exclude("**/build/**")
+    }
 }
 
 // Version constants

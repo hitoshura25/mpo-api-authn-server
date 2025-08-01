@@ -11,8 +11,24 @@ plugins {
 // Detekt configuration
 detekt {
     buildUponDefaultConfig = true
-    config.setFrom("$rootDir/detekt.yaml")
+    config.setFrom("$rootDir/detekt.yml")
     parallel = true
+}
+
+// ktlint configuration - enforce formatting and import standards
+ktlint {
+    version.set("1.0.1")
+    android.set(false)
+    ignoreFailures.set(true)  // Don't fail build on formatting during testing
+    reporters {
+        reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
+        reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.CHECKSTYLE)
+        reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.SARIF)
+    }
+    filter {
+        exclude("**/generated/**")
+        exclude("**/build/**")
+    }
 }
 
 val kotlinVersion = "1.9.23"

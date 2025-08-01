@@ -10,7 +10,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 
 /**
- * HTTP client for communicating with webauthn-test-service
+ * HTTP client for communicating with webauthn-test-credentials-service
  */
 class TestServiceClient(private val baseUrl: String = "http://10.0.2.2:8081") {
 

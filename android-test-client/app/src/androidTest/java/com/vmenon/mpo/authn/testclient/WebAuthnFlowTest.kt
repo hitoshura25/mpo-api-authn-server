@@ -119,7 +119,8 @@ class WebAuthnFlowTest {
             println("✓ Authentication start successful - Request ID: ${startResponse.requestId}")
 
             // Step 2: Extract challenge and generate test assertion via test service
-            val authChallenge = extractAuthChallenge(startResponse.publicKeyCredentialRequestOptions)
+            val authChallenge =
+                extractAuthChallenge(startResponse.publicKeyCredentialRequestOptions)
             val testAssertionResponse = testServiceClient.generateAuthenticationCredential(
                 TestAuthenticationRequest(
                     challenge = authChallenge,
@@ -171,7 +172,7 @@ class WebAuthnFlowTest {
             val healthResponse = testServiceClient.checkHealth()
 
             assert(healthResponse.status == "healthy") { "Test service health check should return healthy" }
-            assert(healthResponse.service == "webauthn-test-service") { "Should be test service" }
+            assert(healthResponse.service == "webauthn-test-credentials-service") { "Should be test service" }
 
             println("✓ Test service health check successful: ${healthResponse.status}")
 
@@ -233,7 +234,7 @@ class WebAuthnFlowTest {
         }
 
         val startResponse = registrationApi.startRegistration(registrationRequest)
-        
+
         // Generate test credential via test service
         val challenge = extractChallenge(startResponse.publicKeyCredentialCreationOptions)
         val testCredentialResponse = testServiceClient.generateRegistrationCredential(
@@ -251,9 +252,12 @@ class WebAuthnFlowTest {
 
         val completeResponse = registrationApi.completeRegistration(completeRequest)
         println("✓ Test user registered: $username")
-        
+
         // Return keyPairId and credentialId for later authentication
-        return Pair(testCredentialResponse.keyPairId, testCredentialResponse.credentialId ?: "unknown")
+        return Pair(
+            testCredentialResponse.keyPairId,
+            testCredentialResponse.credentialId ?: "unknown"
+        )
     }
 
     private fun extractChallenge(creationOptions: Any): String {

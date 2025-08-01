@@ -64,21 +64,12 @@ internal class UserDataManager(
             connection.prepareStatement(sql).use { statement ->
                 statement.setString(1, parameter)
                 statement.executeQuery().use { resultSet ->
-                    extractUserFromResultSet(resultSet)
+                    extractUserFromResultSet(resultSet, cryptoHelper)
                 }
             }
         }
     }
 
-    private fun extractUserFromResultSet(resultSet: java.sql.ResultSet): UserAccount? {
-        return if (resultSet.next()) {
-            val encryptedData = resultSet.getString("encrypted_user_data")
-            val userJson = cryptoHelper.decrypt(encryptedData)
-            com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper.readValue(userJson, UserAccount::class.java)
-        } else {
-            null
-        }
-    }
 }
 
 /**
@@ -252,6 +243,10 @@ class QuantumSafeCredentialStorage(
     override fun userExists(username: String): Boolean = 
         userDataManager.userExists(username)
 
+    override fun close() {
+        (dataSource as Closeable).close()
+    }
+
     override fun lookup(
         credentialId: com.yubico.webauthn.data.ByteArray,
         userHandle: com.yubico.webauthn.data.ByteArray,
@@ -270,27 +265,11 @@ class QuantumSafeCredentialStorage(
     }
 
     private fun executeQueryForCredential(sql: String, param1: String, param2: String): Optional<RegisteredCredential> {
-        return dataSource.connection.use { connection ->
-            connection.prepareStatement(sql).use { statement ->
-                statement.setString(PARAM_1, param1)
-                statement.setString(PARAM_2, param2)
-                statement.executeQuery().use { resultSet ->
-                    extractCredentialFromResultSet(resultSet)
-                }
-            }
+        return executeCredentialQuery(dataSource, sql, param1, param2) { resultSet ->
+            extractCredentialFromResultSet(resultSet, cryptoHelper)
         }
     }
 
-    private fun extractCredentialFromResultSet(resultSet: java.sql.ResultSet): Optional<RegisteredCredential> {
-        return if (resultSet.next()) {
-            val encryptedData = resultSet.getString("encrypted_credential_data")
-            val credentialJson = cryptoHelper.decrypt(encryptedData)
-            val registration = objectMapper.readValue(credentialJson, CredentialRegistration::class.java)
-            Optional.of(registration.credential)
-        } else {
-            Optional.empty()
-        }
-    }
 
     override fun lookupAll(credentialId: com.yubico.webauthn.data.ByteArray): Set<RegisteredCredential> {
         val credentialIdHash = cryptoHelper.hash(credentialId.base64Url)
@@ -317,10 +296,6 @@ class QuantumSafeCredentialStorage(
     private fun handleTransactionException(connection: java.sql.Connection, exception: Throwable): Nothing {
         connection.rollback()
         throw exception
-    }
-
-    override fun close() {
-        (dataSource as Closeable).close()
     }
 }
 
@@ -349,4 +324,63 @@ fun createQuantumSafeCredentialStorage(config: DatabaseConfig): QuantumSafeCrede
 
     val dataSource = HikariDataSource(hikariConfig)
     return QuantumSafeCredentialStorage(dataSource)
+}
+
+/**
+ * Helper functions for JSON processing - moved outside class to reduce function count
+ */
+private fun extractUserFromJson(userJson: String): UserAccount {
+    return com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper.readValue(
+        userJson, UserAccount::class.java
+    )
+}
+
+private fun extractCredentialFromJson(
+    credentialJson: String
+): java.util.Optional<com.yubico.webauthn.RegisteredCredential> {
+    val registration = com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper.readValue(
+        credentialJson, CredentialRegistration::class.java
+    )
+    return java.util.Optional.of(registration.credential)
+}
+
+private fun <T> executeCredentialQuery(
+    dataSource: javax.sql.DataSource,
+    sql: String,
+    param1: String,
+    param2: String,
+    resultExtractor: (java.sql.ResultSet) -> T
+): T {
+    return dataSource.connection.use { connection ->
+        connection.prepareStatement(sql).use { statement ->
+            statement.setString(1, param1)
+            statement.setString(2, param2)
+            statement.executeQuery().use { resultSet ->
+                resultExtractor(resultSet)
+            }
+        }
+    }
+}
+
+private fun extractUserFromResultSet(resultSet: java.sql.ResultSet, cryptoHelper: QuantumCryptoHelper): UserAccount? {
+    return if (resultSet.next()) {
+        val encryptedData = resultSet.getString("encrypted_user_data")
+        val userJson = cryptoHelper.decrypt(encryptedData)
+        extractUserFromJson(userJson)
+    } else {
+        null
+    }
+}
+
+private fun extractCredentialFromResultSet(
+    resultSet: java.sql.ResultSet, 
+    cryptoHelper: QuantumCryptoHelper
+): java.util.Optional<com.yubico.webauthn.RegisteredCredential> {
+    return if (resultSet.next()) {
+        val encryptedData = resultSet.getString("encrypted_credential_data")
+        val credentialJson = cryptoHelper.decrypt(encryptedData)
+        extractCredentialFromJson(credentialJson)
+    } else {
+        java.util.Optional.empty()
+    }
 }

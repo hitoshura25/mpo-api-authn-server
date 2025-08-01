@@ -3,7 +3,7 @@ const path = require('path');
 const cors = require('cors');
 
 const app = express();
-const PORT = process.env.PORT || 8082; // Use 8082 to avoid conflict with webauthn-test-service on 8081
+const PORT = process.env.PORT || 8082; // Use 8082 to avoid conflict with webauthn-test-credentials-service on 8081
 
 // Enable CORS for all routes
 app.use(cors());

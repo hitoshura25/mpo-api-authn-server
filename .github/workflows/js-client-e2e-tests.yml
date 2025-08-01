@@ -68,7 +68,7 @@ jobs:
 
       - name: Run tests, coverage, and build JARs
         shell: bash
-        run: ./gradlew :webauthn-server:koverXmlReport :webauthn-server:shadowJar :webauthn-test-service:shadowJar --build-cache --parallel --configuration-cache
+        run: ./gradlew :webauthn-server:koverXmlReport :webauthn-server:shadowJar :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
 
       - name: Upload test reports
         uses: actions/upload-artifact@v4

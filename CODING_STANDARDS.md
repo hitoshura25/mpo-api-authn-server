@@ -232,7 +232,7 @@ The project uses **Detekt 1.23.7** for automated code quality checking, includin
 ```bash
 # Run detekt on specific module
 ./gradlew :webauthn-server:detekt
-./gradlew :webauthn-test-service:detekt
+./gradlew :webauthn-test-credentials-service:detekt
 ./gradlew :webauthn-test-lib:detekt
 
 # Run detekt on all modules

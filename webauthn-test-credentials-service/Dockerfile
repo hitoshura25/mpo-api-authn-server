@@ -22,7 +22,7 @@ RUN groupadd -g 1001 appgroup && \
 WORKDIR /app
 
 # Copy the shadow JAR with proper ownership (this layer changes when app changes)
-COPY --chown=appuser:appgroup build/libs/webauthn-test-service.jar app.jar
+COPY --chown=appuser:appgroup build/libs/webauthn-test-credentials-service.jar app.jar
 
 # Switch to non-root user
 USER appuser

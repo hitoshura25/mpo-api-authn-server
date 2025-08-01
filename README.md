@@ -7,7 +7,7 @@ A production-ready WebAuthn (FIDO2/Passkeys) authentication server built with KT
 This project follows a multi-module architecture for clear separation of concerns:
 
 - **webauthn-server/** - Main WebAuthn KTor server with production features
-- **webauthn-test-service/** - HTTP service for cross-platform testing credentials
+- **webauthn-test-credentials-service/** - HTTP service for cross-platform testing credentials
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
 - **android-test-client/** - Android client with generated API library
 - **test-client/** - Web-based Playwright E2E tests
@@ -78,7 +78,7 @@ The project uses a **layered testing approach** with different access patterns:
 
 ### Testing Layers
 1. **webauthn-test-lib** - Shared credential generation library
-2. **webauthn-test-service** - HTTP API wrapper (port 8081)  
+2. **webauthn-test-credentials-service** - HTTP API wrapper (port 8081)  
 3. **Integration tests** - Use shared library directly for performance
 
 ### Cross-Platform Testing
@@ -86,7 +86,7 @@ Start the test service for external clients:
 
 ```bash
 # Start test service
-./gradlew :webauthn-test-service:run
+./gradlew :webauthn-test-credentials-service:run
 
 # Test endpoints available at http://localhost:8081
 # - POST /test/generate-registration-credential
@@ -97,7 +97,7 @@ Start the test service for external clients:
 
 **Architecture Decisions**: 
 - **webauthn-server integration tests**: Use shared library directly for performance and reliability
-- **Android client tests**: Use HTTP API calls to webauthn-test-service for realistic cross-platform testing
+- **Android client tests**: Use HTTP API calls to webauthn-test-credentials-service for realistic cross-platform testing
 
 ## 📊 Monitoring & Observability
 
@@ -141,8 +141,8 @@ Start the test service for external clients:
 ./gradlew :webauthn-server:koverHtmlReport
 
 # Test service  
-./gradlew :webauthn-test-service:build
-./gradlew :webauthn-test-service:run
+./gradlew :webauthn-test-credentials-service:build
+./gradlew :webauthn-test-credentials-service:run
 
 # Shared test library
 ./gradlew :webauthn-test-lib:build

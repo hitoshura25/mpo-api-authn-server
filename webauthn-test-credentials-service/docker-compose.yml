@@ -1,7 +1,7 @@
 version: '3.8'
 
 services:
-  webauthn-test-service:
+  webauthn-test-credentials-service:
     build: .
     ports:
       - "8081:8081"

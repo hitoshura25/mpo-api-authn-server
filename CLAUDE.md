@@ -2,6 +2,32 @@
 
 ## Current Work (In Progress)
 
+### Service Renaming: webauthn-test-service → webauthn-test-credentials-service ✅ COMPLETED
+- **Status**: COMPLETED - Renamed service to better reflect its credential generation purpose
+- **Motivation**: The service's main purpose is to provide realistic WebAuthn credentials for testing flows, not just generic "test service" functionality
+- **New Name**: `webauthn-test-credentials-service` - more descriptive and clear about purpose
+- **Changes Made**:
+  - **Module Directory**: `git mv webauthn-test-service webauthn-test-credentials-service`
+  - **Build Configuration**: Updated `settings.gradle.kts`, `build.gradle.kts` JAR names
+  - **Docker**: Updated Dockerfile, docker-compose.yml service names and build paths
+  - **GitHub Workflows**: Renamed and updated workflow file and all task references
+  - **Documentation**: Updated README.md, CLAUDE.md with new service name
+- **Preserved**:
+  - **Package Names**: Kept `com.vmenon.webauthn.testservice` for stability
+  - **Port Assignment**: Still runs on port 8081 as documented
+  - **Functionality**: No changes to API endpoints or behavior
+- **Files Updated**:
+  - `settings.gradle.kts` - Module include reference
+  - `webauthn-test-credentials-service/build.gradle.kts` - JAR artifact name
+  - `webauthn-test-credentials-service/Dockerfile` - JAR file reference
+  - `webauthn-server/docker-compose.yml` - Service name and build path
+  - `webauthn-test-credentials-service/docker-compose.yml` - Service name
+  - `.github/workflows/test-webauthn-test-credentials-service.yml` - Renamed and updated
+  - `.github/workflows/js-client-e2e-tests.yml` - Gradle task reference
+  - `README.md` - All service references and documentation
+  - `CLAUDE.md` - All 22+ references updated
+- **Impact**: Clearer service purpose, better documentation, no breaking changes to functionality
+
 ### Documentation Updates & Syntax Fixes ✅ COMPLETED
 - **Status**: COMPLETED - Fixed IDE syntax errors and updated documentation
 - **Issue**: User reported syntax errors in CLAUDE.md when viewing in IDE
@@ -9,12 +35,12 @@
   - YAML code block had "block composed value at same line as key" error
   - Kotlin code block had incomplete try-catch syntax with "unexpected symbol" errors
   - README.md had outdated Java version requirement (17+ instead of 21+)
-  - README.md had incorrect port for webauthn-test-service (8080 instead of 8081)
+  - README.md had incorrect port for webauthn-test-credentials-service (8080 instead of 8081)
 - **Solution**:
   - Fixed YAML syntax by properly formatting key-value pairs on separate lines
   - Fixed Kotlin code block by providing complete try-catch structure with proper braces
   - Updated README.md Java prerequisite from 17+ to 21+
-  - Corrected webauthn-test-service port references from 8080 to 8081
+  - Corrected webauthn-test-credentials-service port references from 8080 to 8081
   - Added comprehensive Port Assignments section to README.md
 - **Files Updated**:
   - `CLAUDE.md` - Fixed YAML and Kotlin syntax errors
@@ -23,10 +49,10 @@
 
 ### Port Conflict Resolution ✅ COMPLETED
 
-- **Status**: COMPLETED - Fixed port conflict between test client and webauthn-test-service
-- **Issue**: Both test client and webauthn-test-service were trying to use port 8081 causing conflicts in CI
-- **Root Cause**: Test client was moved to port 8081 but webauthn-test-service is documented to use 8081 for cross-platform testing
-- **Solution**: Moved test client to port 8082, kept webauthn-test-service on documented port 8081
+- **Status**: COMPLETED - Fixed port conflict between test client and webauthn-test-credentials-service
+- **Issue**: Both test client and webauthn-test-credentials-service were trying to use port 8081 causing conflicts in CI
+- **Root Cause**: Test client was moved to port 8081 but webauthn-test-credentials-service is documented to use 8081 for cross-platform testing
+- **Solution**: Moved test client to port 8082, kept webauthn-test-credentials-service on documented port 8081
 - **Port Assignments**:
     - **WebAuthn Server**: 8080 (main API)
     - **WebAuthn Test Service**: 8081 (cross-platform credential generation)
@@ -123,7 +149,7 @@ This project follows a multi-module Gradle structure for clear separation of con
         - `security/VulnerabilityProtectionTest.kt` - Comprehensive security validation
     - `docker-compose.yml`, `Dockerfile`, `start-dev.sh` - Deployment files
 
-- **webauthn-test-service/** - HTTP service for cross-platform testing
+- **webauthn-test-credentials-service/** - HTTP service for cross-platform testing
     - `src/main/kotlin/com/vmenon/webauthn/testservice/` - Test credential generation
         - `routes/TestRoutes.kt` - HTTP endpoints for test credentials
         - `models/TestModels.kt` - Request/response models
@@ -137,8 +163,8 @@ This project follows a multi-module Gradle structure for clear separation of con
         - `WebAuthnTestAuthenticator.kt` - Unified WebAuthn credential generation
     - **Usage Pattern**:
         - webauthn-server tests: Direct library usage (testImplementation dependency)
-        - webauthn-test-service: HTTP wrapper around library (implementation dependency)
-        - External clients: HTTP API via webauthn-test-service
+        - webauthn-test-credentials-service: HTTP wrapper around library (implementation dependency)
+        - External clients: HTTP API via webauthn-test-credentials-service
     - Eliminates code duplication while supporting both internal and external access patterns
 
 - **android-test-client/** - Android client with generated API library
@@ -156,19 +182,19 @@ This project follows a multi-module Gradle structure for clear separation of con
 
 #### Test Service
 
-- **Tests**: `./gradlew :webauthn-test-service:test` ✅ **100% pass rate achieved**
-- **Build**: `./gradlew :webauthn-test-service:build`
-- **Run**: `./gradlew :webauthn-test-service:run`
-- **Coverage XML**: `./gradlew :webauthn-test-service:koverXmlReport`
-- **Coverage HTML**: `./gradlew :webauthn-test-service:koverHtmlReport`
-- **Docker Build**: `cd webauthn-test-service && docker build -t webauthn-test-service .`
+- **Tests**: `./gradlew :webauthn-test-credentials-service:test` ✅ **100% pass rate achieved**
+- **Build**: `./gradlew :webauthn-test-credentials-service:build`
+- **Run**: `./gradlew :webauthn-test-credentials-service:run`
+- **Coverage XML**: `./gradlew :webauthn-test-credentials-service:koverXmlReport`
+- **Coverage HTML**: `./gradlew :webauthn-test-credentials-service:koverHtmlReport`
+- **Docker Build**: `cd webauthn-test-credentials-service && docker build -t webauthn-test-credentials-service .`
 
 #### Shared Test Library
 
 - **Build**: `./gradlew :webauthn-test-lib:build`
 - **Dependencies**:
     - webauthn-server: `testImplementation(project(":webauthn-test-lib"))` - For integration tests
-    - webauthn-test-service: `implementation(project(":webauthn-test-lib"))` - For HTTP API endpoints
+    - webauthn-test-credentials-service: `implementation(project(":webauthn-test-lib"))` - For HTTP API endpoints
 - **Architecture**: Internal library used by both projects, but accessed differently based on use case
 
 #### Android Client (Standalone Project)
@@ -232,7 +258,7 @@ val challenge = response.get("publicKeyCredentialRequestOptions")
 
 ## Code Coverage Configuration
 
-Both webauthn-server and webauthn-test-service use Kover 0.9.1 for code coverage:
+Both webauthn-server and webauthn-test-credentials-service use Kover 0.9.1 for code coverage:
 
 - **Common Configuration**: Both modules use `tasks.withType<Test>` pattern for test setup
 - **Kover Exclusions**: webauthn-server excludes test-service packages from coverage reports:
@@ -446,7 +472,7 @@ This project development followed a collaborative approach with continuous user 
 - **Structure**: Main project generates → android-test-client/client-library → GitHub Packages
 - **Workflow**: `./gradlew :webauthn-server:copyGeneratedClientToLibrary` → `./gradlew client-library:publish`
 - **Testing**: Both unit and instrumentation tests validate generated client integration
-- **Test Service Integration**: Android tests use HTTP calls to webauthn-test-service for realistic cross-platform credential generation
+- **Test Service Integration**: Android tests use HTTP calls to webauthn-test-credentials-service for realistic cross-platform credential generation
 - **Versioning**: PR-aware versioning (1.0.0-pr-123.1) for safe testing of API changes
 
 ### Docker Best Practices Implementation
@@ -466,7 +492,7 @@ This project development followed a collaborative approach with continuous user 
 **Key Implementation Details:**
 
 - **webauthn-server tests** use `testImplementation(project(":webauthn-test-lib"))` dependency
-- **webauthn-test-service** uses `implementation(project(":webauthn-test-lib"))` dependency
+- **webauthn-test-credentials-service** uses `implementation(project(":webauthn-test-lib"))` dependency
 - **No container orchestration** needed for internal testing (performance optimization)
 - **HTTP service layer** serves external clients without impacting test performance
 
@@ -498,7 +524,7 @@ The project was restructured from a single-module to multi-module architecture t
 │   ├── start-full.sh
 │   ├── setup-secure-env.sh
 │   └── docker-compose.deps.yml
-├── webauthn-test-service/                        # Cross-platform test service
+├── webauthn-test-credentials-service/                        # Cross-platform test service
 │   ├── src/main/kotlin/com/vmenon/webauthn/testservice/
 │   └── build.gradle.kts
 ├── android-test-client/                          # Android client & library
@@ -520,7 +546,7 @@ The project was restructured from a single-module to multi-module architecture t
 - **js-client-e2e-tests.yml**: Updated server paths and Docker references
 - **publish-android-client.yml**: Fixed OpenAPI spec paths and Gradle tasks
 - **test-android-client-workflow.yml**: Updated generation tasks and API validation
-- **test-webauthn-test-service.yml**: New workflow for test service CI/CD with Docker publishing
+- **test-webauthn-test-credentials-service.yml**: New workflow for test service CI/CD with Docker publishing
 
 #### **✅ Test Infrastructure**
 
@@ -587,7 +613,7 @@ The project was restructured from a single-module to multi-module architecture t
 ```
 /
 ├── webauthn-server/              # Multi-module: Server
-├── webauthn-test-service/        # Multi-module: Test service  
+├── webauthn-test-credentials-service/        # Multi-module: Test service  
 ├── android-test-client/          # Standalone: Android project
 ├── test-client/                  # Standalone: Web E2E tests
 └── build.gradle.kts              # Multi-module: Server + test service only

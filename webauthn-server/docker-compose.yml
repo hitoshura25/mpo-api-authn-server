@@ -29,8 +29,8 @@ services:
     # Health check removed - distroless image doesn't have curl
     # External health checking handled by start-full.sh script
 
-  webauthn-test-service:
-    build: ../webauthn-test-service
+  webauthn-test-credentials-service:
+    build: ../webauthn-test-credentials-service
     ports:
       - "8081:8081"
     restart: unless-stopped

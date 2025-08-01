@@ -75,7 +75,7 @@ tasks.withType<Test> {
 
 // Shadow JAR configuration for easy deployment
 tasks.shadowJar {
-    archiveBaseName.set("webauthn-test-service")
+    archiveBaseName.set("webauthn-test-credentials-service")
     archiveClassifier.set("")
     archiveVersion.set("")
 }

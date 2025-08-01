@@ -2,6 +2,21 @@
 
 ## Current Work (In Progress)
 
+### GitHub Workflow Health Check Improvement ✅ COMPLETED
+- **Status**: COMPLETED - Enhanced CI workflow diagnostics for service health checks
+- **Issue**: GitHub Actions workflow was timing out waiting for webauthn-test-credentials-service to become "healthy"
+- **Root Cause**: Limited visibility into which service was failing and why
+- **Solution**: Enhanced health check loop with detailed diagnostics
+- **Improvements Made**:
+  - **Detailed Status Logging**: Show service status table on every attempt
+  - **Health Check Counts**: Display both healthy and running service counts  
+  - **Verbose Logging**: Every 10th attempt, show detailed status and test direct health endpoint
+  - **Failure Diagnostics**: On timeout, show service logs and test health endpoint directly
+  - **Clear Service Mapping**: Document which 4 services have health checks (postgres, redis, jaeger, webauthn-test-credentials-service)
+- **Files Modified**:
+  - `.github/workflows/js-client-e2e-tests.yml` - Enhanced health check diagnostics
+- **Expected Outcome**: Next CI run will provide clear visibility into any health check failures
+
 ### OpenTelemetry Race Condition Fix ✅ COMPLETED
 - **Status**: COMPLETED - Fixed race condition in integration tests while preserving production tracing
 - **Implementation**: Used system property approach with `isGlobalOpenTelemetryEnabled` variable

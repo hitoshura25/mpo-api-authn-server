@@ -66,9 +66,9 @@ jobs:
           # Disable built-in cache since we're managing it manually
           cache-disabled: true
 
-      - name: Run tests, coverage, and build JAR
+      - name: Run tests, coverage, and build JARs
         shell: bash
-        run: ./gradlew :webauthn-server:koverXmlReport :webauthn-server:shadowJar --build-cache --parallel --configuration-cache
+        run: ./gradlew :webauthn-server:koverXmlReport :webauthn-server:shadowJar :webauthn-test-service:shadowJar --build-cache --parallel --configuration-cache
 
       - name: Upload test reports
         uses: actions/upload-artifact@v4
@@ -118,13 +118,23 @@ jobs:
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose up -d --build
 
           # Wait for services
-          for i in {1..60}; do
+          echo "🚀 Starting services and waiting for health checks..."
+          for i in {1..120}; do
             healthy_count=$(docker compose ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
             if [ "$healthy_count" -eq 4 ]; then
-              echo "✅ All services ready"
+              echo "✅ All services ready (4 healthy services)"
+              docker compose ps
               break
             fi
-            sleep 0.5
+            if [ "$i" -eq 120 ]; then
+              echo "❌ Timeout waiting for services to become healthy"
+              echo "Current service status:"
+              docker compose ps
+              docker compose logs
+              exit 1
+            fi
+            echo "⏳ Waiting for services... ($healthy_count/4 healthy) - attempt $i/120"
+            sleep 1
           done
           cd ..
 

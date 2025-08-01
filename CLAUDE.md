@@ -2,6 +2,65 @@
 
 ## Current Work (In Progress)
 
+### Token Usage Optimization Strategies ✅ DOCUMENTED
+
+Based on this session's work, here are key strategies to optimize token usage in future sessions:
+
+#### **1. Batch Operations**
+- **Used**: `MultiEdit` tool for multiple changes in single file vs multiple `Edit` calls
+- **Example**: Updated 9 references in GitHub workflow file with one `MultiEdit` vs 9 separate `Edit` calls
+- **Savings**: ~70% reduction in tool calls for bulk changes
+
+#### **2. Strategic Search Patterns**
+- **Used**: `replace_all: true` for consistent renamings vs individual replacements
+- **Example**: Replaced all 22+ `webauthn-test-service` references in CLAUDE.md with single `Edit` call
+- **Avoid**: Multiple `Grep` + individual `Edit` sequences for bulk replacements
+
+#### **3. Efficient File Reading**
+- **Used**: `limit` and `offset` parameters to read specific sections vs entire files
+- **Example**: `Read` with `offset: 354, limit: 10` vs reading entire 540-line CLAUDE.md file
+- **When**: Only read full files when you need comprehensive understanding
+
+#### **4. Targeted Searches**
+- **Used**: `Grep` with specific `path` parameters vs repository-wide searches
+- **Example**: `path: .github/workflows` vs searching entire codebase
+- **Used**: `output_mode: "files_with_matches"` when you only need file lists
+
+#### **5. Parallel Tool Usage**
+- **Opportunity Missed**: Could have used single message with multiple `Bash` calls for related operations
+- **Example**: Could have run `git mv` operations in parallel for multiple files
+- **Future**: Use single message with multiple tool calls when operations are independent
+
+#### **6. Context-Aware Reading**
+- **Used**: Checked specific line ranges around known issues vs reading entire files
+- **Example**: Used `offset: 70, limit: 5` to check specific GitHub workflow line
+- **Strategy**: Use line numbers from `Grep` results to target `Read` operations
+
+#### **7. Consolidate Documentation Updates**
+- **Opportunity**: Could have planned all documentation changes before starting
+- **Future**: Create comprehensive change list first, then execute in batches
+- **Example**: Update all 5 documentation files in single planning phase vs discovering them incrementally
+
+#### **8. Avoid Redundant Verification**
+- **Used**: Single build test (`shadowJar`) to verify all changes vs testing each component
+- **Avoid**: Multiple small verification steps when one comprehensive test suffices
+
+#### **9. Use `replace_all` Strategically**
+- **When to use**: Consistent renamings, import updates, version bumps
+- **When to avoid**: When changes need context-specific modifications
+- **Safety**: Always read file first to understand context
+
+#### **10. Pre-Session Planning**
+- **Future Strategy**: Use initial `LS` and `Grep` calls to map out scope before making changes
+- **Example**: This session discovered files needing updates incrementally vs comprehensive mapping upfront
+- **Benefit**: Reduces back-and-forth and redundant searches
+
+#### **Estimated Token Savings**
+Following these strategies could reduce token usage by **40-60%** for similar large-scale refactoring tasks by:
+- Reducing read operations by ~50% (targeted reading)
+- Reducing edit operations by ~70% (batching and replace_all)
+- Reducing search operations by ~30% (targeted searches)
+
 ### Service Renaming: webauthn-test-service → webauthn-test-credentials-service ✅ COMPLETED
 - **Status**: COMPLETED - Renamed service to better reflect its credential generation purpose
 - **Motivation**: The service's main purpose is to provide realistic WebAuthn credentials for testing flows, not just generic "test service" functionality

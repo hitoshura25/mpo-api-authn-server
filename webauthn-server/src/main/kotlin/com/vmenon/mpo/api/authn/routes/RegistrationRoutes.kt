@@ -19,6 +19,7 @@ import io.ktor.util.pipeline.PipelineContext
 import java.util.UUID
 import org.koin.ktor.ext.inject
 import org.slf4j.LoggerFactory
+import org.slf4j.Logger
 import com.fasterxml.jackson.core.JsonProcessingException
 import redis.clients.jedis.exceptions.JedisException
 
@@ -48,7 +49,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
     relyingParty: RelyingParty,
     credentialStorage: CredentialStorage,
     openTelemetryTracer: OpenTelemetryTracer,
-    logger: org.slf4j.Logger,
+    logger: Logger,
 ) {
     try {
         val request = openTelemetryTracer.traceOperation("call.receive") {
@@ -94,7 +95,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.checkUserDoesNotExist
     username: String,
     credentialStorage: CredentialStorage,
     openTelemetryTracer: OpenTelemetryTracer,
-    logger: org.slf4j.Logger,
+    logger: Logger,
 ): Boolean {
     val userAlreadyExists = openTelemetryTracer.traceOperation("checkUserExists") {
         credentialStorage.userExists(username)
@@ -117,7 +118,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationCom
     registrationStorage: RegistrationRequestStorage,
     relyingParty: RelyingParty,
     credentialStorage: CredentialStorage,
-    logger: org.slf4j.Logger,
+    logger: Logger,
 ) {
     try {
         val request = call.receive<RegistrationCompleteRequest>()
@@ -163,7 +164,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.retrieveRegistrationR
 private suspend fun PipelineContext<Unit, ApplicationCall>.checkForRaceCondition(
     username: String,
     credentialStorage: CredentialStorage,
-    logger: org.slf4j.Logger,
+    logger: Logger,
 ): Boolean {
     return if (credentialStorage.userExists(username)) {
         logger.warn("Race condition detected: User $username was created during registration")
@@ -179,7 +180,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.checkForRaceCondition
 
 private suspend fun handleRegistrationError(
     call: ApplicationCall,
-    logger: org.slf4j.Logger,
+    logger: Logger,
     exception: Exception,
     message: String
 ) {

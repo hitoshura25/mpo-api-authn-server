@@ -20,6 +20,7 @@ import io.ktor.server.routing.routing
 import io.ktor.util.pipeline.PipelineContext
 import org.koin.ktor.ext.inject
 import org.slf4j.LoggerFactory
+import org.slf4j.Logger
 import java.util.UUID
 import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.JsonMappingException
@@ -49,7 +50,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
     assertionStorage: AssertionRequestStorage,
     relyingParty: RelyingParty,
     openTelemetryTracer: OpenTelemetryTracer,
-    logger: org.slf4j.Logger,
+    logger: Logger,
 ) {
     try {
         val request = openTelemetryTracer.traceOperation("call.receive") {
@@ -75,7 +76,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationComplete(
     assertionStorage: AssertionRequestStorage,
     relyingParty: RelyingParty,
-    logger: org.slf4j.Logger,
+    logger: Logger,
 ) {
     try {
         val request = call.receive<AuthenticationCompleteRequest>()
@@ -181,7 +182,7 @@ private fun processAssertionFinish(
 
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleSuccessfulAuthentication(
     username: String,
-    logger: org.slf4j.Logger,
+    logger: Logger,
 ) {
     logger.info("Successfully authenticated user: $username")
     call.respond(
@@ -194,7 +195,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleSuccessfulAuthe
 }
 
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleFailedAuthentication(
-    logger: org.slf4j.Logger,
+    logger: Logger,
 ) {
     logger.warn("Authentication failed for assertion validation")
     call.respond(
@@ -205,7 +206,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleFailedAuthentic
 
 private suspend fun handleAuthenticationError(
     call: ApplicationCall,
-    logger: org.slf4j.Logger,
+    logger: Logger,
     exception: Exception,
     message: String
 ) {

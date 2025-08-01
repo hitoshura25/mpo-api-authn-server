@@ -16,13 +16,15 @@ import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
 import com.yubico.webauthn.data.UserIdentity
 import java.util.Base64
 import java.util.UUID
+import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
+import com.yubico.webauthn.RegistrationResult
 
 object RegistrationUtils {
     suspend fun createRegistrationResponse(
         request: RegistrationRequest,
         requestId: String,
         relyingParty: RelyingParty,
-        registrationStorage: com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage,
+        registrationStorage: RegistrationRequestStorage,
         openTelemetryTracer: OpenTelemetryTracer,
     ): RegistrationResponse {
         val userHandle = ByteArray.fromBase64Url(
@@ -79,7 +81,7 @@ object RegistrationUtils {
 
     fun createCredentialRegistration(
         userAccount: UserAccount,
-        finishRegistrationResult: com.yubico.webauthn.RegistrationResult,
+        finishRegistrationResult: RegistrationResult,
     ) = CredentialRegistration(
         userAccount = userAccount,
         credential = RegisteredCredential.builder()

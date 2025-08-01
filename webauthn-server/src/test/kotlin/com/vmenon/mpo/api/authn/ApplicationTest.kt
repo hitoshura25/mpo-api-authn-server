@@ -38,6 +38,9 @@ import kotlin.test.assertTrue
 import com.fasterxml.jackson.core.JsonParseException
 import com.yubico.webauthn.RegistrationResult
 import com.yubico.webauthn.data.COSEAlgorithmIdentifier
+import io.ktor.server.testing.ApplicationTestBuilder
+import io.ktor.client.HttpClient
+import io.ktor.client.statement.HttpResponse
 
 class ApplicationTest : KoinTest {
     private val objectMapper = JacksonUtils.objectMapper
@@ -496,7 +499,7 @@ class ApplicationTest : KoinTest {
             }
         }
 
-    private fun io.ktor.server.testing.ApplicationTestBuilder.setupApplicationWithMocks() {
+    private fun ApplicationTestBuilder.setupApplicationWithMocks() {
         application {
             module(testStorageModule)
             getKoin().loadModules(
@@ -511,7 +514,7 @@ class ApplicationTest : KoinTest {
         }
     }
 
-    private suspend fun io.ktor.client.HttpClient.performRegistrationCompleteRequest(
+    private suspend fun HttpClient.performRegistrationCompleteRequest(
         credential: PublicKeyCredential<*, *>
     ) = post("/register/complete") {
         contentType(ContentType.Application.Json)
@@ -525,7 +528,7 @@ class ApplicationTest : KoinTest {
         )
     }
 
-    private suspend fun verifyConflictResponse(response: io.ktor.client.statement.HttpResponse) {
+    private suspend fun verifyConflictResponse(response: HttpResponse) {
         assertEquals(HttpStatusCode.Conflict, response.status)
         val responseBody = objectMapper.readTree(response.bodyAsText())
         assertEquals("Username is already registered", responseBody.get("error").asText())

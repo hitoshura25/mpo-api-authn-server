@@ -2,6 +2,7 @@ package com.vmenon.mpo.api.authn.storage
 
 import com.yubico.webauthn.RegisteredCredential
 import java.util.Optional
+import com.yubico.webauthn.data.ByteArray
 
 interface CredentialStorage {
     fun addRegistration(registration: CredentialRegistration)
@@ -10,16 +11,16 @@ interface CredentialStorage {
 
     fun getUserByUsername(username: String): UserAccount?
 
-    fun getUserByHandle(userHandle: com.yubico.webauthn.data.ByteArray): UserAccount?
+    fun getUserByHandle(userHandle: ByteArray): UserAccount?
 
     fun userExists(username: String): Boolean
 
     fun lookup(
-        credentialId: com.yubico.webauthn.data.ByteArray,
-        userHandle: com.yubico.webauthn.data.ByteArray,
+        credentialId: ByteArray,
+        userHandle: ByteArray,
     ): Optional<RegisteredCredential>
 
-    fun lookupAll(credentialId: com.yubico.webauthn.data.ByteArray): Set<RegisteredCredential>
+    fun lookupAll(credentialId: ByteArray): Set<RegisteredCredential>
 
     fun close()
 }

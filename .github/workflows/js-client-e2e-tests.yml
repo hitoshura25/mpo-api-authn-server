@@ -70,6 +70,15 @@ jobs:
         shell: bash
         run: ./gradlew :webauthn-server:koverXmlReport :webauthn-server:shadowJar --build-cache --parallel --configuration-cache
 
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: webauthn-server-reports
+          path: |
+            webauthn-server/build/reports/
+          retention-days: 7
+
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
@@ -127,10 +136,10 @@ jobs:
           npm test
           TEST_EXIT_CODE=$?
           set -e
-          
+
           # Store exit code for later use
           echo "test-exit-code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
-          
+
           if [ $TEST_EXIT_CODE -ne 0 ]; then
             echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
             exit $TEST_EXIT_CODE

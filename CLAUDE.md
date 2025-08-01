@@ -61,6 +61,170 @@ Following these strategies could reduce token usage by **40-60%** for similar la
 - Reducing edit operations by ~70% (batching and replace_all)
 - Reducing search operations by ~30% (targeted searches)
 
+#### **11. Subagent Usage for Complex Tasks**
+
+**Major Missed Opportunity**: This entire service renaming could have been handled much more efficiently with subagents.
+
+##### **Optimal Subagent Strategy:**
+
+**What Should Have Happened:**
+```
+User: "Rename webauthn-test-service to webauthn-test-credentials-service throughout the project"
+
+Claude: I'll use a subagent to handle this comprehensive renaming task.
+
+[Single Task tool call with general-purpose agent]
+Task: "Perform complete project-wide renaming of webauthn-test-service to webauthn-test-credentials-service. 
+Include: directory names, build files, Docker configs, workflows, documentation. 
+Use git mv for directories to preserve history. Update JAR names, Docker image references, 
+and all documentation. Verify with build test at end."
+```
+
+**Subagent Benefits for This Task:**
+- **Comprehensive Scope**: Agent would map entire project structure first
+- **Systematic Execution**: Handle all file types in logical order
+- **Atomic Operation**: Complete entire renaming in single focused session
+- **Verification**: Built-in testing at completion
+- **Context Efficiency**: Agent maintains full context without token overhead
+
+##### **Other Subagent Opportunities This Session:**
+
+1. **Documentation Syntax Fixes**
+   ```
+   Task: "Fix all markdown syntax errors in CLAUDE.md reported by IDE. 
+   Handle YAML formatting, code blocks, and any display issues."
+   ```
+
+2. **Port Assignment Updates**  
+   ```
+   Task: "Update all documentation files to reflect correct port assignments: 
+   server=8080, test-credentials-service=8081, test-client=8082. 
+   Find and fix any incorrect port references."
+   ```
+
+##### **When to Use Subagents vs Direct Implementation:**
+
+**Use Subagents When:**
+- **Multi-file changes** with consistent pattern (like renaming)
+- **Complex searches** requiring multiple rounds of discovery  
+- **Documentation updates** across multiple files
+- **Systematic refactoring** with verification steps
+- **Context-heavy tasks** that benefit from dedicated focus
+
+**Direct Implementation When:**
+- **Single file changes** with specific requirements
+- **Interactive decision-making** needed from user
+- **Immediate fixes** to specific issues
+- **Exploratory work** where scope is unclear
+
+##### **Estimated Time/Token Savings with Subagents:**
+- **This renaming task**: Could have been 80% faster with single subagent call
+- **Documentation fixes**: 60% faster with focused syntax-fixing agent  
+- **Overall session**: Could have reduced from ~45 tool calls to ~5-10 tool calls
+
+##### **Lesson for Future Complex Refactoring:**
+**Always consider subagents first** for any task involving:
+- Multiple file modifications
+- Systematic pattern application  
+- Cross-cutting concerns (like renaming)
+- Documentation synchronization
+- Build/configuration updates
+
+#### **12. Detekt/ktlint Violation Fixes - Optimal Subagent Strategy**
+
+**Current State (Post-Strict Rules):**
+- **webauthn-server**: 576 Detekt violations
+- **webauthn-test-credentials-service**: 58 Detekt violations  
+- **Total**: 634+ violations across both modules
+
+##### **Subagent-Optimized Approach for Code Quality Fixes:**
+
+**Strategy 1: Category-Based Subagents**
+```
+Task 1: "Fix all UndocumentedPublicFunction and UndocumentedPublicProperty violations in webauthn-server module. 
+Add proper KDoc comments following project conventions. Focus on public APIs and main entry points."
+
+Task 2: "Fix all import-related violations (WildcardImport, UnusedImports) across webauthn-server module. 
+Convert to explicit imports, remove unused imports, maintain alphabetical ordering."
+
+Task 3: "Fix all code formatting violations (MaxLineLength, FunctionMaxLength, EndOfSentenceFormat) 
+in webauthn-server module. Break long lines, shorten function names, fix KDoc formatting."
+```
+
+**Strategy 2: Module-Based Subagents** 
+```
+Task 1: "Fix all Detekt violations in webauthn-test-credentials-service module (58 violations). 
+Handle documentation, imports, formatting, and naming issues. Run tests after fixes."
+
+Task 2: "Fix all Detekt violations in webauthn-server module (576 violations). 
+Systematic approach: documentation → imports → formatting → naming. Run tests after each category."
+```
+
+**Strategy 3: Hybrid Approach (RECOMMENDED)**
+```
+Task 1: "Fix all documentation violations (UndocumentedPublicFunction, UndocumentedPublicProperty, 
+EndOfSentenceFormat) across both webauthn-server and webauthn-test-credentials-service modules. 
+Add KDoc following existing patterns."
+
+Task 2: "Fix all import and formatting violations (WildcardImport, UnusedImports, MaxLineLength) 
+across both modules. Convert wildcards to explicit imports, remove unused, fix line lengths."
+
+Task 3: "Fix remaining violations (FunctionMaxLength, naming issues) across both modules. 
+Maintain functionality while improving code quality."
+```
+
+##### **Token Usage Optimization for Code Quality Fixes:**
+
+**Without Subagents (Traditional Approach):**
+- Read each file to understand violations (~20-30 files)
+- Fix violations one by one (~634 individual fixes)
+- Test after each change or group of changes
+- **Estimated**: 800-1000+ tool calls
+
+**With Subagents (Optimized Approach):**
+- 3 focused subagent calls (as above)
+- Each agent handles systematic fixes within their domain
+- Built-in testing and verification
+- **Estimated**: 3-6 tool calls total
+
+**Massive Efficiency Gain: 95%+ reduction in tool calls**
+
+##### **Subagent Advantages for Code Quality:**
+
+1. **Pattern Recognition**: Agents excel at identifying similar violation patterns
+2. **Systematic Fixes**: Handle related violations together (all imports, all docs, etc.)
+3. **Context Awareness**: Maintain understanding of project conventions
+4. **Batch Testing**: Run tests after logical groups of fixes
+5. **Consistency**: Apply same fix patterns across multiple files
+
+##### **Pre-Work for Maximum Efficiency:**
+
+**Before Starting Detekt Fixes:**
+```bash
+# Generate detailed violation reports for subagent context
+./gradlew :webauthn-server:detekt --build-cache > detekt-server-violations.txt
+./gradlew :webauthn-test-credentials-service:detekt --build-cache > detekt-service-violations.txt
+
+# Categorize violations by type for strategic planning
+grep "UndocumentedPublic" detekt-*-violations.txt | wc -l  # Documentation fixes
+grep "WildcardImport\|UnusedImports" detekt-*-violations.txt | wc -l  # Import fixes  
+grep "MaxLineLength\|FunctionMaxLength" detekt-*-violations.txt | wc -l  # Formatting fixes
+```
+
+##### **Success Metrics:**
+- **Target**: Reduce from 634+ violations to <50 violations
+- **Time Goal**: Complete in 3 subagent calls vs 50+ manual sessions
+- **Quality Goal**: All tests still pass after fixes
+- **Consistency Goal**: Uniform code style across entire project
+
+##### **Next Session Preparation:**
+When ready for Detekt fixes, use this exact approach:
+1. Generate violation reports first
+2. Choose hybrid subagent strategy (3 calls)
+3. Start with documentation fixes (least risky)
+4. Progress to imports, then formatting
+5. Verify with full test suite at end
+
 ### Service Renaming: webauthn-test-service → webauthn-test-credentials-service ✅ COMPLETED
 - **Status**: COMPLETED - Renamed service to better reflect its credential generation purpose
 - **Motivation**: The service's main purpose is to provide realistic WebAuthn credentials for testing flows, not just generic "test service" functionality

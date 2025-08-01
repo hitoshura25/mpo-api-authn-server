@@ -350,7 +350,7 @@ class ApplicationTest : KoinTest {
         testApplication {
             // Mock RelyingParty to throw an exception
             every { mockRelyingParty.startRegistration(any()) } throws 
-                RuntimeException("RelyingParty configuration error")
+                com.fasterxml.jackson.core.JsonParseException(null, "RelyingParty configuration error")
 
             application {
                 module(testStorageModule)
@@ -386,7 +386,7 @@ class ApplicationTest : KoinTest {
                     any(),
                     any(),
                 )
-            } throws RuntimeException("Storage system down")
+            } throws redis.clients.jedis.exceptions.JedisException("Storage system down")
 
             application {
                 module(testStorageModule)

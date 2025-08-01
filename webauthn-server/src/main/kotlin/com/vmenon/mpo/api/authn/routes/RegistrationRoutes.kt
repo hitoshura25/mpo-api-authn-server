@@ -2,20 +2,11 @@ package com.vmenon.mpo.api.authn.routes
 
 import com.vmenon.mpo.api.authn.RegistrationCompleteRequest
 import com.vmenon.mpo.api.authn.RegistrationRequest
-import com.vmenon.mpo.api.authn.RegistrationResponse
 import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
-import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
-import com.vmenon.mpo.api.authn.storage.UserAccount
-import com.yubico.webauthn.FinishRegistrationOptions
-import com.yubico.webauthn.RegisteredCredential
 import com.yubico.webauthn.RelyingParty
-import com.yubico.webauthn.StartRegistrationOptions
-import com.yubico.webauthn.data.ByteArray
-import com.yubico.webauthn.data.PublicKeyCredential
 import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
-import com.yubico.webauthn.data.UserIdentity
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationCall
@@ -25,10 +16,9 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.util.pipeline.PipelineContext
+import java.util.UUID
 import org.koin.ktor.ext.inject
 import org.slf4j.LoggerFactory
-import java.util.Base64
-import java.util.UUID
 
 fun Application.configureRegistrationRoutes() {
     val logger = LoggerFactory.getLogger("RegistrationRoutes")
@@ -72,14 +62,12 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
         val registrationResponse = RegistrationUtils.createRegistrationResponse(
             request, requestId, relyingParty, registrationStorage, openTelemetryTracer
         )
-        
+
         call.respond(registrationResponse)
-    } catch (e: Exception) {
-        logger.error("Registration start failed", e)
-        call.respond(
-            HttpStatusCode.InternalServerError,
-            mapOf("error" to "Registration failed. Please try again."),
-        )
+    } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+        handleRegistrationError(call, logger, e, "Registration start failed")
+    } catch (e: redis.clients.jedis.exceptions.JedisException) {
+        handleRegistrationError(call, logger, e, "Registration start failed")
     }
 }
 
@@ -91,7 +79,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.validateRegistrationR
         request.displayName.isBlank() -> "Display name is required"
         else -> null
     }
-    
+
     return if (errorMessage != null) {
         call.respond(HttpStatusCode.BadRequest, mapOf("error" to errorMessage))
         true
@@ -148,12 +136,10 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationCom
         credentialStorage.addRegistration(registration)
         logger.info("Successfully registered user: ${userAccount.username}")
         call.respond(mapOf("success" to true, "message" to "Registration successful"))
-    } catch (e: Exception) {
-        logger.error("Registration complete failed", e)
-        call.respond(
-            HttpStatusCode.InternalServerError,
-            mapOf("error" to "Registration failed. Please try again."),
-        )
+    } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+        handleRegistrationError(call, logger, e, "Registration complete failed")
+    } catch (e: redis.clients.jedis.exceptions.JedisException) {
+        handleRegistrationError(call, logger, e, "Registration complete failed")
     }
 }
 
@@ -187,4 +173,17 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.checkForRaceCondition
     } else {
         false
     }
+}
+
+private suspend fun handleRegistrationError(
+    call: ApplicationCall,
+    logger: org.slf4j.Logger,
+    exception: Exception,
+    message: String
+) {
+    logger.error(message, exception)
+    call.respond(
+        HttpStatusCode.InternalServerError,
+        mapOf("error" to "Registration failed. Please try again."),
+    )
 }

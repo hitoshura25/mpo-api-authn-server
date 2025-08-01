@@ -57,7 +57,7 @@ async function globalSetup() {
 
   // Wait for test client to be ready
   try {
-    await waitForService('http://localhost:8081/health', 'Test client', 15000);
+    await waitForService('http://localhost:8082/health', 'Test client', 15000);
   } catch (error) {
     console.error(`❌ ${error.message}`);
     throw new Error('Test client is not ready');
@@ -69,7 +69,7 @@ async function globalSetup() {
 
   try {
     // Just check that the main page loads with correct content
-    const response = await fetch('http://localhost:8081');
+    const response = await fetch('http://localhost:8082');
     const html = await response.text();
 
     if (!html.includes('WebAuthn Test Client')) {

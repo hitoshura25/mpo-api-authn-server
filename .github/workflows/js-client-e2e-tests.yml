@@ -115,21 +115,21 @@ jobs:
         run: |
           cd webauthn-server
           ./setup-secure-env.sh
-          
+
           echo "🔨 Building services..."
           DOCKER_BUILDKIT=1 COMPOSE_DOCKER_CLI_BUILD=1 docker compose up -d --build
-          
+
           echo "⏳ Waiting for services to start..."
           sleep 10
-          
+
           echo "📊 Service status after initial startup:"
           docker compose ps
-          
+
           echo "📋 Full logs from all services:"
           docker compose logs
-          
+
           echo "🔍 Testing dependency services first..."
-          
+
           # Check if postgres is responding
           if docker compose exec postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; then
             echo "✅ PostgreSQL is ready"
@@ -138,8 +138,8 @@ jobs:
             echo "PostgreSQL logs:"
             docker compose logs postgres
           fi
-          
-          # Check if redis is responding  
+
+          # Check if redis is responding
           if docker compose exec redis redis-cli ping > /dev/null 2>&1; then
             echo "✅ Redis is ready"
           else
@@ -147,7 +147,7 @@ jobs:
             echo "Redis logs:"
             docker compose logs redis
           fi
-          
+
           # Check if jaeger is responding
           if curl -f --max-time 5 http://localhost:16686/ > /dev/null 2>&1; then
             echo "✅ Jaeger is ready"
@@ -156,9 +156,9 @@ jobs:
             echo "Jaeger logs:"
             docker compose logs jaeger
           fi
-          
+
           echo "🔍 Testing main application services..."
-          
+
           # Test webauthn-server health endpoint
           if curl -f --max-time 5 http://localhost:8080/health > /dev/null 2>&1; then
             echo "✅ WebAuthn server health check passed"
@@ -168,7 +168,7 @@ jobs:
             docker compose logs webauthn-server
             exit 1
           fi
-          
+
           # Test webauthn-test-credentials-service health
           if curl -f --max-time 5 http://localhost:8081/health > /dev/null 2>&1; then
             echo "✅ WebAuthn test credentials service responding"
@@ -243,3 +243,11 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Update repo description
+        uses: peter-evans/dockerhub-description@v4
+        if: github.event_name != 'pull_request'
+        with:
+          username: ${{ secrets.docker_hub_username }}
+          password: ${{ secrets.docker_hub_token }}
+          short-description: ${{ github.event.repository.description }}

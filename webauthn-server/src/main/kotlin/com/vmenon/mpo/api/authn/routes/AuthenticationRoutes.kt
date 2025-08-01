@@ -52,7 +52,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
     openTelemetryTracer: OpenTelemetryTracer,
     logger: Logger,
 ) {
-    try {
+    runCatching {
         val request = openTelemetryTracer.traceOperation("call.receive") {
             call.receive<AuthenticationRequest>()
         }
@@ -66,10 +66,8 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
 
         val authResponse = createAuthenticationResponse(requestId, startAssertionOptions, openTelemetryTracer)
         call.respond(authResponse)
-    } catch (e: JedisException) {
-        handleAuthenticationError(call, logger, e, "Authentication start failed")
-    } catch (e: JsonProcessingException) {
-        handleAuthenticationError(call, logger, e, "Authentication start failed")
+    }.onFailure { exception ->
+        handleAuthenticationError(call, logger, exception, "Authentication start failed")
     }
 }
 
@@ -78,7 +76,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationC
     relyingParty: RelyingParty,
     logger: Logger,
 ) {
-    try {
+    runCatching {
         val request = call.receive<AuthenticationCompleteRequest>()
 
         val startAssertionOptions = retrieveAssertionRequest(request.requestId, assertionStorage) ?: return
@@ -90,18 +88,8 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationC
         } else {
             handleFailedAuthentication(logger)
         }
-    } catch (e: BadRequestException) {
-        handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: JedisException) {
-        handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: JsonProcessingException) {
-        handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: JsonMappingException) {
-        handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: MismatchedInputException) {
-        handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: IllegalArgumentException) {
-        handleAuthenticationError(call, logger, e, "Authentication complete failed")
+    }.onFailure { exception ->
+        handleAuthenticationError(call, logger, exception, "Authentication complete failed")
     }
 }
 
@@ -207,7 +195,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleFailedAuthentic
 private suspend fun handleAuthenticationError(
     call: ApplicationCall,
     logger: Logger,
-    exception: Exception,
+    exception: Throwable,
     message: String
 ) {
     logger.error(message, exception)

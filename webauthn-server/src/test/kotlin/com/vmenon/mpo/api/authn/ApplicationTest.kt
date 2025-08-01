@@ -35,6 +35,9 @@ import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import com.fasterxml.jackson.core.JsonParseException
+import com.yubico.webauthn.RegistrationResult
+import com.yubico.webauthn.data.COSEAlgorithmIdentifier
 
 class ApplicationTest : KoinTest {
     private val objectMapper = JacksonUtils.objectMapper
@@ -350,7 +353,7 @@ class ApplicationTest : KoinTest {
         testApplication {
             // Mock RelyingParty to throw an exception
             every { mockRelyingParty.startRegistration(any()) } throws 
-                com.fasterxml.jackson.core.JsonParseException(null, "RelyingParty configuration error")
+                JsonParseException(null, "RelyingParty configuration error")
 
             application {
                 module(testStorageModule)
@@ -465,7 +468,7 @@ class ApplicationTest : KoinTest {
         } returns createMockPublicKeyCredentialCreationOptions()
     }
 
-    private fun createMockRegistrationResult() = mockk<com.yubico.webauthn.RegistrationResult> {
+    private fun createMockRegistrationResult() = mockk<RegistrationResult> {
         every { keyId } returns mockk {
             every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
         }
@@ -483,7 +486,7 @@ class ApplicationTest : KoinTest {
             )
             every { pubKeyCredParams } returns listOf(
                 mockk {
-                    every { alg } returns com.yubico.webauthn.data.COSEAlgorithmIdentifier.ES256
+                    every { alg } returns COSEAlgorithmIdentifier.ES256
                 }
             )
             every { user } returns mockk {

@@ -19,6 +19,8 @@ import io.ktor.util.pipeline.PipelineContext
 import java.util.UUID
 import org.koin.ktor.ext.inject
 import org.slf4j.LoggerFactory
+import com.fasterxml.jackson.core.JsonProcessingException
+import redis.clients.jedis.exceptions.JedisException
 
 fun Application.configureRegistrationRoutes() {
     val logger = LoggerFactory.getLogger("RegistrationRoutes")
@@ -64,7 +66,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
         )
 
         call.respond(registrationResponse)
-    } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+    } catch (e: JsonProcessingException) {
         handleRegistrationError(call, logger, e, "Registration start failed")
     } catch (e: redis.clients.jedis.exceptions.JedisException) {
         handleRegistrationError(call, logger, e, "Registration start failed")
@@ -136,7 +138,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationCom
         credentialStorage.addRegistration(registration)
         logger.info("Successfully registered user: ${userAccount.username}")
         call.respond(mapOf("success" to true, "message" to "Registration successful"))
-    } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+    } catch (e: JsonProcessingException) {
         handleRegistrationError(call, logger, e, "Registration complete failed")
     } catch (e: redis.clients.jedis.exceptions.JedisException) {
         handleRegistrationError(call, logger, e, "Registration complete failed")

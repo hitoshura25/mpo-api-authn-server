@@ -1,6 +1,7 @@
 package com.vmenon.mpo.api.authn.monitoring
 
 import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.core.JsonProcessingException
 import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
@@ -24,7 +25,7 @@ class OpenTelemetryTracer(
         return try {
             span.setStatus(StatusCode.OK)
             block()
-        } catch (exception: com.fasterxml.jackson.core.JsonProcessingException) {
+        } catch (exception: JsonProcessingException) {
             span.setStatus(StatusCode.ERROR, getMessage(exception))
             span.recordException(exception)
             throw exception

@@ -21,6 +21,11 @@ import io.ktor.util.pipeline.PipelineContext
 import org.koin.ktor.ext.inject
 import org.slf4j.LoggerFactory
 import java.util.UUID
+import com.fasterxml.jackson.core.JsonProcessingException
+import com.fasterxml.jackson.databind.JsonMappingException
+import com.fasterxml.jackson.databind.exc.MismatchedInputException
+import io.ktor.server.plugins.BadRequestException
+import redis.clients.jedis.exceptions.JedisException
 
 fun Application.configureAuthenticationRoutes() {
     val logger = LoggerFactory.getLogger("AuthenticationRoutes")
@@ -60,9 +65,9 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
 
         val authResponse = createAuthenticationResponse(requestId, startAssertionOptions, openTelemetryTracer)
         call.respond(authResponse)
-    } catch (e: redis.clients.jedis.exceptions.JedisException) {
+    } catch (e: JedisException) {
         handleAuthenticationError(call, logger, e, "Authentication start failed")
-    } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+    } catch (e: JsonProcessingException) {
         handleAuthenticationError(call, logger, e, "Authentication start failed")
     }
 }
@@ -84,15 +89,15 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationC
         } else {
             handleFailedAuthentication(logger)
         }
-    } catch (e: io.ktor.server.plugins.BadRequestException) {
+    } catch (e: BadRequestException) {
         handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: redis.clients.jedis.exceptions.JedisException) {
+    } catch (e: JedisException) {
         handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+    } catch (e: JsonProcessingException) {
         handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: com.fasterxml.jackson.databind.JsonMappingException) {
+    } catch (e: JsonMappingException) {
         handleAuthenticationError(call, logger, e, "Authentication complete failed")
-    } catch (e: com.fasterxml.jackson.databind.exc.MismatchedInputException) {
+    } catch (e: MismatchedInputException) {
         handleAuthenticationError(call, logger, e, "Authentication complete failed")
     } catch (e: IllegalArgumentException) {
         handleAuthenticationError(call, logger, e, "Authentication complete failed")

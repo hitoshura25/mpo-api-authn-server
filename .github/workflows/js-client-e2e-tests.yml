@@ -128,11 +128,14 @@ jobs:
           # Quick sanity check that key endpoints are responding
           echo "🔍 Testing key service endpoints..."
           
-          # Test webauthn-server health (if it has one) - using external script
+          # Test webauthn-server health endpoint
           if curl -f --max-time 5 http://localhost:8080/health > /dev/null 2>&1; then
-            echo "✅ WebAuthn server responding"
+            echo "✅ WebAuthn server health check passed"
           else
-            echo "⚠️ WebAuthn server health check not available (expected for distroless image)"
+            echo "❌ WebAuthn server health check failed"
+            echo "WebAuthn server logs:"
+            docker compose logs webauthn-server
+            exit 1
           fi
           
           # Test webauthn-test-credentials-service health

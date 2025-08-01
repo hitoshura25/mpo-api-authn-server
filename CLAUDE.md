@@ -2,6 +2,25 @@
 
 ## Current Work (In Progress)
 
+### Documentation Updates & Syntax Fixes ✅ COMPLETED
+- **Status**: COMPLETED - Fixed IDE syntax errors and updated documentation
+- **Issue**: User reported syntax errors in CLAUDE.md when viewing in IDE
+- **Root Causes**: 
+  - YAML code block had "block composed value at same line as key" error
+  - Kotlin code block had incomplete try-catch syntax with "unexpected symbol" errors
+  - README.md had outdated Java version requirement (17+ instead of 21+)
+  - README.md had incorrect port for webauthn-test-service (8080 instead of 8081)
+- **Solution**:
+  - Fixed YAML syntax by properly formatting key-value pairs on separate lines
+  - Fixed Kotlin code block by providing complete try-catch structure with proper braces
+  - Updated README.md Java prerequisite from 17+ to 21+
+  - Corrected webauthn-test-service port references from 8080 to 8081
+  - Added comprehensive Port Assignments section to README.md
+- **Files Updated**:
+  - `CLAUDE.md` - Fixed YAML and Kotlin syntax errors
+  - `README.md` - Updated Java version requirement and port documentation
+- **Impact**: Documentation now displays correctly in IDE, all port assignments properly documented
+
 ### Port Conflict Resolution ✅ COMPLETED
 
 - **Status**: COMPLETED - Fixed port conflict between test client and webauthn-test-service

@@ -15,7 +15,7 @@ This project follows a multi-module architecture for clear separation of concern
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Java 17+
+- Java 21+
 - Docker & Docker Compose
 - Node.js 18+ (for web tests)
 
@@ -43,6 +43,15 @@ npm install
 npm test
 ```
 
+## 🌐 Port Assignments
+
+- **WebAuthn Server**: 8080 (main API)
+- **WebAuthn Test Service**: 8081 (cross-platform credential generation)
+- **Test Client**: 8082 (E2E test web frontend)
+- **PostgreSQL**: 5432
+- **Redis**: 6379
+- **Jaeger UI**: 16686
+
 ## 🔐 Security Features
 
 - **WebAuthn 2.0/FIDO2** compliance using Yubico library
@@ -69,7 +78,7 @@ The project uses a **layered testing approach** with different access patterns:
 
 ### Testing Layers
 1. **webauthn-test-lib** - Shared credential generation library
-2. **webauthn-test-service** - HTTP API wrapper (port 8080)  
+2. **webauthn-test-service** - HTTP API wrapper (port 8081)  
 3. **Integration tests** - Use shared library directly for performance
 
 ### Cross-Platform Testing
@@ -79,7 +88,7 @@ Start the test service for external clients:
 # Start test service
 ./gradlew :webauthn-test-service:run
 
-# Test endpoints available at http://localhost:8080
+# Test endpoints available at http://localhost:8081
 # - POST /test/generate-registration-credential
 # - POST /test/generate-authentication-credential
 # - POST /test/clear

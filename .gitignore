@@ -25,3 +25,6 @@ build/
 .env
 ide.env
 node_modules/
+
+# Generated Android client library code (regenerated from OpenAPI spec)
+android-test-client/client-library/src/

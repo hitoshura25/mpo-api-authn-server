@@ -38,7 +38,7 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     page.authenticatorId = authenticatorId;
 
     // Navigate to the test client web application
-    await page.goto('http://localhost:8081');
+    await page.goto('http://localhost:8082');
     await page.waitForLoadState('networkidle');
   });
 

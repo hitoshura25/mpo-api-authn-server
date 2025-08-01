@@ -13,37 +13,37 @@ The server uses OpenAPI 3.0 specifications to automatically generate client libr
 
 ## Quick Start
 
-### 1. Generate All Client Libraries
+### 1. Generate Android Client (Currently Available)
 
 ```bash
 # Make sure your server is running on localhost:8080
-./gradlew run
+./gradlew :webauthn-server:run
 
-# In another terminal, generate all clients
-./generate-clients.sh
+# In another terminal, generate Android client
+./gradlew :webauthn-server:copyGeneratedClientToLibrary
 ```
 
-### 2. Generate Specific Client
+### 2. Generate Other Clients (Future Implementation)
 
 ```bash
-# TypeScript client only
-./gradlew generateTsClient
+# TypeScript client (when implemented)
+./gradlew :webauthn-server:generateTsClient
 
-# Java client only  
-./gradlew generateJavaClient
+# Java client (when implemented)
+./gradlew :webauthn-server:generateJavaClient
 
-# Python client only
-./gradlew generatePythonClient
+# Python client (when implemented)
+./gradlew :webauthn-server:generatePythonClient
 
-# C# client only
-./gradlew generateCsharpClient
+# C# client (when implemented)
+./gradlew :webauthn-server:generateCsharpClient
 ```
 
-### 3. Package for Distribution
+### 3. Package for Distribution (Future Implementation)
 
 ```bash
-# Generate and package all clients
-./generate-clients.sh --package
+# Generate and package all clients (when implemented)
+./gradlew :webauthn-server:generateAllClients
 ```
 
 ## Generated Client Locations
@@ -51,11 +51,106 @@ The server uses OpenAPI 3.0 specifications to automatically generate client libr
 After generation, client libraries will be available in:
 
 ```
-build/generated-clients/
-├── typescript/          # TypeScript/JavaScript client
-├── java/               # Java client
-├── python/             # Python client
-└── csharp/             # C# client
+webauthn-server/build/generated-clients/
+├── android/            # Android-specific Java client (currently implemented)
+├── typescript/         # TypeScript/JavaScript client (future)
+├── java/               # Java client (future)  
+├── python/             # Python client (future)
+└── csharp/             # C# client (future)
+```
+
+**Android Client Integration:**
+The Android client is automatically copied to:
+```
+android-test-client/client-library/src/main/java/
+```
+
+## Client Publishing
+
+### Build and Publish All Clients (Future Implementation)
+
+```bash
+# Generate, build, and prepare all clients for publishing (when implemented)
+./gradlew :webauthn-server:prepareClientPublishing
+```
+
+This will:
+1. Generate all client libraries
+2. Build them (compile, test, package)
+3. Publish Java/Android clients to local Maven
+4. Package TypeScript/Python/C# clients for distribution
+5. Create distribution artifacts in `build/client-distributions/`
+
+### Individual Client Management
+
+```bash
+# Generate specific client
+./gradlew generateAndroidClient
+./gradlew generateTsClient
+
+# Build and publish individual clients
+cd build/generated-clients/android
+./gradlew build publishToMavenLocal
+
+cd build/generated-clients/typescript  
+npm install && npm run build && npm pack
+```
+
+### Publishing to Remote Repositories
+
+After running `./gradlew prepareClientPublishing`, you can publish to remote repositories:
+
+#### Maven Central (Java/Android)
+```bash
+cd build/generated-clients/java
+# Configure Maven credentials in ~/.m2/settings.xml
+./gradlew publish
+
+cd ../android
+./gradlew publish
+```
+
+#### NPM Registry (TypeScript)
+```bash
+cd build/generated-clients/typescript
+npm login
+npm publish
+```
+
+#### PyPI (Python)
+```bash
+cd build/generated-clients/python
+pip install twine
+python setup.py sdist bdist_wheel
+twine upload dist/*
+```
+
+#### NuGet Gallery (C#)
+```bash
+cd build/generated-clients/csharp
+dotnet pack
+dotnet nuget push *.nupkg --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json
+```
+
+### Using Published Clients
+
+Once published, consumers can use the clients directly:
+
+#### Android Project
+```gradle
+dependencies {
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+}
+```
+
+#### NPM Project
+```bash
+npm install mpo-webauthn-client
+```
+
+#### Python Project
+```bash
+pip install mpo-webauthn-client
 ```
 
 ## Using the Generated Clients

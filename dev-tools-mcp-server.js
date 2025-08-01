@@ -253,7 +253,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 async function runTests(args = {}) {
   const { testPattern, testType = 'all' } = args;
   
-  let command = './gradlew test';
+  let command = './gradlew :webauthn-server:test';
   
   if (testPattern) {
     command += ` --tests "*${testPattern}*"`;
@@ -292,7 +292,7 @@ async function buildProject(args = {}) {
   
   let command = './gradlew';
   if (clean) command += ' clean';
-  command += ' build';
+  command += ' :webauthn-server:build';
   if (skipTests) command += ' -x test';
   
   try {
@@ -329,7 +329,7 @@ async function startDevServer(args = {}) {
   try {
     if (withDependencies) {
       // Start dependencies first
-      execSync('docker-compose -f docker-compose.deps.yml up -d postgres redis', {
+      execSync('docker-compose -f webauthn-server/docker-compose.yml up -d postgres redis', {
         encoding: 'utf8',
         cwd: process.cwd()
       });
@@ -339,7 +339,7 @@ async function startDevServer(args = {}) {
     }
     
     // Start the application (non-blocking)
-    const appProcess = spawn('./gradlew', ['run'], {
+    const appProcess = spawn('./gradlew', [':webauthn-server:run'], {
       cwd: process.cwd(),
       detached: true,
       stdio: 'pipe'
@@ -369,7 +369,7 @@ async function startDevServer(args = {}) {
 async function stopDevServer(args = {}) {
   try {
     // Stop Docker dependencies
-    execSync('docker-compose -f docker-compose.deps.yml down', {
+    execSync('docker-compose -f webauthn-server/docker-compose.yml down', {
       encoding: 'utf8',
       cwd: process.cwd()
     });
@@ -487,9 +487,9 @@ async function checkDependencies(args = {}) {
   const { outdated = false } = args;
   
   try {
-    let command = './gradlew dependencies';
+    let command = './gradlew :webauthn-server:dependencies';
     if (outdated) {
-      command = './gradlew dependencyUpdates';
+      command = './gradlew :webauthn-server:dependencyUpdates';
     }
     
     const output = execSync(command, { 
@@ -526,13 +526,13 @@ async function generateApiClients(args = {}) {
     let command = './gradlew';
     
     if (language === 'all') {
-      command += ' generateAllClients';
+      command += ' :webauthn-server:generateAllClients';
     } else {
       const taskMap = {
-        'typescript': 'generateTsClient',
-        'java': 'generateJavaClient', 
-        'python': 'generatePythonClient',
-        'csharp': 'generateCsharpClient'
+        'typescript': ':webauthn-server:generateTsClient',
+        'java': ':webauthn-server:generateJavaClient', 
+        'python': ':webauthn-server:generatePythonClient',
+        'csharp': ':webauthn-server:generateCsharpClient'
       };
       command += ` ${taskMap[language]}`;
     }
@@ -567,7 +567,7 @@ async function generateApiClients(args = {}) {
 async function databaseStatus(args = {}) {
   try {
     // Check Docker services
-    const dockerStatus = execSync('docker-compose -f docker-compose.deps.yml ps', { 
+    const dockerStatus = execSync('docker-compose -f webauthn-server/docker-compose.yml ps', { 
       encoding: 'utf8',
       cwd: process.cwd()
     });
@@ -608,7 +608,7 @@ async function viewLogs(args = {}) {
     
     try {
       // Try to get Docker logs
-      const dockerLogs = execSync('docker-compose logs --tail=50 webauthn-server', { 
+      const dockerLogs = execSync('docker-compose -f webauthn-server/docker-compose.yml logs --tail=50 webauthn-server', { 
         encoding: 'utf8',
         cwd: process.cwd(),
         timeout: 10000

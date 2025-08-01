@@ -17,17 +17,21 @@ This project is enhanced with Model Context Protocol (MCP) tools specifically de
 - **`run_tests`** - Run project tests with optional filters
   - Filter by test pattern or class name
   - Choose test types (unit, integration, all)
+  - Works with multi-module structure (`:webauthn-server:test`) and standalone projects (`cd android-test-client && ./gradlew test`)
 
 ### 🏗️ Build Tools  
 - **`build_project`** - Build the project with Gradle
   - Option for clean builds
   - Option to skip tests
+  - Supports module-specific builds (`:webauthn-server:build`)
 
 ### 🚀 Server Management
 - **`start_dev_server`** - Start development server with dependencies
+  - Uses `webauthn-server/start-dev.sh` for Docker setup
   - Automatically starts PostgreSQL and Redis
   - Configurable port
 - **`stop_dev_server`** - Stop server and dependencies
+  - Stops Docker containers in webauthn-server module
 
 ### 🔍 Code Analysis
 - **`analyze_code_structure`** - Analyze project organization

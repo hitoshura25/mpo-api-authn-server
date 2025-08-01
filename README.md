@@ -1,293 +1,178 @@
-# WebAuthn KTor Server
+# MPO WebAuthn Authentication Server
 
-[![codecov](https://codecov.io/gh/hitoshura25/mpo-api-authn-server/graph/badge.svg?token=DMqg4cl5Vq)](https://codecov.io/gh/hitoshura25/mpo-api-authn-server)
+A production-ready WebAuthn (FIDO2/Passkeys) authentication server built with KTor and comprehensive security testing.
 
-A production-ready WebAuthn authentication server built with KTor and the Yubico java-webauthn-server library, featuring comprehensive security vulnerability protection and automated monitoring.
+## 🏗️ Multi-Module Project Structure
 
-**Disclaimer**: Used GitHub Copilot agent mode along with various AI Models (Claude Sonnet, Gpt 4.1)
+This project follows a multi-module architecture for clear separation of concerns:
+
+- **webauthn-server/** - Main WebAuthn KTor server with production features
+- **webauthn-test-credentials-service/** - HTTP service for cross-platform testing credentials
+- **webauthn-test-lib/** - Shared WebAuthn test utilities library
+- **android-test-client/** - Android client with generated API library
+- **test-client/** - Web-based Playwright E2E tests
 
 ## 🚀 Quick Start
 
-```bash
-# Clone and setup
-git clone <repository-url>
-cd mpo-api-authn-server
+### Prerequisites
+- Java 21+
+- Docker & Docker Compose
+- Node.js 18+ (for web tests)
 
-# Start dependencies (PostgreSQL & Redis)
+### Running the Server
+```bash
+# Start with Docker (recommended)
+cd webauthn-server
 ./start-dev.sh
 
-# Run tests
-./gradlew test
-
-# Start the server
-./gradlew run
+# Or run directly (requires local Redis/PostgreSQL)
+./gradlew :webauthn-server:run
 ```
 
-## 🛡️ Security Features
-
-This server provides **enterprise-grade security** with protection against:
-
-- ✅ **PoisonSeed attacks** - Cross-origin authentication abuse
-- ✅ **Username enumeration** (CVE-2024-39912) - Prevents user discovery
-- ✅ **Replay attacks** - Challenge/response reuse prevention
-- ✅ **Credential tampering** - Cryptographic signature validation
-- ✅ **Automated vulnerability monitoring** - Weekly security checks with PR generation
-
-**Security Status**: 🛡️ **Production Ready** (7/7 security tests passing, 100% coverage)
-
-## 🏗️ Technology Stack
-
-- **Framework**: KTor (Kotlin web framework)
-- **WebAuthn Library**: Yubico java-webauthn-server (industry standard)
-- **Storage**: PostgreSQL (credentials), Redis (sessions)
-- **Testing**: JUnit 5, Kotlin Test, Testcontainers
-- **Build**: Gradle with Kotlin DSL
-- **Monitoring**: OpenTelemetry, Micrometer, Jaeger
-- **Security**: Automated vulnerability monitoring & testing
-
-## 📋 Development Commands
-
+### Running Tests
 ```bash
-# Testing
-./gradlew test                           # Run all tests
-./gradlew test --tests="*Vulnerability*" # Run security tests only
-./gradlew koverHtmlReport               # Generate coverage report
+# Server tests
+./gradlew :webauthn-server:test
 
-# Building & Running
-./gradlew build                         # Build the project
-./gradlew run                          # Run locally
-./gradlew check                        # Run all verification checks
+# Android client tests  
+cd android-test-client && ./gradlew test
 
-# Security Monitoring
-npm run monitor                        # Check for new vulnerabilities
-./scripts/setup-vulnerability-monitoring.sh  # Setup monitoring system
-```
-
-# Environment Variables
-
-Setup the below in order to properly configure the app and dependencies:
-
-### Database Configuration
-
-```
-MPO_AUTHN_DB_HOST
-MPO_AUTHN_DB_PORT
-MPO_AUTHN_DB_NAME
-MPO_AUTHN_DB_USERNAME
-MPO_AUTHN_DB_PASSWORD
-```
-
-### Redis Configuration
-
-```
-MPO_AUTHN_REDIS_HOST
-MPO_AUTHN_REDIS_PORT
-MPO_AUTHN_REDIS_PASSWORD
-```
-
-### Application Configuration
-
-```
-MPO_AUTHN_APP_RELYING_PARTY_ID
-MPO_AUTHN_APP_RELYING_PARTY_NAME
-
- # Only used when running the full docker compose stack
-MPO_AUTHN_APP_PORT
-MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT # If not setup, OpenTelemetry.noop() will be used
-MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME
-```
-
-See [Docker Setup Guide for an example](#example-env)
-
-# Docker Setup Guide
-
-This project supports two different Docker setups to accommodate different development workflows.
-
-## 🔧 Development Mode (Recommended for active development)
-
-**Use this when:** You're actively coding and want fast iteration cycles.
-
-**What it does:** Starts only the dependencies (PostgreSQL & Redis) in Docker containers while you run your Kotlin
-application locally.
-
-**Benefits:**
-
-- Faster development cycle (no Docker rebuilds)
-- Better debugging capabilities
-- IDE integration works seamlessly
-- Easier testing and hot reloading
-
-### Usage:
-
-```bash
-# Start dependencies only
-./start-dev.sh # (or docker-compose -f docker-compose.deps.yml up -d)
-
-# Run your application locally
-./gradlew run
-
-# Stop dependencies when done
-docker-compose down
-```
-
-## 🌐 Full Stack Mode (For demos, integration testing, production)
-
-**Use this when:** You want to showcase the complete system, run integration tests, or deploy everything together.
-
-**What it does:** Starts PostgreSQL, Redis, AND your WebAuthn server application in Docker containers.
-
-**Benefits:**
-
-- Complete environment isolation
-- Perfect for demos and presentations
-- Great for integration testing
-- Production-like setup
-
-### Usage:
-
-```bash
-# Start everything
-./start-full.sh # (or docker-compose -f docker-compose.yml up -d)
-
-# Stop everything
-docker-compose down
-```
-
-## Example .env
-
-Below is an example .env file that can be used with the docker-compose setup:
-
-```
-# Database Configuration
-MPO_AUTHN_DB_NAME=webauthn
-MPO_AUTHN_DB_USERNAME=webauthn_user
-MPO_AUTHN_DB_PASSWORD=<password>
-MPO_AUTHN_DB_PORT=5432
-MPO_AUTHN_DB_HOST=postgres
-
-# Redis Configuration
-MPO_AUTHN_REDIS_PASSWORD=<password>
-MPO_AUTHN_REDIS_HOST=redis
-MPO_AUTHN_REDIS_PORT=6379
-
-# Application Configuration
-MPO_AUTHN_APP_PORT=8080
-MPO_AUTHN_APP_RELYING_PARTY_ID=webauthn.mpo.io
-MPO_AUTHN_APP_RELYING_PARTY_NAME=MPO Api Authn
-
-MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME=mpo-authn-server
-MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT=http://jaeger:4317
-```
-
-## 🧪 Testing
-
-### Security Testing
-The project includes comprehensive security testing with protection against known vulnerabilities:
-
-```bash
-# Run all security tests
-./gradlew test --tests="*VulnerabilityProtectionTest*"
-
-# View security analysis
-cat WEBAUTHN_SECURITY_ANALYSIS.md
-```
-
-### End-to-End Testing
-```bash
+# Web E2E tests (requires server running)
 cd test-client
-npm install -g playwright
 npm install
-npm run test:with-server:report
+npm test
 ```
 
-### Test Utilities
-The project provides `WebAuthnTestHelpers` for easy test development:
-- `registerUser()` / `authenticateUser()` - Complete flows
-- `startRegistration()` / `completeRegistration()` - Individual steps
-- `generateTestKeypair()` / `generateTestUsername()` - Test data
-- Security testing helpers for tampered credentials
+## 🌐 Port Assignments
 
-## 📁 Project Structure
+- **WebAuthn Server**: 8080 (main API)
+- **WebAuthn Test Service**: 8081 (cross-platform credential generation)
+- **Test Client**: 8082 (E2E test web frontend)
+- **PostgreSQL**: 5432
+- **Redis**: 6379
+- **Jaeger UI**: 16686
 
-```
-src/main/kotlin/com/vmenon/mpo/api/authn/
-├── routes/           # HTTP endpoint handlers
-├── storage/          # Data persistence layer
-├── security/         # Security services & quantum-safe crypto
-├── yubico/          # WebAuthn implementation
-└── monitoring/      # OpenTelemetry tracing
+## 🔐 Security Features
 
-src/test/kotlin/
-├── security/        # Security vulnerability tests
-├── test_utils/      # Shared testing utilities
-└── ...             # Integration & unit tests
-```
+- **WebAuthn 2.0/FIDO2** compliance using Yubico library
+- **Username enumeration protection** - Authentication start doesn't reveal user existence
+- **Replay attack prevention** - Challenge/response validation
+- **Cross-origin protection** - Proper RP ID validation
+- **Comprehensive vulnerability testing** - 7 security test categories
 
-## 🔐 Automated Security Monitoring
+## 📱 Client Generation
 
-This project includes an automated vulnerability monitoring system that:
-
-- **Monitors CVE databases** for new WebAuthn vulnerabilities
-- **Tracks security advisories** from Yubico and FIDO Alliance  
-- **Auto-generates test stubs** for newly discovered vulnerabilities
-- **Creates pull requests** for security team review
-- **Runs weekly via GitHub Actions** with zero maintenance
-
-### Setup & Usage
+Generate client libraries for multiple platforms:
 
 ```bash
-# One-time setup
-./scripts/setup-vulnerability-monitoring.sh
+# Generate Android client
+./gradlew :webauthn-server:copyGeneratedClientToLibrary
 
-# Manual vulnerability check
-npm run monitor
-
-# View current security status
-cat vulnerability-tracking.json
+# Generate all clients (when implemented)
+./gradlew :webauthn-server:generateAllClients
 ```
 
-### Current Security Coverage
-- **4 vulnerabilities tracked** with 100% test coverage
-- **7 security tests** running on every commit via pre-commit hooks
-- **Production-ready** security validation
+## 🧪 Testing Architecture
 
-## 🤖 MCP Integration
+The project uses a **layered testing approach** with different access patterns:
 
-Model Context Protocol integration for AI-assisted development:
+### Testing Layers
+1. **webauthn-test-lib** - Shared credential generation library
+2. **webauthn-test-credentials-service** - HTTP API wrapper (port 8081)  
+3. **Integration tests** - Use shared library directly for performance
+
+### Cross-Platform Testing
+Start the test service for external clients:
 
 ```bash
-# Setup MCP tools
-./setup-dev-tools.sh
+# Start test service
+./gradlew :webauthn-test-credentials-service:run
 
-# Claude Code integration via claude_config.json
-# Provides AI assistance for WebAuthn development
+# Test endpoints available at http://localhost:8081
+# - POST /test/generate-registration-credential
+# - POST /test/generate-authentication-credential
+# - POST /test/clear
+# - GET /test/sessions
 ```
 
-# Running in Intellij Guide
+**Architecture Decisions**: 
+- **webauthn-server integration tests**: Use shared library directly for performance and reliability
+- **Android client tests**: Use HTTP API calls to webauthn-test-credentials-service for realistic cross-platform testing
 
-The environment variable values used for the dependency hosts (i.e. postgres, redis, jaeger, etc) may need to be updated
-when the Application is run from within Intellij. One approach is starting up the dependency docker-compose env as
-mentioned in the [Development Mode section](#-development-mode-recommended-for-active-development) and using
-the [EnvFile plugin](https://plugins.jetbrains.com/plugin/7861-envfile).
-Below is an example ide.env file that can be used:
+## 📊 Monitoring & Observability
 
+- **OpenTelemetry** tracing with OTLP export
+- **Micrometer** metrics with Prometheus export
+- **Automated vulnerability monitoring** - Weekly scans with PR generation
+- **Code coverage** reports with Kover
+
+## 🏛️ Architecture
+
+### Storage
+- **PostgreSQL** - Credential storage with quantum-safe encryption
+- **Redis** - Session and challenge storage
+- **HikariCP** - Connection pooling
+- **Flyway** - Database migrations
+
+### Security
+- **Post-quantum cryptography** preparation with BouncyCastle
+- **Koin** dependency injection for testability  
+- **CBOR** encoding for WebAuthn data structures
+
+### API
+- **OpenAPI 3.0** specification with Swagger UI
+- **Jackson** JSON processing with Kotlin support
+- **CORS** configuration for web clients
+
+## 📚 Documentation
+
+- [Security Analysis](WEBAUTHN_SECURITY_ANALYSIS.md) - Vulnerability testing details
+- [Client Generation](CLIENT_GENERATION.md) - Multi-platform client setup  
+- [MCP Development](MCP_DEVELOPMENT_GUIDE.md) - Claude Code integration
+- [GitHub Packages](GITHUB_PACKAGES_SETUP.md) - Publishing setup
+
+## 🛠️ Development
+
+### Module Commands
+```bash
+# Main server
+./gradlew :webauthn-server:test
+./gradlew :webauthn-server:run
+./gradlew :webauthn-server:koverHtmlReport
+
+# Test service  
+./gradlew :webauthn-test-credentials-service:build
+./gradlew :webauthn-test-credentials-service:run
+
+# Shared test library
+./gradlew :webauthn-test-lib:build
+
+# Android client
+cd android-test-client && ./gradlew test
+cd android-test-client && ./gradlew client-library:publish
 ```
-MPO_AUTHN_DB_NAME=webauthn
-MPO_AUTHN_DB_USERNAME=webauthn_user
-MPO_AUTHN_DB_PASSWORD=<password>
-MPO_AUTHN_DB_PORT=5432
-MPO_AUTHN_DB_HOST=localhost
 
+### Docker Development
+```bash
+# Start all dependencies
+cd webauthn-server  
+./start-dev.sh
 
-MPO_AUTHN_REDIS_PASSWORD=<pasword>
-MPO_AUTHN_REDIS_HOST=localhost
-MPO_AUTHN_REDIS_PORT=6379
+# View logs
+docker-compose logs -f
 
-# Application Configuration
-MPO_AUTHN_APP_PORT=8080
-MPO_AUTHN_APP_RELYING_PARTY_ID=webauthn.mpo.io
-MPO_AUTHN_APP_RELYING_PARTY_NAME=MPO Api Authn
-
-MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME=mpo-authn-server
-MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT=http://localhost:4317
+# Stop services
+docker-compose down
 ```
+
+## 🤝 Contributing
+
+1. Follow security-first development practices
+2. All WebAuthn changes require security test coverage
+3. Use `git mv` for file moves to preserve history
+4. Generate clients after API changes
+5. Update documentation for structural changes
+
+## 📄 License
+
+[Add your license here]

@@ -1,0 +1,368 @@
+openapi: 3.0.3
+info:
+  title: MPO WebAuthn Authentication Server API
+  description: |
+    WebAuthn authentication server supporting passkey credentials with quantum-safe cryptography.
+    
+    This API provides endpoints for:
+    - WebAuthn credential registration
+    - WebAuthn authentication
+    - Health monitoring
+    
+    ## WebAuthn Flow
+    
+    ### Registration
+    1. Call `/register/start` with username and display name
+    2. Use the returned challenge with WebAuthn API on client
+    3. Call `/register/complete` with the credential response
+    
+    ### Authentication  
+    1. Call `/authenticate/start` with optional username
+    2. Use the returned challenge with WebAuthn API on client
+    3. Call `/authenticate/complete` with the assertion response
+  version: 1.0.0
+  contact:
+    name: API Support
+    url: https://github.com/vinayakmenon/mpo-api-authn-server
+    email: support@example.com
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+
+servers:
+  - url: http://localhost:8080
+    description: Development server
+  - url: https://api.example.com
+    description: Production server
+
+tags:
+  - name: Registration
+    description: WebAuthn credential registration endpoints
+  - name: Authentication
+    description: WebAuthn authentication endpoints
+  - name: Health
+    description: Health check endpoints
+
+paths:
+  /health:
+    get:
+      tags:
+        - Health
+      summary: Health check
+      description: Returns the health status of the API server
+      operationId: getHealth
+      responses:
+        '200':
+          description: Server is healthy
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /register/start:
+    post:
+      tags:
+        - Registration
+      summary: Start WebAuthn registration
+      description: |
+        Initiates the WebAuthn registration process for a new user.
+        Returns a challenge and options that should be passed to the WebAuthn API.
+      operationId: startRegistration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationRequest'
+      responses:
+        '200':
+          description: Registration challenge created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationResponse'
+        '400':
+          description: Bad request - invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: User already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /register/complete:
+    post:
+      tags:
+        - Registration
+      summary: Complete WebAuthn registration
+      description: |
+        Completes the WebAuthn registration process by verifying the credential
+        response from the client and storing the new credential.
+      operationId: completeRegistration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegistrationCompleteRequest'
+      responses:
+        '200':
+          description: Registration completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RegistrationCompleteResponse'
+        '400':
+          description: Bad request - invalid credential response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Registration request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /authenticate/start:
+    post:
+      tags:
+        - Authentication
+      summary: Start WebAuthn authentication
+      description: |
+        Initiates the WebAuthn authentication process.
+        Can be called with or without a username for usernameless flows.
+      operationId: startAuthentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthenticationRequest'
+      responses:
+        '200':
+          description: Authentication challenge created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResponse'
+        '400':
+          description: Bad request - invalid input
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /authenticate/complete:
+    post:
+      tags:
+        - Authentication
+      summary: Complete WebAuthn authentication
+      description: |
+        Completes the WebAuthn authentication process by verifying the assertion
+        response from the client.
+      operationId: completeAuthentication
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthenticationCompleteRequest'
+      responses:
+        '200':
+          description: Authentication completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationCompleteResponse'
+        '400':
+          description: Bad request - invalid assertion response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Authentication failed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Authentication request not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  schemas:
+    RegistrationRequest:
+      type: object
+      required:
+        - username
+        - displayName
+      properties:
+        username:
+          type: string
+          description: Unique username for the user
+          example: "john.doe"
+          minLength: 1
+          maxLength: 64
+        displayName:
+          type: string
+          description: Human-readable display name
+          example: "John Doe"
+          minLength: 1
+          maxLength: 128
+
+    RegistrationResponse:
+      type: object
+      required:
+        - requestId
+        - publicKeyCredentialCreationOptions
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for this registration request
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        publicKeyCredentialCreationOptions:
+          type: object
+          description: WebAuthn PublicKeyCredentialCreationOptions
+          example:
+            rp:
+              name: "MPO WebAuthn Server"
+              id: "localhost"
+            user:
+              id: "dXNlcklk"
+              name: "john.doe"
+              displayName: "John Doe"
+            challenge: "Y2hhbGxlbmdl"
+            pubKeyCredParams:
+              - type: "public-key"
+                alg: -7
+
+    RegistrationCompleteRequest:
+      type: object
+      required:
+        - requestId
+        - credential
+      properties:
+        requestId:
+          type: string
+          description: The request ID from the start registration response
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        credential:
+          type: string
+          description: The PublicKeyCredential JSON string returned by navigator.credentials.create()
+
+    RegistrationCompleteResponse:
+      type: object
+      required:
+        - success
+        - credentialId
+      properties:
+        success:
+          type: boolean
+          description: Whether registration was successful
+          example: true
+        credentialId:
+          type: string
+          description: The base64url-encoded credential ID of the registered credential
+          example: "2RVLo5tYEw6jvQ8ccCDTszdbKPF3j7XMVu_w_5lB2mM"
+
+    AuthenticationRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          description: Username (optional for usernameless flows)
+          example: "john.doe"
+          nullable: true
+
+    AuthenticationResponse:
+      type: object
+      required:
+        - requestId
+        - publicKeyCredentialRequestOptions
+      properties:
+        requestId:
+          type: string
+          description: Unique identifier for this authentication request
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        publicKeyCredentialRequestOptions:
+          type: object
+          description: WebAuthn PublicKeyCredentialRequestOptions
+
+    AuthenticationCompleteRequest:
+      type: object
+      required:
+        - requestId
+        - credential
+      properties:
+        requestId:
+          type: string
+          description: The request ID from the start authentication response
+          example: "550e8400-e29b-41d4-a716-446655440001"
+        credential:
+          type: string
+          description: The PublicKeyCredential JSON string returned by navigator.credentials.get()
+
+    AuthenticationCompleteResponse:
+      type: object
+      required:
+        - success
+        - message
+        - username
+      properties:
+        success:
+          type: boolean
+          description: Whether authentication was successful
+          example: true
+        message:
+          type: string
+          description: Success message confirming authentication
+          example: "Authentication successful"
+        username:
+          type: string
+          description: The authenticated username
+          example: "john.doe"
+
+    HealthResponse:
+      type: object
+      required:
+        - status
+        - timestamp
+      properties:
+        status:
+          type: string
+          enum: [ healthy, unhealthy ]
+          description: Overall health status
+          example: "healthy"
+        timestamp:
+          type: integer
+          format: int64
+          description: Unix timestamp in milliseconds when health was checked
+          example: 1700473800000
+        version:
+          type: string
+          description: API version
+          example: "1.0.0"
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Error message
+          example: "Invalid request parameters"
+        details:
+          type: string
+          description: Additional error details
+          example: "Username is required"

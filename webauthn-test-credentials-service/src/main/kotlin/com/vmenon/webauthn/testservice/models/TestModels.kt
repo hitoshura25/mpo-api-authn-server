@@ -55,7 +55,7 @@ data class HealthResponse(
     @JsonProperty("timestamp")
     val timestamp: Long,
     @JsonProperty("service")
-    val service: String = "webauthn-test-service",
+    val service: String = "webauthn-test-credentials-service",
 )
 
 /**

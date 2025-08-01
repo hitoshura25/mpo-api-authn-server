@@ -49,7 +49,7 @@ class TestRoutesTest {
 
             val healthResponse: HealthResponse = objectMapper.readValue(response.bodyAsText())
             assertEquals("healthy", healthResponse.status)
-            assertEquals("webauthn-test-service", healthResponse.service)
+            assertEquals("webauthn-test-credentials-service", healthResponse.service)
             assertTrue(healthResponse.timestamp > 0)
         }
 
@@ -74,7 +74,8 @@ class TestRoutesTest {
 
             assertEquals(HttpStatusCode.OK, response.status)
 
-            val credentialResponse: TestCredentialResponse = objectMapper.readValue(response.bodyAsText())
+            val credentialResponse: TestCredentialResponse =
+                objectMapper.readValue(response.bodyAsText())
             assertNotNull(credentialResponse.credential)
             assertNotNull(credentialResponse.keyPairId)
             assertNotNull(credentialResponse.credentialId)
@@ -128,7 +129,8 @@ class TestRoutesTest {
                     setBody(objectMapper.writeValueAsString(registrationRequest))
                 }
 
-            val registrationResult: TestCredentialResponse = objectMapper.readValue(registrationResponse.bodyAsText())
+            val registrationResult: TestCredentialResponse =
+                objectMapper.readValue(registrationResponse.bodyAsText())
 
             // Now generate authentication credential
             val authChallenge = ByteArray.fromBase64Url("YXV0aC1jaGFsbGVuZ2U").base64Url
@@ -147,7 +149,8 @@ class TestRoutesTest {
 
             assertEquals(HttpStatusCode.OK, authResponse.status)
 
-            val authResult: TestCredentialResponse = objectMapper.readValue(authResponse.bodyAsText())
+            val authResult: TestCredentialResponse =
+                objectMapper.readValue(authResponse.bodyAsText())
             assertNotNull(authResult.credential)
             assertEquals(registrationResult.keyPairId, authResult.keyPairId)
             assertEquals(registrationResult.credentialId, authResult.credentialId)
@@ -209,7 +212,8 @@ class TestRoutesTest {
 
             // Verify sessions are empty
             val sessionsResponse = client.get("/test/sessions")
-            val sessionsResult: Map<String, Any> = objectMapper.readValue(sessionsResponse.bodyAsText())
+            val sessionsResult: Map<String, Any> =
+                objectMapper.readValue(sessionsResponse.bodyAsText())
             assertEquals(0, sessionsResult["count"])
             assertTrue((sessionsResult["activeKeyPairs"] as List<*>).isEmpty())
         }
@@ -219,7 +223,8 @@ class TestRoutesTest {
         createTestApp {
             // Initially should be empty
             val initialResponse = client.get("/test/sessions")
-            val initialResult: Map<String, Any> = objectMapper.readValue(initialResponse.bodyAsText())
+            val initialResult: Map<String, Any> =
+                objectMapper.readValue(initialResponse.bodyAsText())
             assertEquals(0, initialResult["count"])
 
             // Generate some test credentials
@@ -232,11 +237,13 @@ class TestRoutesTest {
                     setBody(objectMapper.writeValueAsString(requestBody))
                 }
 
-            val registrationResult: TestCredentialResponse = objectMapper.readValue(registrationResponse.bodyAsText())
+            val registrationResult: TestCredentialResponse =
+                objectMapper.readValue(registrationResponse.bodyAsText())
 
             // Check sessions again
             val sessionsResponse = client.get("/test/sessions")
-            val sessionsResult: Map<String, Any> = objectMapper.readValue(sessionsResponse.bodyAsText())
+            val sessionsResult: Map<String, Any> =
+                objectMapper.readValue(sessionsResponse.bodyAsText())
             assertEquals(1, sessionsResult["count"])
 
             val activeKeyPairs = sessionsResult["activeKeyPairs"] as List<*>
@@ -282,7 +289,8 @@ class TestRoutesTest {
                     setBody(objectMapper.writeValueAsString(registrationRequest))
                 }
 
-            val registrationResult: TestCredentialResponse = objectMapper.readValue(registrationResponse.bodyAsText())
+            val registrationResult: TestCredentialResponse =
+                objectMapper.readValue(registrationResponse.bodyAsText())
 
             // Now try authentication with invalid challenge
             val authRequest =

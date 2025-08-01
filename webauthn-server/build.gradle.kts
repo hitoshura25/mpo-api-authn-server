@@ -19,7 +19,7 @@ detekt {
 ktlint {
     version.set("1.0.1")
     android.set(false)
-    ignoreFailures.set(true)  // Don't fail build on formatting during testing
+    ignoreFailures.set(false)  // Fail build on formatting violations
     reporters {
         reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
         reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.CHECKSTYLE)

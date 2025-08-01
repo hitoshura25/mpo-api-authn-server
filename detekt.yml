@@ -1,15 +1,14 @@
-# Strict Detekt Configuration - High Code Quality Standards
-# Based on stricter defaults for professional development
-# https://detekt.dev/docs/intro
+# Detekt Configuration - Using Official Defaults
+# Based on detekt's official default configuration
+# https://detekt.dev/docs/introduction/configurations/
 
 build:
-  maxIssues: 50  # Allow issues during transition to stricter rules
+  maxIssues: 0  # Fail build on any issues
   excludeCorrectable: false
-  weights: {}
 
 config:
   validation: true
-  warningsAsErrors: false  # Don't treat warnings as errors during transition
+  warningsAsErrors: false
   excludes: ".*test.*,.*/resources/.*,.*/tmp/.*,.*/build/.*"
 
 processors:
@@ -19,429 +18,34 @@ output-reports:
   active: true
   exclude: []
 
-# COMPLEXITY RULES - Strict limits for maintainable code
+# Use Detekt's official default rules and thresholds
+# Only minimal customization for project-specific needs
+
 complexity:
   active: true
-  CyclomaticComplexMethod:
-    active: true
-    threshold: 10  # Stricter than default (15) - keep methods simple
-    ignoreSingleWhenExpression: false
-    ignoreSimpleWhenEntries: false
-  LargeClass:
-    active: true
-    threshold: 400  # Stricter than default (600) - prevent god classes
-  LongMethod:
-    active: true
-    threshold: 40   # Stricter than default (60) - force method decomposition
-  LongParameterList:
-    active: true
-    functionThreshold: 4  # Stricter than default (6) - encourage parameter objects
-    constructorThreshold: 5  # Stricter than default (7)
-    ignoreDefaultParameters: false
-  MethodOverloading:
-    active: true
-    threshold: 4  # Stricter than default (6) - limit overloads
-  NestedBlockDepth:
-    active: true
-    threshold: 3  # Stricter than default (4) - reduce nesting
+  # Use defaults: CyclomaticComplexMethod (15), LongMethod (60), etc.
   TooManyFunctions:
     active: true
-    thresholdInFiles: 12      # Stricter than default (11)
-    thresholdInClasses: 12    # Stricter than default (11) 
-    thresholdInInterfaces: 8  # Stricter than default (11)
-    thresholdInObjects: 8     # Stricter than default (11)
-    thresholdInEnums: 3       # Stricter than default (5)
-    ignoreDeprecated: false
-    ignorePrivate: false
-    ignoreOverridden: false
+    thresholdInFiles: 12  # Slight increase from default (11) to accommodate well-structured route files
 
-# EXCEPTIONS RULES - Enforce specific and meaningful exception handling
 exceptions:
   active: true
-  ExceptionRaisedInUnexpectedLocation:
-    active: true
-    methodNames: ['toString', 'hashCode', 'equals', 'finalize']
-  InstanceOfCheckForException:
-    active: true
-    excludes: "**/test/**,**/androidTest/**,**/*.Test.kt,**/*.Spec.kt,**/*.Spek.kt"
-  NotImplementedDeclaration:
-    active: true  # Stricter - discourage TODO() in production code
-  PrintStackTrace:
-    active: true   # Never use printStackTrace()
-  RethrowCaughtException:
-    active: true  # Stricter - avoid unnecessary rethrowing
-  ReturnFromFinally:
-    active: true
-  SwallowedException:
-    active: true
-    allowedExceptionNameRegex: "^(_|(ignore|expected).*)"
-  ThrowingExceptionFromFinally:
-    active: true
-  ThrowingExceptionInMain:
-    active: true  # Stricter - main should handle exceptions properly
-  ThrowingExceptionsWithoutMessageOrCause:
-    active: true
-    excludes: "**/test/**,**/androidTest/**,**/*.Test.kt,**/*.Spec.kt,**/*.Spek.kt"
-    exceptions:
-      - ArrayIndexOutOfBoundsException
-      - Exception
-      - IllegalArgumentException
-      - IllegalMonitorStateException
-      - IllegalStateException
-      - IndexOutOfBoundsException
-      - NullPointerException
-      - RuntimeException
-      - Throwable
-  TooGenericExceptionCaught:
-    active: true
-    exceptionNames:
-      - ArrayIndexOutOfBoundsException
-      - Error
-      - Exception           # Critical - no generic exception catching
-      - IllegalMonitorStateException
-      - NullPointerException
-      - IndexOutOfBoundsException
-      - RuntimeException
-      - Throwable
-    allowedExceptionNameRegex: "^(_|(ignore|expected).*)"
-  TooGenericExceptionThrown:
-    active: true
-    exceptionNames:
-      - Error
-      - Exception
-      - Throwable
-      - RuntimeException
+  # Use defaults for exception handling rules
 
-# NAMING RULES - Strict naming conventions
 naming:
   active: true
-  ClassNaming:
-    active: true
-    classPattern: '[A-Z][a-zA-Z0-9]*'
-  ConstructorParameterNaming:
-    active: true
-    parameterPattern: '[a-z][A-Za-z0-9]*'
-    privateParameterPattern: '[a-z][A-Za-z0-9]*'
-    excludeClassPattern: '$^'
-  EnumNaming:
-    active: true
-    enumEntryPattern: '[A-Z][_a-zA-Z0-9]*'
-  ForbiddenClassName:
-    active: true
-    forbiddenName: ['Manager', 'Helper', 'Util', 'Utils']  # Discourage vague names
-  FunctionMaxLength:
-    active: true
-    maximumFunctionNameLength: 25  # Stricter - encourage concise names
-  FunctionMinLength:
-    active: true
-    minimumFunctionNameLength: 3
-  FunctionNaming:
-    active: true
-    excludes: "**/test/**,**/androidTest/**,**/*.Test.kt,**/*.Spec.kt,**/*.Spek.kt"
-    functionPattern: '([a-z][a-zA-Z0-9]*)|(`.*`)'
-    excludeClassPattern: '$^'
-  FunctionParameterNaming:
-    active: true
-    parameterPattern: '[a-z][A-Za-z0-9]*'
-    excludeClassPattern: '$^'
-  InvalidPackageDeclaration:
-    active: true
-    rootPackage: ''
-  MatchingDeclarationName:
-    active: true
-    mustBeFirst: true
-  MemberNameEqualsClassName:
-    active: true
-  ObjectPropertyNaming:
-    active: true
-    constantPattern: '[A-Za-z][_A-Za-z0-9]*'
-    propertyPattern: '[A-Za-z][_A-Za-z0-9]*'
-    privatePropertyPattern: '(_)?[A-Za-z][_A-Za-z0-9]*'
-  PackageNaming:
-    active: true
-    packagePattern: '[a-z]+(\.[a-z][A-Za-z0-9]*)*'
-  TopLevelPropertyNaming:
-    active: true
-    constantPattern: '[A-Z][_A-Z0-9]*'
-    propertyPattern: '[A-Za-z][_A-Za-z0-9]*'
-    privatePropertyPattern: '_?[A-Za-z][_A-Za-z0-9]*'
-  VariableMaxLength:
-    active: true
-    maximumVariableNameLength: 30  # Prevent excessively long names
-  VariableMinLength:
-    active: true
-    minimumVariableNameLength: 1
-  VariableNaming:
-    active: true
-    variablePattern: '[a-z][A-Za-z0-9]*'
-    privateVariablePattern: '(_)?[a-z][A-Za-z0-9]*'
-    excludeClassPattern: '$^'
+  # Use defaults for naming conventions
 
-# PERFORMANCE RULES - Detect performance anti-patterns
 performance:
   active: true
-  ArrayPrimitive:
-    active: true
-  ForEachOnRange:
-    active: true
-    excludes: "**/test/**,**/androidTest/**,**/*.Test.kt,**/*.Spec.kt,**/*.Spek.kt"
-  SpreadOperator:
-    active: true
-    excludes: "**/test/**,**/androidTest/**,**/*.Test.kt,**/*.Spec.kt,**/*.Spek.kt"
-  UnnecessaryTemporaryInstantiation:
-    active: true
+  # Use defaults for performance checks
 
-# POTENTIAL BUGS - Detect likely bugs and issues
 potential-bugs:
   active: true
-  Deprecation:
-    active: true  # Stricter - catch deprecated usage
-  EqualsAlwaysReturnsTrueOrFalse:
-    active: true
-  EqualsWithHashCodeExist:
-    active: true
-  ExplicitGarbageCollectionCall:
-    active: true
-  HasPlatformType:
-    active: true
-  IgnoredReturnValue:
-    active: true
-    restrictToConfig: true
-    returnValueAnnotations: ['*.CheckReturnValue', '*.CheckResult']
-  ImplicitDefaultLocale:
-    active: true
-  ImplicitUnitReturnType:
-    active: true  # Stricter - be explicit about Unit returns
-    allowExplicitReturnType: true
-  InvalidRange:
-    active: true
-  IteratorHasNextCallsNextMethod:
-    active: true
-  IteratorNotThrowingNoSuchElementException:
-    active: true
-  LateinitUsage:
-    active: true  # Stricter - discourage lateinit
-    excludes: "**/test/**,**/androidTest/**,**/*.Test.kt,**/*.Spec.kt,**/*.Spek.kt"
-    ignoreOnClassesPattern: ''
-  MapGetWithNotNullAssertionOperator:
-    active: true
-  NullableToStringCall:
-    active: true
-  UnconditionalJumpStatementInLoop:
-    active: true
-  UnnecessaryNotNullOperator:
-    active: true
-  UnnecessarySafeCall:
-    active: true
-  UnreachableCode:
-    active: true
-  UnsafeCallOnNullableType:
-    active: true
-  UnsafeCast:
-    active: true
-  UselessPostfixExpression:
-    active: true
-  WrongEqualsTypeParameter:
-    active: true
+  # Use defaults for bug detection
 
-# STYLE RULES - Enforce consistent and clean code style
 style:
   active: true
-  ClassOrdering:
-    active: true
-  CollapsibleIfStatements:
-    active: true  # Stricter - simplify conditionals
-  DestructuringDeclarationWithTooManyEntries:
-    active: true
-    maxDestructuringEntries: 3
-  EqualsNullCall:
-    active: true
-  ExplicitCollectionElementAccessMethod:
-    active: true  # Stricter - prefer explicit methods
-  ExplicitItLambdaParameter:
-    active: true  # Stricter - be explicit about lambda parameters
-  ExpressionBodySyntax:
-    active: true  # Stricter - prefer expression body when appropriate
-    includeLineWrapping: false
-  ForbiddenComment:
-    active: true
-    comments: ['TODO:', 'FIXME:', 'STOPSHIP:', 'XXX:', 'HACK:', 'TEMP:', 'BUG:']
-    allowedPatterns: ''
-  ForbiddenImport:
-    active: true
-    imports: ['java.util.logging.*', 'java.lang.*']  # Prevent problematic imports
-    forbiddenPatterns: ''
-  ForbiddenMethodCall:
-    active: true
-    methods: ['kotlin.io.println', 'kotlin.io.print', 'java.lang.System.out.println']
-  ForbiddenVoid:
-    active: true  # Stricter - use Unit instead of Void
-    ignoreOverridden: false
-    ignoreUsageInGenerics: false
-  FunctionOnlyReturningConstant:
-    active: true
-    ignoreOverridableFunction: true
-    ignoreActualFunction: true
-    excludedFunctions: []
-  LoopWithTooManyJumpStatements:
-    active: true
-    maxJumpCount: 1
-  MagicNumber:
-    active: true
-    excludes: "**/test/**,**/androidTest/**,**/*.Test.kt,**/*.Spec.kt,**/*.Spek.kt"
-    ignoreNumbers: ['-1', '0', '1', '2']  # Stricter - only allow basic numbers
-    ignoreHashCodeFunction: true
-    ignorePropertyDeclaration: true
-    ignoreLocalVariableDeclaration: false
-    ignoreConstantDeclaration: true
-    ignoreCompanionObjectPropertyDeclaration: true
-    ignoreAnnotation: false
-    ignoreNamedArgument: true
-    ignoreEnums: false
-    ignoreRanges: false
-    ignoreExtensionFunctions: true
-  MaxLineLength:
-    active: true
-    maxLineLength: 100  # Stricter than default (120) - encourage concise lines
-    excludePackageStatements: true
-    excludeImportStatements: true
-    excludeCommentStatements: false
-  MayBeConst:
-    active: true
-  ModifierOrder:
-    active: true
-  NestedClassesVisibility:
-    active: true
-  NewLineAtEndOfFile:
-    active: true
-  NoTabs:
-    active: true  # Enforce spaces over tabs
-  OptionalAbstractKeyword:
-    active: true
-  OptionalUnit:
-    active: true  # Stricter - remove unnecessary Unit
-  PreferToOverPairSyntax:
-    active: true  # Stricter - prefer `to` over Pair constructor
-  ProtectedMemberInFinalClass:
-    active: true
-  RedundantExplicitType:
-    active: true  # Stricter - remove unnecessary type declarations
-  RedundantHigherOrderMapUsage:
-    active: true
-  RedundantVisibilityModifierRule:
-    active: true  # Stricter - remove redundant modifiers
-  ReturnCount:
-    active: true
-    max: 2  # Stricter - encourage single responsibility
-    excludedFunctions: ['equals']
-    excludeLabeled: false
-    excludeReturnFromLambda: true
-    excludeGuardClauses: false
-  SafeCast:
-    active: true
-  SerialVersionUIDInSerializableClass:
-    active: true
-  SpacingBetweenPackageAndImports:
-    active: true  # Stricter - enforce spacing
-  ThrowsCount:
-    active: true
-    max: 2
-    excludeGuardClauses: false
-  TrailingWhitespace:
-    active: true  # Stricter - no trailing whitespace
-  UnderscoresInNumericLiterals:
-    active: true  # Stricter - enforce readable numeric literals
-    acceptableLength: 4
-    allowNonStandardGrouping: false
-  UnnecessaryAbstractClass:
-    active: true
-  UnnecessaryAnnotationUseSiteTarget:
-    active: true  # Stricter - remove unnecessary annotations
-  UnnecessaryApply:
-    active: true
-  UnnecessaryFilter:
-    active: true
-  UnnecessaryInheritance:
-    active: true
-  UnnecessaryInnerClass:
-    active: true
-  UnnecessaryLet:
-    active: true  # Stricter - avoid unnecessary let calls
-  UnnecessaryParentheses:
-    active: true  # Stricter - remove unnecessary parentheses
-  UntilInsteadOfRangeTo:
-    active: true  # Stricter - prefer until over rangeTo
-  UnusedImports:
-    active: false  # Let ktlint handle this
-  UnusedParameter:
-    active: true
-    allowedNames: 'ignored|expected|serialVersionUID'
-  UnusedPrivateClass:
-    active: true
-  UnusedPrivateMember:
-    active: true
-    allowedNames: ''
-  UseArrayLiteralsInAnnotations:
-    active: true
-  UseCheckNotNull:
-    active: true
-  UseCheckOrError:
-    active: true
-  UseDataClass:
-    active: true  # Stricter - encourage data classes where appropriate
-    allowVars: false
-  UseEmptyCounterpart:
-    active: true  # Stricter - prefer isEmpty() over size check
-  UseIfEmptyOrIfBlank:
-    active: true  # Stricter - use specific empty checks
-  UseIfInsteadOfWhen:
-    active: true  # Stricter - use if for simple conditions
-  UseIsNullOrEmpty:
-    active: true
-  UseOrEmpty:
-    active: true
-  UseRequire:
-    active: true
-  UseRequireNotNull:
-    active: true
-  UselessCallOnNotNull:
-    active: true
-  UtilityClassWithPublicConstructor:
-    active: true
-  VarCouldBeVal:
-    active: true
+  # Use defaults for style checks
   WildcardImport:
-    active: true  # CRITICAL - absolutely no wildcard imports
-    excludeImports: []
-    excludes: "*.kts"
-
-# COMMENTS RULES - Enforce good documentation practices
-comments:
-  active: true
-  AbsentOrWrongFileLicense:
-    active: false
-  CommentOverPrivateFunction:
-    active: true
-  CommentOverPrivateProperty:
-    active: true
-  EndOfSentenceFormat:
-    active: true
-    endOfSentenceFormat: '([.?!][ \t\n\r\f<])|([.?!:]$)'
-  OutdatedDocumentation:
-    active: true
-    matchTypeParameters: true
-    matchDeclarationsOrder: true
-    allowParamOnConstructorProperties: false
-  UndocumentedPublicClass:
-    active: true
-    excludes: ['**/*.Test.kt', '**/*.Spec.kt']
-    searchInNestedClass: true
-    searchInInnerClass: true
-    searchInInnerObject: true
-    searchInInnerInterface: true
-  UndocumentedPublicFunction:
-    active: true
-    excludes: ['**/*.Test.kt', '**/*.Spec.kt']
-  UndocumentedPublicProperty:
-    active: true
-    excludes: ['**/*.Test.kt', '**/*.Spec.kt']
+    active: true  # Enforce explicit imports (aligned with coding standards)

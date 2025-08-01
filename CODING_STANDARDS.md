@@ -207,11 +207,16 @@ dependencies {
 
 ## Enforcement
 
-These standards should be:
+These standards are automatically enforced via:
+- ✅ **Detekt static analysis** - Build fails on violations (maxIssues: 0)
+- ✅ **ktlint formatting** - Build fails on formatting violations 
+- ✅ **GitHub Actions** - All workflows run detekt before tests
+- ✅ **Pre-commit validation** - Code quality checks run automatically
+
+Manual enforcement:
 - ✅ Applied to all new code
 - ✅ Verified during code reviews  
 - ✅ Used when refactoring existing code
-- ✅ Documented for all team members
 - ✅ **CRITICAL**: Always test builds after removing imports to verify they weren't actually used
 
 ### Important Note on Unused Imports
@@ -241,11 +246,11 @@ The project uses **Detekt 1.23.7** for automated code quality checking, includin
 
 ### Configuration
 
-Detekt is configured via `/detekt.yaml` with:
-- **Import ordering** enforcement
-- **Code formatting** rules (via ktlint integration)
-- **Complexity analysis** with increased method length threshold (120 lines)
-- **Style checking** including trailing spaces, newlines, and more
+Detekt is configured via `/detekt.yml` with:
+- **Official default rules and thresholds** from detekt project
+- **Import ordering** enforcement (WildcardImport active)
+- **Complexity analysis** using standard thresholds (CyclomaticComplexMethod: 15, LongMethod: 60, etc.)
+- **Minor adjustment**: TooManyFunctions threshold increased to 12 (from default 11) to accommodate well-structured route files
 
 ### Current Limitations
 

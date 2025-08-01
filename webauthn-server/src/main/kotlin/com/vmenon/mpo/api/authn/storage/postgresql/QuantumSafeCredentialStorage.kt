@@ -10,6 +10,7 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import java.io.Closeable
 import java.security.MessageDigest
+import java.sql.SQLException
 import java.util.Optional
 import javax.sql.DataSource
 
@@ -206,9 +207,12 @@ class QuantumSafeCredentialStorage(
                 }
 
                 connection.commit()
-            } catch (e: Exception) {
-                connection.rollback()
-                throw e
+            } catch (e: SQLException) {
+                handleTransactionException(connection, e)
+            } catch (e: java.security.GeneralSecurityException) {
+                handleTransactionException(connection, e)
+            } catch (e: com.fasterxml.jackson.core.JsonProcessingException) {
+                handleTransactionException(connection, e)
             }
         }
     }
@@ -308,6 +312,11 @@ class QuantumSafeCredentialStorage(
                 }
             }
         }
+    }
+
+    private fun handleTransactionException(connection: java.sql.Connection, exception: Throwable): Nothing {
+        connection.rollback()
+        throw exception
     }
 
     override fun close() {

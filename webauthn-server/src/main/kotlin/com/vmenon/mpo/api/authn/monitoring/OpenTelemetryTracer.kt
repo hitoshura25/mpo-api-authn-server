@@ -1,7 +1,6 @@
 package com.vmenon.mpo.api.authn.monitoring
 
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.core.JsonProcessingException
 import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
@@ -22,21 +21,22 @@ class OpenTelemetryTracer(
                 .setParent(Context.current())
                 .startSpan()
 
-        return try {
+        return runCatching {
             span.setStatus(StatusCode.OK)
             block()
-        } catch (exception: JsonProcessingException) {
-            span.setStatus(StatusCode.ERROR, getMessage(exception))
-            span.recordException(exception)
-            throw exception
-        } catch (@Suppress("TooGenericExceptionCaught") exception: Exception) {
-            // OpenTelemetry tracing must catch all exceptions to record them before re-throwing
-            span.setStatus(StatusCode.ERROR, getMessage(exception))
-            span.recordException(exception)
-            throw exception
-        } finally {
-            span.end()
-        }
+        }.fold(
+            onSuccess = { result ->
+                span.end()
+                result
+            },
+            onFailure = { exception ->
+                // OpenTelemetry tracing must catch all exceptions to record them before re-throwing
+                span.setStatus(StatusCode.ERROR, getMessage(exception))
+                span.recordException(exception)
+                span.end()
+                throw exception
+            }
+        )
     }
 
     suspend fun <T> writeValueAsString(value: T): String {
@@ -146,5 +146,5 @@ class OpenTelemetryTracer(
         }
     }
 
-    private fun getMessage(exception: Exception) = exception.message ?: "Unknown error"
+    private fun getMessage(exception: Throwable) = exception.message ?: "Unknown error"
 }

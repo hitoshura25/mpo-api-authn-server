@@ -83,7 +83,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: hitoshura25/mpo-api-authn-server
+          images: hitoshura25/webauthn-server
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=pr

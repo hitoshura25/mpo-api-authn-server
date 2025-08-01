@@ -7,6 +7,7 @@ import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
 import io.opentelemetry.semconv.DbAttributes
 import redis.clients.jedis.JedisPool
+import redis.clients.jedis.exceptions.JedisException
 
 class OpenTelemetryTracer(
     private val tracer: Tracer,
@@ -73,7 +74,7 @@ class OpenTelemetryTracer(
                 jedis.setex(key, ttlSeconds, value)
             }
             span.setStatus(StatusCode.OK)
-        } catch (exception: Exception) {
+        } catch (exception: JedisException) {
             span.setStatus(StatusCode.ERROR, getMessage(exception))
             span.recordException(exception)
             throw exception
@@ -103,7 +104,7 @@ class OpenTelemetryTracer(
                 }
             span.setAttribute("redis.found", value != null)
             return value
-        } catch (exception: Exception) {
+        } catch (exception: JedisException) {
             span.setStatus(StatusCode.ERROR, getMessage(exception))
             span.recordException(exception)
             throw exception
@@ -130,7 +131,7 @@ class OpenTelemetryTracer(
             }.also {
                 span.setStatus(StatusCode.OK)
             }
-        } catch (exception: Exception) {
+        } catch (exception: JedisException) {
             span.setStatus(StatusCode.ERROR, getMessage(exception))
             span.recordException(exception)
             throw exception

@@ -11,6 +11,11 @@ on:
         required: false
         type: string
         default: '18'
+      android-api-level:
+        description: 'Android api level to use'
+        required: false
+        type: string
+        default: '29'
     secrets:
       codecov_token:
         description: 'Codecov token for uploading coverage reports'
@@ -215,7 +220,7 @@ jobs:
       - name: Generate Android client
         run: |
           echo "🔨 Generating Android client..."
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --info
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary
 
           # Verify client generation
           if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/RegistrationApi.java" ]; then
@@ -232,12 +237,31 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -la /dev/kvm
 
-      - name: Run Android UI tests with emulator (optimized)
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ inputs.android-api-level }}
+
+      - name: create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.android-api-level }}
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          disable-animations: false
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run Android UI tests with emulator
         id: android-tests
         timeout-minutes: 8
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 29
+          api-level: ${{ inputs.android-api-level }}
           target: default
           arch: x86_64
           profile: Nexus 6
@@ -249,7 +273,7 @@ jobs:
           disable-spellchecker: true
           disable-linux-hw-accel: false
           force-avd-creation: false
-          emulator-options: -no-window -no-snapshot-save -no-snapshot-load -no-boot-anim -netfast -gpu auto -wipe-data -no-metrics -accel on
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: ./scripts/run-android-tests.sh
 
       - name: Stop full stack

@@ -139,6 +139,7 @@ Keeping documentation aligned with code changes and maintaining comprehensive pr
 # Run tests
 gradle test  # Outdated command, no module specified
 ```
+```
 
 ### Status Documentation
 

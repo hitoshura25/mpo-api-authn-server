@@ -342,7 +342,7 @@ After analysis, removing global registration has **significant downsides** for J
 **Current Code Analysis:**
 ```kotlin
 // OpenTelemetryTracer.kt:22, 75, 101, 131 - CRITICAL USAGE
-.setParent(Context.current()) // ← Depends on global context propagation
+spanBuilder.setParent(Context.current()) // <- Depends on global context propagation
 ```
 
 **Downsides of Non-Global Registration:**
@@ -794,6 +794,40 @@ cd test-client && npm test
 
 **⚠️ WARNING: Specification drift will cause client generation failures and break Android/web client integration**
 
+### Recommended Subagents for OpenAPI/Client Work
+
+**Use these specialized subagents proactively for OpenAPI and client-related tasks:**
+
+#### 1. **openapi-sync-agent** 
+- **Use for**: Investigating OpenAPI specification drift and synchronization issues
+- **Capabilities**: Compare server responses with OpenAPI specs, identify mismatches, suggest fixes
+- **When to use**: When Android/web client tests fail due to model mismatches
+- **Example prompt**: "Investigate why Android tests are failing due to OpenAPI model issues. Compare actual server responses in RegistrationRoutes.kt with the OpenAPI specification and identify all mismatches. Provide specific fixes for both server and spec."
+
+#### 2. **client-generation-agent**
+- **Use for**: Regenerating clients and updating dependent code across platforms
+- **Capabilities**: Handle OpenAPI client generation, update test code, verify compilation
+- **When to use**: After OpenAPI spec changes or when adding new endpoints
+- **Example prompt**: "Regenerate Android and web clients after OpenAPI changes. Update all dependent test files and verify compilation succeeds. Include verification that generated models match expected usage patterns."
+
+#### 3. **cross-platform-testing-agent**
+- **Use for**: Coordinating test execution across server, Android, and web platforms
+- **Capabilities**: Run test suites in correct order, diagnose cross-platform failures, verify integration
+- **When to use**: For comprehensive validation after API changes
+- **Example prompt**: "Execute comprehensive cross-platform testing after OpenAPI changes. Run server tests, Android UI tests, and web E2E tests. Diagnose any failures and ensure all platforms work with updated API contracts."
+
+#### 4. **api-contract-validator-agent**
+- **Use for**: Validating that server implementations match OpenAPI contracts
+- **Capabilities**: Analyze route handlers, compare with specs, identify contract violations
+- **When to use**: Before releases or when investigating client integration issues
+- **Example prompt**: "Validate that all server route handlers match their OpenAPI specifications. Check response structures, required fields, and data types. Report any contract violations and suggest fixes."
+
+#### 5. **android-integration-agent**
+- **Use for**: Android-specific client integration and testing issues
+- **Capabilities**: Handle Android build issues, emulator setup, UI test debugging
+- **When to use**: When Android tests fail or when adding Android-specific features
+- **Example prompt**: "Debug failing Android UI tests related to WebAuthn flows. Check emulator connectivity, generated client usage, and test service integration. Ensure Android tests pass reliably."
+
 ## JSON Structure Gotcha
 
 WebAuthn responses have nested structure requiring `.get("publicKey")` access:
@@ -868,6 +902,36 @@ Low-level credential generation library:
 - **Test Coverage**: All known WebAuthn vulnerabilities have protection tests
 
 ## Development Guidance & Lessons Learned
+
+### ⚠️ CRITICAL: Always Validate Generated Markdown
+
+**ALWAYS run `bash scripts/validate-markdown.sh` after generating or modifying any markdown files.**
+
+- **Why**: Prevents syntax errors that break IDE display and documentation tools
+- **When**: After any markdown generation, editing, or updates to documentation
+- **What it catches**: Unmatched code blocks, JSON comments, Kotlin imports, incomplete syntax, unicode issues
+- **Command**: `bash scripts/validate-markdown.sh`
+- **Result**: Must show "🎉 All markdown files are valid!" before considering work complete
+
+**Historical Issues Fixed:**
+- Line 345 CLAUDE.md: Incomplete method call `.setParent()` → `spanBuilder.setParent()`  
+- Line 288 api-contract-validator-agent.md: JSON comment `// String instead of integer` → separate explanation
+- Line 88 client-generation-agent.md: Kotlin imports in code block → changed to `text` block
+- Line 126 documentation-synchronization.md: Unmatched code block → added closing backticks
+
+**Validation Script Enhanced:** Now includes 8 comprehensive checks covering all known markdown syntax issues.
+
+### Proactive Subagent Usage - CRITICAL ⚡
+
+**ALWAYS use specialized subagents for complex, multi-step tasks to optimize performance and accuracy**
+
+- **When to use subagents**: Tasks requiring 3+ steps, cross-platform coordination, or specialized domain knowledge
+- **Benefit**: Subagents provide focused expertise and can work in parallel for faster completion
+- **Integration with TodoWrite**: Use TodoWrite tool to track subagent progress and coordinate multiple agents
+- **Recent example**: OpenAPI synchronization task should have used `openapi-sync-agent` and `client-generation-agent` instead of manual sequential work
+- **Best practice**: Identify relevant subagents at task start, not after encountering issues
+
+**⚠️ Failure to use subagents proactively leads to slower, less optimal solutions**
 
 ### User-Guided Implementation Approach
 

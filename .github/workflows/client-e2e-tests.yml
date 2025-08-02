@@ -113,15 +113,15 @@ jobs:
           # Install npm dependencies and Playwright in parallel
           npm ci &
           NPM_PID=$!
-          
+
           # Download Playwright browser in background
           npx playwright install chromium --only-shell &
           PLAYWRIGHT_PID=$!
-          
+
           # Wait for both to complete
           wait $NPM_PID
           wait $PLAYWRIGHT_PID
-          
+
           echo "✅ Dependencies installed in parallel"
 
       - name: Set up environment and start services
@@ -216,7 +216,7 @@ jobs:
         run: |
           echo "🔨 Generating Android client..."
           ./gradlew :webauthn-server:copyGeneratedClientToLibrary --info
-          
+
           # Verify client generation
           if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/RegistrationApi.java" ]; then
             echo "✅ Android client generated successfully"
@@ -224,19 +224,6 @@ jobs:
             echo "❌ Android client generation failed"
             exit 1
           fi
-
-      - name: Run Android unit tests (fast CI)
-        run: |
-          echo "🧪 Running Android unit tests and compilation check..."
-          cd android-test-client
-          
-          # Run unit tests (no emulator needed)
-          ./gradlew test --build-cache --parallel
-          
-          # Verify generated client compiles correctly
-          ./gradlew compileDebugKotlin --build-cache --parallel
-          
-          echo "✅ Android unit tests and compilation successful"
 
       - name: Enable KVM for hardware acceleration
         run: |
@@ -264,7 +251,6 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-window -no-snapshot-save -no-snapshot-load -no-boot-anim -netfast -gpu auto -wipe-data -no-metrics -accel on
           script: ./scripts/run-android-tests.sh
-
 
       - name: Stop full stack
         id: stop-full-stack

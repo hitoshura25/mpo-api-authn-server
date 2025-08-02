@@ -273,7 +273,7 @@ jobs:
           short-description: ${{ github.event.repository.description }}
 
   android-e2e-tests:
-    runs-on: ubuntu-latest-4-cores
+    runs-on: ubuntu-latest
     outputs:
       test-exit-code: ${{ steps.android-tests.outputs.test-exit-code }}
       android-tests-skipped: ${{ steps.android-tests.outputs.android-tests-skipped }}
@@ -360,13 +360,14 @@ jobs:
           target: default
           arch: x86_64
           cores: 2
-          ram-size: 3584M
-          heap-size: 512M
+          ram-size: 2048M
+          heap-size: 256M
+          disk-size: 2048M
           disable-animations: true
           disable-spellchecker: true
           disable-linux-hw-accel: false
           enable-hw-keyboard: true
-          emulator-options: -no-snapshot-save -no-snapshot-load -no-boot-anim -netfast
+          emulator-options: -no-window -no-snapshot-save -no-snapshot-load -no-boot-anim -netfast -gpu swiftshader_indirect
           script: |
             set +e
             

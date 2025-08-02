@@ -1,4 +1,7 @@
-name: Run JS Client E2E Tests
+name: Run Client E2E Tests (Web + Android)
+
+# Optimized for PR speed validation - targets ~8-12 minute total runtime
+# Future optimization: Pre-built Docker images in GHCR for faster service startup
 
 on:
   workflow_call:
@@ -24,10 +27,10 @@ on:
     outputs:
       test-exit-code:
         description: 'Exit code from the tests'
-        value: ${{ jobs.js-client-e2e-tests.outputs.test-exit-code }}
+        value: ${{ jobs.client-e2e-tests.outputs.test-exit-code }}
 
 jobs:
-  js-client-e2e-tests:
+  client-e2e-tests:
     runs-on: ubuntu-latest
     outputs:
       test-exit-code: ${{ steps.run-tests.outputs.test-exit-code }}
@@ -104,12 +107,22 @@ jobs:
           cache: 'npm'
           cache-dependency-path: test-client/package-lock.json
 
-      - name: Install test dependencies
+      - name: Install test dependencies (parallel)
         working-directory: test-client
         run: |
-          npm ci
-          # They recommend using the --with-dependencies flag however that adds additional time and tests work so far without it
-          npx playwright install chromium --only-shell
+          # Install npm dependencies and Playwright in parallel
+          npm ci &
+          NPM_PID=$!
+          
+          # Download Playwright browser in background
+          npx playwright install chromium --only-shell &
+          PLAYWRIGHT_PID=$!
+          
+          # Wait for both to complete
+          wait $NPM_PID
+          wait $PLAYWRIGHT_PID
+          
+          echo "✅ Dependencies installed in parallel"
 
       - name: Set up environment and start services
         run: |
@@ -199,6 +212,59 @@ jobs:
             echo "✅ Tests passed successfully"
           fi
 
+      - name: Generate Android client
+        run: |
+          echo "🔨 Generating Android client..."
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --info
+          
+          # Verify client generation
+          if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/RegistrationApi.java" ]; then
+            echo "✅ Android client generated successfully"
+          else
+            echo "❌ Android client generation failed"
+            exit 1
+          fi
+
+      - name: Run Android client tests
+        run: |
+          echo "🧪 Running Android client tests..."
+          cd android-test-client
+          
+          # Run unit tests
+          ./gradlew test --info
+          
+          # Verify compilation with generated client
+          ./gradlew compileDebugKotlin --info
+          
+          echo "✅ Android client tests completed successfully"
+
+      - name: Set up Android emulator (optimized for speed)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 29
+          target: default
+          arch: x86_64
+          profile: Nexus 6
+          cores: 2
+          ram-size: 4096M
+          heap-size: 1024M
+          disable-animations: true
+          disable-spellchecker: true
+          disable-linux-hw-accel: false
+          enable-hw-keyboard: true
+          script: |
+            # Quick emulator readiness check
+            adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; do sleep 1; done; input keyevent 82'
+            
+            # Run Android instrumentation tests
+            cd android-test-client
+            echo "🧪 Running WebAuthnFlowTest instrumentation tests..."
+            
+            # Use parallel execution and faster options
+            ./gradlew connectedAndroidTest --info --parallel --build-cache --configuration-cache
+            
+            echo "✅ Android instrumentation tests completed successfully"
+
       - name: Stop full stack
         id: stop-full-stack
         if: always()
@@ -210,14 +276,16 @@ jobs:
           docker compose down -v
           echo "✅ Docker Compose services stopped"
 
-      - name: Upload Playwright Report
+      - name: Upload test reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report
+          name: test-reports
           path: |
             test-client/playwright-report/
             test-client/test-results/
+            android-test-client/app/build/reports/androidTests/connected/
+            android-test-client/app/build/outputs/androidTest-results/connected/
           retention-days: 3
 
       - name: Upload Docker Logs

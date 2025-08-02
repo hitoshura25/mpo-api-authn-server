@@ -14,7 +14,7 @@
   - **Failure Diagnostics**: On timeout, show service logs and test health endpoint directly
   - **Clear Service Mapping**: Document which 4 services have health checks (postgres, redis, jaeger, webauthn-test-credentials-service)
 - **Files Modified**:
-  - `.github/workflows/js-client-e2e-tests.yml` - Enhanced health check diagnostics
+  - `.github/workflows/client-e2e-tests.yml` - Enhanced health check diagnostics
 - **Expected Outcome**: Next CI run will provide clear visibility into any health check failures
 
 ### OpenTelemetry Race Condition Fix ✅ COMPLETED
@@ -531,7 +531,7 @@ context.makeCurrent().use {
   - `webauthn-server/docker-compose.yml` - Service name and build path
   - `webauthn-test-credentials-service/docker-compose.yml` - Service name
   - `.github/workflows/test-webauthn-test-credentials-service.yml` - Renamed and updated
-  - `.github/workflows/js-client-e2e-tests.yml` - Gradle task reference
+  - `.github/workflows/client-e2e-tests.yml` - Gradle task reference
   - `README.md` - All service references and documentation
   - `CLAUDE.md` - All 22+ references updated
 - **Impact**: Clearer service purpose, better documentation, no breaking changes to functionality
@@ -1053,7 +1053,7 @@ The project was restructured from a single-module to multi-module architecture t
 
 #### **✅ GitHub Workflows**
 
-- **js-client-e2e-tests.yml**: Updated server paths and Docker references
+- **client-e2e-tests.yml**: Updated server paths and Docker references
 - **publish-android-client.yml**: Fixed OpenAPI spec paths and Gradle tasks
 - **test-android-client-workflow.yml**: Updated generation tasks and API validation
 - **test-webauthn-test-credentials-service.yml**: New workflow for test service CI/CD with Docker publishing

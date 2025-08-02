@@ -264,16 +264,16 @@ components:
       type: object
       required:
         - success
-        - credentialId
+        - message
       properties:
         success:
           type: boolean
           description: Whether registration was successful
           example: true
-        credentialId:
+        message:
           type: string
-          description: The base64url-encoded credential ID of the registered credential
-          example: "2RVLo5tYEw6jvQ8ccCDTszdbKPF3j7XMVu_w_5lB2mM"
+          description: Success message confirming registration
+          example: "Registration successful"
 
     AuthenticationRequest:
       type: object

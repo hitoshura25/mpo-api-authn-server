@@ -12,6 +12,9 @@ if docker compose ps --services --filter "status=running" | grep -q .; then
     echo "🛑 Stopped existing services"
 fi
 
+echo "🚀 Building WebAuthn Test Credentials Server..."
+cd .. && ./gradlew :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache && cd webauthn-server
+
 echo "🚀 Building WebAuthn Server..."
 cd .. && ./gradlew :webauthn-server:shadowJar --build-cache --parallel --configuration-cache && cd webauthn-server
 
@@ -33,7 +36,7 @@ done
 dependency_health=$(docker compose ps --format "table {{.Service}}\t{{.Status}}" | grep -c "healthy" || true)
 if [ "$dependency_health" -eq 3 ]; then
     echo "✅ Dependencies ready, checking WebAuthn server..."
-    
+
     # External health check for distroless webauthn-server
     for j in {1..30}; do
         if curl -s --fail http://localhost:8080/health > /dev/null 2>&1; then
@@ -44,7 +47,7 @@ if [ "$dependency_health" -eq 3 ]; then
         echo "Waiting for WebAuthn server... ($j/30)"
         sleep 2
     done
-    
+
     if [ "${SERVER_HEALTHY:-false}" = "true" ]; then
         echo "✅ Full stack is ready!"
         echo ""

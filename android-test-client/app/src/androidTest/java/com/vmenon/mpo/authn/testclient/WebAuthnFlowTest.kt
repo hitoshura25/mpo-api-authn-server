@@ -86,8 +86,9 @@ class WebAuthnFlowTest {
 
             // Verify completion response
             assert(completeResponse.success == true) { "Registration should be successful" }
+            assert(completeResponse.message == "Registration successful") { "Message should be 'Registration successful'" }
 
-            println("✓ Registration complete successful - ${completeResponse.credentialId}")
+            println("✓ Registration complete successful - ${completeResponse.message}")
 
         } catch (e: Exception) {
             println("✗ Registration test failed: ${e.message}")

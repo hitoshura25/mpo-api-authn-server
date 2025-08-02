@@ -6,9 +6,9 @@ on:
       - main
 
 jobs:
-  pull-request-run-js-client-e2e-tests:
-    name: Pull Request E2E Tests
-    uses: ./.github/workflows/js-client-e2e-tests.yml
+  pull-request-run-client-e2e-tests:
+    name: Client E2E Tests (Web + Android)
+    uses: ./.github/workflows/client-e2e-tests.yml
     with:
       node-version: '18'
     secrets:

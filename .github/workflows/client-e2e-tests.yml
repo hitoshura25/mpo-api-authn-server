@@ -323,15 +323,16 @@ jobs:
       - name: Start services (lightweight)
         run: |
           echo "🚀 Starting minimal services for Android tests..."
-          cd webauthn-server
           
           # Start only required services in background
+          cd webauthn-server
           docker compose -f docker-compose.deps.yml up -d postgres redis
+          cd ..
           
-          # Build and start services
+          # Build JARs from root directory
           ./gradlew :webauthn-server:shadowJar :webauthn-test-credentials-service:shadowJar --build-cache --parallel
           
-          # Start servers in background
+          # Start servers in background (correct JAR paths from root)
           java -jar webauthn-server/build/libs/webauthn-server-*-all.jar &
           SERVER_PID=$!
           java -jar webauthn-test-credentials-service/build/libs/webauthn-test-credentials-service-*-all.jar &
@@ -462,6 +463,7 @@ jobs:
           # Stop Docker containers
           cd webauthn-server
           docker compose -f docker-compose.deps.yml down || true
+          cd ..
           
           echo "✅ Cleanup completed"
 

@@ -247,7 +247,7 @@ jobs:
           key: avd-${{ inputs.android-api-level }}
 
       - name: create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
+        #if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ inputs.android-api-level }}

@@ -248,7 +248,6 @@ jobs:
       - name: Run Android UI tests with emulator (optimized)
         id: android-tests
         timeout-minutes: 8
-        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 29
@@ -326,27 +325,6 @@ jobs:
               echo "✅ Android tests passed successfully"
             fi
 
-      - name: Handle emulator test failure
-        id: emulator-fallback
-        if: failure() && steps.android-tests.outcome == 'failure'
-        run: |
-          echo "⚠️ Android emulator tests failed or timed out"
-          echo "🔄 Running unit tests only as fallback..."
-          
-          cd android-test-client
-          
-          # Run unit tests without emulator
-          ./gradlew test --build-cache --parallel
-          UNIT_TEST_EXIT=$?
-          
-          if [ $UNIT_TEST_EXIT -eq 0 ]; then
-            echo "✅ Android unit tests passed (emulator tests skipped)"
-            echo "android-tests-skipped=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Android unit tests also failed"
-            echo "android-tests-skipped=true" >> $GITHUB_OUTPUT  
-            exit $UNIT_TEST_EXIT
-          fi
 
       - name: Stop full stack
         id: stop-full-stack

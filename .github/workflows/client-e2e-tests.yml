@@ -225,15 +225,36 @@ jobs:
             exit 1
           fi
 
-      - name: Run Android tests with emulator (with timeout)
+      - name: Run Android unit tests (fast CI)
+        run: |
+          echo "🧪 Running Android unit tests and compilation check..."
+          cd android-test-client
+          
+          # Run unit tests (no emulator needed)
+          ./gradlew test --build-cache --parallel
+          
+          # Verify generated client compiles correctly
+          ./gradlew compileDebugKotlin --build-cache --parallel
+          
+          echo "✅ Android unit tests and compilation successful"
+
+      - name: Enable KVM for hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+
+      - name: Run Android UI tests with emulator (optimized)
         id: android-tests
-        timeout-minutes: 15
+        timeout-minutes: 8
         continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 28
+          api-level: 29
           target: default
           arch: x86_64
+          profile: Nexus 6
           cores: 2
           ram-size: 2048M
           heap-size: 256M
@@ -241,31 +262,39 @@ jobs:
           disable-animations: true
           disable-spellchecker: true
           disable-linux-hw-accel: false
-          enable-hw-keyboard: true
-          emulator-options: -no-window -no-snapshot-save -no-snapshot-load -no-boot-anim -netfast -gpu swiftshader_indirect
+          force-avd-creation: false
+          emulator-options: -no-window -no-snapshot-save -no-snapshot-load -no-boot-anim -netfast -gpu auto -wipe-data -no-metrics -accel on
           script: |
             set +e
             
-            echo "⏱️ Starting Android tests with 15-minute timeout..."
+            echo "⏱️ Starting Android tests with 8-minute timeout..."
             
-            # Wait for emulator with timeout
+            # Check KVM availability
+            if [ -e /dev/kvm ]; then
+              echo "✅ KVM device available"
+            else
+              echo "⚠️ KVM not available - emulator will be slower"
+            fi
+            
+            # Wait for emulator with reasonable timeout
             echo "📱 Waiting for emulator to be ready..."
-            timeout 300 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; do sleep 2; done'
+            timeout 180 adb wait-for-device shell 'while [[ -z $(getprop sys.boot_completed | tr -d '\r') ]]; do sleep 2; done'
             EMULATOR_READY=$?
             
             if [ $EMULATOR_READY -ne 0 ]; then
-              echo "❌ Emulator failed to start within 5 minutes"
+              echo "❌ Emulator failed to start within 3 minutes"
+              echo "This usually indicates KVM issues or runner resource constraints"
               exit 1
             fi
             
             # Unlock device and verify it's responsive
             adb shell input keyevent 82
-            sleep 2
+            sleep 1
             
             # Quick responsiveness test
-            timeout 30 adb shell getprop ro.build.version.release
+            timeout 15 adb shell getprop ro.build.version.release
             if [ $? -ne 0 ]; then
-              echo "❌ Emulator not responsive"
+              echo "❌ Emulator not responsive within 15 seconds"
               exit 1
             fi
             
@@ -274,7 +303,7 @@ jobs:
             # Run Android unit tests first (fast)
             cd android-test-client
             echo "🧪 Running Android unit tests..."
-            timeout 300 ./gradlew test --build-cache --parallel
+            timeout 180 ./gradlew test --build-cache --parallel
             UNIT_TEST_EXIT=$?
             
             if [ $UNIT_TEST_EXIT -ne 0 ]; then
@@ -282,9 +311,9 @@ jobs:
               exit $UNIT_TEST_EXIT
             fi
             
-            # Run instrumentation tests with timeout
+            # Run instrumentation tests with shorter timeout
             echo "🧪 Running WebAuthnFlowTest instrumentation tests..."
-            timeout 600 ./gradlew connectedAndroidTest --build-cache --parallel --info
+            timeout 300 ./gradlew connectedAndroidTest --build-cache --parallel --info
             TEST_EXIT_CODE=$?
             
             set -e

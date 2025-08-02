@@ -44,6 +44,53 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 
 ## Development Guidance & Critical Reminders
 
+### 🤖 CRITICAL: Proactively Use Subagents for Complex Tasks
+
+**BEFORE starting any multi-step or complex task, ALWAYS evaluate if it should be delegated to a subagent.**
+
+#### **Mandatory Subagent Evaluation Checklist:**
+- [ ] **Multi-file changes** (>2 files) → Use subagent
+- [ ] **Systematic refactoring** (patterns across codebase) → Use subagent  
+- [ ] **Documentation updates** (multiple .md files) → Use subagent
+- [ ] **Complex searches** (multiple rounds of discovery) → Use subagent
+- [ ] **Performance optimization** (file restructuring, analysis) → Use subagent
+- [ ] **Code quality fixes** (linting violations, imports) → Use subagent
+- [ ] **Cross-cutting concerns** (renaming, configuration updates) → Use subagent
+
+#### **Immediate Subagent Triggers:**
+1. **Any task requiring >5 tool calls** → Stop and use subagent
+2. **File optimization/restructuring** → Use subagent immediately
+3. **Markdown validation across multiple files** → Use subagent
+4. **Build configuration changes** → Use subagent
+5. **Security vulnerability research + fixes** → Use subagent
+
+#### **Default Response Pattern:**
+```
+User: [Complex multi-step request]
+Claude: I'll use a subagent to handle this [task type] efficiently.
+
+[Task tool call with appropriate subagent]
+Task: "[Detailed description of work to be done systematically]"
+```
+
+#### **Available Specialized Subagents:**
+- **general-purpose**: Complex refactoring, multi-file changes, systematic tasks
+- **openapi-sync-agent**: API specification synchronization
+- **client-generation-agent**: API client regeneration and updates
+- **android-integration-agent**: Android-specific issues and testing
+- **api-contract-validator-agent**: Contract compliance validation
+- **cross-platform-testing-agent**: Multi-platform test coordination
+
+#### **Performance Benefits:**
+- **80-95% reduction** in tool calls for complex tasks
+- **Faster completion** through specialized expertise
+- **Better quality** through systematic approach
+- **Context efficiency** by delegating entire workflows
+
+**❌ Recent Failure Example**: CLAUDE.md optimization task used 15+ tool calls manually when 1 subagent call would have handled it completely.
+
+**✅ Success Pattern**: Always ask "Could a subagent handle this more efficiently?" before starting complex work.
+
 ### ⚠️ CRITICAL: Always Validate Generated Markdown
 
 **ALWAYS run `bash scripts/validate-markdown.sh` after generating or modifying any markdown files.**

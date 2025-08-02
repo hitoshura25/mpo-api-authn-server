@@ -154,7 +154,7 @@ class QuantumSafeCredentialStorage(
     override fun addRegistration(registration: CredentialRegistration) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
-            try {
+            runCatching {
                 val userHandleHash = cryptoHelper.hash(registration.userAccount.userHandle.base64Url)
                 val usernameHash = cryptoHelper.hash(registration.userAccount.username)
                 val credentialIdHash = cryptoHelper.hash(registration.credential.credentialId.base64Url)
@@ -205,12 +205,8 @@ class QuantumSafeCredentialStorage(
                 }
 
                 connection.commit()
-            } catch (e: SQLException) {
-                handleTransactionException(connection, e)
-            } catch (e: GeneralSecurityException) {
-                handleTransactionException(connection, e)
-            } catch (e: JsonProcessingException) {
-                handleTransactionException(connection, e)
+            }.onFailure { exception ->
+                handleTransactionException(connection, exception)
             }
         }
     }

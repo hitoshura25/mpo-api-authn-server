@@ -1,14 +1,12 @@
 package com.vmenon.mpo.api.authn.monitoring
 
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.core.JsonProcessingException
 import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import io.opentelemetry.api.trace.StatusCode
 import io.opentelemetry.api.trace.Tracer
 import io.opentelemetry.context.Context
 import io.opentelemetry.semconv.DbAttributes
 import redis.clients.jedis.JedisPool
-import redis.clients.jedis.exceptions.JedisException
 
 class OpenTelemetryTracer(
     private val tracer: Tracer,
@@ -22,21 +20,22 @@ class OpenTelemetryTracer(
                 .setParent(Context.current())
                 .startSpan()
 
-        return try {
+        return runCatching {
             span.setStatus(StatusCode.OK)
             block()
-        } catch (exception: JsonProcessingException) {
-            span.setStatus(StatusCode.ERROR, getMessage(exception))
-            span.recordException(exception)
-            throw exception
-        } catch (@Suppress("TooGenericExceptionCaught") exception: Exception) {
-            // OpenTelemetry tracing must catch all exceptions to record them before re-throwing
-            span.setStatus(StatusCode.ERROR, getMessage(exception))
-            span.recordException(exception)
-            throw exception
-        } finally {
-            span.end()
-        }
+        }.fold(
+            onSuccess = { result ->
+                span.end()
+                result
+            },
+            onFailure = { exception ->
+                // OpenTelemetry tracing must catch all exceptions to record them before re-throwing
+                span.setStatus(StatusCode.ERROR, getMessage(exception))
+                span.recordException(exception)
+                span.end()
+                throw exception
+            }
+        )
     }
 
     suspend fun <T> writeValueAsString(value: T): String {
@@ -75,18 +74,22 @@ class OpenTelemetryTracer(
                 .setParent(Context.current())
                 .startSpan()
 
-        try {
+        runCatching {
+            span.setStatus(StatusCode.OK)
             jedisPool.resource.use { jedis ->
                 jedis.setex(key, ttlSeconds, value)
             }
-            span.setStatus(StatusCode.OK)
-        } catch (exception: JedisException) {
-            span.setStatus(StatusCode.ERROR, getMessage(exception))
-            span.recordException(exception)
-            throw exception
-        } finally {
-            span.end()
-        }
+        }.fold(
+            onSuccess = {
+                span.end()
+            },
+            onFailure = { exception ->
+                span.setStatus(StatusCode.ERROR, getMessage(exception))
+                span.recordException(exception)
+                span.end()
+                throw exception
+            }
+        )
     }
 
     fun get(
@@ -101,22 +104,24 @@ class OpenTelemetryTracer(
                 .setParent(Context.current())
                 .startSpan()
 
-        try {
-            val value =
-                jedisPool.resource.use { jedis ->
-                    jedis.get(key)
-                }.also {
-                    span.setStatus(StatusCode.OK)
-                }
-            span.setAttribute("redis.found", value != null)
-            return value
-        } catch (exception: JedisException) {
-            span.setStatus(StatusCode.ERROR, getMessage(exception))
-            span.recordException(exception)
-            throw exception
-        } finally {
-            span.end()
-        }
+        return runCatching {
+            span.setStatus(StatusCode.OK)
+            jedisPool.resource.use { jedis ->
+                jedis.get(key)
+            }
+        }.fold(
+            onSuccess = { value ->
+                span.setAttribute("redis.found", value != null)
+                span.end()
+                value
+            },
+            onFailure = { exception ->
+                span.setStatus(StatusCode.ERROR, getMessage(exception))
+                span.recordException(exception)
+                span.end()
+                throw exception
+            }
+        )
     }
 
     fun del(
@@ -131,20 +136,23 @@ class OpenTelemetryTracer(
                 .setParent(Context.current())
                 .startSpan()
 
-        try {
+        runCatching {
+            span.setStatus(StatusCode.OK)
             jedisPool.resource.use { jedis ->
                 jedis.del(key)
-            }.also {
-                span.setStatus(StatusCode.OK)
             }
-        } catch (exception: JedisException) {
-            span.setStatus(StatusCode.ERROR, getMessage(exception))
-            span.recordException(exception)
-            throw exception
-        } finally {
-            span.end()
-        }
+        }.fold(
+            onSuccess = {
+                span.end()
+            },
+            onFailure = { exception ->
+                span.setStatus(StatusCode.ERROR, getMessage(exception))
+                span.recordException(exception)
+                span.end()
+                throw exception
+            }
+        )
     }
 
-    private fun getMessage(exception: Exception) = exception.message ?: "Unknown error"
+    private fun getMessage(exception: Throwable) = exception.message ?: "Unknown error"
 }

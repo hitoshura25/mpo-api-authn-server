@@ -51,7 +51,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
     openTelemetryTracer: OpenTelemetryTracer,
     logger: Logger,
 ) {
-    try {
+    runCatching {
         val request = openTelemetryTracer.traceOperation("call.receive") {
             call.receive<RegistrationRequest>()
         }
@@ -67,10 +67,8 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
         )
 
         call.respond(registrationResponse)
-    } catch (e: JsonProcessingException) {
-        handleRegistrationError(call, logger, e, "Registration start failed")
-    } catch (e: redis.clients.jedis.exceptions.JedisException) {
-        handleRegistrationError(call, logger, e, "Registration start failed")
+    }.onFailure { exception ->
+        handleRegistrationError(call, logger, exception, "Registration start failed")
     }
 }
 
@@ -120,7 +118,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationCom
     credentialStorage: CredentialStorage,
     logger: Logger,
 ) {
-    try {
+    runCatching {
         val request = call.receive<RegistrationCompleteRequest>()
 
         val startRegistrationOptions = retrieveRegistrationRequest(request.requestId, registrationStorage)
@@ -139,10 +137,8 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationCom
         credentialStorage.addRegistration(registration)
         logger.info("Successfully registered user: ${userAccount.username}")
         call.respond(mapOf("success" to true, "message" to "Registration successful"))
-    } catch (e: JsonProcessingException) {
-        handleRegistrationError(call, logger, e, "Registration complete failed")
-    } catch (e: redis.clients.jedis.exceptions.JedisException) {
-        handleRegistrationError(call, logger, e, "Registration complete failed")
+    }.onFailure { exception ->
+        handleRegistrationError(call, logger, exception, "Registration complete failed")
     }
 }
 
@@ -181,7 +177,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.checkForRaceCondition
 private suspend fun handleRegistrationError(
     call: ApplicationCall,
     logger: Logger,
-    exception: Exception,
+    exception: Throwable,
     message: String
 ) {
     logger.error(message, exception)

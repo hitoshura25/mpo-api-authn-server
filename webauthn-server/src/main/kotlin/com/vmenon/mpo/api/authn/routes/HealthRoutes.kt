@@ -23,17 +23,20 @@ fun Application.configureHealthRoutes() {
         }
 
         get("/metrics") {
-            try {
-                val metrics = prometheusRegistry.scrape()
-                call.respond(metrics)
-            } catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-                // Metrics collection can fail for various reasons - need to catch all exceptions
-                logger.error("Metrics endpoint failed", e)
-                call.respond(
-                    HttpStatusCode.InternalServerError,
-                    mapOf("error" to "Metrics unavailable"),
-                )
-            }
+            runCatching {
+                prometheusRegistry.scrape()
+            }.fold(
+                onSuccess = { metrics ->
+                    call.respond(metrics)
+                },
+                onFailure = { exception ->
+                    logger.error("Metrics endpoint failed", exception)
+                    call.respond(
+                        HttpStatusCode.InternalServerError,
+                        mapOf("error" to "Metrics unavailable"),
+                    )
+                }
+            )
         }
 
         // Health check endpoint

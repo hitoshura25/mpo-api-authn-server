@@ -75,7 +75,7 @@ private suspend fun ApplicationCall.handleRegistrationCredential(
     objectMapper: ObjectMapper,
     logger: Logger,
 ) {
-    try {
+    runCatching {
         val request = receive<TestRegistrationRequest>()
         logger.info("Generating registration credential for challenge: ${request.challenge}")
 
@@ -102,18 +102,9 @@ private suspend fun ApplicationCall.handleRegistrationCredential(
         )
 
         logger.info("Successfully generated registration credential with keyPairId: $keyPairId")
-    } catch (e: JsonProcessingException) {
-        logger.error("Failed to serialize registration credential", e)
-        respondWithError("Failed to serialize credential", e.message)
-    } catch (e: IllegalArgumentException) {
-        logger.error("Invalid request for registration credential", e)
-        respondWithError("Invalid request parameters", e.message)
-    } catch (e: com.yubico.webauthn.data.exception.Base64UrlException) {
-        logger.error("Invalid base64 challenge for registration credential", e)
-        respondWithError("Failed to generate registration credential", e.message)
-    } catch (e: SecurityException) {
-        logger.error("Security error generating registration credential", e)
-        respondWithError("Failed to generate registration credential", e.message)
+    }.onFailure { exception ->
+        logger.error("Failed to generate registration credential", exception)
+        respondWithError("Failed to generate registration credential", exception.message)
     }
 }
 
@@ -122,7 +113,7 @@ private suspend fun ApplicationCall.handleAuthenticationCredential(
     objectMapper: ObjectMapper,
     logger: Logger,
 ) {
-    try {
+    runCatching {
         val request = receive<TestAuthenticationRequest>()
         logger.info("Generating authentication credential for keyPairId: ${request.keyPairId}")
 
@@ -157,18 +148,9 @@ private suspend fun ApplicationCall.handleAuthenticationCredential(
         )
 
         logger.info("Successfully generated authentication credential")
-    } catch (e: JsonProcessingException) {
-        logger.error("Failed to serialize authentication credential", e)
-        respondWithError("Failed to serialize credential", e.message)
-    } catch (e: IllegalArgumentException) {
-        logger.error("Invalid request for authentication credential", e)
-        respondWithError("Invalid request parameters", e.message)
-    } catch (e: com.yubico.webauthn.data.exception.Base64UrlException) {
-        logger.error("Invalid base64 challenge for authentication credential", e)
-        respondWithError("Failed to generate authentication credential", e.message)
-    } catch (e: SecurityException) {
-        logger.error("Security error generating authentication credential", e)
-        respondWithError("Failed to generate authentication credential", e.message)
+    }.onFailure { exception ->
+        logger.error("Failed to generate authentication credential", exception)
+        respondWithError("Failed to generate authentication credential", exception.message)
     }
 }
 

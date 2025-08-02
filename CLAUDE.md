@@ -748,6 +748,52 @@ Authentication failure occurs later during credential verification, maintaining 
 - **🚨 CRITICAL: When implementing tests, ALWAYS verify they pass with `./gradlew test` before claiming completion**
 - **Test verification must show 100% pass rate - anything less than 100% means the implementation is incomplete**
 
+## OpenAPI Specification Management 🔄
+
+**CRITICAL: Keep OpenAPI specification synchronized with server implementation at all times**
+
+### Historical Context
+- **Original Source**: The OpenAPI specification (`webauthn-server/src/main/resources/openapi/documentation.yaml`) was originally generated from the actual server implementation
+- **Purpose**: Serves as the contract for Android client generation and external API documentation
+- **August 2025 Issue**: Specification drift caused Android UI test failures when spec expected `credentialId` field that server wasn't providing
+
+### Synchronization Requirements
+
+#### When Modifying Server Responses
+1. **Update server implementation** in route handlers (e.g., `RegistrationRoutes.kt`)
+2. **Update OpenAPI specification** to match the new response structure
+3. **Regenerate Android client**: `./gradlew :webauthn-server:copyGeneratedClientToLibrary`
+4. **Update Android test code** if model changes affect existing tests
+5. **Verify all tests pass**: Both server tests and Android UI tests
+
+#### When Modifying OpenAPI Specification
+1. **Ensure server implementation** matches the specification changes
+2. **Regenerate Android client**: `./gradlew :webauthn-server:copyGeneratedClientToLibrary`
+3. **Update Android code** to use new generated models
+4. **Verify compatibility**: Test both web and Android clients
+
+### Best Practices
+- **Server is Source of Truth**: In case of conflicts, server implementation takes precedence
+- **Atomic Changes**: Update server code, OpenAPI spec, and regenerate clients in the same PR
+- **Test Coverage**: Always verify Android UI tests pass after OpenAPI changes
+- **Documentation**: Keep examples in OpenAPI spec current with actual server responses
+
+### Verification Commands
+```bash
+# Test server implementation
+./gradlew :webauthn-server:test
+
+# Regenerate and test Android client
+./gradlew :webauthn-server:copyGeneratedClientToLibrary
+cd android-test-client && ./gradlew connectedAndroidTest
+
+# Test web client integration
+./gradlew :webauthn-server:run &
+cd test-client && npm test
+```
+
+**⚠️ WARNING: Specification drift will cause client generation failures and break Android/web client integration**
+
 ## JSON Structure Gotcha
 
 WebAuthn responses have nested structure requiring `.get("publicKey")` access:

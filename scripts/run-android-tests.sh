@@ -12,6 +12,7 @@ fi
 
 # Run instrumentation tests with shorter timeout
 echo "🧪 Running WebAuthnFlowTest instrumentation tests..."
+cd android-test-client
 timeout 300 ./gradlew connectedAndroidTest --build-cache --parallel
 TEST_EXIT_CODE=$?
 

@@ -251,9 +251,18 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ inputs.android-api-level }}
+          target: default
+          arch: x86_64
+          profile: Nexus 6
+          cores: 2
+          ram-size: 2048M
+          heap-size: 256M
+          disk-size: 2048M
+          disable-animations: false
+          disable-spellchecker: true
+          disable-linux-hw-accel: false
           force-avd-creation: false
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          disable-animations: false
           script: echo "Generated AVD snapshot for caching."
 
       - name: Run Android UI tests with emulator

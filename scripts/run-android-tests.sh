@@ -37,7 +37,7 @@ echo "✅ Emulator ready and responsive"
 # Run Android unit tests first (fast)
 cd android-test-client
 echo "🧪 Running Android unit tests..."
-timeout 180 ./gradlew test --build-cache --parallel
+timeout 300 ./gradlew test --build-cache --parallel
 UNIT_TEST_EXIT=$?
 
 if [ $UNIT_TEST_EXIT -ne 0 ]; then

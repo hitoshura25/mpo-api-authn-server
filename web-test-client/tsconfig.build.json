@@ -1,4 +1,5 @@
 {
+  "extends": "./tsconfig.json",
   "compilerOptions": {
     "target": "ES2020",
     "module": "commonjs",
@@ -18,7 +19,8 @@
     "emitDecoratorMetadata": true
   },
   "include": [
-    "src/**/*"
+    "src/**/*",
+    "generated-client/src/**/*"
   ],
   "exclude": [
     "node_modules",

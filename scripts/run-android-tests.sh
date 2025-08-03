@@ -1,7 +1,17 @@
 #!/bin/bash
 set -e
 
-echo "⏱️ Starting Android tests with 8-minute timeout..."
+echo "⏱️ Starting Android tests..."
+
+# Cleanup function to ensure Gradle daemon stops
+cleanup() {
+  echo "🧹 Stopping Gradle daemon..."
+  cd android-test-client
+  ./gradlew --stop || true
+}
+
+# Set trap to ensure cleanup on exit
+trap cleanup EXIT
 
 # Check KVM availability
 if [ -e /dev/kvm ]; then
@@ -10,10 +20,10 @@ else
   echo "⚠️ KVM not available - emulator will be slower"
 fi
 
-# Run instrumentation tests with shorter timeout
+# Run instrumentation tests (GitHub Action handles timeout)
 echo "🧪 Running WebAuthnFlowTest instrumentation tests..."
 cd android-test-client
-timeout 300 ./gradlew connectedAndroidTest --build-cache --parallel --configuration-cache
+./gradlew connectedAndroidTest --build-cache --parallel --configuration-cache --no-daemon
 TEST_EXIT_CODE=$?
 
 echo "android-test-exit-code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT

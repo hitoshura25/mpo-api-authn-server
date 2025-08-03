@@ -24,3 +24,6 @@ if [ $TEST_EXIT_CODE -ne 0 ]; then
 else
   echo "✅ Android tests passed successfully"
 fi
+
+# Trying to address hanging Github job: https://github.com/ReactiveCircus/android-emulator-runner/issues/385#issuecomment-2492035091
+killall -INT crashpad_handler || true

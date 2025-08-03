@@ -58,6 +58,7 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             .gradle/configuration-cache
+            android-test-client/.gradle/configuration-cache
           key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-${{ github.ref_name }}-

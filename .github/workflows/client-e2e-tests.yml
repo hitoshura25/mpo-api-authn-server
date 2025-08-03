@@ -135,6 +135,26 @@ jobs:
 
           echo "✅ Dependencies installed in parallel"
 
+      - name: Generate TypeScript client from OpenAPI spec
+        run: |
+          echo "🔨 Generating TypeScript client from OpenAPI specification..."
+          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient
+          
+          # Verify client generation
+          if [ -f "web-test-client/generated-client/src/index.ts" ]; then
+            echo "✅ TypeScript client generated successfully"
+          else
+            echo "❌ TypeScript client generation failed"
+            exit 1
+          fi
+
+      - name: Build web-test-client TypeScript bundles
+        working-directory: web-test-client
+        run: |
+          echo "🔨 Building TypeScript web client bundles..."
+          npm run build
+          echo "✅ Web client bundles built successfully"
+
       - name: Set up environment and start services
         run: |
           cd webauthn-server
@@ -319,6 +339,15 @@ jobs:
             web-test-client/test-results/
             android-test-client/app/build/reports/androidTests/connected/
             android-test-client/app/build/outputs/androidTest-results/connected/
+          retention-days: 3
+
+      - name: Upload web-test-client build artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-test-client-bundles
+          path: |
+            web-test-client/dist/
           retention-days: 3
 
       - name: Upload Docker Logs

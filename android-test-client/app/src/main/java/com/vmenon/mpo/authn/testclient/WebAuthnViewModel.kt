@@ -99,7 +99,7 @@ class WebAuthnViewModel : ViewModel() {
             }
             
             addLog("Registration completed successfully!")
-            addLog("Server response: ${completeResponse.credentialId}")
+            addLog("Server response: ${completeResponse.message}")
             
             withContext(Dispatchers.Main) {
                 _successMessage.value = "User $username registered successfully"

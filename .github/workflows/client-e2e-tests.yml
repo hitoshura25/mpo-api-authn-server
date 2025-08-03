@@ -1,4 +1,12 @@
-name: Run JS Client E2E Tests
+name: Run Client E2E Tests (Web + Android)
+
+# Optimized for PR speed validation - targets ~8-12 minute total runtime
+# Future optimization: Pre-built Docker images in GHCR for faster service startup
+#
+# Android Caching Strategy:
+# - Caches small SDK tools/platforms (~50-200MB) - faster than download
+# - Caches AVD snapshots for instant emulator startup
+# - EXCLUDES system images (1-4GB) - slower to cache than download
 
 on:
   workflow_call:
@@ -8,6 +16,11 @@ on:
         required: false
         type: string
         default: '18'
+      android-api-level:
+        description: 'Android api level to use'
+        required: false
+        type: string
+        default: '29'
     secrets:
       codecov_token:
         description: 'Codecov token for uploading coverage reports'
@@ -24,10 +37,10 @@ on:
     outputs:
       test-exit-code:
         description: 'Exit code from the tests'
-        value: ${{ jobs.js-client-e2e-tests.outputs.test-exit-code }}
+        value: ${{ jobs.client-e2e-tests.outputs.test-exit-code }}
 
 jobs:
-  js-client-e2e-tests:
+  client-e2e-tests:
     runs-on: ubuntu-latest
     outputs:
       test-exit-code: ${{ steps.run-tests.outputs.test-exit-code }}
@@ -50,6 +63,7 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             .gradle/configuration-cache
+            android-test-client/.gradle/configuration-cache
           key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-${{ runner.os }}-${{ github.ref_name }}-
@@ -104,12 +118,22 @@ jobs:
           cache: 'npm'
           cache-dependency-path: test-client/package-lock.json
 
-      - name: Install test dependencies
+      - name: Install test dependencies (parallel)
         working-directory: test-client
         run: |
-          npm ci
-          # They recommend using the --with-dependencies flag however that adds additional time and tests work so far without it
-          npx playwright install chromium --only-shell
+          # Install npm dependencies and Playwright in parallel
+          npm ci &
+          NPM_PID=$!
+
+          # Download Playwright browser in background
+          npx playwright install chromium --only-shell &
+          PLAYWRIGHT_PID=$!
+
+          # Wait for both to complete
+          wait $NPM_PID
+          wait $PLAYWRIGHT_PID
+
+          echo "✅ Dependencies installed in parallel"
 
       - name: Set up environment and start services
         run: |
@@ -199,6 +223,81 @@ jobs:
             echo "✅ Tests passed successfully"
           fi
 
+      - name: Generate Android client
+        run: |
+          echo "🔨 Generating Android client..."
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary
+
+          # Verify client generation
+          if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/RegistrationApi.java" ]; then
+            echo "✅ Android client generated successfully"
+          else
+            echo "❌ Android client generation failed"
+            exit 1
+          fi
+
+      - name: Enable KVM for hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+
+      # REMOVED: Problematic Android SDK cache that was taking 11+ minutes
+      # System images are 1-4GB each, making cache slower than fresh download
+      # Using targeted AVD snapshot caching instead (see AVD cache step below)
+
+      # Cache small, frequently reused Android SDK components (excludes large system images)
+      - name: Cache Android SDK tools and build components
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/platforms/android-${{ inputs.android-api-level }}
+            /usr/local/lib/android/sdk/build-tools
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/tools
+            ~/.android/repositories.cfg
+          key: android-tools-${{ inputs.android-api-level }}-${{ runner.os }}-v2
+          restore-keys: |
+            android-tools-${{ inputs.android-api-level }}-${{ runner.os }}-
+            android-tools-${{ inputs.android-api-level }}-
+
+      # Cache AVD configuration and snapshots (much faster than system images)
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ inputs.android-api-level }}-v2
+
+      - name: create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.android-api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: false
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Run Android UI tests with emulator
+        id: android-tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ inputs.android-api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: ./scripts/run-android-tests.sh
+
       - name: Stop full stack
         id: stop-full-stack
         if: always()
@@ -210,14 +309,16 @@ jobs:
           docker compose down -v
           echo "✅ Docker Compose services stopped"
 
-      - name: Upload Playwright Report
+      - name: Upload test reports
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: playwright-report
+          name: test-reports
           path: |
             test-client/playwright-report/
             test-client/test-results/
+            android-test-client/app/build/reports/androidTests/connected/
+            android-test-client/app/build/outputs/androidTest-results/connected/
           retention-days: 3
 
       - name: Upload Docker Logs

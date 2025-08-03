@@ -48,6 +48,7 @@ val koinVersion = "3.5.3"
 val micrometerVersion = "1.12.2"
 val openTelemetryVersion = "1.32.0"
 val openTelemetryKtorVersion = "2.17.1-alpha"
+val cborVersion = "4.5.2"
 
 group = "com.vmenon.mpo.api.authn"
 version = "1.0-SNAPSHOT"
@@ -140,7 +141,7 @@ dependencies {
 
     // WebAuthn Test Utilities
     testImplementation(project(":webauthn-test-lib"))
-    testImplementation("com.upokecenter:cbor")
+    testImplementation("com.upokecenter:cbor:$cborVersion")
     testImplementation("com.google.guava:guava")
 }
 

@@ -238,6 +238,20 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -la /dev/kvm
 
+      - name: Cache Android SDK components
+        uses: actions/cache@v4
+        with:
+          path: |
+            /usr/local/lib/android/sdk/system-images
+            /usr/local/lib/android/sdk/platforms
+            /usr/local/lib/android/sdk/emulator
+            /usr/local/lib/android/sdk/build-tools
+          key: android-sdk-${{ inputs.android-api-level }}-${{ runner.os }}-v1
+          restore-keys: |
+            android-sdk-${{ inputs.android-api-level }}-${{ runner.os }}-
+            android-sdk-${{ inputs.android-api-level }}-
+            android-sdk-
+
       - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache

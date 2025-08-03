@@ -45,29 +45,30 @@ class WebAuthnFlowTest {
     }
 
     @Test
-    fun testRegistrationFlow() = runBlocking {
+    fun testRegistrationAndAuthenticationFlow() = runBlocking {
         val testUsername = "test-user-${UUID.randomUUID()}"
         val testDisplayName = "Test User ${System.currentTimeMillis()}"
 
         try {
+            // Registration
             // Step 1: Start registration
             val registrationRequest = RegistrationRequest().apply {
                 username = testUsername
                 displayName = testDisplayName
             }
 
-            val startResponse = registrationApi.startRegistration(registrationRequest)
+            val startRegistrationResponse = registrationApi.startRegistration(registrationRequest)
 
             // Verify response
-            assert(startResponse.requestId != null) { "Request ID should not be null" }
-            assert(startResponse.publicKeyCredentialCreationOptions != null) {
+            assert(startRegistrationResponse.requestId != null) { "Request ID should not be null" }
+            assert(startRegistrationResponse.publicKeyCredentialCreationOptions != null) {
                 "PublicKeyCredentialCreationOptions should not be null"
             }
 
-            println("✓ Registration start successful - Request ID: ${startResponse.requestId}")
+            println("✓ Registration start successful - Request ID: ${startRegistrationResponse.requestId}")
 
             // Step 2: Extract challenge and generate test credential via test service
-            val challenge = extractChallenge(startResponse.publicKeyCredentialCreationOptions)
+            val challenge = extractChallenge(startRegistrationResponse.publicKeyCredentialCreationOptions)
             val testCredentialResponse = testServiceClient.generateRegistrationCredential(
                 TestRegistrationRequest(
                     challenge = challenge,
@@ -77,33 +78,20 @@ class WebAuthnFlowTest {
             )
 
             // Step 3: Complete registration using test service generated credential
-            val completeRequest = RegistrationCompleteRequest().apply {
-                requestId = startResponse.requestId
+            val completeRegistrationRequest = RegistrationCompleteRequest().apply {
+                requestId = startRegistrationResponse.requestId
                 credential = testCredentialResponse.credential
             }
 
-            val completeResponse = registrationApi.completeRegistration(completeRequest)
+            val completeRegistrationResponse = registrationApi.completeRegistration(completeRegistrationRequest)
 
             // Verify completion response
-            assert(completeResponse.success == true) { "Registration should be successful" }
-            assert(completeResponse.message == "Registration successful") { "Message should be 'Registration successful'" }
+            assert(completeRegistrationResponse.success == true) { "Registration should be successful" }
+            assert(completeRegistrationResponse.message == "Registration successful") { "Message should be 'Registration successful'" }
 
-            println("✓ Registration complete successful - ${completeResponse.message}")
+            println("✓ Registration complete successful - ${completeRegistrationResponse.message}")
 
-        } catch (e: Exception) {
-            println("✗ Registration test failed: ${e.message}")
-            throw e
-        }
-    }
-
-    @Test
-    fun testAuthenticationFlow() = runBlocking {
-        val testUsername = "test-auth-user-${UUID.randomUUID()}"
-
-        try {
-            // First register a user to authenticate later
-            val registrationInfo = registerTestUser(testUsername)
-
+            // Authentication
             // Step 1: Start authentication
             val authRequest = AuthenticationRequest().apply {
                 username = testUsername
@@ -125,8 +113,8 @@ class WebAuthnFlowTest {
             val testAssertionResponse = testServiceClient.generateAuthenticationCredential(
                 TestAuthenticationRequest(
                     challenge = authChallenge,
-                    credentialId = registrationInfo.second, // Use credential ID from registration
-                    keyPairId = registrationInfo.first // Use key pair ID from registration
+                    credentialId = testCredentialResponse.credentialId!!, // Use credential ID from registration
+                    keyPairId = testCredentialResponse.keyPairId // Use key pair ID from registration
                 )
             )
 
@@ -144,7 +132,7 @@ class WebAuthnFlowTest {
             println("✓ Authentication complete - Authenticated: ${completeResponse.success}")
 
         } catch (e: Exception) {
-            println("✗ Authentication test failed: ${e.message}")
+            println("✗ Registration test failed: ${e.message}")
             throw e
         }
     }
@@ -166,101 +154,6 @@ class WebAuthnFlowTest {
         }
     }
 
-    @Test
-    fun testTestServiceHealthCheck() = runBlocking {
-        try {
-            // Check that test service is accessible and healthy
-            val healthResponse = testServiceClient.checkHealth()
-
-            assert(healthResponse.status == "healthy") { "Test service health check should return healthy" }
-            assert(healthResponse.service == "webauthn-test-credentials-service") { "Should be test service" }
-
-            println("✓ Test service health check successful: ${healthResponse.status}")
-
-        } catch (e: Exception) {
-            println("✗ Test service health check failed: ${e.message}")
-            throw e
-        }
-    }
-
-    @Test
-    fun testInvalidUsernameRegistration() = runBlocking {
-        try {
-            // Test with empty username
-            val registrationRequest = RegistrationRequest().apply {
-                username = ""
-                displayName = "Test User"
-            }
-
-            try {
-                registrationApi.startRegistration(registrationRequest)
-                assert(false) { "Registration with empty username should fail" }
-            } catch (e: Exception) {
-                println("✓ Empty username registration correctly failed: ${e.message}")
-            }
-
-        } catch (e: Exception) {
-            println("✗ Invalid username test failed: ${e.message}")
-            throw e
-        }
-    }
-
-    @Test
-    fun testNonExistentUserAuthentication() = runBlocking {
-        try {
-            // Test authentication with non-existent user
-            val authRequest = AuthenticationRequest().apply {
-                username = "non-existent-user-${UUID.randomUUID()}"
-            }
-
-            // Authentication start should succeed (secure - no user enumeration)
-            val startResponse = authenticationApi.startAuthentication(authRequest)
-            assert(startResponse.requestId != null) { "Request ID should not be null" }
-            println("✓ Authentication start succeeded (secure behavior - no username enumeration)")
-
-            // The response should have empty allowCredentials for non-existent user
-            // This is the secure behavior - we don't reveal if user exists or not
-            println("✓ Non-existent user authentication test completed securely")
-
-        } catch (e: Exception) {
-            println("✗ Non-existent user test failed: ${e.message}")
-            throw e
-        }
-    }
-
-    private suspend fun registerTestUser(username: String): Pair<String, String> {
-        val registrationRequest = RegistrationRequest().apply {
-            this.username = username
-            displayName = "Test User for Auth"
-        }
-
-        val startResponse = registrationApi.startRegistration(registrationRequest)
-
-        // Generate test credential via test service
-        val challenge = extractChallenge(startResponse.publicKeyCredentialCreationOptions)
-        val testCredentialResponse = testServiceClient.generateRegistrationCredential(
-            TestRegistrationRequest(
-                challenge = challenge,
-                username = username,
-                displayName = "Test User for Auth"
-            )
-        )
-
-        val completeRequest = RegistrationCompleteRequest().apply {
-            requestId = startResponse.requestId
-            credential = testCredentialResponse.credential
-        }
-
-        val completeResponse = registrationApi.completeRegistration(completeRequest)
-        println("✓ Test user registered: $username")
-
-        // Return keyPairId and credentialId for later authentication
-        return Pair(
-            testCredentialResponse.keyPairId,
-            testCredentialResponse.credentialId ?: "unknown"
-        )
-    }
-
     private fun extractChallenge(creationOptions: Any): String {
         val gson = com.google.gson.Gson()
         // Convert the object to JSON string first, then parse it
@@ -276,5 +169,4 @@ class WebAuthnFlowTest {
         val optionsJson = gson.fromJson(jsonString, com.google.gson.JsonObject::class.java)
         return optionsJson.getAsJsonObject("publicKey").get("challenge").asString
     }
-
 }

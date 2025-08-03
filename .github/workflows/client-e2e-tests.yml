@@ -116,10 +116,10 @@ jobs:
         with:
           node-version: ${{ inputs.node-version }}
           cache: 'npm'
-          cache-dependency-path: test-client/package-lock.json
+          cache-dependency-path: web-test-client/package-lock.json
 
       - name: Install test dependencies (parallel)
-        working-directory: test-client
+        working-directory: web-test-client
         run: |
           # Install npm dependencies and Playwright in parallel
           npm ci &
@@ -206,7 +206,7 @@ jobs:
 
       - name: Run E2E tests
         id: run-tests
-        working-directory: test-client
+        working-directory: web-test-client
         run: |
           set +e
           npm test
@@ -315,8 +315,8 @@ jobs:
         with:
           name: test-reports
           path: |
-            test-client/playwright-report/
-            test-client/test-results/
+            web-test-client/playwright-report/
+            web-test-client/test-results/
             android-test-client/app/build/reports/androidTests/connected/
             android-test-client/app/build/outputs/androidTest-results/connected/
           retention-days: 3

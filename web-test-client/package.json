@@ -1,5 +1,5 @@
 {
-  "name": "webauthn-test-client",
+  "name": "webauthn-web-test-client",
   "version": "1.0.0",
   "description": "WebAuthn Passkey Test Client - Web Application",
   "main": "server.js",

@@ -10,16 +10,18 @@ This project follows a multi-module architecture for clear separation of concern
 - **webauthn-test-credentials-service/** - HTTP service for cross-platform testing credentials
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
 - **android-test-client/** - Android client with generated API library
-- **test-client/** - Web-based Playwright E2E tests
+- **web-test-client/** - Web-based Playwright E2E tests
 
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Java 21+
 - Docker & Docker Compose
 - Node.js 18+ (for web tests)
 
 ### Running the Server
+
 ```bash
 # Start with Docker (recommended)
 cd webauthn-server
@@ -30,6 +32,7 @@ cd webauthn-server
 ```
 
 ### Running Tests
+
 ```bash
 # Server tests
 ./gradlew :webauthn-server:test
@@ -38,7 +41,7 @@ cd webauthn-server
 cd android-test-client && ./gradlew test
 
 # Web E2E tests (requires server running)
-cd test-client
+cd web-test-client
 npm install
 npm test
 ```
@@ -77,11 +80,13 @@ Generate client libraries for multiple platforms:
 The project uses a **layered testing approach** with different access patterns:
 
 ### Testing Layers
+
 1. **webauthn-test-lib** - Shared credential generation library
-2. **webauthn-test-credentials-service** - HTTP API wrapper (port 8081)  
+2. **webauthn-test-credentials-service** - HTTP API wrapper (port 8081)
 3. **Integration tests** - Use shared library directly for performance
 
 ### Cross-Platform Testing
+
 Start the test service for external clients:
 
 ```bash
@@ -95,7 +100,8 @@ Start the test service for external clients:
 # - GET /test/sessions
 ```
 
-**Architecture Decisions**: 
+**Architecture Decisions**:
+
 - **webauthn-server integration tests**: Use shared library directly for performance and reliability
 - **Android client tests**: Use HTTP API calls to webauthn-test-credentials-service for realistic cross-platform testing
 
@@ -109,17 +115,20 @@ Start the test service for external clients:
 ## 🏛️ Architecture
 
 ### Storage
+
 - **PostgreSQL** - Credential storage with quantum-safe encryption
 - **Redis** - Session and challenge storage
 - **HikariCP** - Connection pooling
 - **Flyway** - Database migrations
 
 ### Security
+
 - **Post-quantum cryptography** preparation with BouncyCastle
-- **Koin** dependency injection for testability  
+- **Koin** dependency injection for testability
 - **CBOR** encoding for WebAuthn data structures
 
 ### API
+
 - **OpenAPI 3.0** specification with Swagger UI
 - **Jackson** JSON processing with Kotlin support
 - **CORS** configuration for web clients
@@ -127,13 +136,14 @@ Start the test service for external clients:
 ## 📚 Documentation
 
 - [Security Analysis](WEBAUTHN_SECURITY_ANALYSIS.md) - Vulnerability testing details
-- [Client Generation](CLIENT_GENERATION.md) - Multi-platform client setup  
+- [Client Generation](CLIENT_GENERATION.md) - Multi-platform client setup
 - [MCP Development](MCP_DEVELOPMENT_GUIDE.md) - Claude Code integration
 - [GitHub Packages](GITHUB_PACKAGES_SETUP.md) - Publishing setup
 
 ## 🛠️ Development
 
 ### Module Commands
+
 ```bash
 # Main server
 ./gradlew :webauthn-server:test
@@ -153,6 +163,7 @@ cd android-test-client && ./gradlew client-library:publish
 ```
 
 ### Docker Development
+
 ```bash
 # Start all dependencies
 cd webauthn-server  

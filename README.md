@@ -41,7 +41,7 @@ cd webauthn-server
 cd android-test-client && ./gradlew test
 
 # Web E2E tests (requires server running)
-cd test-client
+cd web-test-client
 npm install
 npm test
 ```

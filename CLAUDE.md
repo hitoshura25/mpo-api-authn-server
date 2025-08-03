@@ -23,6 +23,7 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 - **webauthn-test-credentials-service/** - HTTP service for cross-platform testing  
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
 - **android-test-client/** - Android client with generated API library
+- **web-test-client/** - Web-based Playwright E2E tests with TypeScript OpenAPI client
 
 ## Development Commands
 
@@ -199,7 +200,7 @@ This project emphasizes security testing and vulnerability protection:
 
 - **WebAuthn Server**: 8080 (main API)
 - **WebAuthn Test Service**: 8081 (cross-platform credential generation)  
-- **Test Client**: 8082 (E2E test web frontend)
+- **Web Test Client**: 8082 (E2E test web frontend)
 - **PostgreSQL**: 5432
 - **Redis**: 6379  
 - **Jaeger UI**: 16686
@@ -210,6 +211,7 @@ This project emphasizes security testing and vulnerability protection:
 - **GitHub Workflow Health Check**: Enhanced CI diagnostics for service health monitoring
 - **OpenTelemetry Race Condition Fix**: Resolved test flakiness using system property approach  
 - **Service Renaming**: webauthn-test-service → webauthn-test-credentials-service for clarity
+- **Client Renaming**: test-client → web-test-client for clarity and consistency
 - **Documentation Fixes**: Fixed all markdown syntax errors across project
 - **Port Conflict Resolution**: Moved test client to 8082, eliminated CI conflicts
 - **Code Quality**: Implemented comprehensive linting with Detekt/ktlint, 0 violations achieved
@@ -239,6 +241,27 @@ This project emphasizes security testing and vulnerability protection:
 - Use `testStorageModule` for integration tests (in-memory storage)
 - All tests must pass with `./gradlew test` before claiming completion
 - Always verify Android tests pass: `cd android-test-client && ./gradlew connectedAndroidTest`
+
+### WebAuthn Client Integration Requirements
+
+**CRITICAL**: When integrating with WebAuthn clients, ensure proper data handling:
+
+1. **Server Response Format**: Server returns `publicKeyCredentialCreationOptions` and `publicKeyCredentialRequestOptions` as JSON strings
+2. **Client Parsing**: Must parse `.publicKey` field from server response for SimpleWebAuthn library
+3. **Credential Serialization**: Must stringify credential responses before sending to server
+4. **Test Title Matching**: Test verification must match actual page titles (e.g., "WebAuthn Web Test Client")
+
+**Example Integration Pattern**:
+```javascript
+// Registration
+const startData = await registrationApi.startRegistration({registrationRequest});
+const publicKeyOptions = JSON.parse(startData.publicKeyCredentialCreationOptions).publicKey;
+const credential = await SimpleWebAuthnBrowser.startRegistration(publicKeyOptions);
+await registrationApi.completeRegistration({
+    requestId: startData.requestId,
+    credential: JSON.stringify(credential)  // Must stringify!
+});
+```
 
 ---
 

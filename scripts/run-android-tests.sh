@@ -3,16 +3,6 @@ set -e
 
 echo "⏱️ Starting Android tests..."
 
-# Cleanup function to ensure Gradle daemon stops
-cleanup() {
-  echo "🧹 Stopping Gradle daemon..."
-  cd android-test-client
-  ./gradlew --stop || true
-}
-
-# Set trap to ensure cleanup on exit
-trap cleanup EXIT
-
 # Check KVM availability
 if [ -e /dev/kvm ]; then
   echo "✅ KVM device available"

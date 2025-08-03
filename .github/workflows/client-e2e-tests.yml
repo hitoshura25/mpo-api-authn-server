@@ -2,6 +2,11 @@ name: Run Client E2E Tests (Web + Android)
 
 # Optimized for PR speed validation - targets ~8-12 minute total runtime
 # Future optimization: Pre-built Docker images in GHCR for faster service startup
+#
+# Android Caching Strategy:
+# - Caches small SDK tools/platforms (~50-200MB) - faster than download
+# - Caches AVD snapshots for instant emulator startup
+# - EXCLUDES system images (1-4GB) - slower to cache than download
 
 on:
   workflow_call:
@@ -238,20 +243,26 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -la /dev/kvm
 
-      - name: Cache Android SDK components
+      # REMOVED: Problematic Android SDK cache that was taking 11+ minutes
+      # System images are 1-4GB each, making cache slower than fresh download
+      # Using targeted AVD snapshot caching instead (see AVD cache step below)
+
+      # Cache small, frequently reused Android SDK components (excludes large system images)
+      - name: Cache Android SDK tools and build components
         uses: actions/cache@v4
         with:
           path: |
-            /usr/local/lib/android/sdk/system-images
-            /usr/local/lib/android/sdk/platforms
-            /usr/local/lib/android/sdk/emulator
+            /usr/local/lib/android/sdk/platforms/android-${{ inputs.android-api-level }}
             /usr/local/lib/android/sdk/build-tools
-          key: android-sdk-${{ inputs.android-api-level }}-${{ runner.os }}-v1
+            /usr/local/lib/android/sdk/platform-tools
+            /usr/local/lib/android/sdk/tools
+            ~/.android/repositories.cfg
+          key: android-tools-${{ inputs.android-api-level }}-${{ runner.os }}-v2
           restore-keys: |
-            android-sdk-${{ inputs.android-api-level }}-${{ runner.os }}-
-            android-sdk-${{ inputs.android-api-level }}-
-            android-sdk-
+            android-tools-${{ inputs.android-api-level }}-${{ runner.os }}-
+            android-tools-${{ inputs.android-api-level }}-
 
+      # Cache AVD configuration and snapshots (much faster than system images)
       - name: AVD cache
         uses: actions/cache@v4
         id: avd-cache
@@ -259,16 +270,19 @@ jobs:
           path: |
             ~/.android/avd/*
             ~/.android/adb*
-          key: avd-${{ inputs.android-api-level }}
+          key: avd-${{ inputs.android-api-level }}-v2
 
       - name: create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ inputs.android-api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
           disable-animations: false
           force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
           script: echo "Generated AVD snapshot for caching."
 
       - name: Run Android UI tests with emulator
@@ -276,9 +290,12 @@ jobs:
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ inputs.android-api-level }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
           disable-animations: true
           force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
           script: ./scripts/run-android-tests.sh
 
       - name: Stop full stack

@@ -258,7 +258,6 @@ jobs:
 
       - name: Run Android UI tests with emulator
         id: android-tests
-        timeout-minutes: 8
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ inputs.android-api-level }}

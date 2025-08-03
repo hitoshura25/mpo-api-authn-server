@@ -31,8 +31,45 @@ app.get('/health', (req: express.Request, res: express.Response) => {
     });
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
     console.log(`🚀 WebAuthn Test Client running at http://localhost:${PORT}`);
     console.log(`📋 Health check available at http://localhost:${PORT}/health`);
     console.log(`🔧 API Server should be running at http://localhost:8080`);
+});
+
+// Graceful shutdown handling
+const gracefulShutdown = (signal: string) => {
+    console.log(`📡 Received ${signal}. Starting graceful shutdown...`);
+    
+    server.close((err) => {
+        if (err) {
+            console.error('❌ Error during server shutdown:', err);
+            process.exit(1);
+        }
+        
+        console.log('✅ Server closed gracefully');
+        process.exit(0);
+    });
+    
+    // Force exit after 5 seconds if graceful shutdown fails
+    setTimeout(() => {
+        console.error('⚠️ Forced shutdown due to timeout');
+        process.exit(1);
+    }, 5000);
+};
+
+// Handle various termination signals
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT')); 
+process.on('SIGUSR2', () => gracefulShutdown('SIGUSR2')); // For nodemon
+
+// Handle uncaught exceptions and unhandled rejections
+process.on('uncaughtException', (err) => {
+    console.error('💥 Uncaught Exception:', err);
+    gracefulShutdown('uncaughtException');
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+    gracefulShutdown('unhandledRejection');
 });

@@ -36,6 +36,8 @@
     "server:logs": "cd ../webauthn-server && docker-compose logs -f webauthn-server",
     "server:restart": "cd ../webauthn-server && docker-compose restart webauthn-server",
     "server:status": "cd ../webauthn-server && docker-compose ps",
+    "cleanup:port": "node scripts/cleanup-port.js",
+    "test:clean": "npm run cleanup:port && npm test",
     "test:with-server": "npm run server:start && (npm run test; npm run server:stop)",
     "test:with-server:report": "npm run server:start && (npm run test; npm run server:stop) && npm run test:report"
   },

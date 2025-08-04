@@ -1,11 +1,14 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
 const { CleanWebpackPlugin } = require('clean-webpack-plugin');
+const TerserPlugin = require('terser-webpack-plugin');
+
+const isDevelopment = process.env.NODE_ENV !== 'production';
 
 module.exports = {
-  mode: 'development',
+  mode: isDevelopment ? 'development' : 'production',
   entry: './src/index.ts',
-  devtool: 'inline-source-map',
+  devtool: isDevelopment ? 'inline-source-map' : 'source-map',
   devServer: {
     static: './dist',
     port: 8082,
@@ -16,7 +19,22 @@ module.exports = {
     rules: [
       {
         test: /\.tsx?$/,
-        use: 'ts-loader',
+        use: isDevelopment ? 'ts-loader' : [
+          {
+            loader: 'babel-loader',
+            options: {
+              presets: [
+                ['@babel/preset-env', {
+                  targets: {
+                    browsers: ['> 1%', 'last 2 versions', 'ie >= 11']
+                  },
+                  modules: false
+                }]
+              ]
+            }
+          },
+          'ts-loader'
+        ],
         exclude: /node_modules/,
       },
     ],
@@ -25,7 +43,7 @@ module.exports = {
     extensions: ['.tsx', '.ts', '.js'],
   },
   output: {
-    filename: 'webauthn-client.dev.js',
+    filename: isDevelopment ? 'webauthn-client.dev.js' : 'umd/webauthn-client.umd.js',
     path: path.resolve(__dirname, 'dist'),
     clean: true,
     library: {
@@ -34,12 +52,28 @@ module.exports = {
     },
     globalObject: 'this',
   },
+  optimization: {
+    minimize: !isDevelopment,
+    minimizer: !isDevelopment ? [new TerserPlugin({
+      terserOptions: {
+        compress: {
+          drop_console: false, // Keep console logs for debugging
+        },
+        format: {
+          comments: false,
+        },
+      },
+      extractComments: false,
+    })] : [],
+  },
   plugins: [
     new CleanWebpackPlugin(),
-    new HtmlWebpackPlugin({
-      template: './public/index.html',
-      filename: 'index.html',
-    }),
+    ...(isDevelopment ? [
+      new HtmlWebpackPlugin({
+        template: './public/index.html',
+        filename: 'index.html',
+      })
+    ] : []),
   ],
   externals: {
     '@simplewebauthn/browser': {

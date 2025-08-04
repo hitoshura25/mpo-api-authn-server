@@ -3,23 +3,13 @@
   "version": "1.0.0",
   "description": "WebAuthn Passkey Test Client - Web Application and Library",
   "main": "./dist/umd/webauthn-client.umd.js",
-  "module": "./dist/esm/index.js",
   "types": "./dist/src/index.d.ts",
-  "exports": {
-    ".": {
-      "import": "./dist/esm/index.js",
-      "require": "./dist/umd/webauthn-client.umd.js",
-      "types": "./dist/src/index.d.ts"
-    }
-  },
   "files": [
     "dist/"
   ],
   "scripts": {
-    "build": "npm run build:esm && npm run build:umd && npm run build:server",
-    "build:esm": "webpack --config webpack-esm.config.js",
-    "build:umd": "webpack --config webpack-umd.config.js",
-    "build:dev": "webpack --config webpack.config.js --mode development",
+    "build": "NODE_ENV=production webpack && npm run build:server",
+    "build:dev": "NODE_ENV=development webpack",
     "build:server": "tsc --project tsconfig.build.json",
     "start": "node dist/src/server.js",
     "dev": "npm run build:dev && npm run start",

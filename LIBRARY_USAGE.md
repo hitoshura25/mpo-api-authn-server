@@ -347,7 +347,12 @@ Libraries are automatically published when:
 
 ### Testing PR Versions
 
-When you create a PR that modifies the OpenAPI spec or client configuration, both libraries will be automatically published as snapshot versions:
+When you create a PR that modifies the OpenAPI spec or client configuration, both libraries will be automatically published as snapshot versions.
+
+**Find PR Versions**:
+1. Go to your repository → **Packages** tab
+2. Look for packages with version format `1.0.0-pr-{number}.{build}`
+3. Click on the package for installation instructions
 
 **Android PR Testing**:
 ```gradle
@@ -362,7 +367,7 @@ dependencies {
 npm config set @hitoshura25:registry https://npm.pkg.github.com
 npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_TOKEN
 
-# Install PR version
+# Install PR version (check Packages tab for exact version)
 npm install @hitoshura25/mpo-webauthn-client@1.0.0-pr-42.123
 ```
 

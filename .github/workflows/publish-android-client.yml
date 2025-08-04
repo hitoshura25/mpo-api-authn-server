@@ -17,7 +17,6 @@ on:
 permissions:
   contents: read
   packages: write
-  pull-requests: write
   id-token: write
 
 env:
@@ -182,48 +181,6 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Comment on PR
-        if: github.event_name == 'pull_request'
-        uses: thollander/actions-comment-pull-request@v2
-        with:
-          message: |
-            ## 📦 Android Client Published
-            
-            **Version**: `${{ needs.generate-version.outputs.version }}`
-            **Package**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${{ needs.generate-version.outputs.version }}`
-            
-            ### Test this PR version:
-            
-            **Setup Authentication:**
-            ```bash
-            # Environment variables (preferred)
-            export ANDROID_PUBLISH_USER=your-github-username
-            export ANDROID_PUBLISH_TOKEN=your-github-token
-            
-            # Or in gradle.properties
-            GitHubPackagesUsername=your-github-username
-            GitHubPackagesPassword=your-github-token
-            ```
-            
-            **Add to your build.gradle:**
-            ```gradle
-            repositories {
-                maven {
-                    name = "GitHubPackages"
-                    url = uri("https://maven.pkg.github.com/${{ github.repository }}")
-                    credentials {
-                        username = project.findProperty("GitHubPackagesUsername") ?: System.getenv("ANDROID_PUBLISH_USER")
-                        password = project.findProperty("GitHubPackagesPassword") ?: System.getenv("ANDROID_PUBLISH_TOKEN")
-                    }
-                }
-            }
-            
-            dependencies {
-                implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${{ needs.generate-version.outputs.version }}'
-            }
-            ```
-            
-            This is a **snapshot/prerelease** version for testing. Production apps should use stable releases from the main branch.
 
   test-android-client:
     name: Test Android Client Integration

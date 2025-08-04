@@ -17,7 +17,6 @@ on:
 permissions:
   contents: read
   packages: write
-  pull-requests: write
   id-token: write
 
 env:
@@ -323,47 +322,6 @@ jobs:
           draft: false
           prerelease: false
 
-      - name: Comment on PR
-        if: github.event_name == 'pull_request'
-        uses: thollander/actions-comment-pull-request@v2
-        with:
-          message: |
-            ## 📦 npm Client Published
-            
-            **Version**: `${{ needs.generate-version.outputs.version }}`
-            **Package**: `@${{ github.repository_owner }}/mpo-webauthn-client@${{ needs.generate-version.outputs.version }}`
-            **Registry**: GitHub Packages
-            
-            ### Test this PR version:
-            
-            ```bash
-            # Configure npm to use GitHub Packages for this scope
-            npm config set @${{ github.repository_owner }}:registry https://npm.pkg.github.com
-            npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_TOKEN
-            
-            # Install the PR version
-            npm install @${{ github.repository_owner }}/mpo-webauthn-client@${{ needs.generate-version.outputs.version }}
-            ```
-            
-            Or using `.npmrc`:
-            ```
-            @${{ github.repository_owner }}:registry=https://npm.pkg.github.com
-            //npm.pkg.github.com/:_authToken=${NPM_TOKEN}
-            ```
-            
-            ### Usage:
-            ```typescript
-            import { AuthenticationApi, RegistrationApi, Configuration } from '@${{ github.repository_owner }}/mpo-webauthn-client';
-            
-            const config = new Configuration({
-              basePath: 'https://your-webauthn-server.com'
-            });
-            
-            const authApi = new AuthenticationApi(config);
-            const regApi = new RegistrationApi(config);
-            ```
-            
-            This is a **snapshot/prerelease** version for testing. Production apps should use stable releases from npm registry (`@mpo-webauthn/client`).
 
   test-npm-client:
     name: Test npm Client Integration

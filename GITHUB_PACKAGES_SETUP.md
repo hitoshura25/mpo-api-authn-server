@@ -21,10 +21,10 @@ The workflow automatically:
 - **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0`
 
 ### Pull Requests
-- **Format**: `1.0.0-pr-123.1`, `1.0.0-pr-123.2`
+- **Format**: `1.0.0-pr.123.1`, `1.0.0-pr.123.2`
 - **Trigger**: PR opened/updated
 - **Creates**: Prerelease package + PR comment
-- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr-123.1`
+- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.123.1`
 
 ### Feature Branches
 - **Format**: `1.0.0-feature-branch.1`, `1.0.0-develop.2`
@@ -81,7 +81,7 @@ dependencies {
     implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
     
     // PR version (for testing)
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr-123.1'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.123.1'
 }
 ```
 
@@ -188,7 +188,7 @@ When a PR is created, the bot comments with usage instructions:
 ```gradle
 dependencies {
     // Test the PR version
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr-42.1'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.1'
 }
 ```
 

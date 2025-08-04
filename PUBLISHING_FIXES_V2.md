@@ -136,8 +136,8 @@ Both workflows now have:
 
 ### Pull Request Publishing
 1. **Triggers**: PR opened/updated with OpenAPI changes
-2. **Android**: Publishes to GitHub Packages as `1.0.0-pr-42.123`
-3. **npm**: Publishes to GitHub Packages as `@hitoshura25/mpo-webauthn-client@1.0.0-pr-42.123`
+2. **Android**: Publishes to GitHub Packages as `1.0.0-pr.42.123`
+3. **npm**: Publishes to GitHub Packages as `@hitoshura25/mpo-webauthn-client@1.0.0-pr.42.123`
 4. **Comments**: Bot adds installation instructions to PR
 
 ### Main Branch Publishing  

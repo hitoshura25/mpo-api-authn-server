@@ -355,7 +355,7 @@ Both Android and npm libraries are published through the **same consolidated wor
 
 **Pull Request**:
 - Publishes to **staging registries** (GitHub Packages for both Android and npm)
-- Uses **pre-release versions** (`1.0.0-pr-42.123`)
+- Uses **pre-release versions** (`1.0.0-pr.42.123`)
 - Enables testing of changes before merge
 
 **Manual Trigger**:
@@ -371,7 +371,7 @@ Libraries are **only published** when changes are detected in:
 ### Versioning
 
 - **Production releases**: `1.0.0.123` (main branch)
-- **PR snapshots**: `1.0.0-pr-42.123` (pull requests)
+- **PR snapshots**: `1.0.0-pr.42.123` (pull requests)
 - **Manual releases**: `1.0.0` (workflow_dispatch)
 
 ### Publishing Destinations
@@ -394,13 +394,13 @@ When you create a PR that modifies the OpenAPI spec or client configuration, bot
 
 **Find PR Versions**:
 1. Go to your repository → **Packages** tab
-2. Look for packages with version format `1.0.0-pr-{number}.{build}`
+2. Look for packages with version format `1.0.0-pr.{number}.{build}`
 3. Click on the package for installation instructions
 
 **Android PR Testing**:
 ```gradle
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr-42.123'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123'
 }
 ```
 
@@ -411,7 +411,7 @@ npm config set @hitoshura25:registry https://npm.pkg.github.com
 npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_TOKEN
 
 # Install PR version (check Packages tab for exact version)
-npm install @hitoshura25/mpo-webauthn-client@1.0.0-pr-42.123
+npm install @hitoshura25/mpo-webauthn-client@1.0.0-pr.42.123
 ```
 
 ### Manual Publishing

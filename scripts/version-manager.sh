@@ -26,16 +26,16 @@ generate_version() {
                 echo "📦 Main branch release: $version" >&2
             else
                 # Other branches (shouldn't happen with current config, but defensive)
-                branch_name=$(echo "$REF_NAME" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')
+                branch_name=$(echo "$REF_NAME" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
                 version="${BASE_VERSION}-${branch_name}.${BUILD_NUMBER}"
                 is_prerelease="true"
                 echo "🌿 Branch release: $version" >&2
             fi
             ;;
         "pull_request")
-            # PR: snapshot version with PR number
+            # PR: snapshot version with PR number (semantic versioning compliant)
             pr_number="${GITHUB_PR_NUMBER:-${BUILD_NUMBER}}"
-            version="${BASE_VERSION}-pr-${pr_number}.${BUILD_NUMBER}"
+            version="${BASE_VERSION}-pr.${pr_number}.${BUILD_NUMBER}"
             is_prerelease="true"
             echo "🔄 PR snapshot release: $version" >&2
             ;;
@@ -68,7 +68,7 @@ generate_version() {
 # Validate version format
 validate_version() {
     local version="$1"
-    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-[a-zA-Z0-9.-]+)?$ ]]; then
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?(-[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)*)?$ ]]; then
         echo "❌ Invalid version format: $version" >&2
         return 1
     fi

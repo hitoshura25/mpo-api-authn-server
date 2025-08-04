@@ -1093,7 +1093,7 @@ This project development followed a collaborative approach with continuous user 
 - **Workflow**: `./gradlew :webauthn-server:copyGeneratedClientToLibrary` → `./gradlew client-library:publish`
 - **Testing**: Both unit and instrumentation tests validate generated client integration
 - **Test Service Integration**: Android tests use HTTP calls to webauthn-test-credentials-service for realistic cross-platform credential generation
-- **Versioning**: PR-aware versioning (1.0.0-pr-123.1) for safe testing of API changes
+- **Versioning**: PR-aware versioning (1.0.0-pr.123.1) for safe testing of API changes
 
 ### Docker Best Practices Implementation
 

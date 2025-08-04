@@ -135,6 +135,26 @@ jobs:
 
           echo "✅ Dependencies installed in parallel"
 
+      - name: Generate TypeScript client from OpenAPI spec
+        run: |
+          echo "🔨 Generating TypeScript client from OpenAPI specification..."
+          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient
+
+          # Verify client generation
+          if [ -f "web-test-client/generated-client/src/index.ts" ]; then
+            echo "✅ TypeScript client generated successfully"
+          else
+            echo "❌ TypeScript client generation failed"
+            exit 1
+          fi
+
+      - name: Build web-test-client TypeScript bundles
+        working-directory: web-test-client
+        run: |
+          echo "🔨 Building TypeScript web client bundles..."
+          npm run build
+          echo "✅ Web client bundles built successfully"
+
       - name: Set up environment and start services
         run: |
           cd webauthn-server
@@ -243,25 +263,6 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -la /dev/kvm
 
-      # REMOVED: Problematic Android SDK cache that was taking 11+ minutes
-      # System images are 1-4GB each, making cache slower than fresh download
-      # Using targeted AVD snapshot caching instead (see AVD cache step below)
-
-      # Cache small, frequently reused Android SDK components (excludes large system images)
-      - name: Cache Android SDK tools and build components
-        uses: actions/cache@v4
-        with:
-          path: |
-            /usr/local/lib/android/sdk/platforms/android-${{ inputs.android-api-level }}
-            /usr/local/lib/android/sdk/build-tools
-            /usr/local/lib/android/sdk/platform-tools
-            /usr/local/lib/android/sdk/tools
-            ~/.android/repositories.cfg
-          key: android-tools-${{ inputs.android-api-level }}-${{ runner.os }}-v2
-          restore-keys: |
-            android-tools-${{ inputs.android-api-level }}-${{ runner.os }}-
-            android-tools-${{ inputs.android-api-level }}-
-
       # Cache AVD configuration and snapshots (much faster than system images)
       - name: AVD cache
         uses: actions/cache@v4
@@ -319,6 +320,15 @@ jobs:
             web-test-client/test-results/
             android-test-client/app/build/reports/androidTests/connected/
             android-test-client/app/build/outputs/androidTest-results/connected/
+          retention-days: 3
+
+      - name: Upload web-test-client build artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-test-client-bundles
+          path: |
+            web-test-client/dist/
           retention-days: 3
 
       - name: Upload Docker Logs

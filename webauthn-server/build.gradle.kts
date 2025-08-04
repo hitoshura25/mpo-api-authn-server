@@ -240,3 +240,45 @@ tasks.register<Copy>("copyGeneratedClientToLibrary") {
     inputs.dir(layout.buildDirectory.dir("generated-clients/android/src/main/java"))
     outputs.dir(file("../android-test-client/client-library/src/main/java"))
 }
+
+// TypeScript client generation for web usage
+tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generateTsClient") {
+    group = "openapi"
+    description = "Generate TypeScript client library for web/npm usage"
+
+    dependsOn("copyOpenApiSpec")
+
+    generatorName.set("typescript-fetch")
+    inputSpec.set(staticOpenApiSpecFile.absolutePath)
+    outputDir.set(layout.buildDirectory.dir("generated-clients/typescript").get().asFile.absolutePath)
+
+    configOptions.set(
+        mapOf(
+            "npmName" to "mpo-webauthn-client",
+            "npmVersion" to project.version.toString(),
+            "npmDescription" to "TypeScript client library for MPO WebAuthn API",
+            "npmAuthor" to "Vinayak Menon",
+            "supportsES6" to "true",
+            "withInterfaces" to "true",
+            "typescriptThreePlus" to "true",
+            "useSingleRequestParameter" to "false"
+        )
+    )
+
+    inputs.file(staticOpenApiSpecFile)
+    outputs.dir(layout.buildDirectory.dir("generated-clients/typescript"))
+}
+
+// Copy generated TypeScript client to web-test-client
+tasks.register<Copy>("copyGeneratedTsClientToWebTestClient") {
+    group = "openapi"
+    description = "Copy generated TypeScript client code to web-test-client"
+
+    dependsOn("generateTsClient")
+
+    from(layout.buildDirectory.dir("generated-clients/typescript"))
+    into(file("../web-test-client/generated-client"))
+
+    inputs.dir(layout.buildDirectory.dir("generated-clients/typescript"))
+    outputs.dir(file("../web-test-client/generated-client"))
+}

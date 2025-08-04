@@ -10,7 +10,7 @@ This project follows a multi-module architecture for clear separation of concern
 - **webauthn-test-credentials-service/** - HTTP service for cross-platform testing credentials
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
 - **android-test-client/** - Android client with generated API library
-- **web-test-client/** - Web-based Playwright E2E tests
+- **web-test-client/** - TypeScript web client with automated OpenAPI client generation and webpack bundling
 
 ## 🚀 Quick Start
 
@@ -18,7 +18,8 @@ This project follows a multi-module architecture for clear separation of concern
 
 - Java 21+
 - Docker & Docker Compose
-- Node.js 18+ (for web tests)
+- Node.js 18+ (for web client and tests)
+- TypeScript 5.3+ (for web client development)
 
 ### Running the Server
 
@@ -40,17 +41,18 @@ cd webauthn-server
 # Android client tests  
 cd android-test-client && ./gradlew test
 
-# Web E2E tests (requires server running)
+# Web TypeScript client tests (requires server running)
 cd web-test-client
 npm install
-npm test
+npm run build  # Build TypeScript client
+npm test       # Run Playwright E2E tests
 ```
 
 ## 🌐 Port Assignments
 
 - **WebAuthn Server**: 8080 (main API)
 - **WebAuthn Test Service**: 8081 (cross-platform credential generation)
-- **Test Client**: 8082 (E2E test web frontend)
+- **Web Test Client**: 8082 (TypeScript client with E2E tests)
 - **PostgreSQL**: 5432
 - **Redis**: 6379
 - **Jaeger UI**: 16686
@@ -70,6 +72,10 @@ Generate client libraries for multiple platforms:
 ```bash
 # Generate Android client
 ./gradlew :webauthn-server:copyGeneratedClientToLibrary
+
+# Generate TypeScript web client (automatically integrated)
+cd web-test-client
+# OpenAPI client auto-generated during build process
 
 # Generate all clients (when implemented)
 ./gradlew :webauthn-server:generateAllClients
@@ -104,6 +110,7 @@ Start the test service for external clients:
 
 - **webauthn-server integration tests**: Use shared library directly for performance and reliability
 - **Android client tests**: Use HTTP API calls to webauthn-test-credentials-service for realistic cross-platform testing
+- **TypeScript web client**: Uses generated OpenAPI client with automated build process and UMD bundling for browser compatibility
 
 ## 📊 Monitoring & Observability
 
@@ -132,6 +139,7 @@ Start the test service for external clients:
 - **OpenAPI 3.0** specification with Swagger UI
 - **Jackson** JSON processing with Kotlin support
 - **CORS** configuration for web clients
+- **Generated TypeScript clients** with automated OpenAPI synchronization
 
 ## 📚 Documentation
 
@@ -160,6 +168,10 @@ Start the test service for external clients:
 # Android client
 cd android-test-client && ./gradlew test
 cd android-test-client && ./gradlew client-library:publish
+
+# TypeScript web client
+cd web-test-client && npm run build
+cd web-test-client && npm test
 ```
 
 ### Docker Development

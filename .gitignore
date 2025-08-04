@@ -28,3 +28,6 @@ node_modules/
 
 # Generated Android client library code (regenerated from OpenAPI spec)
 android-test-client/client-library/src/
+
+# Generated TypeScript client library code (regenerated from OpenAPI spec)
+web-test-client/generated-client/

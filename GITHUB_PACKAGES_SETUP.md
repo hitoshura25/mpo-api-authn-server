@@ -70,8 +70,8 @@ repositories {
         name = "GitHubPackages"
         url = uri("https://maven.pkg.github.com/YOUR_ORG/YOUR_REPO")
         credentials {
-            username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
-            password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
+            username = project.findProperty("GitHubPackagesUsername") ?: project.findProperty("gpr.user") ?: System.getenv("ANDROID_PUBLISH_USER")
+            password = project.findProperty("GitHubPackagesPassword") ?: project.findProperty("gpr.key") ?: System.getenv("ANDROID_PUBLISH_TOKEN")
         }
     }
 }
@@ -87,21 +87,21 @@ dependencies {
 
 ### Authentication Setup
 
-#### Option 1: Environment Variables
+#### Option 1: Environment Variables (Preferred)
 ```bash
-export USERNAME=your-github-username
-export TOKEN=your-github-token
+export ANDROID_PUBLISH_USER=your-github-username
+export ANDROID_PUBLISH_TOKEN=your-github-token
 ```
 
-#### Option 2: Gradle Properties
-Create `~/.gradle/gradle.properties`:
+#### Option 2: Gradle Properties (New)
+Create `~/.gradle/gradle.properties` or project `gradle.properties`:
 ```properties
-gpr.user=your-github-username
-gpr.key=your-github-token
+GitHubPackagesUsername=your-github-username
+GitHubPackagesPassword=your-github-token
 ```
 
-#### Option 3: Project Properties
-Create `gradle.properties` in your project:
+#### Option 3: Legacy Gradle Properties (Still Supported)
+Create `~/.gradle/gradle.properties` or project `gradle.properties`:
 ```properties
 gpr.user=your-github-username
 gpr.key=your-github-token

@@ -117,8 +117,8 @@ jobs:
 
       - name: Build and publish Android client library
         env:
-          USERNAME: ${{ github.actor }}
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANDROID_PUBLISH_USER: ${{ github.actor }}
+          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLIENT_VERSION: ${{ needs.generate-version.outputs.version }}
         run: |
           echo "🔨 Building and publishing Android client library..."
@@ -183,13 +183,26 @@ jobs:
             
             ### Test this PR version:
             
+            **Setup Authentication:**
+            ```bash
+            # Environment variables (preferred)
+            export ANDROID_PUBLISH_USER=your-github-username
+            export ANDROID_PUBLISH_TOKEN=your-github-token
+            
+            # Or in gradle.properties
+            GitHubPackagesUsername=your-github-username
+            GitHubPackagesPassword=your-github-token
+            ```
+            
+            **Add to your build.gradle:**
             ```gradle
             repositories {
                 maven {
+                    name = "GitHubPackages"
                     url = uri("https://maven.pkg.github.com/${{ github.repository }}")
                     credentials {
-                        username = "YOUR_GITHUB_USERNAME"
-                        password = "YOUR_GITHUB_TOKEN"
+                        username = project.findProperty("GitHubPackagesUsername") ?: System.getenv("ANDROID_PUBLISH_USER")
+                        password = project.findProperty("GitHubPackagesPassword") ?: System.getenv("ANDROID_PUBLISH_TOKEN")
                     }
                 }
             }

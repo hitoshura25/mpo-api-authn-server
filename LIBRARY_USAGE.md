@@ -37,12 +37,22 @@ dependencies {
 Create `gradle.properties` in your project root or `~/.gradle/gradle.properties`:
 
 ```properties
+# Option 1: New specific property names (preferred)
+GitHubPackagesUsername=your-github-username
+GitHubPackagesPassword=your-github-personal-access-token
+
+# Option 2: Legacy property names (still supported)
 gpr.user=your-github-username
 gpr.key=your-github-personal-access-token
 ```
 
 Or set environment variables:
 ```bash
+# Option 1: New specific environment variables (preferred)
+export ANDROID_PUBLISH_USER=your-github-username
+export ANDROID_PUBLISH_TOKEN=your-github-personal-access-token
+
+# Option 2: Legacy environment variables (still supported)
 export USERNAME=your-github-username
 export TOKEN=your-github-personal-access-token
 ```

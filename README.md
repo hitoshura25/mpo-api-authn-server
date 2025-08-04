@@ -1,6 +1,6 @@
 # MPO WebAuthn Authentication Server
 
-[![codecov](https://codecov.io/gh/hitoshura25/mpo-api-authn-server/graph/badge.svg?token=DMqg4cl5Vq)](https://codecov.io/gh/hitoshura25/mpo-api-authn-server)
+[![codecov](https://codecov.io/github/hitoshura25/mpo-api-authn-server/graph/badge.svg?token=G4WWCSG5KR)](https://codecov.io/github/hitoshura25/mpo-api-authn-server)
 
 A production-ready WebAuthn (FIDO2/Passkeys) authentication server built with KTor and comprehensive security testing.
 

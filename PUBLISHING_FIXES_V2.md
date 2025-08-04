@@ -1,6 +1,8 @@
-# Publishing Workflow Fixes V2
+# Publishing Workflow Fixes V2 (Historical)
 
-## 🚨 Issues Resolved
+**Note**: The separate workflows described in this document have been **consolidated** into a single `client-e2e-tests.yml` workflow for improved efficiency and maintainability.
+
+## 🚨 Issues Resolved (Historical Context)
 
 ### 1. Android Publishing - Gradle Properties Error
 **Error**: `The following Gradle properties are missing for 'GitHubPackages' credentials: GitHubPackagesUsername, GitHubPackagesPassword`
@@ -41,7 +43,7 @@ permissions:
 
 ## ✅ Changes Made
 
-### Android Workflow (`.github/workflows/publish-android-client.yml`)
+### Android Workflow (consolidated into `.github/workflows/client-e2e-tests.yml`)
 
 1. **Added workflow-level permissions**:
 ```yaml
@@ -65,7 +67,7 @@ permissions:
    - Shows both environment variable and Gradle property options
    - Includes complete repository configuration
 
-### npm Workflow (`.github/workflows/publish-npm-client.yml`)
+### npm Workflow (consolidated into `.github/workflows/client-e2e-tests.yml`)
 
 1. **Added workflow-level permissions** (same as Android)
 

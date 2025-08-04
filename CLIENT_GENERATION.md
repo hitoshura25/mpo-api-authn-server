@@ -67,19 +67,23 @@ android-test-client/client-library/src/main/java/
 
 ## Automated Client Publishing
 
-Client libraries are automatically published when changes are merged to the main branch:
+Client libraries are automatically published through a **consolidated E2E testing and publishing workflow**:
 
-### Android Client Library
+### Consolidated Publishing Workflow
+- **Main Workflow**: `.github/workflows/client-e2e-tests.yml`
+- **Triggered by**: `default-branch-push.yml` and `pull-request.yml` wrapper workflows
+- **Process**: Generate clients → E2E testing → Conditional publishing → GitHub releases
+- **Publishing**: Only occurs when OpenAPI changes are detected
+
+### Published Libraries
+
+#### Android Client Library
 - **Package**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client`
-- **Registry**: GitHub Packages (Maven)  
-- **Publishing**: Automatic on main branch merges
-- **Workflow**: `.github/workflows/publish-android-client.yml`
+- **Registry**: GitHub Packages (Maven)
 
-### npm Client Library  
+#### npm Client Library  
 - **Package**: `@mpo-webauthn/client`
 - **Registry**: npm Registry (public)
-- **Publishing**: Automatic on main branch merges
-- **Workflow**: `.github/workflows/publish-npm-client.yml`
 
 ### Version Management
 Both clients use synchronized semantic versioning:
@@ -93,13 +97,16 @@ Publishing only occurs when API-related files change:
 - OpenAPI specification (`webauthn-server/src/main/resources/openapi/**`)
 - Server build configuration (`webauthn-server/build.gradle.kts`)
 - Client library code
-- Publishing workflows
+- Main publishing workflow (`client-e2e-tests.yml`)
 
 ### Manual Publishing
-You can trigger publishing manually:
+You can trigger publishing manually through the consolidated workflow:
 ```bash
-# Via GitHub Actions UI
-# Go to Actions → Select workflow → Run workflow → Enable "Force publish"
+# Via GitHub Actions UI - trigger the main workflow
+# Go to Actions → "Client E2E Tests and Publishing" → Run workflow
+
+# Or trigger via command line
+gh workflow run client-e2e-tests.yml
 ```
 
 ### Individual Client Management

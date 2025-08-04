@@ -36,7 +36,7 @@ credentials {
 
 ### 2. GitHub Workflow Updates
 
-**File**: `.github/workflows/publish-android-client.yml`
+**File**: `.github/workflows/client-e2e-tests.yml`
 
 **Updated environment variables:**
 ```yaml
@@ -45,7 +45,7 @@ env:
   ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-**File**: `.github/workflows/publish-npm-client.yml`
+**Note**: Both Android and npm publishing now consolidated into `.github/workflows/client-e2e-tests.yml`
 
 **Updated npm token reference:**
 ```yaml

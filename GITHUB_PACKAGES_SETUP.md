@@ -44,7 +44,7 @@ Ensure your repository has GitHub Packages enabled:
 
 ### 2. Update Base Version (Optional)
 
-To change the base version, edit `.github/workflows/publish-android-client.yml`:
+To change the base version, edit `.github/workflows/client-e2e-tests.yml`:
 
 ```yaml
 env:
@@ -117,7 +117,7 @@ gpr.key=your-github-token
 ### Manual Triggers
 ```bash
 # Force publish regardless of changes
-gh workflow run publish-android-client.yml -f force_publish=true
+gh workflow run client-e2e-tests.yml
 ```
 
 ## 📋 Workflow Jobs

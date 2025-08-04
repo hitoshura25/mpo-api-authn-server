@@ -4,10 +4,26 @@ This guide explains how to use the published WebAuthn client libraries in your p
 
 ## 🚀 Available Libraries
 
-The WebAuthn server automatically publishes client libraries for multiple platforms when changes are merged to the main branch:
+The WebAuthn server automatically publishes client libraries for multiple platforms through a **consolidated E2E testing and publishing workflow**:
 
 - **Android Library**: Published to GitHub Packages
-- **TypeScript/npm Library**: Published to npm registry
+- **TypeScript/npm Library**: Published to npm registry (main branch) or GitHub Packages (PRs)
+
+## 🔄 Publishing Workflow
+
+### Consolidated Architecture
+Client libraries are now published as part of the same workflow that:
+1. **Generates** both Android and TypeScript clients from OpenAPI spec
+2. **Tests** the clients with full E2E test suite (web + Android emulator testing)
+3. **Publishes** libraries only when OpenAPI changes are detected
+4. **Validates** the entire pipeline in a single workflow run
+
+### Automatic Triggers
+Libraries are automatically published when:
+- **OpenAPI specification changes** (in `webauthn-server/src/main/resources/openapi/**`)
+- **Client generation configuration changes** (in `webauthn-server/build.gradle.kts`)
+- **Workflow configuration changes** (in `.github/workflows/client-e2e-tests.yml`)
+- **Force publish** via manual workflow dispatch
 
 ## 📱 Android Library Usage
 
@@ -321,13 +337,36 @@ export function useWebAuthn(serverUrl: string) {
 
 ## 📦 Library Publishing
 
-### Automatic Publishing
+### Consolidated Publishing Strategy
 
-Libraries are automatically published when:
-- Changes are pushed to the `main` branch (production releases)
-- Pull requests are opened/updated (snapshot releases for testing)
-- OpenAPI specification is modified
-- Client generation configuration changes
+Both Android and npm libraries are published through the **same consolidated workflow** (`client-e2e-tests.yml`) that:
+
+1. **Generates** clients from OpenAPI specification
+2. **Tests** clients with comprehensive E2E testing
+3. **Publishes** libraries only when API changes are detected
+4. **Creates** GitHub releases for production versions
+
+### Publishing Events
+
+**Main Branch Push**:
+- Publishes to **production registries** (GitHub Packages for Android, npm registry for TypeScript)
+- Creates **GitHub releases** with full installation documentation
+- Uses **production versions** (`1.0.0.123`)
+
+**Pull Request**:
+- Publishes to **staging registries** (GitHub Packages for both Android and npm)
+- Uses **pre-release versions** (`1.0.0-pr-42.123`)
+- Enables testing of changes before merge
+
+**Manual Trigger**:
+- Force publish via workflow dispatch
+- Respects same branch-based registry routing
+
+### Change Detection
+Libraries are **only published** when changes are detected in:
+- OpenAPI specification files
+- Client generation configuration
+- Workflow configuration itself
 
 ### Versioning
 
@@ -338,12 +377,16 @@ Libraries are automatically published when:
 ### Publishing Destinations
 
 **Main Branch (Production)**:
-- **Android**: GitHub Packages (`com.vmenon.mpo.api.authn:mpo-webauthn-android-client`)
-- **npm**: Public npm registry (`@mpo-webauthn/client`)
+- **Android**: GitHub Packages → `com.vmenon.mpo.api.authn:mpo-webauthn-android-client`
+- **npm**: Public npm registry → `@mpo-webauthn/client`
+- **Docker**: DockerHub → `hitoshura25/webauthn-server`
+- **Releases**: GitHub releases with installation documentation
 
 **Pull Requests (Testing)**:
-- **Android**: GitHub Packages (same repository)
-- **npm**: GitHub Packages npm registry (`@hitoshura25/mpo-webauthn-client`)
+- **Android**: GitHub Packages → same repository, pre-release versions
+- **npm**: GitHub Packages npm registry → `@hitoshura25/mpo-webauthn-client`
+- **Docker**: Not published (PRs don't push to DockerHub)
+- **Releases**: Not created for pre-release versions
 
 ### Testing PR Versions
 
@@ -373,15 +416,20 @@ npm install @hitoshura25/mpo-webauthn-client@1.0.0-pr-42.123
 
 ### Manual Publishing
 
-Force publish both libraries:
+Force publish both libraries through the consolidated workflow:
 
 ```bash
-# Android client
-gh workflow run publish-android-client.yml -f force_publish=true
+# Trigger consolidated workflow with force publish
+gh workflow run client-e2e-tests.yml
 
-# npm client
-gh workflow run publish-npm-client.yml -f force_publish=true
+# Or trigger via main branch push workflow (which calls client-e2e-tests.yml)
+gh workflow run default-branch-push.yml
+
+# Or trigger via PR workflow (which calls client-e2e-tests.yml)
+gh workflow run pull-request.yml
 ```
+
+**Note**: The consolidated approach means both Android and npm clients are always published together, ensuring API consistency across platforms.
 
 ## 🔧 Configuration
 

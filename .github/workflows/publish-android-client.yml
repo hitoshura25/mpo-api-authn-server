@@ -115,10 +115,10 @@ jobs:
         run: |
           VERSION="${{ needs.generate-version.outputs.version }}"
           echo "📝 Generating Android client with version: $VERSION"
-          
+
           # Generate the client from main project
           ./gradlew :webauthn-server:copyGeneratedClientToLibrary --info
-          
+
           echo "✅ Android client generated and copied to library module"
 
       - name: Build and publish Android client library
@@ -129,14 +129,14 @@ jobs:
         run: |
           echo "🔨 Building and publishing Android client library..."
           cd android-test-client
-          
+
           # Build and publish the library module with explicit Gradle properties
           ./gradlew client-library:assembleRelease client-library:publish \
             -PGitHubPackagesUsername="${ANDROID_PUBLISH_USER}" \
             -PGitHubPackagesPassword="${ANDROID_PUBLISH_TOKEN}" \
             -PclientVersion="${CLIENT_VERSION}" \
-            --info
-          
+            --build-cache --parallel --configuration-cache --no-daemon --info
+
           echo "✅ Android client published successfully"
 
       - name: Create GitHub Release
@@ -147,13 +147,13 @@ jobs:
           name: "Android Client v${{ needs.generate-version.outputs.version }}"
           body: |
             ## Android Client Library v${{ needs.generate-version.outputs.version }}
-            
+
             Generated Android client library for MPO WebAuthn API.
-            
+
             ### Installation
-            
+
             Add to your `build.gradle`:
-            
+
             ```gradle
             repositories {
                 maven {
@@ -164,17 +164,17 @@ jobs:
                     }
                 }
             }
-            
+
             dependencies {
                 implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${{ needs.generate-version.outputs.version }}'
             }
             ```
-            
+
             ### Changes
             - Generated from OpenAPI specification
             - Supports WebAuthn registration and authentication
             - Compatible with Android API 26+
-            
+
             ### Documentation
             - [API Documentation](https://github.com/${{ github.repository }}/blob/main/CLIENT_GENERATION.md)
             - [Android Integration Guide](https://github.com/${{ github.repository }}/blob/main/android-test-client/README.md)
@@ -208,10 +208,10 @@ jobs:
         run: |
           echo "🔨 Building Android test client with generated library..."
           cd android-test-client
-          
+
           # Build the entire project including the library
           ./gradlew build --info
-          
+
           echo "✅ Android test client built successfully"
 
   summary:
@@ -225,7 +225,7 @@ jobs:
           echo "## 📋 Workflow Summary"
           echo "- **API Changes Detected:** ${{ needs.detect-changes.outputs.api-changed }}"
           echo "- **Should Publish:** ${{ needs.detect-changes.outputs.should-publish }}"
-          
+
           if [[ "${{ needs.detect-changes.outputs.should-publish }}" == "true" ]]; then
             echo "- **Generated Version:** ${{ needs.generate-version.outputs.version }}"
             echo "- **Is Prerelease:** ${{ needs.generate-version.outputs.is-prerelease }}"

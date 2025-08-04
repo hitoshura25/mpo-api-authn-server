@@ -14,6 +14,7 @@ on:
       - 'gradle.properties'
       - 'gradle/**'
       - '.github/workflows/default-branch-push.yml'
+      - '.github/workflows/client-e2e-tests.yml'
 
 jobs:
   default-branch-run-client-e2e-tests:

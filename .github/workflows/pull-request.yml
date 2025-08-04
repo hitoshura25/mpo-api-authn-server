@@ -14,6 +14,7 @@ on:
       - 'gradle.properties'
       - 'gradle/**'
       - '.github/workflows/pull-request.yml'
+      - '.github/workflows/client-e2e-tests.yml'
 
 jobs:
   pull-request-run-client-e2e-tests:

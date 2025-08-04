@@ -65,21 +65,42 @@ The Android client is automatically copied to:
 android-test-client/client-library/src/main/java/
 ```
 
-## Client Publishing
+## Automated Client Publishing
 
-### Build and Publish All Clients (Future Implementation)
+Client libraries are automatically published when changes are merged to the main branch:
 
+### Android Client Library
+- **Package**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client`
+- **Registry**: GitHub Packages (Maven)  
+- **Publishing**: Automatic on main branch merges
+- **Workflow**: `.github/workflows/publish-android-client.yml`
+
+### npm Client Library  
+- **Package**: `@mpo-webauthn/client`
+- **Registry**: npm Registry (public)
+- **Publishing**: Automatic on main branch merges
+- **Workflow**: `.github/workflows/publish-npm-client.yml`
+
+### Version Management
+Both clients use synchronized semantic versioning:
+- **Format**: `{BASE_VERSION}.{BUILD_NUMBER}` (e.g., `1.0.0.123`)
+- **Base Version**: Currently `1.0.0`
+- **Build Number**: GitHub Actions run number
+- **Script**: `scripts/version-manager.sh`
+
+### Change Detection
+Publishing only occurs when API-related files change:
+- OpenAPI specification (`webauthn-server/src/main/resources/openapi/**`)
+- Server build configuration (`webauthn-server/build.gradle.kts`)
+- Client library code
+- Publishing workflows
+
+### Manual Publishing
+You can trigger publishing manually:
 ```bash
-# Generate, build, and prepare all clients for publishing (when implemented)
-./gradlew :webauthn-server:prepareClientPublishing
+# Via GitHub Actions UI
+# Go to Actions → Select workflow → Run workflow → Enable "Force publish"
 ```
-
-This will:
-1. Generate all client libraries
-2. Build them (compile, test, package)
-3. Publish Java/Android clients to local Maven
-4. Package TypeScript/Python/C# clients for distribution
-5. Create distribution artifacts in `build/client-distributions/`
 
 ### Individual Client Management
 
@@ -138,14 +159,24 @@ Once published, consumers can use the clients directly:
 
 #### Android Project
 ```gradle
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+        credentials {
+            username = "YOUR_GITHUB_USERNAME"
+            password = "YOUR_GITHUB_TOKEN"
+        }
+    }
+}
+
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0.123'
 }
 ```
 
 #### NPM Project
 ```bash
-npm install mpo-webauthn-client
+npm install @mpo-webauthn/client
 ```
 
 #### Python Project
@@ -158,16 +189,17 @@ pip install mpo-webauthn-client
 ### TypeScript/JavaScript Example
 
 ```typescript
-import { DefaultApi, Configuration } from 'mpo-webauthn-client';
+import { AuthenticationApi, RegistrationApi, Configuration } from '@mpo-webauthn/client';
 
 const config = new Configuration({
     basePath: 'http://localhost:8080'
 });
 
-const api = new DefaultApi(config);
+const authApi = new AuthenticationApi(config);
+const regApi = new RegistrationApi(config);
 
 // Start registration
-const registrationResponse = await api.startRegistration({
+const registrationResponse = await regApi.startRegistration({
     registrationRequest: {
         username: 'john.doe',
         displayName: 'John Doe'
@@ -180,7 +212,7 @@ const credential = await navigator.credentials.create({
 });
 
 // Complete registration
-const result = await api.completeRegistration({
+const result = await regApi.completeRegistration({
     registrationCompleteRequest: {
         requestId: registrationResponse.data.requestId,
         publicKeyCredential: credential

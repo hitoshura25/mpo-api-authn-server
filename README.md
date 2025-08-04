@@ -67,19 +67,34 @@ npm test       # Run Playwright E2E tests
 - **Cross-origin protection** - Proper RP ID validation
 - **Comprehensive vulnerability testing** - 7 security test categories
 
-## 📱 Client Generation
+## 📱 Published Client Libraries
 
-Generate client libraries for multiple platforms:
+Use the WebAuthn API in your applications with automatically published client libraries:
+
+### Android Library
+```gradle
+dependencies {
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+}
+```
+
+### TypeScript/npm Library
+```bash
+npm install @mpo-webauthn/client
+```
+
+### Manual Client Generation
+
+Generate client libraries locally for development:
 
 ```bash
 # Generate Android client
 ./gradlew :webauthn-server:copyGeneratedClientToLibrary
 
-# Generate TypeScript web client (automatically integrated)
-cd web-test-client
-# OpenAPI client auto-generated during build process
+# Generate TypeScript web client
+./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient
 
-# Generate all clients (when implemented)
+# Generate all clients
 ./gradlew :webauthn-server:generateAllClients
 ```
 
@@ -145,10 +160,11 @@ Start the test service for external clients:
 
 ## 📚 Documentation
 
+- **[Library Usage Guide](LIBRARY_USAGE.md)** - How to use published client libraries in your applications
 - [Security Analysis](WEBAUTHN_SECURITY_ANALYSIS.md) - Vulnerability testing details
 - [Client Generation](CLIENT_GENERATION.md) - Multi-platform client setup
+- [GitHub Packages Setup](GITHUB_PACKAGES_SETUP.md) - Publishing configuration
 - [MCP Development](MCP_DEVELOPMENT_GUIDE.md) - Claude Code integration
-- [GitHub Packages](GITHUB_PACKAGES_SETUP.md) - Publishing setup
 
 ## 🛠️ Development
 

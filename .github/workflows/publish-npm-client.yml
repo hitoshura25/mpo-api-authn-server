@@ -1,0 +1,422 @@
+name: Generate and Publish npm Client
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened ]
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: 'Force publish even if no changes detected'
+        required: false
+        default: false
+        type: boolean
+
+env:
+  BASE_VERSION: "1.0.0"
+
+jobs:
+  detect-changes:
+    name: Detect API Changes
+    runs-on: ubuntu-latest
+    outputs:
+      api-changed: ${{ steps.changes.outputs.api }}
+      should-publish: ${{ steps.decision.outputs.should-publish }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changes in OpenAPI spec or generation config
+        uses: dorny/paths-filter@v3
+        id: changes
+        with:
+          filters: |
+            api:
+              - 'webauthn-server/src/main/resources/openapi/**'
+              - 'webauthn-server/build.gradle.kts'
+              - '.github/workflows/publish-npm-client.yml'
+              - 'web-test-client/generated-client/**'
+
+      - name: Decide whether to publish
+        id: decision
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.force_publish }}" == "true" ]]; then
+            echo "should-publish=true" >> $GITHUB_OUTPUT
+            echo "🔄 Publishing forced via workflow_dispatch"
+          elif [[ "${{ steps.changes.outputs.api }}" == "true" ]]; then
+            echo "should-publish=true" >> $GITHUB_OUTPUT
+            echo "📝 API changes detected, will publish"
+          else
+            echo "should-publish=false" >> $GITHUB_OUTPUT
+            echo "⏭️ No API changes detected, skipping publish"
+          fi
+
+  generate-version:
+    name: Generate Version Number
+    runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.should-publish == 'true'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is-prerelease: ${{ steps.version.outputs.is-prerelease }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate version number
+        id: version
+        env:
+          BASE_VERSION: ${{ env.BASE_VERSION }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_PR_NUMBER: ${{ github.event.number }}
+        run: |
+          echo "🎯 Using unified version manager"
+          echo "Event: $GITHUB_EVENT_NAME, PR: $GITHUB_PR_NUMBER"
+          ./scripts/version-manager.sh generate
+
+  build-and-publish:
+    name: Build and Publish npm Client
+    runs-on: ubuntu-latest
+    needs: [ detect-changes, generate-version ]
+    if: needs.detect-changes.outputs.should-publish == 'true'
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          cache-read-only: false
+
+      - name: Set up Node.js for main branch (npm registry)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Set up Node.js for PR (GitHub Packages)
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Generate TypeScript client
+        run: |
+          VERSION="${{ needs.generate-version.outputs.version }}"
+          echo "📝 Generating TypeScript client with version: $VERSION"
+          
+          # Generate and copy the client to web-test-client location
+          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient --info
+          
+          echo "✅ TypeScript client generated and copied"
+
+      - name: Update client version and build
+        env:
+          CLIENT_VERSION: ${{ needs.generate-version.outputs.version }}
+        run: |
+          echo "🔧 Updating client version to: $CLIENT_VERSION"
+          cd web-test-client/generated-client
+          
+          # Update package.json with proper npm metadata
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            PACKAGE_NAME="@${{ github.repository_owner }}/mpo-webauthn-client"
+          else
+            PACKAGE_NAME="@mpo-webauthn/client"
+          fi
+          
+          cat > package.json << EOF
+          {
+            "name": "$PACKAGE_NAME",
+            "version": "$CLIENT_VERSION",
+            "description": "TypeScript/JavaScript client for MPO WebAuthn API",
+            "author": "MPO WebAuthn Server Team",
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/${{ github.repository }}.git"
+            },
+            "homepage": "https://github.com/${{ github.repository }}#readme",
+            "bugs": {
+              "url": "https://github.com/${{ github.repository }}/issues"
+            },
+            "keywords": [
+              "webauthn",
+              "passkey",
+              "fido2",
+              "authentication",
+              "api-client",
+              "typescript",
+              "javascript"
+            ],
+            "license": "MIT",
+            "main": "./dist/index.js",
+            "typings": "./dist/index.d.ts",
+            "module": "./dist/esm/index.js",
+            "sideEffects": false,
+            "files": [
+              "dist/",
+              "README.md"
+            ],
+            "scripts": {
+              "build": "tsc && tsc -p tsconfig.esm.json",
+              "prepare": "npm run build",
+              "prepublishOnly": "npm run build"
+            },
+            "devDependencies": {
+              "typescript": "^4.0"
+            },
+            "publishConfig": {
+              "access": "public"
+            }
+          }
+          EOF
+          
+          # Install dependencies and build
+          npm install
+          npm run build
+          
+          echo "✅ TypeScript client built successfully"
+
+      - name: Publish to npm registry (main branch)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          echo "📦 Publishing to npm registry..."
+          cd web-test-client/generated-client
+          
+          # Publish to public npm registry
+          npm publish
+          
+          echo "✅ npm package published successfully to npm registry"
+
+      - name: Publish to GitHub Packages (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "📦 Publishing to GitHub Packages..."
+          cd web-test-client/generated-client
+          
+          # Publish to GitHub Packages npm registry
+          npm publish
+          
+          echo "✅ npm package published successfully to GitHub Packages"
+
+      - name: Create GitHub Release
+        if: needs.generate-version.outputs.is-prerelease == 'false' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "npm-client-v${{ needs.generate-version.outputs.version }}"
+          name: "npm Client v${{ needs.generate-version.outputs.version }}"
+          body: |
+            ## npm Client Library v${{ needs.generate-version.outputs.version }}
+            
+            Generated TypeScript/JavaScript client library for MPO WebAuthn API.
+            
+            ### Installation
+            
+            ```bash
+            npm install @mpo-webauthn/client
+            ```
+            
+            ### Usage
+            
+            ```typescript
+            import { AuthenticationApi, RegistrationApi, Configuration } from '@mpo-webauthn/client';
+            
+            const config = new Configuration({
+              basePath: 'https://your-webauthn-server.com'
+            });
+            
+            const authApi = new AuthenticationApi(config);
+            const regApi = new RegistrationApi(config);
+            ```
+            
+            ### Features
+            - TypeScript support with full type definitions
+            - ESM and CommonJS module support
+            - WebAuthn registration and authentication
+            - Compatible with modern browsers and Node.js
+            
+            ### Changes
+            - Generated from OpenAPI specification
+            - Supports WebAuthn registration and authentication flows
+            - Full TypeScript type safety
+            
+            ### Documentation
+            - [API Documentation](https://github.com/${{ github.repository }}/blob/main/CLIENT_GENERATION.md)
+            - [Integration Examples](https://github.com/${{ github.repository }}/blob/main/web-test-client/README.md)
+          draft: false
+          prerelease: false
+
+      - name: Comment on PR
+        if: github.event_name == 'pull_request'
+        uses: thollander/actions-comment-pull-request@v2
+        with:
+          message: |
+            ## 📦 npm Client Published
+            
+            **Version**: `${{ needs.generate-version.outputs.version }}`
+            **Package**: `@${{ github.repository_owner }}/mpo-webauthn-client@${{ needs.generate-version.outputs.version }}`
+            **Registry**: GitHub Packages
+            
+            ### Test this PR version:
+            
+            ```bash
+            # Configure npm to use GitHub Packages for this scope
+            npm config set @${{ github.repository_owner }}:registry https://npm.pkg.github.com
+            npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_TOKEN
+            
+            # Install the PR version
+            npm install @${{ github.repository_owner }}/mpo-webauthn-client@${{ needs.generate-version.outputs.version }}
+            ```
+            
+            Or using `.npmrc`:
+            ```
+            @${{ github.repository_owner }}:registry=https://npm.pkg.github.com
+            //npm.pkg.github.com/:_authToken=${NPM_TOKEN}
+            ```
+            
+            ### Usage:
+            ```typescript
+            import { AuthenticationApi, RegistrationApi, Configuration } from '@${{ github.repository_owner }}/mpo-webauthn-client';
+            
+            const config = new Configuration({
+              basePath: 'https://your-webauthn-server.com'
+            });
+            
+            const authApi = new AuthenticationApi(config);
+            const regApi = new RegistrationApi(config);
+            ```
+            
+            This is a **snapshot/prerelease** version for testing. Production apps should use stable releases from npm registry (`@mpo-webauthn/client`).
+
+  test-npm-client:
+    name: Test npm Client Integration
+    runs-on: ubuntu-latest
+    needs: [ detect-changes, generate-version, build-and-publish ]
+    if: needs.detect-changes.outputs.should-publish == 'true'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js for main branch test
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Set up Node.js for PR test
+        if: github.event_name == 'pull_request'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: 'https://npm.pkg.github.com'
+
+      - name: Test published package installation (main branch)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          CLIENT_VERSION: ${{ needs.generate-version.outputs.version }}
+        run: |
+          echo "🧪 Testing published package installation from npm registry..."
+          
+          # Create a temporary test directory
+          mkdir -p /tmp/npm-test
+          cd /tmp/npm-test
+          
+          # Initialize a test project
+          npm init -y
+          
+          # Wait a bit for npm registry propagation
+          sleep 30
+          
+          # Install the published package
+          npm install "@mpo-webauthn/client@$CLIENT_VERSION"
+          
+          # Verify package can be imported
+          node -e "
+            const client = require('@mpo-webauthn/client');
+            console.log('✅ Package imported successfully');
+            console.log('Available exports:', Object.keys(client));
+          "
+          
+          echo "✅ npm package integration test passed"
+
+      - name: Test published package installation (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          CLIENT_VERSION: ${{ needs.generate-version.outputs.version }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🧪 Testing published package installation from GitHub Packages..."
+          
+          # Create a temporary test directory
+          mkdir -p /tmp/npm-test
+          cd /tmp/npm-test
+          
+          # Initialize a test project
+          npm init -y
+          
+          # Wait a bit for GitHub Packages propagation
+          sleep 30
+          
+          # Install the published package
+          npm install "@${{ github.repository_owner }}/mpo-webauthn-client@$CLIENT_VERSION"
+          
+          # Verify package can be imported
+          node -e "
+            const client = require('@${{ github.repository_owner }}/mpo-webauthn-client');
+            console.log('✅ Package imported successfully');
+            console.log('Available exports:', Object.keys(client));
+          "
+          
+          echo "✅ GitHub Packages npm integration test passed"
+
+  summary:
+    name: Workflow Summary
+    runs-on: ubuntu-latest
+    needs: [ detect-changes, generate-version, build-and-publish, test-npm-client ]
+    if: always()
+    steps:
+      - name: Print summary
+        run: |
+          echo "## 📋 Workflow Summary"
+          echo "- **API Changes Detected:** ${{ needs.detect-changes.outputs.api-changed }}"
+          echo "- **Should Publish:** ${{ needs.detect-changes.outputs.should-publish }}"
+          
+          if [[ "${{ needs.detect-changes.outputs.should-publish }}" == "true" ]]; then
+            echo "- **Generated Version:** ${{ needs.generate-version.outputs.version }}"
+            echo "- **Is Prerelease:** ${{ needs.generate-version.outputs.is-prerelease }}"
+            echo "- **Event Type:** ${{ github.event_name }}"
+            echo "- **Build Status:** ${{ needs.build-and-publish.result }}"
+            echo "- **Test Status:** ${{ needs.test-npm-client.result }}"
+            echo ""
+            if [[ "${{ needs.build-and-publish.result }}" == "success" && "${{ needs.test-npm-client.result }}" == "success" ]]; then
+              echo "✅ npm client published and tested successfully!"
+            else
+              echo "❌ Some steps failed - check logs above"
+            fi
+          else
+            echo ""
+            echo "⏭️ No publishing needed - no API changes detected"
+          fi

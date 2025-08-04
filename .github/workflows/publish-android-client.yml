@@ -71,33 +71,16 @@ jobs:
 
       - name: Generate version number
         id: version
+        env:
+          BASE_VERSION: ${{ env.BASE_VERSION }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_PR_NUMBER: ${{ github.event.number }}
         run: |
-          BASE_VERSION="${{ env.BASE_VERSION }}"
-          
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/main" ]]; then
-            # Main branch: use semantic version
-            VERSION="$BASE_VERSION"
-            IS_PRERELEASE="false"
-            echo "📦 Main branch release: $VERSION"
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            # PR: use PR-aware version
-            PR_NUMBER="${{ github.event.number }}"
-            RUN_NUMBER="${{ github.run_number }}"
-            VERSION="${BASE_VERSION}-pr-${PR_NUMBER}.${RUN_NUMBER}"
-            IS_PRERELEASE="true"
-            echo "🔀 PR release: $VERSION"
-          else
-            # Feature branch: use branch-aware version  
-            BRANCH_NAME=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9]/-/g' | tr '[:upper:]' '[:lower:]')
-            RUN_NUMBER="${{ github.run_number }}"
-            VERSION="${BASE_VERSION}-${BRANCH_NAME}.${RUN_NUMBER}"
-            IS_PRERELEASE="true"
-            echo "🌿 Branch release: $VERSION"
-          fi
-          
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "is-prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
-          echo "Generated version: $VERSION (prerelease: $IS_PRERELEASE)"
+          echo "🎯 Using unified version manager"
+          echo "Event: $GITHUB_EVENT_NAME, PR: $GITHUB_PR_NUMBER"
+          ./scripts/version-manager.sh generate
 
   build-and-publish:
     name: Build and Publish Android Client
@@ -147,7 +130,7 @@ jobs:
           echo "✅ Android client published successfully"
 
       - name: Create GitHub Release
-        if: needs.generate-version.outputs.is-prerelease == 'false'
+        if: needs.generate-version.outputs.is-prerelease == 'false' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "android-client-v${{ needs.generate-version.outputs.version }}"
@@ -190,27 +173,20 @@ jobs:
 
       - name: Comment on PR
         if: github.event_name == 'pull_request'
-        uses: actions/github-script@v7
+        uses: thollander/actions-comment-pull-request@v2
         with:
-          script: |
-            const version = '${{ needs.generate-version.outputs.version }}';
-            const repository = '${{ github.repository }}';
+          message: |
+            ## 📦 Android Client Published
             
-            const comment = `## 📦 Android Client Published
+            **Version**: `${{ needs.generate-version.outputs.version }}`
+            **Package**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${{ needs.generate-version.outputs.version }}`
             
-            A new version of the Android client has been published for this PR:
+            ### Test this PR version:
             
-            **Version:** \`${version}\`
-            **Package:** \`com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${version}\`
-            
-            ### 🚀 Usage
-            
-            Add to your \`build.gradle\`:
-            
-            \`\`\`gradle
+            ```gradle
             repositories {
                 maven {
-                    url = uri("https://maven.pkg.github.com/${repository}")
+                    url = uri("https://maven.pkg.github.com/${{ github.repository }}")
                     credentials {
                         username = "YOUR_GITHUB_USERNAME"
                         password = "YOUR_GITHUB_TOKEN"
@@ -219,24 +195,11 @@ jobs:
             }
             
             dependencies {
-                implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${version}'
+                implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${{ needs.generate-version.outputs.version }}'
             }
-            \`\`\`
+            ```
             
-            ### 📋 Changes
-            This version includes the API changes from this PR. Test it and provide feedback!
-            
-            ### 🔗 Links
-            - [View Package](https://github.com/${repository}/packages)
-            - [Integration Guide](https://github.com/${repository}/blob/main/android-test-client/README.md)
-            `;
-            
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: comment
-            });
+            This is a **snapshot/prerelease** version for testing. Production apps should use stable releases from the main branch.
 
   test-android-client:
     name: Test Android Client Integration

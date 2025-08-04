@@ -14,6 +14,12 @@ on:
         default: false
         type: boolean
 
+permissions:
+  contents: read
+  packages: write
+  pull-requests: write
+  id-token: write
+
 env:
   BASE_VERSION: "1.0.0"
 
@@ -89,6 +95,7 @@ jobs:
     if: needs.detect-changes.outputs.should-publish == 'true'
     permissions:
       contents: read
+      packages: write
       id-token: write
     steps:
       - name: Checkout code
@@ -136,14 +143,11 @@ jobs:
           echo "🔧 Updating client version to: $CLIENT_VERSION"
           cd web-test-client/generated-client
           
-          # Update package.json with proper npm metadata
+          # Generate package.json with proper npm metadata and publishConfig
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # For PRs, publish to GitHub Packages with repository owner scope
             PACKAGE_NAME="@${{ github.repository_owner }}/mpo-webauthn-client"
-          else
-            PACKAGE_NAME="@mpo-webauthn/client"
-          fi
-          
-          cat > package.json << EOF
+            cat > package.json << EOF
           {
             "name": "$PACKAGE_NAME",
             "version": "$CLIENT_VERSION",
@@ -159,7 +163,7 @@ jobs:
             },
             "keywords": [
               "webauthn",
-              "passkey",
+              "passkey", 
               "fido2",
               "authentication",
               "api-client",
@@ -184,10 +188,61 @@ jobs:
               "typescript": "^4.0"
             },
             "publishConfig": {
+              "registry": "https://npm.pkg.github.com"
+            }
+          }
+          EOF
+          else
+            # For main branch, publish to public npm
+            PACKAGE_NAME="@mpo-webauthn/client"
+            cat > package.json << EOF
+          {
+            "name": "$PACKAGE_NAME",
+            "version": "$CLIENT_VERSION",
+            "description": "TypeScript/JavaScript client for MPO WebAuthn API", 
+            "author": "MPO WebAuthn Server Team",
+            "repository": {
+              "type": "git",
+              "url": "https://github.com/${{ github.repository }}.git"
+            },
+            "homepage": "https://github.com/${{ github.repository }}#readme",
+            "bugs": {
+              "url": "https://github.com/${{ github.repository }}/issues"
+            },
+            "keywords": [
+              "webauthn",
+              "passkey",
+              "fido2", 
+              "authentication",
+              "api-client",
+              "typescript",
+              "javascript"
+            ],
+            "license": "MIT",
+            "main": "./dist/index.js",
+            "typings": "./dist/index.d.ts",
+            "module": "./dist/esm/index.js", 
+            "sideEffects": false,
+            "files": [
+              "dist/",
+              "README.md"
+            ],
+            "scripts": {
+              "build": "tsc && tsc -p tsconfig.esm.json",
+              "prepare": "npm run build", 
+              "prepublishOnly": "npm run build"
+            },
+            "devDependencies": {
+              "typescript": "^4.0"
+            },
+            "publishConfig": {
               "access": "public"
             }
           }
           EOF
+          fi
+          
+          echo "Generated package.json for: $PACKAGE_NAME"
           
           # Install dependencies and build
           npm install

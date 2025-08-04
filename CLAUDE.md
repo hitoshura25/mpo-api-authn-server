@@ -23,7 +23,7 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 - **webauthn-test-credentials-service/** - HTTP service for cross-platform testing  
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
 - **android-test-client/** - Android client with generated API library
-- **web-test-client/** - Web-based Playwright E2E tests with TypeScript OpenAPI client
+- **web-test-client/** - TypeScript web client with automated OpenAPI client generation and webpack bundling
 
 ## Development Commands
 
@@ -208,6 +208,10 @@ This project emphasizes security testing and vulnerability protection:
 ## Completed Work Summary
 
 ### Major Achievements ✅
+- **TypeScript OpenAPI Client Integration**: Full TypeScript conversion with webpack bundling, automated client generation, and production-ready ESM/UMD builds
+- **Server Process Management**: Added graceful shutdown with SIGTERM/SIGINT handling and port cleanup for test reliability
+- **Generated Client Workflow**: Git exclusion for generated clients with CI regeneration and proper build dependency order
+- **GitHub CI Path Issues**: Fixed package.json lifecycle, TypeScript configurations, and bundle loading complexity
 - **GitHub Workflow Health Check**: Enhanced CI diagnostics for service health monitoring
 - **OpenTelemetry Race Condition Fix**: Resolved test flakiness using system property approach  
 - **Service Renaming**: webauthn-test-service → webauthn-test-credentials-service for clarity
@@ -225,6 +229,9 @@ This project emphasizes security testing and vulnerability protection:
 - **Security**: `scripts/vulnerability-monitor.js` - Weekly vulnerability scanning  
 - **Android Tests**: `scripts/run-android-tests.sh` - Cross-platform testing
 - **Development**: `webauthn-server/start-dev.sh` - Local development environment
+- **Port Cleanup**: `web-test-client/scripts/cleanup-port.js` - Port cleanup utility for tests
+- **TypeScript Build**: `web-test-client/tsconfig.build.json` - Build-specific TypeScript configuration
+- **Webpack Configs**: `web-test-client/webpack-*.config.js` - Multiple webpack configurations for different builds
 
 ## Testing Architecture
 

@@ -153,7 +153,6 @@ jobs:
         run: |
           echo "🔨 Building TypeScript web client bundles..."
           npm run build
-          npm run build:dev
           echo "✅ Web client bundles built successfully"
 
       - name: Set up environment and start services

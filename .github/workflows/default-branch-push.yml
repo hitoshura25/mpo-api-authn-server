@@ -17,7 +17,7 @@ on:
       - '.github/workflows/client-e2e-tests.yml'
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   id-token: write
 

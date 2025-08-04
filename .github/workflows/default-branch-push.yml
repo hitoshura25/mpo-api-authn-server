@@ -4,6 +4,16 @@ on:
   push:
     branches:
       - main
+    paths:
+      - 'webauthn-server/**'
+      - 'webauthn-test-lib/**'
+      # TODO: Remove the the test credential service once optimized (i.e. docker image has changed)
+      - 'webauthn-test-credentials-service/**'
+      - 'settings.gradle.kts'
+      - 'build.gradle.kts'
+      - 'gradle.properties'
+      - 'gradle/**'
+      - '.github/workflows/default-branch-push.yml'
 
 jobs:
   default-branch-run-client-e2e-tests:

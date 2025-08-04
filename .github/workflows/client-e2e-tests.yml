@@ -96,6 +96,7 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
+          slug: hitoshura25/mpo-api-authn-server
           files: ./webauthn-server/build/reports/kover/report.xml
           flags: unit
           name: codecov-unit

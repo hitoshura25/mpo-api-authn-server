@@ -65,21 +65,49 @@ The Android client is automatically copied to:
 android-test-client/client-library/src/main/java/
 ```
 
-## Client Publishing
+## Automated Client Publishing
 
-### Build and Publish All Clients (Future Implementation)
+Client libraries are automatically published through a **consolidated E2E testing and publishing workflow**:
 
+### Consolidated Publishing Workflow
+- **Main Workflow**: `.github/workflows/client-e2e-tests.yml`
+- **Triggered by**: `default-branch-push.yml` and `pull-request.yml` wrapper workflows
+- **Process**: Generate clients → E2E testing → Conditional publishing → GitHub releases
+- **Publishing**: Only occurs when OpenAPI changes are detected
+
+### Published Libraries
+
+#### Android Client Library
+- **Package**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client`
+- **Registry**: GitHub Packages (Maven)
+
+#### npm Client Library  
+- **Package**: `@mpo-webauthn/client`
+- **Registry**: npm Registry (public)
+
+### Version Management
+Both clients use synchronized semantic versioning:
+- **Format**: `{BASE_VERSION}.{BUILD_NUMBER}` (e.g., `1.0.0.123`)
+- **Base Version**: Currently `1.0.0`
+- **Build Number**: GitHub Actions run number
+- **Script**: `scripts/version-manager.sh`
+
+### Change Detection
+Publishing only occurs when API-related files change:
+- OpenAPI specification (`webauthn-server/src/main/resources/openapi/**`)
+- Server build configuration (`webauthn-server/build.gradle.kts`)
+- Client library code
+- Main publishing workflow (`client-e2e-tests.yml`)
+
+### Manual Publishing
+You can trigger publishing manually through the consolidated workflow:
 ```bash
-# Generate, build, and prepare all clients for publishing (when implemented)
-./gradlew :webauthn-server:prepareClientPublishing
-```
+# Via GitHub Actions UI - trigger the main workflow
+# Go to Actions → "Client E2E Tests and Publishing" → Run workflow
 
-This will:
-1. Generate all client libraries
-2. Build them (compile, test, package)
-3. Publish Java/Android clients to local Maven
-4. Package TypeScript/Python/C# clients for distribution
-5. Create distribution artifacts in `build/client-distributions/`
+# Or trigger via command line
+gh workflow run client-e2e-tests.yml
+```
 
 ### Individual Client Management
 
@@ -138,14 +166,24 @@ Once published, consumers can use the clients directly:
 
 #### Android Project
 ```gradle
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+        credentials {
+            username = "YOUR_GITHUB_USERNAME"
+            password = "YOUR_GITHUB_TOKEN"
+        }
+    }
+}
+
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0.123'
 }
 ```
 
 #### NPM Project
 ```bash
-npm install mpo-webauthn-client
+npm install @mpo-webauthn/client
 ```
 
 #### Python Project
@@ -158,16 +196,17 @@ pip install mpo-webauthn-client
 ### TypeScript/JavaScript Example
 
 ```typescript
-import { DefaultApi, Configuration } from 'mpo-webauthn-client';
+import { AuthenticationApi, RegistrationApi, Configuration } from '@mpo-webauthn/client';
 
 const config = new Configuration({
     basePath: 'http://localhost:8080'
 });
 
-const api = new DefaultApi(config);
+const authApi = new AuthenticationApi(config);
+const regApi = new RegistrationApi(config);
 
 // Start registration
-const registrationResponse = await api.startRegistration({
+const registrationResponse = await regApi.startRegistration({
     registrationRequest: {
         username: 'john.doe',
         displayName: 'John Doe'
@@ -180,7 +219,7 @@ const credential = await navigator.credentials.create({
 });
 
 // Complete registration
-const result = await api.completeRegistration({
+const result = await regApi.completeRegistration({
     registrationCompleteRequest: {
         requestId: registrationResponse.data.requestId,
         publicKeyCredential: credential

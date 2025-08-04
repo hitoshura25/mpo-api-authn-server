@@ -21,10 +21,10 @@ The workflow automatically:
 - **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0`
 
 ### Pull Requests
-- **Format**: `1.0.0-pr-123.1`, `1.0.0-pr-123.2`
+- **Format**: `1.0.0-pr.123.1`, `1.0.0-pr.123.2`
 - **Trigger**: PR opened/updated
 - **Creates**: Prerelease package + PR comment
-- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr-123.1`
+- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.123.1`
 
 ### Feature Branches
 - **Format**: `1.0.0-feature-branch.1`, `1.0.0-develop.2`
@@ -44,7 +44,7 @@ Ensure your repository has GitHub Packages enabled:
 
 ### 2. Update Base Version (Optional)
 
-To change the base version, edit `.github/workflows/publish-android-client.yml`:
+To change the base version, edit `.github/workflows/client-e2e-tests.yml`:
 
 ```yaml
 env:
@@ -70,8 +70,8 @@ repositories {
         name = "GitHubPackages"
         url = uri("https://maven.pkg.github.com/YOUR_ORG/YOUR_REPO")
         credentials {
-            username = project.findProperty("gpr.user") ?: System.getenv("USERNAME")
-            password = project.findProperty("gpr.key") ?: System.getenv("TOKEN")
+            username = project.findProperty("GitHubPackagesUsername") ?: project.findProperty("gpr.user") ?: System.getenv("ANDROID_PUBLISH_USER")
+            password = project.findProperty("GitHubPackagesPassword") ?: project.findProperty("gpr.key") ?: System.getenv("ANDROID_PUBLISH_TOKEN")
         }
     }
 }
@@ -81,27 +81,27 @@ dependencies {
     implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
     
     // PR version (for testing)
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr-123.1'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.123.1'
 }
 ```
 
 ### Authentication Setup
 
-#### Option 1: Environment Variables
+#### Option 1: Environment Variables (Preferred)
 ```bash
-export USERNAME=your-github-username
-export TOKEN=your-github-token
+export ANDROID_PUBLISH_USER=your-github-username
+export ANDROID_PUBLISH_TOKEN=your-github-token
 ```
 
-#### Option 2: Gradle Properties
-Create `~/.gradle/gradle.properties`:
+#### Option 2: Gradle Properties (New)
+Create `~/.gradle/gradle.properties` or project `gradle.properties`:
 ```properties
-gpr.user=your-github-username
-gpr.key=your-github-token
+GitHubPackagesUsername=your-github-username
+GitHubPackagesPassword=your-github-token
 ```
 
-#### Option 3: Project Properties
-Create `gradle.properties` in your project:
+#### Option 3: Legacy Gradle Properties (Still Supported)
+Create `~/.gradle/gradle.properties` or project `gradle.properties`:
 ```properties
 gpr.user=your-github-username
 gpr.key=your-github-token
@@ -117,7 +117,7 @@ gpr.key=your-github-token
 ### Manual Triggers
 ```bash
 # Force publish regardless of changes
-gh workflow run publish-android-client.yml -f force_publish=true
+gh workflow run client-e2e-tests.yml
 ```
 
 ## 📋 Workflow Jobs
@@ -188,7 +188,7 @@ When a PR is created, the bot comments with usage instructions:
 ```gradle
 dependencies {
     // Test the PR version
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr-42.1'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.1'
 }
 ```
 

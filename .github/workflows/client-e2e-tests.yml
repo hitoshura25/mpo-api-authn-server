@@ -413,7 +413,7 @@ jobs:
         env:
           ANDROID_PUBLISH_USER: ${{ github.actor }}
           ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLIENT_VERSION: ${{ steps.generate-version.outputs.version }}
+          CLIENT_VERSION: ${{ steps.generate-library-version.outputs.version }}
         run: |
           echo "🔨 Building and publishing Android client library..."
           cd android-test-client
@@ -454,7 +454,7 @@ jobs:
             }
 
             dependencies {
-                implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${{ needs.generate-version.outputs.version }}'
+                implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${{ steps.generate-library-version.outputs.version }}'
             }
             ```
 

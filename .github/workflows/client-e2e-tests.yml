@@ -40,7 +40,7 @@ on:
         value: ${{ jobs.client-e2e-tests.outputs.test-exit-code }}
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   id-token: write
 
@@ -624,7 +624,7 @@ jobs:
           echo "✅ npm package published successfully to GitHub Packages"
 
       - name: Create GitHub Release for Typescript Library
-        if: steps.generate-library-version.outputs.is-prerelease == 'false' && github.event_name != 'pull_request'
+        if: steps.publish-decision.outputs.should-publish == 'true' && steps.generate-library-version.outputs.is-prerelease == 'false' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "npm-client-v${{ steps.generate-library-version.outputs.version }}"

@@ -86,16 +86,19 @@ Client libraries are automatically published through a **consolidated E2E testin
 - **Registry**: npm Registry (public)
 
 ### Version Management
-Both clients use **unified npm-compatible 3-part semantic versioning**:
-- **Format**: `{BASE_VERSION}.{BUILD_NUMBER}` (e.g., `1.0.123`)
+Both clients use **unified npm-compatible 3-part semantic versioning** with **enhanced regex validation**:
+- **Format**: `{BASE_VERSION}.{BUILD_NUMBER}` (e.g., `1.0.26`, `1.0.27`)
 - **Base Version**: Currently `1.0` (npm-compatible format)
 - **Build Number**: GitHub Actions run number  
 - **Script**: `scripts/version-manager.sh`
+- **Validation Pattern**: `^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$`
 
-**Key Benefits**:
+**Enhanced Validation Features**:
+- **Hyphen Support**: Prerelease identifiers can now contain hyphens (e.g., `1.0.0-alpha-beta.1`)
+- **Robust Rejection**: Invalid formats properly rejected (2-part, 4-part, empty prerelease)
+- **Full npm Compliance**: 100% npm semver specification compliance
 - **Unified Format**: Both Android and npm use identical version numbers
-- **npm Compatibility**: All versions are npm semver compliant
-- **PR Versions**: Use `1.0.0-pr.42.123` format (already npm compatible)
+- **PR Versions**: Use `1.0.0-pr.42.123` format with enhanced validation
 
 ### Change Detection
 Publishing only occurs when API-related files change:
@@ -182,7 +185,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.123'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
 }
 ```
 

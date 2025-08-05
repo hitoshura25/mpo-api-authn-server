@@ -136,14 +136,14 @@ Both workflows now have:
 
 ### Pull Request Publishing
 1. **Triggers**: PR opened/updated with OpenAPI changes
-2. **Android**: Publishes to GitHub Packages as `1.0.0-pr.42.123`
+2. **Android**: Publishes to GitHub Packages as `1.0.0-pr.42.123` (with enhanced regex validation)
 3. **npm**: Publishes to GitHub Packages as `@hitoshura25/mpo-webauthn-client@1.0.0-pr.42.123`
 4. **Comments**: Bot adds installation instructions to PR
 
 ### Main Branch Publishing  
 1. **Triggers**: Push to main branch with OpenAPI changes
-2. **Android**: Publishes to GitHub Packages as `1.0.123`
-3. **npm**: Publishes to public npm as `@mpo-webauthn/client@1.0.123`
+2. **Android**: Publishes to GitHub Packages as `1.0.26`, `1.0.27` (3-part with enhanced validation)
+3. **npm**: Publishes to public npm as `@mpo-webauthn/client@1.0.26`, `@mpo-webauthn/client@1.0.27`
 4. **Releases**: Creates GitHub releases for production versions
 
 ## 🎯 Next Steps

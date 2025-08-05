@@ -208,7 +208,7 @@ This project emphasizes security testing and vulnerability protection:
 ## Completed Work Summary
 
 ### Major Achievements ✅
-- **PR Publishing Support**: Added automatic snapshot publishing for pull requests with version format 1.0.0-pr.42.123 for testing client changes before merge
+- **Enhanced Regex Validation**: Upgraded version validation from `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9]+(\\.[a-zA-Z0-9]+)*)?$` to `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*)?$` supporting hyphens in prerelease identifiers for full npm semver compliance\n- **Robust Version Validation**: All version formats now properly validated - rejects invalid 2-part, 4-part, and empty prerelease formats while supporting advanced prerelease identifiers like `1.0.0-alpha-beta.1`\n- **Unified 3-Part Versioning**: Standardized both Android and npm clients to use identical semantic versioning with enhanced validation ensuring 100% npm compatibility\n- **PR Publishing Support**: Added automatic snapshot publishing for pull requests with version format 1.0.0-pr.42.123 for testing client changes before merge
 - **Dual Registry Publishing**: Configured production releases to npm/GitHub Packages and PR snapshots to GitHub Packages with automated PR comments
 - **Client Library Publishing Automation**: Enabled automated publishing of Android and TypeScript/npm client libraries on main branch merges with synchronized versioning
 - **Library Usage Documentation**: Created comprehensive usage guide with integration examples for both Android and TypeScript clients including PR testing workflows

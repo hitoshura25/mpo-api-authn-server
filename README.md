@@ -162,11 +162,11 @@ Start the test service for external clients:
 
 ## 📚 Documentation
 
-- **[Library Usage Guide](LIBRARY_USAGE.md)** - How to use published client libraries in your applications
-- [Security Analysis](WEBAUTHN_SECURITY_ANALYSIS.md) - Vulnerability testing details
-- [Client Generation](CLIENT_GENERATION.md) - Multi-platform client setup
-- [GitHub Packages Setup](GITHUB_PACKAGES_SETUP.md) - Publishing configuration
-- [MCP Development](MCP_DEVELOPMENT_GUIDE.md) - Claude Code integration
+- **[Library Usage Guide](docs/setup/library-usage.md)** - How to use published client libraries in your applications
+- [Security Analysis](docs/security/webauthn-analysis.md) - Vulnerability testing details
+- [Client Generation](docs/setup/client-generation.md) - Multi-platform client setup
+- [GitHub Packages Setup](docs/setup/github-packages-setup.md) - Publishing configuration
+- [MCP Development](docs/setup/mcp-development.md) - Claude Code integration
 
 ## 🛠️ Development
 

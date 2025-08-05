@@ -476,7 +476,7 @@ jobs:
             - Compatible with Android API 26+
 
             ### Documentation
-            - [API Documentation](https://github.com/${{ github.repository }}/blob/main/CLIENT_GENERATION.md)
+            - [API Documentation](https://github.com/${{ github.repository }}/blob/main/docs/setup/client-generation.md)
             - [Android Integration Guide](https://github.com/${{ github.repository }}/blob/main/android-test-client/README.md)
           draft: false
           prerelease: false
@@ -682,7 +682,7 @@ jobs:
             - Full TypeScript type safety
 
             ### Documentation
-            - [API Documentation](https://github.com/${{ github.repository }}/blob/main/CLIENT_GENERATION.md)
+            - [API Documentation](https://github.com/${{ github.repository }}/blob/main/docs/setup/client-generation.md)
             - [Integration Examples](https://github.com/${{ github.repository }}/blob/main/web-test-client/README.md)
           draft: false
           prerelease: false

@@ -264,7 +264,7 @@ updates:
 
 ## 📖 Related Documentation
 
-- [Client Generation Guide](CLIENT_GENERATION.md)
+- [Client Generation Guide](client-generation.md)
 - [Android Test Client README](android-test-client/README.md)
 - [GitHub Packages Documentation](https://docs.github.com/en/packages)
 - [OpenAPI Generator Documentation](https://openapi-generator.tech/)

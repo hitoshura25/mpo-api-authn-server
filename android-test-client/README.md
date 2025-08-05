@@ -240,7 +240,7 @@ private fun addLog(message: String) {
 ## Related Documentation
 
 - [Main Project README](../README.md)
-- [Client Generation Guide](../CLIENT_GENERATION.md)
-- [WebAuthn Security Analysis](../WEBAUTHN_SECURITY_ANALYSIS.md)
+- [Client Generation Guide](../docs/setup/client-generation.md)
+- [WebAuthn Security Analysis](../docs/security/webauthn-analysis.md)
 - [Android WebAuthn Guide](https://developers.google.com/identity/fido)
 - [FIDO2 API Reference](https://developers.google.com/android/reference/com/google/android/gms/fido/fido2/api/common/package-summary)

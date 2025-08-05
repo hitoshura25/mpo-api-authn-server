@@ -619,4 +619,4 @@ The Android client supports:
 - [WebAuthn Specification](https://www.w3.org/TR/webauthn-2/)
 - [SimpleWebAuthn Documentation](https://simplewebauthn.dev/)
 - [Android WebAuthn Guide](https://developer.android.com/training/sign-in/passkeys)
-- [Server API Documentation](CLIENT_GENERATION.md)
+- [Server API Documentation](client-generation.md)

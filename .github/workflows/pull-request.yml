@@ -32,4 +32,5 @@ jobs:
       gradle_encryption_key: ${{secrets.GRADLE_ENCRYPTION_KEY }}
       docker_hub_username: ${{ secrets.DOCKER_USERNAME }}
       docker_hub_token: ${{ secrets.DOCKER_PASSWORD }}
+      npm_publish_token: ${{ secrets.NPM_PUBLISH_TOKEN }}
 

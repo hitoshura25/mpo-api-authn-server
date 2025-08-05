@@ -34,6 +34,9 @@ on:
       docker_hub_token:
         description: 'DockerHub token'
         required: true
+      npm_publish_token:
+        description: 'npm publish token'
+        required: true
     outputs:
       test-exit-code:
         description: 'Exit code from the tests'
@@ -604,7 +607,7 @@ jobs:
       - name: Publish to npm registry (main branch)
         if: github.event_name != 'pull_request'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.npm_publish_token }}
         run: |
           echo "📦 Publishing to npm registry..."
           cd web-test-client/generated-client

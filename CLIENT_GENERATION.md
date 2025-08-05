@@ -82,7 +82,7 @@ Client libraries are automatically published through a **consolidated E2E testin
 - **Registry**: GitHub Packages (Maven)
 
 #### npm Client Library  
-- **Package**: `@mpo-webauthn/client`
+- **Package**: `@vmenon25/mpo-webauthn-client`
 - **Registry**: npm Registry (public)
 
 ### Version Management
@@ -191,7 +191,7 @@ dependencies {
 
 #### NPM Project
 ```bash
-npm install @mpo-webauthn/client
+npm install @vmenon25/mpo-webauthn-client
 ```
 
 #### Python Project
@@ -204,7 +204,7 @@ pip install mpo-webauthn-client
 ### TypeScript/JavaScript Example
 
 ```typescript
-import { AuthenticationApi, RegistrationApi, Configuration } from '@mpo-webauthn/client';
+import { AuthenticationApi, RegistrationApi, Configuration } from '@vmenon25/mpo-webauthn-client';
 
 const config = new Configuration({
     basePath: 'http://localhost:8080'

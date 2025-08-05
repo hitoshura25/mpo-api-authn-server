@@ -158,7 +158,7 @@ class WebAuthnHelper(private val context: Context) {
 ### Installation
 
 ```bash
-npm install @mpo-webauthn/client
+npm install @vmenon25/mpo-webauthn-client
 ```
 
 ### Basic Usage
@@ -169,7 +169,7 @@ import {
     RegistrationApi, 
     Configuration,
     RegistrationRequest 
-} from '@mpo-webauthn/client';
+} from '@vmenon25/mpo-webauthn-client';
 
 // Configure the API client
 const configuration = new Configuration({
@@ -206,7 +206,7 @@ import {
     RegistrationApi, 
     AuthenticationApi, 
     Configuration 
-} from '@mpo-webauthn/client';
+} from '@vmenon25/mpo-webauthn-client';
 
 class WebAuthnClient {
     private registrationApi: RegistrationApi;
@@ -393,7 +393,7 @@ Libraries are **only published** when changes are detected in:
 
 **Main Branch (Production)**:
 - **Android**: GitHub Packages → `com.vmenon.mpo.api.authn:mpo-webauthn-android-client`
-- **npm**: Public npm registry → `@mpo-webauthn/client`
+- **npm**: Public npm registry → `@vmenon25/mpo-webauthn-client`
 - **Docker**: DockerHub → `hitoshura25/webauthn-server`
 - **Releases**: GitHub releases with installation documentation
 

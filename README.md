@@ -82,7 +82,7 @@ dependencies {
 
 ### TypeScript/npm Library
 ```bash
-npm install @mpo-webauthn/client
+npm install @vmenon25/mpo-webauthn-client
 ```
 
 ### Manual Client Generation

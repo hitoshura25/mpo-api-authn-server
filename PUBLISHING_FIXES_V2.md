@@ -35,7 +35,7 @@ permissions:
 
 2. **Fixed package scoping**:
    - **PRs**: `@hitoshura25/mpo-webauthn-client` (scoped to repository owner)
-   - **Main**: `@mpo-webauthn/client` (public npm)
+   - **Main**: `@vmenon25/mpo-webauthn-client` (public npm)
 
 3. **Added proper publishConfig**:
    - **PRs**: `"registry": "https://npm.pkg.github.com"`
@@ -78,7 +78,7 @@ permissions:
 
 3. **Fixed package naming**:
    - **PR packages**: `@{repository_owner}/mpo-webauthn-client`
-   - **Production packages**: `@mpo-webauthn/client`
+   - **Production packages**: `@vmenon25/mpo-webauthn-client`
 
 4. **Updated secret reference**:
    - Changed from generic `NPM_TOKEN` to specific `NPM_PUBLISH_TOKEN`
@@ -143,7 +143,7 @@ Both workflows now have:
 ### Main Branch Publishing  
 1. **Triggers**: Push to main branch with OpenAPI changes
 2. **Android**: Publishes to GitHub Packages as `1.0.26`, `1.0.27` (3-part with enhanced validation)
-3. **npm**: Publishes to public npm as `@mpo-webauthn/client@1.0.26`, `@mpo-webauthn/client@1.0.27`
+3. **npm**: Publishes to public npm as `@vmenon25/mpo-webauthn-client@1.0.26`, `@vmenon25/mpo-webauthn-client@1.0.27`
 4. **Releases**: Creates GitHub releases for production versions
 
 ## 🎯 Next Steps

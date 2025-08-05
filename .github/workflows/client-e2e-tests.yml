@@ -541,7 +541,7 @@ jobs:
           EOF
           else
           # For main branch, publish to public npm
-          PACKAGE_NAME="@mpo-webauthn/client"
+          PACKAGE_NAME="@vmenon25/mpo-webauthn-client"
           cat > package.json << EOF
           {
           "name": "$PACKAGE_NAME",
@@ -637,13 +637,13 @@ jobs:
             ### Installation
 
             ```bash
-            npm install @mpo-webauthn/client
+            npm install @vmenon25/mpo-webauthn-client
             ```
 
             ### Usage
 
             ```typescript
-            import { AuthenticationApi, RegistrationApi, Configuration } from '@mpo-webauthn/client';
+            import { AuthenticationApi, RegistrationApi, Configuration } from '@vmenon25/mpo-webauthn-client';
 
             const config = new Configuration({
               basePath: 'https://your-webauthn-server.com'

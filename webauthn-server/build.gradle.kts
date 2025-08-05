@@ -210,7 +210,7 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
             "library" to "okhttp-gson",
             "groupId" to "com.vmenon.mpo.api.authn",
             "artifactId" to "mpo-webauthn-android-client",
-            "artifactVersion" to project.version.toString(),
+            "artifactVersion" to (project.findProperty("clientVersion")?.toString() ?: project.version.toString()),
             "invokerPackage" to "com.vmenon.mpo.api.authn.client",
             "apiPackage" to "com.vmenon.mpo.api.authn.client.api",
             "modelPackage" to "com.vmenon.mpo.api.authn.client.model",
@@ -254,8 +254,8 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
 
     configOptions.set(
         mapOf(
-            "npmName" to "mpo-webauthn-client",
-            "npmVersion" to project.version.toString(),
+            "npmName" to (project.findProperty("npmName")?.toString() ?: "mpo-webauthn-client"),
+            "npmVersion" to (project.findProperty("clientVersion")?.toString() ?: project.version.toString()),
             "npmDescription" to "TypeScript client library for MPO WebAuthn API",
             "npmAuthor" to "Vinayak Menon",
             "supportsES6" to "true",

@@ -151,9 +151,12 @@ jobs:
           echo "✅ Dependencies installed in parallel"
 
       - name: Generate TypeScript client from OpenAPI spec
+        env:
+          CLIENT_VERSION: ${{ steps.generate-library-version.outputs.version }}
         run: |
           echo "🔨 Generating TypeScript client from OpenAPI specification..."
-          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient
+          echo "Using version: $CLIENT_VERSION"
+          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="${{ env.NPM_PACKAGE_NAME }}"
 
           # Verify client generation
           if [ -f "web-test-client/generated-client/src/index.ts" ]; then
@@ -259,9 +262,12 @@ jobs:
           fi
 
       - name: Generate Android client
+        env:
+          CLIENT_VERSION: ${{ steps.generate-library-version.outputs.version }}
         run: |
           echo "🔨 Generating Android client..."
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary
+          echo "Using version: $CLIENT_VERSION"
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary -PclientVersion="$CLIENT_VERSION"
 
           # Verify client generation
           if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/RegistrationApi.java" ]; then

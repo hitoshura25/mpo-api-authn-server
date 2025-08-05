@@ -15,22 +15,54 @@ The workflow automatically:
 ## 📦 Versioning Scheme
 
 ### Main Branch (Production)
-- **Format**: `1.0.0`, `1.1.0`, `1.2.0`
-- **Trigger**: Push to `main` branch
+- **Format**: `1.0.26`, `1.0.27`, `1.0.28` (3-part production versions)
+- **Trigger**: Push to `main` branch  
 - **Creates**: GitHub Release
-- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0`
+- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26`
+- **Validation**: Enhanced regex ensures full npm semver compliance
 
 ### Pull Requests
-- **Format**: `1.0.0-pr.123.1`, `1.0.0-pr.123.2`
+- **Format**: `1.0.0-pr.42.123`, `1.0.0-pr.43.124` (with enhanced validation)
 - **Trigger**: PR opened/updated
 - **Creates**: Prerelease package + PR comment
-- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.123.1`
+- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123`
+- **Advanced**: `1.0.0-alpha-beta.1` (hyphens now supported in prerelease identifiers)
 
 ### Feature Branches
 - **Format**: `1.0.0-feature-branch.1`, `1.0.0-develop.2`
 - **Trigger**: Push to non-main branches
 - **Creates**: Prerelease package
 - **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-develop.15`
+
+## 🔧 Enhanced Version Validation
+
+The workflow includes **robust version validation** with an enhanced regex pattern:
+
+### Validation Pattern
+```regex
+^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$
+```
+
+### Key Improvements
+- **Hyphen Support**: Prerelease identifiers can now contain hyphens
+- **npm Compliance**: 100% npm semver specification compliance
+- **Robust Rejection**: Invalid formats properly rejected:
+  - 2-part versions: `1.0` ❌
+  - 4-part versions: `1.0.0.1` ❌  
+  - Empty prerelease: `1.0.0-` ❌
+  - Invalid characters: `1.0.0-alpha_beta` ❌
+
+### Valid Examples
+```bash
+# Production versions
+1.0.26, 1.0.27, 1.0.28
+
+# Standard prerelease
+1.0.0-pr.42.123, 1.0.0-rc.1
+
+# Advanced prerelease with hyphens (newly supported)
+1.0.0-alpha-beta.1, 1.0.0-release-candidate.2
+```
 
 ## 🚀 Repository Setup
 
@@ -48,7 +80,7 @@ To change the base version, edit `.github/workflows/client-e2e-tests.yml`:
 
 ```yaml
 env:
-  BASE_VERSION: "2.0.0"  # Change this to your desired base version
+  BASE_VERSION: "2.0"  # Change this to your desired base version
 ```
 
 ### 3. Configure Repository Secrets (Optional)
@@ -78,10 +110,13 @@ repositories {
 
 dependencies {
     // Production version
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
     
     // PR version (for testing)
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.123.1'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123'
+    
+    // Advanced prerelease with hyphens (now supported)
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-alpha-beta.1'
 }
 ```
 
@@ -188,7 +223,10 @@ When a PR is created, the bot comments with usage instructions:
 ```gradle
 dependencies {
     // Test the PR version
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.1'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123'
+    
+    // Advanced prerelease with hyphens (now supported)
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-alpha-beta.1'
 }
 ```
 
@@ -197,7 +235,7 @@ dependencies {
 `gradle/libs.versions.toml`:
 ```toml
 [versions]
-webauthn-client = "1.0.0"
+webauthn-client = "1.0.123"
 
 [libraries]
 webauthn-android = { module = "com.vmenon.mpo.api.authn:mpo-webauthn-android-client", version.ref = "webauthn-client" }

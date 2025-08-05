@@ -69,14 +69,16 @@ npm test       # Run Playwright E2E tests
 
 ## 📱 Published Client Libraries
 
-Use the WebAuthn API in your applications with automatically published client libraries:
+Use the WebAuthn API in your applications with automatically published client libraries featuring **enhanced regex validation** and **unified 3-part versioning**:
 
 ### Android Library
 ```gradle
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
 }
 ```
+
+**Enhanced Version Validation**: All published versions use robust regex validation ensuring full npm semver compliance with support for advanced prerelease identifiers including hyphens.
 
 ### TypeScript/npm Library
 ```bash

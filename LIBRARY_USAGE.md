@@ -44,7 +44,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
 }
 ```
 
@@ -351,7 +351,7 @@ Both Android and npm libraries are published through the **same consolidated wor
 **Main Branch Push**:
 - Publishes to **production registries** (GitHub Packages for Android, npm registry for TypeScript)
 - Creates **GitHub releases** with full installation documentation
-- Uses **production versions** (`1.0.0.123`)
+- Uses **production versions** (`1.0.26`, `1.0.27`, `1.0.28`) with enhanced regex validation
 
 **Pull Request**:
 - Publishes to **staging registries** (GitHub Packages for both Android and npm)
@@ -370,9 +370,24 @@ Libraries are **only published** when changes are detected in:
 
 ### Versioning
 
-- **Production releases**: `1.0.0.123` (main branch)
-- **PR snapshots**: `1.0.0-pr.42.123` (pull requests)
+**Unified npm-compatible 3-part versioning** with **enhanced regex validation** - both Android and npm use identical formats:
+
+- **Production releases**: `1.0.26`, `1.0.27`, `1.0.28` (main branch) - unified across platforms
+- **PR snapshots**: `1.0.0-pr.42.123`, `1.0.0-pr.43.124` (pull requests) - full npm semver compliance  
 - **Manual releases**: `1.0.0` (workflow_dispatch)
+- **Advanced prerelease**: `1.0.0-alpha-beta.1`, `1.0.0-rc-1.2` (hyphens supported in prerelease identifiers)
+
+**Enhanced Regex Validation**:
+- **Pattern**: `^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$`
+- **Improvement**: Now supports hyphens within prerelease identifiers (e.g., `alpha-beta`, `rc-1`)
+- **Full npm semver compliance**: All generated versions pass npm's strict semantic versioning requirements
+- **Robust validation**: Properly rejects invalid formats (2-part, 4-part, empty prerelease segments)
+
+**Key Benefits**:
+- **Unified Format**: Android and npm clients use identical version numbers
+- **npm Compatibility**: Enhanced regex ensures 100% npm semver compliance
+- **Advanced Prerelease Support**: Supports complex prerelease identifiers with hyphens
+- **Simplified Management**: Single version strategy with robust validation for all platforms
 
 ### Publishing Destinations
 
@@ -400,7 +415,11 @@ When you create a PR that modifies the OpenAPI spec or client configuration, bot
 **Android PR Testing**:
 ```gradle
 dependencies {
+    // Standard PR version
     implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123'
+    
+    // Advanced prerelease with hyphens (now supported)
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-alpha-beta.1'
 }
 ```
 
@@ -412,6 +431,9 @@ npm config set //npm.pkg.github.com/:_authToken YOUR_GITHUB_TOKEN
 
 # Install PR version (check Packages tab for exact version)
 npm install @hitoshura25/mpo-webauthn-client@1.0.0-pr.42.123
+
+# Install advanced prerelease version (hyphens now supported)
+npm install @hitoshura25/mpo-webauthn-client@1.0.0-alpha-beta.1
 ```
 
 ### Manual Publishing
@@ -430,6 +452,47 @@ gh workflow run pull-request.yml
 ```
 
 **Note**: The consolidated approach means both Android and npm clients are always published together, ensuring API consistency across platforms.
+
+## 🔧 Technical Details
+
+### Version Validation System
+
+The publishing workflow includes **robust version validation** with an enhanced regex pattern that ensures full npm semver compliance:
+
+#### Enhanced Regex Pattern
+```regex
+^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$
+```
+
+**Key Improvements**:
+- **Hyphen Support**: Prerelease identifiers can now contain hyphens (e.g., `alpha-beta`, `rc-1`)
+- **Full npm Compliance**: All generated versions pass npm's strict semantic versioning requirements
+- **Robust Rejection**: Invalid formats are properly rejected:
+  - 2-part versions: `1.0` ❌
+  - 4-part versions: `1.0.0.1` ❌  
+  - Empty prerelease: `1.0.0-` ❌
+  - Invalid characters: `1.0.0-alpha_beta` ❌
+
+#### Valid Version Examples
+```bash
+# Production versions (3-part)
+1.0.26, 1.0.27, 1.0.28
+
+# Standard prerelease
+1.0.0-pr.42.123, 1.0.0-rc.1
+
+# Advanced prerelease with hyphens (newly supported)
+1.0.0-alpha-beta.1, 1.0.0-release-candidate.2, 1.0.0-pre-release.3
+```
+
+#### Version Generation Process
+1. **Base Version**: `1.0` (configured in workflow)
+2. **Build Number**: GitHub Actions run number
+3. **Context Detection**: Branch/PR context determines format
+4. **Validation**: Enhanced regex validates generated version
+5. **Publishing**: Only valid versions are published
+
+This ensures **100% compatibility** with both npm's package registry and Android's Maven repository requirements.
 
 ## 🔧 Configuration
 

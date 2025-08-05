@@ -85,6 +85,30 @@ Client libraries are automatically published through a **consolidated E2E testin
 - **Package**: `@vmenon25/mpo-webauthn-client`
 - **Registry**: npm Registry (public)
 
+### Centralized Package Configuration
+
+Both client libraries use **centralized configuration** managed in the GitHub Actions workflow (`.github/workflows/client-e2e-tests.yml`):
+
+```yaml
+env:
+  BASE_VERSION: "1.0"
+  NPM_SCOPE: "@vmenon25"
+  NPM_PACKAGE_NAME: "mpo-webauthn-client"
+```
+
+**Configuration Benefits:**
+- **Single Point of Control**: All package naming is managed in one location
+- **Consistent Versioning**: Both Android and npm use the same base version
+- **Easy Scope Changes**: Update `NPM_SCOPE` once to change all publishing configurations
+- **Automated Documentation**: Package names in release notes automatically use centralized values
+
+**To change npm scope:**
+1. Update `NPM_SCOPE` and `NPM_PACKAGE_NAME` in `.github/workflows/client-e2e-tests.yml`
+2. The workflow will automatically:
+   - Generate the full package name as `${NPM_SCOPE}/${NPM_PACKAGE_NAME}`
+   - Update publishing configurations for both staging and production
+   - Include correct package names in GitHub release documentation
+
 ### Version Management
 Both clients use **unified npm-compatible 3-part semantic versioning** with **enhanced regex validation**:
 - **Format**: `{BASE_VERSION}.{BUILD_NUMBER}` (e.g., `1.0.26`, `1.0.27`)

@@ -205,9 +205,33 @@ This project emphasizes security testing and vulnerability protection:
 - **Redis**: 6379  
 - **Jaeger UI**: 16686
 
+## Centralized Package Configuration
+
+**CRITICAL: All client library publishing now uses centralized configuration for consistency and maintainability.**
+
+### Configuration Location
+Primary configuration in `.github/workflows/client-e2e-tests.yml`:
+```yaml
+env:
+  BASE_VERSION: "1.0"
+  NPM_SCOPE: "@vmenon25"
+  NPM_PACKAGE_NAME: "mpo-webauthn-client"
+```
+
+### Configuration Benefits
+- **Single Point of Control**: Update npm scope in one location affects all publishing
+- **Automated Documentation**: Package names in release notes use centralized values
+- **Consistent Naming**: Both Android and npm clients reference the same configuration
+- **Easy Maintenance**: No need to update multiple files when changing package scope
+
+### Published Package Names
+- **npm**: `@vmenon25/mpo-webauthn-client` (generated from `${NPM_SCOPE}/${NPM_PACKAGE_NAME}`)
+- **Android**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client` (Maven coordinates)
+
 ## Completed Work Summary
 
 ### Major Achievements ✅
+- **Centralized npm Package Configuration**: Established workflow environment variables (`NPM_SCOPE`, `NPM_PACKAGE_NAME`) for single-point configuration management
 - **Enhanced Regex Validation**: Upgraded version validation from `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9]+(\\.[a-zA-Z0-9]+)*)?$` to `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*)?$` supporting hyphens in prerelease identifiers for full npm semver compliance\n- **Robust Version Validation**: All version formats now properly validated - rejects invalid 2-part, 4-part, and empty prerelease formats while supporting advanced prerelease identifiers like `1.0.0-alpha-beta.1`\n- **Unified 3-Part Versioning**: Standardized both Android and npm clients to use identical semantic versioning with enhanced validation ensuring 100% npm compatibility\n- **PR Publishing Support**: Added automatic snapshot publishing for pull requests with version format 1.0.0-pr.42.123 for testing client changes before merge
 - **Dual Registry Publishing**: Configured production releases to npm/GitHub Packages and PR snapshots to GitHub Packages with automated PR comments
 - **Client Library Publishing Automation**: Enabled automated publishing of Android and TypeScript/npm client libraries on main branch merges with synchronized versioning

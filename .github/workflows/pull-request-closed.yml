@@ -1,0 +1,116 @@
+name: Cleanup PR artifacts
+
+on:
+  pull_request:
+    types: [ closed ]
+
+jobs:
+  cleanup-webauthn-docker-images:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Delete PR Docker images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.number }}
+          PACKAGE_NAME: webauthn-server
+        run: |
+          echo "Cleaning up Docker images for PR #$PR_NUMBER"
+
+          # Get all versions of the package
+          versions_response=$(curl -s \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$PACKAGE_NAME/versions")
+
+          # Check if API call was successful
+          if [ $? -ne 0 ]; then
+            echo "Failed to fetch package versions"
+            exit 1
+          fi
+
+          # Filter versions with PR-specific tags
+          matching_versions=$(echo "$versions_response" | jq -r --arg pr "pr-$PR_NUMBER" \
+            '.[] | select(.metadata.container.tags[]? | test("^" + $pr + "(-|$)")) | .id' 2>/dev/null)
+
+          # Check if any matching versions were found
+          if [ -z "$matching_versions" ]; then
+            echo "No Docker images found for PR #$PR_NUMBER - nothing to clean up"
+            exit 0
+          fi
+
+          # Delete each matching version
+          echo "Found images to delete for PR #$PR_NUMBER"
+          echo "$matching_versions" | while read version_id; do
+            if [ -n "$version_id" ]; then
+              echo "Deleting version ID: $version_id"
+              delete_response=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$PACKAGE_NAME/versions/$version_id")
+
+              if [ "$delete_response" -eq 204 ] || [ "$delete_response" -eq 200 ]; then
+                echo "Successfully deleted version $version_id"
+              else
+                echo "Failed to delete version $version_id (HTTP $delete_response)"
+              fi
+            fi
+          done
+
+          echo "Cleanup completed for PR #$PR_NUMBER"
+
+  cleanup-webauthn-test-credentials-docker-images:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - name: Delete PR Docker images
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.number }}
+          PACKAGE_NAME: webauthn-test-credentials-service
+        run: |
+          echo "Cleaning up Docker images for PR #$PR_NUMBER"
+
+          # Get all versions of the package
+          versions_response=$(curl -s \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$PACKAGE_NAME/versions")
+
+          # Check if API call was successful
+          if [ $? -ne 0 ]; then
+            echo "Failed to fetch package versions"
+            exit 1
+          fi
+
+          # Filter versions with PR-specific tags
+          matching_versions=$(echo "$versions_response" | jq -r --arg pr "pr-$PR_NUMBER" \
+            '.[] | select(.metadata.container.tags[]? | test("^" + $pr + "(-|$)")) | .id' 2>/dev/null)
+
+          # Check if any matching versions were found
+          if [ -z "$matching_versions" ]; then
+            echo "No Docker images found for PR #$PR_NUMBER - nothing to clean up"
+            exit 0
+          fi
+
+          # Delete each matching version
+          echo "Found images to delete for PR #$PR_NUMBER"
+          echo "$matching_versions" | while read version_id; do
+            if [ -n "$version_id" ]; then
+              echo "Deleting version ID: $version_id"
+              delete_response=$(curl -s -w "%{http_code}" -o /dev/null -X DELETE \
+                -H "Authorization: Bearer $GITHUB_TOKEN" \
+                -H "Accept: application/vnd.github.v3+json" \
+                "https://api.github.com/users/${{ github.repository_owner }}/packages/container/$PACKAGE_NAME/versions/$version_id")
+
+              if [ "$delete_response" -eq 204 ] || [ "$delete_response" -eq 200 ]; then
+                echo "Successfully deleted version $version_id"
+              else
+                echo "Failed to delete version $version_id (HTTP $delete_response)"
+              fi
+            fi
+          done
+
+          echo "Cleanup completed for PR #$PR_NUMBER"

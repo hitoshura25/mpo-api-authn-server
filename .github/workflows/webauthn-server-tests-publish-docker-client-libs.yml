@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - 'webauthn-server/**'
+      - 'webauthn-test-credentials-service/**'
       - 'webauthn-test-lib/**'
       - 'settings.gradle.kts'
       - 'build.gradle.kts'
@@ -19,6 +20,7 @@ env:
   JAVA_VERSION: "21"
   DOCKER_REGISTRY: ghcr.io
   DOCKER_IMAGE_NAME: hitoshura25/webauthn-server
+  DOCKER_TEST_CREDENTIALS_IMAGE_NAME: hitoshura25/webauthn-test-credentials-service
 
 jobs:
   run-tests-publish-docker-client-libs:
@@ -78,7 +80,7 @@ jobs:
 
       - name: Run code quality checks, tests, coverage, and build JARs
         shell: bash
-        run: ./gradlew detekt :webauthn-server:koverXmlReport :webauthn-server:shadowJar :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
+        run: ./gradlew detekt :webauthn-server:koverXmlReport :webauthn-server:shadowJar :webauthn-test-credentials-service:koverXmlReport :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
 
       - name: Upload test reports
         uses: actions/upload-artifact@v4
@@ -129,4 +131,29 @@ jobs:
         with:
           subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME}}
           subject-digest: ${{ steps.docker-push.outputs.digest }}
+          push-to-registry: true
+
+      - name: Docker Test Credentials meta
+        id: docker-test-credentials-meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=pr
+
+      - name: Build and push
+        id: docker-test-credentials-push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./webauthn-test-credentials-service
+          push: true
+          tags: ${{ steps.docker-test-credentials-meta.outputs.tags }}
+          labels: ${{ steps.docker-test-credentials-meta.outputs.labels }}
+
+      - name: Generate artifact attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME}}
+          subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
           push-to-registry: true

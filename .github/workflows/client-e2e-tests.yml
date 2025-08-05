@@ -46,6 +46,9 @@ permissions:
 
 env:
   BASE_VERSION: "1.0"
+  # Centralized npm package configuration - change these values to update npm scope/name everywhere
+  NPM_SCOPE: "@vmenon25"
+  NPM_PACKAGE_NAME: "mpo-webauthn-client"
 
 jobs:
   client-e2e-tests:
@@ -475,6 +478,7 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://registry.npmjs.org'
+          scope: ${{ env.NPM_SCOPE }}
 
       - name: Set up Node.js for PR (GitHub Packages)
         if: github.event_name == 'pull_request'
@@ -541,7 +545,7 @@ jobs:
           EOF
           else
           # For main branch, publish to public npm
-          PACKAGE_NAME="@vmenon25/mpo-webauthn-client"
+          PACKAGE_NAME="${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}"
           cat > package.json << EOF
           {
           "name": "$PACKAGE_NAME",
@@ -605,6 +609,10 @@ jobs:
           echo "📦 Publishing to npm registry..."
           cd web-test-client/generated-client
 
+          # Verify npm authentication
+          echo "🔍 Verifying npm authentication..."
+          npm whoami
+
           # Publish to public npm registry
           npm publish
 
@@ -637,13 +645,13 @@ jobs:
             ### Installation
 
             ```bash
-            npm install @vmenon25/mpo-webauthn-client
+            npm install ${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}
             ```
 
             ### Usage
 
             ```typescript
-            import { AuthenticationApi, RegistrationApi, Configuration } from '@vmenon25/mpo-webauthn-client';
+            import { AuthenticationApi, RegistrationApi, Configuration } from '${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}';
 
             const config = new Configuration({
               basePath: 'https://your-webauthn-server.com'

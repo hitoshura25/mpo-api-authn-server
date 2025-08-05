@@ -161,6 +161,26 @@ class WebAuthnHelper(private val context: Context) {
 npm install @vmenon25/mpo-webauthn-client
 ```
 
+### Centralized npm Configuration
+
+The npm package configuration is managed centrally in the GitHub Actions workflow (`.github/workflows/client-e2e-tests.yml`):
+
+```yaml
+env:
+  NPM_SCOPE: "@vmenon25"
+  NPM_PACKAGE_NAME: "mpo-webauthn-client"
+```
+
+**To change the npm scope:**
+1. Update `NPM_SCOPE` and `NPM_PACKAGE_NAME` in `.github/workflows/client-e2e-tests.yml`
+2. This single change will update all documentation examples and publishing configurations
+3. The workflow automatically generates the full package name as `${NPM_SCOPE}/${NPM_PACKAGE_NAME}`
+
+**Current Configuration:**
+- **Full Package Name**: `@vmenon25/mpo-webauthn-client`
+- **Scope**: `@vmenon25`
+- **Package Name**: `mpo-webauthn-client`
+
 ### Basic Usage
 
 ```typescript

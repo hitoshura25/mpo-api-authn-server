@@ -74,7 +74,7 @@ Use the WebAuthn API in your applications with automatically published client li
 ### Android Library
 ```gradle
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.123'
 }
 ```
 

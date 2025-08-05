@@ -142,8 +142,8 @@ Both workflows now have:
 
 ### Main Branch Publishing  
 1. **Triggers**: Push to main branch with OpenAPI changes
-2. **Android**: Publishes to GitHub Packages as `1.0.0.123`
-3. **npm**: Publishes to public npm as `@mpo-webauthn/client@1.0.0.123`
+2. **Android**: Publishes to GitHub Packages as `1.0.123`
+3. **npm**: Publishes to public npm as `@mpo-webauthn/client@1.0.123`
 4. **Releases**: Creates GitHub releases for production versions
 
 ## 🎯 Next Steps

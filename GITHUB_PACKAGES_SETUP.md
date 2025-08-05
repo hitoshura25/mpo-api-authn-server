@@ -15,10 +15,10 @@ The workflow automatically:
 ## 📦 Versioning Scheme
 
 ### Main Branch (Production)
-- **Format**: `1.0.0`, `1.1.0`, `1.2.0`
+- **Format**: `1.0.123`, `1.1.124`, `1.2.125`
 - **Trigger**: Push to `main` branch
 - **Creates**: GitHub Release
-- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0`
+- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.123`
 
 ### Pull Requests
 - **Format**: `1.0.0-pr.123.1`, `1.0.0-pr.123.2`
@@ -48,7 +48,7 @@ To change the base version, edit `.github/workflows/client-e2e-tests.yml`:
 
 ```yaml
 env:
-  BASE_VERSION: "2.0.0"  # Change this to your desired base version
+  BASE_VERSION: "2.0"  # Change this to your desired base version
 ```
 
 ### 3. Configure Repository Secrets (Optional)
@@ -78,7 +78,7 @@ repositories {
 
 dependencies {
     // Production version
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.123'
     
     // PR version (for testing)
     implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.123.1'
@@ -197,7 +197,7 @@ dependencies {
 `gradle/libs.versions.toml`:
 ```toml
 [versions]
-webauthn-client = "1.0.0"
+webauthn-client = "1.0.123"
 
 [libraries]
 webauthn-android = { module = "com.vmenon.mpo.api.authn:mpo-webauthn-android-client", version.ref = "webauthn-client" }

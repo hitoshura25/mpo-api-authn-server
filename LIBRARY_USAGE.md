@@ -44,7 +44,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0'
+    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.123'
 }
 ```
 
@@ -351,7 +351,7 @@ Both Android and npm libraries are published through the **same consolidated wor
 **Main Branch Push**:
 - Publishes to **production registries** (GitHub Packages for Android, npm registry for TypeScript)
 - Creates **GitHub releases** with full installation documentation
-- Uses **production versions** (`1.0.0.123`)
+- Uses **production versions** (`1.0.123`)
 
 **Pull Request**:
 - Publishes to **staging registries** (GitHub Packages for both Android and npm)
@@ -370,9 +370,16 @@ Libraries are **only published** when changes are detected in:
 
 ### Versioning
 
-- **Production releases**: `1.0.0.123` (main branch)
-- **PR snapshots**: `1.0.0-pr.42.123` (pull requests)
+**Unified npm-compatible 3-part versioning** - both Android and npm use identical formats:
+
+- **Production releases**: `1.0.123` (main branch) - unified across platforms
+- **PR snapshots**: `1.0.0-pr.42.123` (pull requests) - unchanged, already npm compatible  
 - **Manual releases**: `1.0.0` (workflow_dispatch)
+
+**Key Improvements**:
+- **Unified Format**: Android and npm clients use identical version numbers
+- **npm Compatibility**: All versions are npm semver compliant
+- **Simplified Management**: Single version strategy for all platforms
 
 ### Publishing Destinations
 

@@ -63,6 +63,41 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Detect changes in OpenAPI spec or generation config
+        uses: dorny/paths-filter@v3
+        id: openapi-changes
+        with:
+          filters: |
+            api:
+              - 'webauthn-server/src/main/resources/openapi/**'
+              - 'webauthn-server/build.gradle.kts'
+              - '.github/workflows/client-e2e-tests.yml'
+
+      - name: Decide whether to publish
+        id: publish-decision
+        run: |
+          if [[ "${{ steps.openapi-changes.outputs.api }}" == "true" ]]; then
+            echo "should-publish=true" >> $GITHUB_OUTPUT
+            echo "📝 API changes detected, will publish"
+          else
+            echo "should-publish=false" >> $GITHUB_OUTPUT
+            echo "⏭️ No API changes detected, skipping publish"
+          fi
+
+      - name: Generate published library version number
+        id: generate-library-version
+        if: steps.publish-decision.outputs.should-publish == 'true'
+        env:
+          BASE_VERSION: ${{ env.BASE_VERSION }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_PR_NUMBER: ${{ github.event.number }}
+        run: |
+          echo "🎯 Using unified version manager"
+          echo "Event: $GITHUB_EVENT_NAME, PR: $GITHUB_PR_NUMBER"
+          ./scripts/version-manager.sh generate
+
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -385,40 +420,7 @@ jobs:
           repository: hitoshura25/webauthn-server
           short-description: ${{ github.event.repository.description }}
 
-      - name: Detect changes in OpenAPI spec or generation config
-        uses: dorny/paths-filter@v3
-        id: openapi-changes
-        with:
-          filters: |
-            api:
-              - 'webauthn-server/src/main/resources/openapi/**'
-              - 'webauthn-server/build.gradle.kts'
-              - '.github/workflows/client-e2e-tests.yml'
 
-      - name: Decide whether to publish
-        id: publish-decision
-        run: |
-          if [[ "${{ steps.openapi-changes.outputs.api }}" == "true" ]]; then
-            echo "should-publish=true" >> $GITHUB_OUTPUT
-            echo "📝 API changes detected, will publish"
-          else
-            echo "should-publish=false" >> $GITHUB_OUTPUT
-            echo "⏭️ No API changes detected, skipping publish"
-          fi
-
-      - name: Generate published library version number
-        id: generate-library-version
-        if: steps.publish-decision.outputs.should-publish == 'true'
-        env:
-          BASE_VERSION: ${{ env.BASE_VERSION }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_PR_NUMBER: ${{ github.event.number }}
-        run: |
-          echo "🎯 Using unified version manager"
-          echo "Event: $GITHUB_EVENT_NAME, PR: $GITHUB_PR_NUMBER"
-          ./scripts/version-manager.sh generate
 
       - name: Build and publish Android client library
         if: steps.publish-decision.outputs.should-publish == 'true'

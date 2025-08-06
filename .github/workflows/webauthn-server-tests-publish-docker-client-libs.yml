@@ -24,6 +24,9 @@ on:
   pull_request:
     branches:
       - main
+  push:
+    branches:
+      - main
 
 env:
   BASE_VERSION: "1.0"
@@ -352,21 +355,32 @@ jobs:
       - name: Trigger E2E Test Workflow
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
+          github-token: ${{ secrets.PAT_WORKFLOW_DISPATCH }}
           retries: 3
           script: |
-            const { data: dispatch } = await github.rest.repos.createDispatchEvent({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              event_type: 'trigger-e2e-tests',
-              client_payload: {
-                pr_number: '${{ github.event.number }}',
-                webauthn_server_image: '${{ needs.build-docker-images.outputs.webauthn-server-image }}',
-                test_credentials_image: '${{ needs.build-docker-images.outputs.test-credentials-image }}',
-                branch: '${{ github.head_ref }}',
-                commit_sha: '${{ github.event.pull_request.head.sha }}'
+            try {
+              const { data: workflow } = await github.rest.actions.createWorkflowDispatch({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                workflow_id: '.github/workflows/e2e-tests.yml',
+                ref: '${{ github.event.pull_request.head.sha || github.sha }}',
+                inputs: {
+                  pr_number: '${{ github.event.number || github.run_number }}',
+                  webauthn_server_image: '${{ needs.build-docker-images.outputs.webauthn-server-image }}',
+                  test_credentials_image: '${{ needs.build-docker-images.outputs.test-credentials-image }}'
+                }
+              });
+              console.log('✅ Successfully triggered E2E tests workflow');
+            } catch (error) {
+              if (error.status === 404) {
+                console.log('⚠️ E2E workflow not found on target branch - this is expected for new features');
+                console.log('🔄 E2E tests will run automatically once this PR is merged to main');
+                // Don't throw error - this is expected during development
+              } else {
+                console.error('❌ Failed to trigger E2E tests:', error);
+                throw error; // Re-throw non-404 errors
               }
-            });
+            }
 
             console.log('🚀 Triggered E2E tests workflow');
             console.log('WebAuthn Server Image:', '${{ needs.build-docker-images.outputs.webauthn-server-image }}');

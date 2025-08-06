@@ -349,15 +349,16 @@ jobs:
           github-token: ${{ secrets.PAT_WORKFLOW_DISPATCH }}
           retries: 3
           script: |
-            const { data: workflow } = await github.rest.actions.createWorkflowDispatch({
+            const { data: dispatch } = await github.rest.repos.createDispatchEvent({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              workflow_id: '.github/workflows/e2e-tests.yml',
-              ref: '${{ github.head_ref || github.ref }}',
-              inputs: {
+              event_type: 'trigger-e2e-tests',
+              client_payload: {
                 pr_number: '${{ github.event.number }}',
                 webauthn_server_image: '${{ needs.build-docker-images.outputs.webauthn-server-image }}',
-                test_credentials_image: '${{ needs.build-docker-images.outputs.test-credentials-image }}'
+                test_credentials_image: '${{ needs.build-docker-images.outputs.test-credentials-image }}',
+                branch: '${{ github.head_ref }}',
+                commit_sha: '${{ github.event.pull_request.head.sha }}'
               }
             });
 

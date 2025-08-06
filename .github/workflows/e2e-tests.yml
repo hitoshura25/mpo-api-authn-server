@@ -38,11 +38,17 @@ on:
         description: 'Test credentials service Docker image tag'
         required: true
         type: string
+  repository_dispatch:
+    types: [trigger-e2e-tests]
 
 env:
   ANDROID_API_VERSION: "29"
   JAVA_VERSION: "21"
   DOCKER_REGISTRY: ghcr.io
+  # Handle both workflow_dispatch inputs and repository_dispatch client_payload
+  PR_NUMBER: ${{ inputs.pr_number || github.event.client_payload.pr_number }}
+  WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image || github.event.client_payload.webauthn_server_image }}
+  TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image || github.event.client_payload.test_credentials_image }}
 
 jobs:
   # Job 1: Validate Docker images are available
@@ -62,8 +68,8 @@ jobs:
       - name: Check WebAuthn Server image availability
         id: check-webauthn
         run: |
-          echo "🔍 Checking WebAuthn Server image: ${{ inputs.webauthn_server_image }}"
-          if docker manifest inspect "${{ inputs.webauthn_server_image }}" > /dev/null 2>&1; then
+          echo "🔍 Checking WebAuthn Server image: ${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          if docker manifest inspect "${{ env.WEBAUTHN_SERVER_IMAGE }}" > /dev/null 2>&1; then
             echo "✅ WebAuthn Server image is available"
             echo "available=true" >> $GITHUB_OUTPUT
           else
@@ -74,8 +80,8 @@ jobs:
       - name: Check Test Credentials Service image availability
         id: check-test-credentials
         run: |
-          echo "🔍 Checking Test Credentials Service image: ${{ inputs.test_credentials_image }}"
-          if docker manifest inspect "${{ inputs.test_credentials_image }}" > /dev/null 2>&1; then
+          echo "🔍 Checking Test Credentials Service image: ${{ env.TEST_CREDENTIALS_IMAGE }}"
+          if docker manifest inspect "${{ env.TEST_CREDENTIALS_IMAGE }}" > /dev/null 2>&1; then
             echo "✅ Test Credentials Service image is available"
             echo "available=true" >> $GITHUB_OUTPUT
           else
@@ -105,8 +111,8 @@ jobs:
       - name: Pull Docker images
         run: |
           echo "🐳 Pulling Docker images for Web E2E tests"
-          docker pull "${{ inputs.webauthn_server_image }}"
-          docker pull "${{ inputs.test_credentials_image }}"
+          docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
           echo "✅ All images pulled successfully"
 
       - name: Generate client libraries
@@ -132,8 +138,8 @@ jobs:
         shell: bash
         working-directory: webauthn-server
         env:
-          WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image }}
-          TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
+          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
+          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
         run: |
           echo "🚀 Starting Docker services with PR-specific images"
           echo "WebAuthn Server: $WEBAUTHN_SERVER_IMAGE"
@@ -211,7 +217,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: web-e2e-test-reports-pr-${{ inputs.pr_number }}
+          name: web-e2e-test-reports-pr-${{ env.PR_NUMBER }}
           path: |
             web-test-client/test-results/
             web-test-client/playwright-report/
@@ -279,8 +285,8 @@ jobs:
       - name: Pull Docker images
         run: |
           echo "🐳 Pulling Docker images for Android E2E tests"
-          docker pull "${{ inputs.webauthn_server_image }}"
-          docker pull "${{ inputs.test_credentials_image }}"
+          docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
           echo "✅ All images pulled successfully"
 
       - name: Generate client libraries
@@ -299,8 +305,8 @@ jobs:
         shell: bash
         working-directory: webauthn-server
         env:
-          WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image }}
-          TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
+          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
+          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
         run: |
           echo "🚀 Starting Docker services with PR-specific images"
           echo "WebAuthn Server: $WEBAUTHN_SERVER_IMAGE"
@@ -378,7 +384,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-e2e-test-reports-pr-${{ inputs.pr_number }}
+          name: android-e2e-test-reports-pr-${{ env.PR_NUMBER }}
           path: |
             android-test-client/build/reports/
             android-test-client/build/outputs/
@@ -403,7 +409,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const prNumber = '${{ inputs.pr_number }}';
+            const prNumber = '${{ env.PR_NUMBER }}';
             const validationSuccess = '${{ needs.validate-images.result }}' === 'success';
             const webE2eSuccess = '${{ needs.run-web-e2e-tests.result }}' === 'success';
             const androidE2eSuccess = '${{ needs.run-android-e2e-tests.result }}' === 'success';
@@ -414,8 +420,8 @@ jobs:
 
             if (!validationSuccess) {
               message += `❌ **Docker Image Validation Failed**\n`;
-              message += `- WebAuthn Server: \`${{ inputs.webauthn_server_image }}\`\n`;
-              message += `- Test Credentials: \`${{ inputs.test_credentials_image }}\`\n\n`;
+              message += `- WebAuthn Server: \`${{ env.WEBAUTHN_SERVER_IMAGE }}\`\n`;
+              message += `- Test Credentials: \`${{ env.TEST_CREDENTIALS_IMAGE }}\`\n\n`;
               message += `Please check that the Docker build step completed successfully.\n`;
             } else if (webE2eSkipped && androidE2eSkipped) {
               message += `⏭️ **E2E Tests Skipped**\n`;
@@ -459,8 +465,8 @@ jobs:
               }
 
               message += `\n**Images tested:**\n`;
-              message += `- WebAuthn Server: \`${{ inputs.webauthn_server_image }}\`\n`;
-              message += `- Test Credentials: \`${{ inputs.test_credentials_image }}\`\n`;
+              message += `- WebAuthn Server: \`${{ env.WEBAUTHN_SERVER_IMAGE }}\`\n`;
+              message += `- Test Credentials: \`${{ env.TEST_CREDENTIALS_IMAGE }}\`\n`;
 
               message += `\n**Test Architecture:**\n`;
               message += `- Docker Compose: \`webauthn-server/\` directory with all dependencies\n`;

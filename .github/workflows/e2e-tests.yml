@@ -112,6 +112,40 @@ jobs:
           docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
           echo "✅ All images pulled successfully"
 
+      - name: Set up JDK for client generation
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      # E2E-specific Gradle caching for client generation
+      - name: Setup Gradle cache for E2E client generation
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: gradle-e2e-web-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-e2e-web-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-e2e-web-${{ runner.os }}-main-
+            gradle-e2e-web-${{ runner.os }}-
+            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
+
       - name: Generate client libraries
         shell: bash
         run: |
@@ -332,6 +366,35 @@ jobs:
           docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
           docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
           echo "✅ All images pulled successfully"
+
+      # E2E-specific Gradle caching for client generation (Android job)
+      - name: Setup Gradle cache for E2E client generation
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+            android-test-client/.gradle/configuration-cache
+          key: gradle-e2e-android-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-e2e-android-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-e2e-android-${{ runner.os }}-main-
+            gradle-e2e-android-${{ runner.os }}-
+            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
 
       - name: Generate client libraries
         shell: bash

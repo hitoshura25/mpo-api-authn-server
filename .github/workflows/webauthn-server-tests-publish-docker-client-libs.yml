@@ -162,20 +162,21 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
 
-      # Branch-specific Gradle caching
-      - name: Setup branch-specific Gradle cache
+      # Job-specific Gradle caching for unit tests
+      - name: Setup Gradle cache for unit tests
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
             .gradle/configuration-cache
-            android-test-client/.gradle/configuration-cache
-          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-unit-tests-${{ runner.os }}-main-
+            gradle-unit-tests-${{ runner.os }}-
             gradle-${{ runner.os }}-${{ github.ref_name }}-
             gradle-${{ runner.os }}-main-
-            gradle-${{ runner.os }}-
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -248,20 +249,22 @@ jobs:
           java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
 
-      # Branch-specific Gradle caching
-      - name: Setup branch-specific Gradle cache
+      # Job-specific Gradle caching for Docker builds
+      - name: Setup Gradle cache for Docker builds
         uses: actions/cache@v4
         with:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
             .gradle/configuration-cache
-            android-test-client/.gradle/configuration-cache
-          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
+            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-docker-build-${{ runner.os }}-main-
+            gradle-docker-build-${{ runner.os }}-
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
             gradle-${{ runner.os }}-${{ github.ref_name }}-
             gradle-${{ runner.os }}-main-
-            gradle-${{ runner.os }}-
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -344,6 +347,7 @@ jobs:
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.PAT_WORKFLOW_DISPATCH }}
+          retries: 3
           script: |
             const { data: workflow } = await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,

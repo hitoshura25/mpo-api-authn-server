@@ -125,11 +125,46 @@ jobs:
           cache: 'npm'
           cache-dependency-path: web-test-client/package-lock.json
 
-      - name: Install TypeScript client dependencies
+      - name: Generate TypeScript client from OpenAPI spec
+        env:
+          CLIENT_VERSION: ${{ github.run_number }}
+        run: |
+          echo "🔨 Generating TypeScript client from OpenAPI specification..."
+          echo "Using version: $CLIENT_VERSION"
+          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="mpo-webauthn-client"
+
+          # Verify client generation
+          if [ -f "web-test-client/generated-client/src/index.ts" ]; then
+            echo "✅ TypeScript client generated successfully"
+          else
+            echo "❌ TypeScript client generation failed"
+            exit 1
+          fi
+
+      - name: Install TypeScript client dependencies (parallel)
+        working-directory: web-test-client
         run: |
           echo "📦 Installing TypeScript client dependencies"
-          cd web-test-client
-          npm ci
+          # Install npm dependencies and Playwright in parallel
+          npm ci &
+          NPM_PID=$!
+
+          # Download Playwright browser in background
+          npx playwright install chromium --only-shell &
+          PLAYWRIGHT_PID=$!
+
+          # Wait for both to complete
+          wait $NPM_PID
+          wait $PLAYWRIGHT_PID
+
+          echo "✅ Dependencies installed in parallel"
+
+      - name: Build web-test-client TypeScript bundles
+        working-directory: web-test-client
+        run: |
+          echo "🔨 Building TypeScript web client bundles..."
+          npm run build
+          echo "✅ Web client bundles built successfully"
 
       - name: Start Docker services for Web E2E tests (secure env + PR images)
         shell: bash
@@ -208,7 +243,32 @@ jobs:
         working-directory: web-test-client
         run: |
           echo "🌐 Running TypeScript Web E2E tests (Playwright)"
-          npm test
+          # Start the test client in the background
+          npm run start:test > test-client.log 2>&1 &
+          TEST_CLIENT_PID=$!
+          
+          # Wait for test client to be ready
+          echo "⏳ Waiting for test client to be ready..."
+          timeout 60 bash -c '
+            while ! curl -s http://localhost:8082/ > /dev/null 2>&1; do
+              echo "⏳ Waiting for test client..."
+              sleep 2
+            done
+          '
+          
+          if curl -s http://localhost:8082/ > /dev/null 2>&1; then
+            echo "✅ Test client is ready"
+            # Run the actual E2E tests
+            npm test
+          else
+            echo "❌ Test client failed to start"
+            echo "Test client logs:"
+            cat test-client.log
+            exit 1
+          fi
+          
+          # Clean up test client process
+          kill $TEST_CLIENT_PID 2>/dev/null || true
 
       - name: Upload Web E2E test reports
         uses: actions/upload-artifact@v4
@@ -297,6 +357,30 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+
+      # Cache AVD configuration and snapshots (much faster than system images)
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ env.ANDROID_API_VERSION }}-v2
+
+      - name: create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.ANDROID_API_VERSION }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: false
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: echo "Generated AVD snapshot for caching."
 
       - name: Start Docker services for Android E2E tests (secure env + PR images)
         shell: bash
@@ -370,12 +454,21 @@ jobs:
 
           echo "✅ All services are ready"
 
-      - name: Run Android E2E tests
-        shell: bash
-        working-directory: android-test-client
-        run: |
-          echo "🤖 Running Android E2E tests (connectedAndroidTest)"
-          ./gradlew connectedAndroidTest --build-cache --parallel --configuration-cache
+      - name: Run Android E2E tests with emulator
+        id: android-tests
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.ANDROID_API_VERSION }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: |
+            echo "🤖 Running Android E2E tests (connectedAndroidTest)"
+            cd android-test-client
+            ./gradlew connectedAndroidTest --build-cache --parallel --configuration-cache
 
       - name: Upload Android E2E test reports
         uses: actions/upload-artifact@v4
@@ -383,8 +476,8 @@ jobs:
         with:
           name: android-e2e-test-reports-pr-${{ env.PR_NUMBER }}
           path: |
-            android-test-client/build/reports/
-            android-test-client/build/outputs/
+            android-test-client/app/build/reports/androidTests/connected/
+            android-test-client/app/build/outputs/androidTest-results/connected/
           retention-days: 7
 
       - name: Cleanup Android Docker containers

@@ -457,9 +457,12 @@ jobs:
     name: Security gate check
     runs-on: ubuntu-latest
     needs: ai-security-analysis
-    if: needs.ai-security-analysis.outputs.security-score >= 8.0 && env.BLOCK_MERGE_ON_CRITICAL == 'true'
+    if: needs.ai-security-analysis.outputs.security-score >= 8.0
+    env:
+      BLOCK_MERGE_ON_CRITICAL: 'true'  # Move env to job level
     steps:
       - name: Block merge for critical security issues
+        if: env.BLOCK_MERGE_ON_CRITICAL == 'true'  # Now check at step level
         run: |
           echo "🚨 CRITICAL SECURITY ISSUES DETECTED"
           echo "Security Score: ${{ needs.ai-security-analysis.outputs.security-score }}/10"

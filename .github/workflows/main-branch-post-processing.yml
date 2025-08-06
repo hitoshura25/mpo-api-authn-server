@@ -25,7 +25,7 @@
 #
 # BENEFITS:
 # ✅ Prevents GHCR registry bloat through automatic cleanup
-# ✅ Only publishes to DockerHub when images actually changed  
+# ✅ Only publishes to DockerHub when images actually changed
 # ✅ Maintains DockerHub repository descriptions automatically
 # ✅ Creates git tags for successful DockerHub publishes
 # ✅ Handles both webauthn-server and test-credentials-service images
@@ -37,9 +37,9 @@ name: Main Branch Post-Processing
 
 on:
   workflow_run:
-    workflows: ["main-ci-cd.yml"]
-    branches: [main]
-    types: [completed]
+    workflows: [ "main-ci-cd.yml" ]
+    branches: [ main ]
+    types: [ completed ]
 
 env:
   DOCKER_REGISTRY: ghcr.io
@@ -78,8 +78,8 @@ jobs:
       - name: Log in to DockerHub (for inspection only)
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
         continue-on-error: true  # Don't fail if DockerHub credentials missing
 
       - name: Check WebAuthn Server changes
@@ -88,7 +88,7 @@ jobs:
           chmod +x scripts/docker/detect-changes.sh
           scripts/docker/detect-changes.sh webauthn-server
 
-      - name: Check Test Credentials Service changes  
+      - name: Check Test Credentials Service changes
         id: check-test-credentials
         run: |
           chmod +x scripts/docker/detect-changes.sh
@@ -99,11 +99,11 @@ jobs:
         run: |
           SERVER_CHANGED="${{ steps.check-server.outputs.has-changes }}"
           TEST_CHANGED="${{ steps.check-test-credentials.outputs.has-changes }}"
-          
+
           echo "📊 Change Detection Summary:"
           echo "WebAuthn Server changed: $SERVER_CHANGED"
           echo "Test Credentials Service changed: $TEST_CHANGED"
-          
+
           if [[ "$SERVER_CHANGED" == "true" || "$TEST_CHANGED" == "true" ]]; then
             echo "🚀 DockerHub publishing needed"
             echo "any-changes=true" >> $GITHUB_OUTPUT
@@ -169,7 +169,7 @@ jobs:
   ai-security-analysis:
     name: AI-Enhanced security analysis
     runs-on: ubuntu-latest
-    needs: [detect-changes, docker-security-scan]
+    needs: [ detect-changes, docker-security-scan ]
     if: needs.detect-changes.outputs.any-changes == 'true'
     permissions:
       contents: read
@@ -201,17 +201,17 @@ jobs:
           CRITICAL_VULN_COUNT: ${{ needs.docker-security-scan.outputs.critical-vulnerabilities }}
         run: |
           echo "🤖 Starting AI-enhanced security analysis of Docker scan results..."
-          
+
           # Create AI security analyzer
           cat > ai-docker-security-analyzer.js << 'EOF'
           const fs = require('fs');
-          
+
           class AIDockerSecurityAnalyzer {
             constructor() {
               this.hasAIKey = !!process.env.ANTHROPIC_API_KEY;
               this.scanResults = this.loadScanResults();
             }
-          
+
             loadScanResults() {
               try {
                 if (fs.existsSync('docker-security-scan-results.json')) {
@@ -223,15 +223,15 @@ jobs:
                 return { scans: [] };
               }
             }
-          
+
             async analyzeSecurityFindings() {
               console.log('🔍 Analyzing Docker security findings...');
-              
+
               if (!this.scanResults.scans || this.scanResults.scans.length === 0) {
                 console.log('ℹ️ No scan results to analyze');
                 return this.createEmptyAnalysis();
               }
-          
+
               const analysis = {
                 timestamp: new Date().toISOString(),
                 summary: this.scanResults.summary || {},
@@ -240,34 +240,34 @@ jobs:
                 riskAssessment: 'LOW',
                 actionRequired: false
               };
-          
+
               // Analyze each scanned image
               for (const scan of this.scanResults.scans) {
                 const imageAnalysis = await this.analyzeImageScan(scan);
                 analysis.imageAnalysis.push(imageAnalysis);
-                
+
                 // Update overall risk assessment
                 if (imageAnalysis.riskLevel === 'HIGH' || imageAnalysis.riskLevel === 'CRITICAL') {
                   analysis.riskAssessment = imageAnalysis.riskLevel;
                   analysis.actionRequired = true;
                 }
               }
-          
+
               // Generate recommendations
               analysis.recommendations = this.generateSecurityRecommendations(analysis);
-          
+
               // Save analysis results
               fs.writeFileSync('ai-security-analysis.json', JSON.stringify(analysis, null, 2));
-          
+
               console.log(`📊 AI Security Analysis Summary:`);
               console.log(`   Images analyzed: ${analysis.imageAnalysis.length}`);
               console.log(`   Overall risk: ${analysis.riskAssessment}`);
               console.log(`   Action required: ${analysis.actionRequired}`);
               console.log(`   Recommendations: ${analysis.recommendations.length}`);
-          
+
               return analysis;
             }
-          
+
             async analyzeImageScan(scan) {
               const analysis = {
                 image: scan.image,
@@ -282,22 +282,22 @@ jobs:
                 securityIssues: [],
                 recommendations: []
               };
-          
+
               // Analyze vulnerabilities
               if (scan.scans.vulnerabilities) {
                 this.analyzeVulnerabilities(scan.scans.vulnerabilities, analysis);
               }
-          
+
               // Analyze secrets
               if (scan.scans.secrets) {
                 this.analyzeSecrets(scan.scans.secrets, analysis);
               }
-          
+
               // Analyze configuration
               if (scan.scans.config) {
                 this.analyzeConfiguration(scan.scans.config, analysis);
               }
-          
+
               // Determine overall risk level for image
               if (analysis.vulnerabilities.critical > 0) {
                 analysis.riskLevel = 'CRITICAL';
@@ -306,19 +306,19 @@ jobs:
               } else if (analysis.vulnerabilities.high > 0 || analysis.vulnerabilities.medium > 10) {
                 analysis.riskLevel = 'MEDIUM';
               }
-          
+
               return analysis;
             }
-          
+
             analyzeVulnerabilities(vulnScan, analysis) {
               if (!vulnScan.Results) return;
-              
+
               for (const result of vulnScan.Results) {
                 if (!result.Vulnerabilities) continue;
-                
+
                 for (const vuln of result.Vulnerabilities) {
                   analysis.vulnerabilities.total++;
-                  
+
                   switch (vuln.Severity) {
                     case 'CRITICAL':
                       analysis.vulnerabilities.critical++;
@@ -345,13 +345,13 @@ jobs:
                 }
               }
             }
-          
+
             analyzeSecrets(secretScan, analysis) {
               if (!secretScan.Results) return;
-              
+
               for (const result of secretScan.Results) {
                 if (!result.Secrets) continue;
-                
+
                 for (const secret of result.Secrets) {
                   analysis.securityIssues.push({
                     type: 'secret',
@@ -364,13 +364,13 @@ jobs:
                 }
               }
             }
-          
+
             analyzeConfiguration(configScan, analysis) {
               if (!configScan.Results) return;
-              
+
               for (const result of configScan.Results) {
                 if (!result.Misconfigurations) continue;
-                
+
                 for (const config of result.Misconfigurations) {
                   if (config.Severity === 'HIGH' || config.Severity === 'CRITICAL') {
                     analysis.securityIssues.push({
@@ -385,14 +385,14 @@ jobs:
                 }
               }
             }
-          
+
             generateSecurityRecommendations(analysis) {
               const recommendations = [];
-              
+
               // Vulnerability recommendations
               const totalCritical = analysis.imageAnalysis.reduce((sum, img) => sum + img.vulnerabilities.critical, 0);
               const totalHigh = analysis.imageAnalysis.reduce((sum, img) => sum + img.vulnerabilities.high, 0);
-              
+
               if (totalCritical > 0) {
                 recommendations.push({
                   priority: 'URGENT',
@@ -401,21 +401,21 @@ jobs:
                   details: 'Critical vulnerabilities pose immediate security risk'
                 });
               }
-              
+
               if (totalHigh > 0) {
                 recommendations.push({
                   priority: 'HIGH',
-                  category: 'Vulnerabilities', 
+                  category: 'Vulnerabilities',
                   action: `Review and patch ${totalHigh} high-severity vulnerabilities`,
                   details: 'High-severity vulnerabilities should be addressed promptly'
                 });
               }
-              
+
               // Secret recommendations
-              const secretIssues = analysis.imageAnalysis.flatMap(img => 
+              const secretIssues = analysis.imageAnalysis.flatMap(img =>
                 img.securityIssues.filter(issue => issue.type === 'secret')
               );
-              
+
               if (secretIssues.length > 0) {
                 recommendations.push({
                   priority: 'URGENT',
@@ -424,12 +424,12 @@ jobs:
                   details: 'Secrets in images pose significant security risk'
                 });
               }
-              
+
               // Configuration recommendations
               const configIssues = analysis.imageAnalysis.flatMap(img =>
                 img.securityIssues.filter(issue => issue.type === 'misconfiguration')
               );
-              
+
               if (configIssues.length > 0) {
                 recommendations.push({
                   priority: 'MEDIUM',
@@ -438,10 +438,10 @@ jobs:
                   details: 'Misconfigurations can lead to security vulnerabilities'
                 });
               }
-              
+
               return recommendations;
             }
-          
+
             createEmptyAnalysis() {
               return {
                 timestamp: new Date().toISOString(),
@@ -453,28 +453,28 @@ jobs:
               };
             }
           }
-          
+
           // Main execution
           async function main() {
             const analyzer = new AIDockerSecurityAnalyzer();
-            
+
             try {
               const analysis = await analyzer.analyzeSecurityFindings();
-              
+
               // Output for GitHub Actions
               console.log(`::set-output name=risk-assessment::${analysis.riskAssessment}`);
               console.log(`::set-output name=action-required::${analysis.actionRequired}`);
               console.log(`::set-output name=recommendations::${analysis.recommendations.length}`);
-              
+
             } catch (error) {
               console.error('❌ AI security analysis failed:', error.message);
               process.exit(1);
             }
           }
-          
+
           main();
           EOF
-          
+
           # Run AI security analysis
           node ai-docker-security-analyzer.js
 
@@ -488,7 +488,7 @@ jobs:
   publish-dockerhub:
     name: Publish to DockerHub
     runs-on: ubuntu-latest
-    needs: [detect-changes, docker-security-scan, ai-security-analysis]
+    needs: [ detect-changes, docker-security-scan, ai-security-analysis ]
     if: needs.docker-security-scan.outputs.scan-passed == 'true'
     permissions:
       contents: read
@@ -506,8 +506,8 @@ jobs:
       - name: Log in to DockerHub
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Publish to DockerHub
         run: |
@@ -519,8 +519,8 @@ jobs:
         uses: peter-evans/dockerhub-description@v4
         continue-on-error: true  # Don't fail workflow if description update fails
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
           repository: ${{ env.DOCKERHUB_SERVER_REPO }}
           short-description: 'WebAuthn authentication server built with Ktor and Yubico java-webauthn-server'
           readme-filepath: ./webauthn-server/README.md
@@ -530,8 +530,8 @@ jobs:
         uses: peter-evans/dockerhub-description@v4
         continue-on-error: true  # Don't fail workflow if description update fails
         with:
-          username: ${{ secrets.DOCKER_HUB_USERNAME }}
-          password: ${{ secrets.DOCKER_HUB_TOKEN }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
           repository: ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}
           short-description: 'WebAuthn test credentials service for cross-platform testing with FIDO2/WebAuthn'
           readme-filepath: ./webauthn-test-credentials-service/README.md
@@ -551,7 +551,7 @@ jobs:
   cleanup-ghcr:
     name: Clean up GHCR images
     runs-on: ubuntu-latest
-    needs: [detect-changes, cleanup-trigger]
+    needs: [ detect-changes, cleanup-trigger ]
     if: always()  # Run regardless of previous job results
     permissions:
       contents: read
@@ -576,7 +576,7 @@ jobs:
   tag-repository:
     name: Tag repository on successful publish
     runs-on: ubuntu-latest
-    needs: [detect-changes, publish-dockerhub]
+    needs: [ detect-changes, publish-dockerhub ]
     if: needs.publish-dockerhub.result == 'success'
     permissions:
       contents: write  # Required to create git tags
@@ -590,34 +590,34 @@ jobs:
       - name: Create and push git tag
         run: |
           echo "🏷️ Creating git tag for successful DockerHub publish..."
-          
+
           # Generate timestamp-based tag
           TIMESTAMP=$(date -u +"%Y%m%d-%H%M%S")
           TAG_NAME="dockerhub-publish-${TIMESTAMP}"
-          
+
           # Create tag with commit message
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          
+
           git tag -a "$TAG_NAME" -m "DockerHub publish on $(date -u)"
           git push origin "$TAG_NAME"
-          
+
           echo "✅ Created and pushed tag: $TAG_NAME"
           echo "Published images:"
-          
+
           if [[ "${{ needs.detect-changes.outputs.webauthn-server-changed }}" == "true" ]]; then
             echo "  - ${{ env.DOCKERHUB_SERVER_REPO }}:latest"
           fi
-          
+
           if [[ "${{ needs.detect-changes.outputs.test-credentials-changed }}" == "true" ]]; then
             echo "  - ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest"
           fi
 
   # Job 6: Report post-processing status
   report-post-processing-status:
-    name: Report post-processing status  
+    name: Report post-processing status
     runs-on: ubuntu-latest
-    needs: [cleanup-ghcr, detect-changes, publish-dockerhub, tag-repository]
+    needs: [ cleanup-ghcr, detect-changes, publish-dockerhub, tag-repository ]
     if: always()
     steps:
       - name: Report overall post-processing status
@@ -628,18 +628,18 @@ jobs:
           echo "Change detection: ${{ needs.detect-changes.result }}"
           echo "DockerHub publishing: ${{ needs.publish-dockerhub.result }}"
           echo "Git tagging: ${{ needs.tag-repository.result }}"
-          
+
           echo ""
           echo "🧹 GHCR Cleanup: Always executed to prevent registry bloat"
-          
+
           if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
             echo "✅ Original CI/CD pipeline succeeded"
-            
+
             if [[ "${{ needs.detect-changes.outputs.any-changes }}" == "true" ]]; then
               echo "🔄 Changes detected, DockerHub publishing executed"
               echo "  WebAuthn Server: ${{ needs.detect-changes.outputs.webauthn-server-changed }}"
               echo "  Test Credentials: ${{ needs.detect-changes.outputs.test-credentials-changed }}"
-              
+
               if [[ "${{ needs.publish-dockerhub.result }}" == "success" ]]; then
                 echo "🚀 DockerHub publishing successful"
                 echo "🏷️ Repository tagged: ${{ needs.tag-repository.result }}"

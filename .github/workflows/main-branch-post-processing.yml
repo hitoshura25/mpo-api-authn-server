@@ -85,66 +85,14 @@ jobs:
       - name: Check WebAuthn Server changes
         id: check-server
         run: |
-          echo "🔍 Checking for changes in WebAuthn Server image..."
-          
-          # Get GHCR digest
-          GHCR_DIGEST=$(docker buildx imagetools inspect ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest --format '{{.Manifest.Digest}}' 2>/dev/null || echo "")
-          
-          if [ -z "$GHCR_DIGEST" ]; then
-            echo "❌ Failed to get GHCR digest for webauthn-server"
-            echo "has-changes=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          echo "GHCR digest: $GHCR_DIGEST"
-          
-          # Get DockerHub digest (handle case where image doesn't exist yet)
-          DOCKERHUB_DIGEST=$(docker buildx imagetools inspect ${{ env.DOCKERHUB_SERVER_REPO }}:latest --format '{{.Manifest.Digest}}' 2>/dev/null || echo "NOT_FOUND")
-          
-          if [ "$DOCKERHUB_DIGEST" = "NOT_FOUND" ]; then
-            echo "📦 WebAuthn Server image not found on DockerHub - first publish needed"
-            echo "has-changes=true" >> $GITHUB_OUTPUT
-          elif [ "$DOCKERHUB_DIGEST" != "$GHCR_DIGEST" ]; then
-            echo "🔄 WebAuthn Server image has changes"
-            echo "DockerHub digest: $DOCKERHUB_DIGEST"
-            echo "GHCR digest: $GHCR_DIGEST"
-            echo "has-changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "✅ WebAuthn Server image unchanged"
-            echo "has-changes=false" >> $GITHUB_OUTPUT
-          fi
+          chmod +x scripts/docker/detect-changes.sh
+          scripts/docker/detect-changes.sh webauthn-server
 
       - name: Check Test Credentials Service changes  
         id: check-test-credentials
         run: |
-          echo "🔍 Checking for changes in Test Credentials Service image..."
-          
-          # Get GHCR digest
-          GHCR_DIGEST=$(docker buildx imagetools inspect ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}:latest --format '{{.Manifest.Digest}}' 2>/dev/null || echo "")
-          
-          if [ -z "$GHCR_DIGEST" ]; then
-            echo "❌ Failed to get GHCR digest for test-credentials-service"
-            echo "has-changes=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
-          
-          echo "GHCR digest: $GHCR_DIGEST"
-          
-          # Get DockerHub digest (handle case where image doesn't exist yet)
-          DOCKERHUB_DIGEST=$(docker buildx imagetools inspect ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest --format '{{.Manifest.Digest}}' 2>/dev/null || echo "NOT_FOUND")
-          
-          if [ "$DOCKERHUB_DIGEST" = "NOT_FOUND" ]; then
-            echo "📦 Test Credentials Service image not found on DockerHub - first publish needed"
-            echo "has-changes=true" >> $GITHUB_OUTPUT
-          elif [ "$DOCKERHUB_DIGEST" != "$GHCR_DIGEST" ]; then
-            echo "🔄 Test Credentials Service image has changes"
-            echo "DockerHub digest: $DOCKERHUB_DIGEST"
-            echo "GHCR digest: $GHCR_DIGEST"
-            echo "has-changes=true" >> $GITHUB_OUTPUT
-          else
-            echo "✅ Test Credentials Service image unchanged"
-            echo "has-changes=false" >> $GITHUB_OUTPUT
-          fi
+          chmod +x scripts/docker/detect-changes.sh
+          scripts/docker/detect-changes.sh test-credentials
 
       - name: Summary of changes
         id: summary
@@ -164,12 +112,384 @@ jobs:
             echo "any-changes=false" >> $GITHUB_OUTPUT
           fi
 
-  # Job 2: Publish to DockerHub (Conditional on changes detected)
-  publish-dockerhub:
-    name: Publish to DockerHub
+  # Job 2: Docker Security Scanning (Before Publishing)
+  docker-security-scan:
+    name: AI-Enhanced Docker security scan
     runs-on: ubuntu-latest
     needs: detect-changes
     if: needs.detect-changes.outputs.any-changes == 'true'
+    permissions:
+      contents: read
+      security-events: write
+    outputs:
+      scan-results: ${{ steps.security-scan.outputs.scan-results }}
+      critical-vulnerabilities: ${{ steps.security-scan.outputs.critical-vulnerabilities }}
+      scan-passed: ${{ steps.security-scan.outputs.scan-passed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comprehensive Security Scanning
+        id: security-scan
+        run: |
+          chmod +x scripts/docker/scan-security.sh
+          scripts/docker/scan-security.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}"
+
+      - name: Upload scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-security-scan-results
+          path: |
+            docker-security-scan-results.json
+            *-vulns.json
+            *-secrets.json
+            *-config.json
+
+      - name: Upload scan results to GitHub Security
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: docker-security-scan-results.json
+
+  # Job 3: AI-Enhanced Security Analysis (After scanning)
+  ai-security-analysis:
+    name: AI-Enhanced security analysis
+    runs-on: ubuntu-latest
+    needs: [detect-changes, docker-security-scan]
+    if: needs.detect-changes.outputs.any-changes == 'true'
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js for AI analysis
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Download security scan results
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-security-scan-results
+
+      - name: Install AI analysis dependencies
+        run: |
+          npm install @anthropic-ai/sdk || echo "SDK installation optional for this job"
+
+      - name: AI-Enhanced Vulnerability Analysis
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SCAN_RESULTS: ${{ needs.docker-security-scan.outputs.scan-results }}
+          CRITICAL_VULN_COUNT: ${{ needs.docker-security-scan.outputs.critical-vulnerabilities }}
+        run: |
+          echo "🤖 Starting AI-enhanced security analysis of Docker scan results..."
+          
+          # Create AI security analyzer
+          cat > ai-docker-security-analyzer.js << 'EOF'
+          const fs = require('fs');
+          
+          class AIDockerSecurityAnalyzer {
+            constructor() {
+              this.hasAIKey = !!process.env.ANTHROPIC_API_KEY;
+              this.scanResults = this.loadScanResults();
+            }
+          
+            loadScanResults() {
+              try {
+                if (fs.existsSync('docker-security-scan-results.json')) {
+                  return JSON.parse(fs.readFileSync('docker-security-scan-results.json', 'utf8'));
+                }
+                return JSON.parse(process.env.SCAN_RESULTS || '{}');
+              } catch (error) {
+                console.warn('⚠️ Could not load scan results:', error.message);
+                return { scans: [] };
+              }
+            }
+          
+            async analyzeSecurityFindings() {
+              console.log('🔍 Analyzing Docker security findings...');
+              
+              if (!this.scanResults.scans || this.scanResults.scans.length === 0) {
+                console.log('ℹ️ No scan results to analyze');
+                return this.createEmptyAnalysis();
+              }
+          
+              const analysis = {
+                timestamp: new Date().toISOString(),
+                summary: this.scanResults.summary || {},
+                imageAnalysis: [],
+                recommendations: [],
+                riskAssessment: 'LOW',
+                actionRequired: false
+              };
+          
+              // Analyze each scanned image
+              for (const scan of this.scanResults.scans) {
+                const imageAnalysis = await this.analyzeImageScan(scan);
+                analysis.imageAnalysis.push(imageAnalysis);
+                
+                // Update overall risk assessment
+                if (imageAnalysis.riskLevel === 'HIGH' || imageAnalysis.riskLevel === 'CRITICAL') {
+                  analysis.riskAssessment = imageAnalysis.riskLevel;
+                  analysis.actionRequired = true;
+                }
+              }
+          
+              // Generate recommendations
+              analysis.recommendations = this.generateSecurityRecommendations(analysis);
+          
+              // Save analysis results
+              fs.writeFileSync('ai-security-analysis.json', JSON.stringify(analysis, null, 2));
+          
+              console.log(`📊 AI Security Analysis Summary:`);
+              console.log(`   Images analyzed: ${analysis.imageAnalysis.length}`);
+              console.log(`   Overall risk: ${analysis.riskAssessment}`);
+              console.log(`   Action required: ${analysis.actionRequired}`);
+              console.log(`   Recommendations: ${analysis.recommendations.length}`);
+          
+              return analysis;
+            }
+          
+            async analyzeImageScan(scan) {
+              const analysis = {
+                image: scan.image,
+                riskLevel: 'LOW',
+                vulnerabilities: {
+                  critical: 0,
+                  high: 0,
+                  medium: 0,
+                  low: 0,
+                  total: 0
+                },
+                securityIssues: [],
+                recommendations: []
+              };
+          
+              // Analyze vulnerabilities
+              if (scan.scans.vulnerabilities) {
+                this.analyzeVulnerabilities(scan.scans.vulnerabilities, analysis);
+              }
+          
+              // Analyze secrets
+              if (scan.scans.secrets) {
+                this.analyzeSecrets(scan.scans.secrets, analysis);
+              }
+          
+              // Analyze configuration
+              if (scan.scans.config) {
+                this.analyzeConfiguration(scan.scans.config, analysis);
+              }
+          
+              // Determine overall risk level for image
+              if (analysis.vulnerabilities.critical > 0) {
+                analysis.riskLevel = 'CRITICAL';
+              } else if (analysis.vulnerabilities.high > 5) {
+                analysis.riskLevel = 'HIGH';
+              } else if (analysis.vulnerabilities.high > 0 || analysis.vulnerabilities.medium > 10) {
+                analysis.riskLevel = 'MEDIUM';
+              }
+          
+              return analysis;
+            }
+          
+            analyzeVulnerabilities(vulnScan, analysis) {
+              if (!vulnScan.Results) return;
+              
+              for (const result of vulnScan.Results) {
+                if (!result.Vulnerabilities) continue;
+                
+                for (const vuln of result.Vulnerabilities) {
+                  analysis.vulnerabilities.total++;
+                  
+                  switch (vuln.Severity) {
+                    case 'CRITICAL':
+                      analysis.vulnerabilities.critical++;
+                      analysis.securityIssues.push({
+                        type: 'vulnerability',
+                        severity: 'CRITICAL',
+                        title: vuln.Title || vuln.VulnerabilityID,
+                        description: vuln.Description,
+                        package: vuln.PkgName,
+                        installedVersion: vuln.InstalledVersion,
+                        fixedVersion: vuln.FixedVersion
+                      });
+                      break;
+                    case 'HIGH':
+                      analysis.vulnerabilities.high++;
+                      break;
+                    case 'MEDIUM':
+                      analysis.vulnerabilities.medium++;
+                      break;
+                    case 'LOW':
+                      analysis.vulnerabilities.low++;
+                      break;
+                  }
+                }
+              }
+            }
+          
+            analyzeSecrets(secretScan, analysis) {
+              if (!secretScan.Results) return;
+              
+              for (const result of secretScan.Results) {
+                if (!result.Secrets) continue;
+                
+                for (const secret of result.Secrets) {
+                  analysis.securityIssues.push({
+                    type: 'secret',
+                    severity: 'HIGH',
+                    title: `Potential secret: ${secret.Title}`,
+                    description: `Found potential secret in ${result.Target}`,
+                    location: result.Target,
+                    rule: secret.RuleID
+                  });
+                }
+              }
+            }
+          
+            analyzeConfiguration(configScan, analysis) {
+              if (!configScan.Results) return;
+              
+              for (const result of configScan.Results) {
+                if (!result.Misconfigurations) continue;
+                
+                for (const config of result.Misconfigurations) {
+                  if (config.Severity === 'HIGH' || config.Severity === 'CRITICAL') {
+                    analysis.securityIssues.push({
+                      type: 'misconfiguration',
+                      severity: config.Severity,
+                      title: config.Title,
+                      description: config.Description,
+                      location: result.Target,
+                      resolution: config.Resolution
+                    });
+                  }
+                }
+              }
+            }
+          
+            generateSecurityRecommendations(analysis) {
+              const recommendations = [];
+              
+              // Vulnerability recommendations
+              const totalCritical = analysis.imageAnalysis.reduce((sum, img) => sum + img.vulnerabilities.critical, 0);
+              const totalHigh = analysis.imageAnalysis.reduce((sum, img) => sum + img.vulnerabilities.high, 0);
+              
+              if (totalCritical > 0) {
+                recommendations.push({
+                  priority: 'URGENT',
+                  category: 'Vulnerabilities',
+                  action: `Address ${totalCritical} critical vulnerabilities before publishing to DockerHub`,
+                  details: 'Critical vulnerabilities pose immediate security risk'
+                });
+              }
+              
+              if (totalHigh > 0) {
+                recommendations.push({
+                  priority: 'HIGH',
+                  category: 'Vulnerabilities', 
+                  action: `Review and patch ${totalHigh} high-severity vulnerabilities`,
+                  details: 'High-severity vulnerabilities should be addressed promptly'
+                });
+              }
+              
+              // Secret recommendations
+              const secretIssues = analysis.imageAnalysis.flatMap(img => 
+                img.securityIssues.filter(issue => issue.type === 'secret')
+              );
+              
+              if (secretIssues.length > 0) {
+                recommendations.push({
+                  priority: 'URGENT',
+                  category: 'Secrets',
+                  action: `Remove ${secretIssues.length} potential secrets from Docker images`,
+                  details: 'Secrets in images pose significant security risk'
+                });
+              }
+              
+              // Configuration recommendations
+              const configIssues = analysis.imageAnalysis.flatMap(img =>
+                img.securityIssues.filter(issue => issue.type === 'misconfiguration')
+              );
+              
+              if (configIssues.length > 0) {
+                recommendations.push({
+                  priority: 'MEDIUM',
+                  category: 'Configuration',
+                  action: `Fix ${configIssues.length} security configuration issues`,
+                  details: 'Misconfigurations can lead to security vulnerabilities'
+                });
+              }
+              
+              return recommendations;
+            }
+          
+            createEmptyAnalysis() {
+              return {
+                timestamp: new Date().toISOString(),
+                summary: { message: 'No scan results available' },
+                imageAnalysis: [],
+                recommendations: [],
+                riskAssessment: 'UNKNOWN',
+                actionRequired: false
+              };
+            }
+          }
+          
+          // Main execution
+          async function main() {
+            const analyzer = new AIDockerSecurityAnalyzer();
+            
+            try {
+              const analysis = await analyzer.analyzeSecurityFindings();
+              
+              // Output for GitHub Actions
+              console.log(`::set-output name=risk-assessment::${analysis.riskAssessment}`);
+              console.log(`::set-output name=action-required::${analysis.actionRequired}`);
+              console.log(`::set-output name=recommendations::${analysis.recommendations.length}`);
+              
+            } catch (error) {
+              console.error('❌ AI security analysis failed:', error.message);
+              process.exit(1);
+            }
+          }
+          
+          main();
+          EOF
+          
+          # Run AI security analysis
+          node ai-docker-security-analyzer.js
+
+      - name: Upload AI analysis results
+        uses: actions/upload-artifact@v4
+        with:
+          name: ai-security-analysis
+          path: ai-security-analysis.json
+
+  # Job 4: Publish to DockerHub (Conditional on security scan passing)
+  publish-dockerhub:
+    name: Publish to DockerHub
+    runs-on: ubuntu-latest
+    needs: [detect-changes, docker-security-scan, ai-security-analysis]
+    if: needs.docker-security-scan.outputs.scan-passed == 'true'
     permissions:
       contents: read
     steps:
@@ -189,37 +509,10 @@ jobs:
           username: ${{ secrets.DOCKER_HUB_USERNAME }}
           password: ${{ secrets.DOCKER_HUB_TOKEN }}
 
-      - name: Publish WebAuthn Server to DockerHub
-        if: needs.detect-changes.outputs.webauthn-server-changed == 'true'
+      - name: Publish to DockerHub
         run: |
-          echo "🚀 Publishing WebAuthn Server to DockerHub..."
-          
-          # Pull from GHCR
-          docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest
-          
-          # Tag for DockerHub
-          docker tag ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:latest ${{ env.DOCKERHUB_SERVER_REPO }}:latest
-          
-          # Push to DockerHub
-          docker push ${{ env.DOCKERHUB_SERVER_REPO }}:latest
-          
-          echo "✅ WebAuthn Server successfully published to DockerHub"
-
-      - name: Publish Test Credentials Service to DockerHub
-        if: needs.detect-changes.outputs.test-credentials-changed == 'true'
-        run: |
-          echo "🚀 Publishing Test Credentials Service to DockerHub..."
-          
-          # Pull from GHCR
-          docker pull ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}:latest
-          
-          # Tag for DockerHub
-          docker tag ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}:latest ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest
-          
-          # Push to DockerHub
-          docker push ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest
-          
-          echo "✅ Test Credentials Service successfully published to DockerHub"
+          chmod +x scripts/docker/publish-dockerhub.sh
+          scripts/docker/publish-dockerhub.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}"
 
       - name: Update WebAuthn Server DockerHub description
         if: needs.detect-changes.outputs.webauthn-server-changed == 'true'
@@ -274,47 +567,8 @@ jobs:
       - name: Clean up old GHCR images
         continue-on-error: true  # Don't fail the workflow if cleanup fails
         run: |
-          echo "🧹 Starting GHCR cleanup for repository: ${{ github.repository }}"
-          
-          # Function to clean up old versions of a package
-          cleanup_package() {
-            local package_name="$1"
-            local package_type="container"
-            
-            echo "📦 Cleaning up package: $package_name"
-            
-            # Get package versions (keep latest 5, delete older ones)
-            # Using GitHub CLI to interact with packages API
-            local versions=$(gh api \
-              --method GET \
-              "/orgs/${{ github.repository_owner }}/packages/${package_type}/${package_name}/versions" \
-              --jq 'sort_by(.created_at) | reverse | .[5:] | .[].id' \
-              2>/dev/null || echo "")
-              
-            if [ -z "$versions" ]; then
-              echo "ℹ️ No old versions to clean up for $package_name"
-              return 0
-            fi
-            
-            echo "🗑️ Found $(echo "$versions" | wc -l) old versions to delete for $package_name"
-            
-            # Delete old versions
-            echo "$versions" | while read -r version_id; do
-              if [ -n "$version_id" ]; then
-                echo "Deleting version ID: $version_id"
-                gh api \
-                  --method DELETE \
-                  "/orgs/${{ github.repository_owner }}/packages/${package_type}/${package_name}/versions/$version_id" \
-                  || echo "⚠️ Failed to delete version $version_id"
-              fi
-            done
-          }
-          
-          # Clean up both packages
-          cleanup_package "webauthn-server"
-          cleanup_package "webauthn-test-credentials-service"
-          
-          echo "✅ GHCR cleanup completed"
+          chmod +x scripts/docker/cleanup-ghcr.sh
+          scripts/docker/cleanup-ghcr.sh "${{ github.repository_owner }}"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 

@@ -1,0 +1,313 @@
+#!/bin/bash
+#
+# Security Test Generation Script
+#
+# This script generates security test implementations for detected vulnerabilities
+# using AI-powered analysis. It creates complete Kotlin test methods for WebAuthn
+# security issues found during PR analysis.
+#
+# USAGE:
+#   ./generate-tests.sh
+#   (Requires security-analysis-results.json from previous security analysis)
+#
+# ENVIRONMENT VARIABLES:
+#   ANTHROPIC_API_KEY - API key for AI analysis (optional, falls back to standard templates)
+#
+# OUTPUTS:
+#   - security-test-implementations.json - Generated test implementations
+#
+# EXIT CODES:
+#   0 - Test generation completed successfully
+#   1 - Test generation failed
+#
+
+set -euo pipefail
+
+# Function to log with timestamp
+log() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $*"
+}
+
+# Function to check if security analysis results exist
+check_analysis_results() {
+    if [ ! -f "security-analysis-results.json" ]; then
+        log "❌ Error: security-analysis-results.json not found"
+        log "This script requires previous security analysis results"
+        return 1
+    fi
+    
+    local vuln_count
+    vuln_count=$(jq '.vulnerabilitiesFound | length' security-analysis-results.json 2>/dev/null || echo 0)
+    
+    if [ "$vuln_count" -eq 0 ]; then
+        log "ℹ️ No vulnerabilities found - no additional tests needed"
+        return 2
+    fi
+    
+    log "📊 Found $vuln_count vulnerabilities requiring test generation"
+    return 0
+}
+
+# Function to create the security test generator Node.js script
+create_test_generator() {
+    log "🧪 Creating security test generator..."
+    
+    cat > security-test-generator.js << 'EOF'
+const fs = require('fs');
+
+// Try to import Anthropic SDK, fall back if not available
+let Anthropic;
+try {
+  Anthropic = require('@anthropic-ai/sdk').Anthropic;
+} catch (error) {
+  console.warn('⚠️ Anthropic SDK not available, using test templates');
+  Anthropic = null;
+}
+
+class SecurityTestGenerator {
+  constructor() {
+    this.anthropic = Anthropic ? new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY
+    }) : null;
+  }
+
+  async generateSecurityTests(analysisResults) {
+    const vulnerabilities = analysisResults.vulnerabilitiesFound || [];
+    const testRecommendations = analysisResults.testRecommendations || [];
+    
+    if (vulnerabilities.length === 0) {
+      console.log('ℹ️ No vulnerabilities found - no additional tests needed');
+      return [];
+    }
+    
+    console.log(`🧪 Generating tests for ${vulnerabilities.length} vulnerabilities...`);
+    
+    const existingTests = this.loadExistingSecurityTests();
+    const testImplementations = [];
+    
+    for (const vuln of vulnerabilities) {
+      const testImpl = await this.generateTestForVulnerability(vuln, existingTests);
+      testImplementations.push(testImpl);
+    }
+    
+    return testImplementations;
+  }
+
+  loadExistingSecurityTests() {
+    try {
+      const testFile = './webauthn-server/src/test/kotlin/com/vmenon/mpo/api/authn/security/VulnerabilityProtectionTest.kt';
+      return fs.readFileSync(testFile, 'utf8');
+    } catch (error) {
+      console.warn('⚠️ Could not load existing security tests:', error.message);
+      return '';
+    }
+  }
+
+  async generateTestForVulnerability(vulnerability, existingTests) {
+    if (!this.anthropic || !process.env.ANTHROPIC_API_KEY) {
+      console.log(`⚠️ AI not available, using template for ${vulnerability.type}`);
+      return this.generateTestTemplate(vulnerability);
+    }
+
+    const prompt = `Generate a complete Kotlin test method for this security vulnerability in a WebAuthn authentication server:
+
+VULNERABILITY:
+- Type: ${vulnerability.type}
+- Severity: ${vulnerability.severity}
+- Location: ${vulnerability.location}
+- Description: ${vulnerability.description}
+- CWE ID: ${vulnerability.cweId || 'N/A'}
+- Recommended Fix: ${vulnerability.recommendedFix}
+
+EXISTING TEST CONTEXT:
+${existingTests.substring(0, 5000)}
+
+REQUIREMENTS:
+1. Generate a complete, runnable Kotlin test method
+2. Follow the existing test patterns and structure
+3. Use WebAuthnTestHelpers and testStorageModule where appropriate
+4. Include proper assertions that verify protection against the vulnerability
+5. Add meaningful DisplayName annotation
+6. Include comments explaining the vulnerability and protection mechanism
+
+TEST TEMPLATE STRUCTURE:
+@Test
+@DisplayName("Should protect against [vulnerability type]")
+fun \`test protection against [vulnerability name]\`() = testApplication {
+    // Test implementation here
+}
+
+Focus on creating practical, executable tests that verify security protections are in place.`;
+
+    try {
+      const response = await this.anthropic.messages.create({
+        model: 'claude-3-5-sonnet-20241022',
+        max_tokens: 2000,
+        temperature: 0.2,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      });
+
+      return {
+        vulnerability: vulnerability,
+        testImplementation: response.content[0].text,
+        generated: true
+      };
+      
+    } catch (error) {
+      console.error(`❌ Failed to generate test for ${vulnerability.type}:`, error.message);
+      return this.generateTestTemplate(vulnerability);
+    }
+  }
+
+  generateTestTemplate(vulnerability) {
+    const testName = vulnerability.type.toLowerCase().replace(/[^a-z0-9]/g, '_');
+    const testImplementation = `@Test
+@DisplayName("Should protect against ${vulnerability.type}")
+fun \`test protection against ${testName}\`() = testApplication {
+    // TODO: Implement test for ${vulnerability.type}
+    // Vulnerability: ${vulnerability.description}
+    // Location: ${vulnerability.location}
+    // Severity: ${vulnerability.severity}
+    // 
+    // Recommended fix: ${vulnerability.recommendedFix}
+    // 
+    // This test should verify that the system properly protects against:
+    // ${vulnerability.description}
+    
+    application {
+        testStorageModule()
+    }
+    
+    // Add test implementation here
+    // Example structure:
+    // 1. Set up test conditions that would trigger the vulnerability
+    // 2. Make request that attempts to exploit the vulnerability  
+    // 3. Assert that the system properly rejects/handles the attack
+    // 4. Verify no sensitive information is leaked
+    
+    fail("Test implementation required for ${vulnerability.type}")
+}`;
+
+    return {
+      vulnerability: vulnerability,
+      testImplementation: testImplementation,
+      generated: false,
+      template: true,
+      error: 'AI not available - template provided'
+    };
+  }
+}
+
+// Main execution
+async function main() {
+  const generator = new SecurityTestGenerator();
+  
+  // Load analysis results
+  const analysisResults = JSON.parse(fs.readFileSync('security-analysis-results.json', 'utf8'));
+  
+  // Generate test implementations
+  const testImplementations = await generator.generateSecurityTests(analysisResults);
+  
+  // Write test implementations to file
+  const testReport = {
+    timestamp: new Date().toISOString(),
+    vulnerabilityCount: analysisResults.vulnerabilitiesFound.length,
+    testImplementations: testImplementations,
+    summary: {
+      totalTests: testImplementations.length,
+      generatedTests: testImplementations.filter(t => t.generated).length,
+      templateTests: testImplementations.filter(t => t.template).length,
+      failedGenerations: testImplementations.filter(t => t.error && !t.template).length
+    }
+  };
+  
+  fs.writeFileSync('security-test-implementations.json', JSON.stringify(testReport, null, 2));
+  
+  console.log('📋 Test Generation Summary:');
+  console.log(`Total vulnerabilities: ${testReport.vulnerabilityCount}`);
+  console.log(`Tests generated: ${testReport.summary.generatedTests}`);
+  console.log(`Template tests: ${testReport.summary.templateTests}`);
+  console.log(`Generation failures: ${testReport.summary.failedGenerations}`);
+}
+
+main().catch(error => {
+  console.error('❌ Test generation failed:', error);
+  process.exit(1);
+});
+EOF
+}
+
+# Function to run the test generator
+run_test_generator() {
+    log "🧪 Running security test generator..."
+    
+    # Create the test generator script
+    create_test_generator
+    
+    # Install AI dependencies if not already available
+    if ! npm list @anthropic-ai/sdk &>/dev/null; then
+        log "📦 Installing AI dependencies..."
+        npm install @anthropic-ai/sdk || log "⚠️ Failed to install AI SDK, using templates"
+    fi
+    
+    # Run test generator
+    if node security-test-generator.js; then
+        log "✅ Security test generation completed successfully"
+        return 0
+    else
+        log "❌ Security test generation failed"
+        return 1
+    fi
+}
+
+# Main execution
+main() {
+    log "🚀 Security Test Generation Script Starting"
+    
+    # Check if analysis results exist
+    local analysis_status
+    if check_analysis_results; then
+        analysis_status=$?
+    else
+        analysis_status=$?
+    fi
+    
+    case $analysis_status in
+        0)
+            # Vulnerabilities found, proceed with test generation
+            run_test_generator
+            ;;
+        2)
+            # No vulnerabilities found, create empty report
+            log "📝 Creating empty test report..."
+            cat > security-test-implementations.json << EOF
+{
+  "timestamp": "$(date -Iseconds)",
+  "vulnerabilityCount": 0,
+  "testImplementations": [],
+  "summary": {
+    "totalTests": 0,
+    "generatedTests": 0,
+    "templateTests": 0,
+    "failedGenerations": 0
+  },
+  "message": "No vulnerabilities found - no tests generated"
+}
+EOF
+            log "✅ Empty test report created"
+            ;;
+        *)
+            # Error occurred
+            exit 1
+            ;;
+    esac
+}
+
+# Trap errors for better debugging
+trap 'log "❌ Script failed at line $LINENO"' ERR
+
+# Run main function
+main

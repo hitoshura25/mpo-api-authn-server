@@ -352,8 +352,8 @@ jobs:
             const { data: workflow } = await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              workflow_id: 'e2e-tests.yml',
-              ref: context.ref,
+              workflow_id: '.github/workflows/e2e-tests.yml',
+              ref: '${{ github.head_ref || github.ref }}',
               inputs: {
                 pr_number: '${{ github.event.number }}',
                 webauthn_server_image: '${{ needs.build-docker-images.outputs.webauthn-server-image }}',

@@ -1,0 +1,88 @@
+# Main CI/CD Orchestrator Workflow
+#
+# This workflow orchestrates the entire CI/CD pipeline using callable workflows
+# to eliminate workflow dispatch complexity and ensure reliable execution.
+#
+# ARCHITECTURE:
+# 1. Build & Test: Runs unit tests, builds Docker images with smart change detection
+# 2. E2E Tests: Runs only when Docker images are built, uses built images for integration tests
+#
+# BENEFITS:
+# ✅ Eliminates 404 errors (workflows exist in PR branch)  
+# ✅ No PAT permission issues (direct calls)
+# ✅ Modular, maintainable architecture
+# ✅ E2E tests run in PRs when Docker images built
+# ✅ Preserves all existing conditional logic and optimizations
+#
+# TRIGGERS:
+# - Pull requests to main branch
+# - Pushes to main branch
+#
+# EXECUTION FLOW:
+# PR: build-and-test → e2e-tests (if Docker images built)
+# Main: build-and-test → e2e-tests (if Docker images built)
+
+name: Main CI/CD Pipeline
+
+on:
+  pull_request:
+    branches: [main]  
+  push:
+    branches: [main]
+
+jobs:
+  # Job 1: Build and test with smart change detection
+  build-and-test:
+    name: Build & Test (Unit Tests + Docker Images)
+    uses: ./.github/workflows/build-and-test.yml
+    secrets: inherit
+    
+  # Job 2: E2E tests using built Docker images
+  e2e-tests:
+    name: E2E Tests (Web + Android)
+    needs: build-and-test
+    if: needs.build-and-test.outputs.docker_images_built == 'true'
+    uses: ./.github/workflows/e2e-tests.yml
+    with:
+      pr_number: ${{ github.event.number || github.run_number }}
+      webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}
+      test_credentials_image: ${{ needs.build-and-test.outputs.test_credentials_image }}
+    secrets: inherit
+    
+  # Job 3: Report pipeline status
+  report-pipeline-status:
+    name: Report Pipeline Status
+    runs-on: ubuntu-latest
+    needs: [build-and-test, e2e-tests]
+    if: always()
+    steps:
+      - name: Report overall pipeline status
+        run: |
+          echo "🏗️ CI/CD Pipeline Results Summary:"
+          echo "Build & Test: ${{ needs.build-and-test.result }}"
+          echo "Docker Images Built: ${{ needs.build-and-test.outputs.docker_images_built }}"
+          echo "E2E Tests: ${{ needs.e2e-tests.result }}"
+          
+          if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
+            echo "✅ Build and test phase completed successfully"
+            
+            if [[ "${{ needs.build-and-test.outputs.docker_images_built }}" == "true" ]]; then
+              echo "🐳 Docker images were built:"
+              echo "  WebAuthn Server: ${{ needs.build-and-test.outputs.webauthn_server_image }}"
+              echo "  Test Credentials: ${{ needs.build-and-test.outputs.test_credentials_image }}"
+              
+              if [[ "${{ needs.e2e-tests.result }}" == "success" ]]; then
+                echo "🎉 Complete CI/CD pipeline passed - all tests successful!"
+              elif [[ "${{ needs.e2e-tests.result }}" == "failure" ]]; then
+                echo "❌ E2E tests failed - check integration test results"
+                exit 1
+              else
+                echo "⏸️ E2E tests were skipped or cancelled"
+              fi
+            else
+              echo "⚡ Fast path completed - no Docker builds needed (docs/workflow changes only)"
+            fi
+          else
+            echo "❌ Build and test phase failed"
+            exit 1
+          fi

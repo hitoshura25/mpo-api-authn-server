@@ -1,11 +1,10 @@
-# E2E Tests Workflow - Triggered by Docker Image Builds
+# E2E Tests Callable Workflow - Cross-Platform Integration
 #
-# This workflow is triggered by the main PR workflow when Docker images are built.
-# It runs comprehensive end-to-end tests using the built Docker images to ensure
-# full system integration works correctly across all platforms.
+# This callable workflow runs comprehensive end-to-end tests using built Docker images
+# to ensure full system integration works correctly across all platforms.
 #
 # TRIGGER CONDITIONS:
-# - Called by webauthn-server-tests-publish-docker-client-libs.yml
+# - Called by main orchestrator workflow (main-ci-cd.yml)  
 # - Only runs when Docker images have been successfully built
 # - Uses the exact images that were built for the PR
 #
@@ -24,7 +23,7 @@
 name: E2E Tests - Cross-Platform Integration
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       pr_number:
         description: 'PR number triggering these tests'
@@ -38,17 +37,15 @@ on:
         description: 'Test credentials service Docker image tag'
         required: true
         type: string
-  repository_dispatch:
-    types: [trigger-e2e-tests]
 
 env:
   ANDROID_API_VERSION: "29"
   JAVA_VERSION: "21"
   DOCKER_REGISTRY: ghcr.io
-  # Handle both workflow_dispatch inputs and repository_dispatch client_payload
-  PR_NUMBER: ${{ inputs.pr_number || github.event.client_payload.pr_number }}
-  WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image || github.event.client_payload.webauthn_server_image }}
-  TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image || github.event.client_payload.test_credentials_image }}
+  # Use workflow inputs directly
+  PR_NUMBER: ${{ inputs.pr_number }}
+  WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image }}
+  TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
 
 jobs:
   # Job 1: Validate Docker images are available

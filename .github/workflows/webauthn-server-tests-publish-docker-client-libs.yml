@@ -309,9 +309,11 @@ jobs:
         uses: actions/attest-build-provenance@v2
         continue-on-error: true  # Don't fail build on GitHub attestation service issues
         with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME}}
+          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
           subject-digest: ${{ steps.docker-push.outputs.digest }}
           push-to-registry: true
+        env:
+          ACTIONS_STEP_DEBUG: true
 
       - name: Docker Test Credentials meta
         id: docker-test-credentials-meta
@@ -335,9 +337,11 @@ jobs:
         uses: actions/attest-build-provenance@v2
         continue-on-error: true  # Don't fail build on GitHub attestation service issues
         with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME}}
+          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
           subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
           push-to-registry: true
+        env:
+          ACTIONS_STEP_DEBUG: true
 
   # Job 5: Trigger E2E tests when Docker images are built
   trigger-e2e-tests:
@@ -348,7 +352,7 @@ jobs:
       - name: Trigger E2E Test Workflow
         uses: actions/github-script@v7
         with:
-          github-token: ${{ secrets.PAT_WORKFLOW_DISPATCH }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
           retries: 3
           script: |
             const { data: dispatch } = await github.rest.repos.createDispatchEvent({

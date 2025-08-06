@@ -161,20 +161,20 @@ jobs:
           export WEBAUTHN_SERVER_IMAGE="$WEBAUTHN_SERVER_IMAGE"
           export TEST_CREDENTIALS_IMAGE="$TEST_CREDENTIALS_IMAGE"
 
-          docker-compose up -d
+          docker compose up -d
 
           # Wait for all services to be ready
           echo "⏳ Waiting for services to be ready..."
 
           timeout 120 bash -c '
-            while ! docker-compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
+            while ! docker compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
               echo "⏳ Waiting for PostgreSQL..."
               sleep 2
             done
           '
 
           timeout 120 bash -c '
-            while ! docker-compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
+            while ! docker compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
               echo "⏳ Waiting for Redis..."
               sleep 2
             done
@@ -225,7 +225,7 @@ jobs:
         working-directory: webauthn-server
         run: |
           echo "🧹 Cleaning up Web Docker containers"
-          docker-compose down -v
+          docker compose down -v
           rm -f docker-compose.override.yml
           docker system prune -f
 
@@ -328,20 +328,20 @@ jobs:
           export WEBAUTHN_SERVER_IMAGE="$WEBAUTHN_SERVER_IMAGE"
           export TEST_CREDENTIALS_IMAGE="$TEST_CREDENTIALS_IMAGE"
 
-          docker-compose up -d
+          docker compose up -d
 
           # Wait for all services to be ready
           echo "⏳ Waiting for services to be ready..."
 
           timeout 120 bash -c '
-            while ! docker-compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
+            while ! docker compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
               echo "⏳ Waiting for PostgreSQL..."
               sleep 2
             done
           '
 
           timeout 120 bash -c '
-            while ! docker-compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
+            while ! docker compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
               echo "⏳ Waiting for Redis..."
               sleep 2
             done
@@ -392,7 +392,7 @@ jobs:
         working-directory: webauthn-server
         run: |
           echo "🧹 Cleaning up Android Docker containers"
-          docker-compose down -v
+          docker compose down -v
           rm -f docker-compose.override.yml
           docker system prune -f
 

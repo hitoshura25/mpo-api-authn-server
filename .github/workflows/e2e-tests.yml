@@ -4,7 +4,7 @@
 # to ensure full system integration works correctly across all platforms.
 #
 # TRIGGER CONDITIONS:
-# - Called by main orchestrator workflow (main-ci-cd.yml)  
+# - Called by main orchestrator workflow (main-ci-cd.yml)
 # - Only runs when Docker images have been successfully built
 # - Uses the exact images that were built for the PR
 #
@@ -188,7 +188,7 @@ jobs:
               image: \$WEBAUTHN_SERVER_IMAGE
               build: null
             webauthn-test-credentials-service:
-              image: \$TEST_CREDENTIALS_IMAGE  
+              image: \$TEST_CREDENTIALS_IMAGE
               build: null
           EOF
 
@@ -242,33 +242,20 @@ jobs:
         shell: bash
         working-directory: web-test-client
         run: |
-          echo "🌐 Running TypeScript Web E2E tests (Playwright)"
-          # Start the test client in the background
-          npm run start:test > test-client.log 2>&1 &
-          TEST_CLIENT_PID=$!
-          
-          # Wait for test client to be ready
-          echo "⏳ Waiting for test client to be ready..."
-          timeout 60 bash -c '
-            while ! curl -s http://localhost:8082/ > /dev/null 2>&1; do
-              echo "⏳ Waiting for test client..."
-              sleep 2
-            done
-          '
-          
-          if curl -s http://localhost:8082/ > /dev/null 2>&1; then
-            echo "✅ Test client is ready"
-            # Run the actual E2E tests
-            npm test
+          set +e
+          npm test
+          TEST_EXIT_CODE=$?
+          set -e
+
+          # Store exit code for later use
+          echo "test-exit-code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
+
+          if [ $TEST_EXIT_CODE -ne 0 ]; then
+            echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
+            exit $TEST_EXIT_CODE
           else
-            echo "❌ Test client failed to start"
-            echo "Test client logs:"
-            cat test-client.log
-            exit 1
+            echo "✅ Tests passed successfully"
           fi
-          
-          # Clean up test client process
-          kill $TEST_CLIENT_PID 2>/dev/null || true
 
       - name: Upload Web E2E test reports
         uses: actions/upload-artifact@v4
@@ -404,7 +391,7 @@ jobs:
               image: \$WEBAUTHN_SERVER_IMAGE
               build: null
             webauthn-test-credentials-service:
-              image: \$TEST_CREDENTIALS_IMAGE  
+              image: \$TEST_CREDENTIALS_IMAGE
               build: null
           EOF
 
@@ -465,10 +452,7 @@ jobs:
           disable-animations: true
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
-          script: |
-            echo "🤖 Running Android E2E tests (connectedAndroidTest)"
-            cd android-test-client
-            ./gradlew connectedAndroidTest --build-cache --parallel --configuration-cache
+          script: ./scripts/run-android-tests.sh
 
       - name: Upload Android E2E test reports
         uses: actions/upload-artifact@v4

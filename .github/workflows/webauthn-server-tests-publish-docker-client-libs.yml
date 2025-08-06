@@ -306,11 +306,15 @@ jobs:
           labels: ${{ steps.docker-meta.outputs.labels }}
 
       - name: Generate artifact attestation for WebAuthn Server
-        uses: actions/attest-build-provenance@v2
+        uses: Wandalen/wretry.action@v3
         with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME}}
-          subject-digest: ${{ steps.docker-push.outputs.digest }}
-          push-to-registry: true
+          action: actions/attest-build-provenance@v2
+          attempt_limit: 3
+          attempt_delay: 10000  # 10 seconds between attempts  
+          with: |
+            subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME}}
+            subject-digest: ${{ steps.docker-push.outputs.digest }}
+            push-to-registry: true
 
       - name: Docker Test Credentials meta
         id: docker-test-credentials-meta
@@ -331,11 +335,15 @@ jobs:
           labels: ${{ steps.docker-test-credentials-meta.outputs.labels }}
 
       - name: Generate artifact attestation for Test Credentials Service
-        uses: actions/attest-build-provenance@v2
+        uses: Wandalen/wretry.action@v3
         with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME}}
-          subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
-          push-to-registry: true
+          action: actions/attest-build-provenance@v2
+          attempt_limit: 3
+          attempt_delay: 10000  # 10 seconds between attempts
+          with: |
+            subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME}}
+            subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
+            push-to-registry: true
 
   # Job 5: Trigger E2E tests when Docker images are built
   trigger-e2e-tests:

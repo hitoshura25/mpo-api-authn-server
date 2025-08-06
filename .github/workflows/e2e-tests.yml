@@ -1,0 +1,481 @@
+# E2E Tests Workflow - Triggered by Docker Image Builds
+#
+# This workflow is triggered by the main PR workflow when Docker images are built.
+# It runs comprehensive end-to-end tests using the built Docker images to ensure
+# full system integration works correctly across all platforms.
+#
+# TRIGGER CONDITIONS:
+# - Called by webauthn-server-tests-publish-docker-client-libs.yml
+# - Only runs when Docker images have been successfully built
+# - Uses the exact images that were built for the PR
+#
+# TEST COVERAGE:
+# - Cross-platform WebAuthn functionality (Android + Web)
+# - Full API contract validation
+# - Integration between all services
+# - Real Docker image validation
+#
+# ARCHITECTURE:
+# - Docker Compose: Located in webauthn-server/ directory
+# - Dependencies: PostgreSQL, Redis, Jaeger (from docker-compose.deps.yml)
+# - Services: WebAuthn Server (8080), Test Credentials Service (8081)
+# - Tests: Web tests (Playwright) and Android tests (connectedAndroidTest) run in parallel
+
+name: E2E Tests - Cross-Platform Integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number triggering these tests'
+        required: true
+        type: string
+      webauthn_server_image:
+        description: 'WebAuthn server Docker image tag'
+        required: true
+        type: string
+      test_credentials_image:
+        description: 'Test credentials service Docker image tag'
+        required: true
+        type: string
+
+env:
+  ANDROID_API_VERSION: "29"
+  JAVA_VERSION: "21"
+  DOCKER_REGISTRY: ghcr.io
+
+jobs:
+  # Job 1: Validate Docker images are available
+  validate-images:
+    runs-on: ubuntu-latest
+    outputs:
+      webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
+      test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}
+    steps:
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check WebAuthn Server image availability
+        id: check-webauthn
+        run: |
+          echo "🔍 Checking WebAuthn Server image: ${{ inputs.webauthn_server_image }}"
+          if docker manifest inspect "${{ inputs.webauthn_server_image }}" > /dev/null 2>&1; then
+            echo "✅ WebAuthn Server image is available"
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ WebAuthn Server image not found"
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Test Credentials Service image availability
+        id: check-test-credentials
+        run: |
+          echo "🔍 Checking Test Credentials Service image: ${{ inputs.test_credentials_image }}"
+          if docker manifest inspect "${{ inputs.test_credentials_image }}" > /dev/null 2>&1; then
+            echo "✅ Test Credentials Service image is available"
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Test Credentials Service image not found"
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Job 2: Run Web E2E tests (Playwright)
+  run-web-e2e-tests:
+    runs-on: ubuntu-latest
+    needs: validate-images
+    if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker images
+        run: |
+          echo "🐳 Pulling Docker images for Web E2E tests"
+          docker pull "${{ inputs.webauthn_server_image }}"
+          docker pull "${{ inputs.test_credentials_image }}"
+          echo "✅ All images pulled successfully"
+
+      - name: Generate client libraries
+        shell: bash
+        run: |
+          echo "📚 Generating client libraries for E2E tests"
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+
+      - name: Setup Node.js for TypeScript client tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web-test-client/package-lock.json
+
+      - name: Install TypeScript client dependencies
+        run: |
+          echo "📦 Installing TypeScript client dependencies"
+          cd web-test-client
+          npm ci
+
+      - name: Start Docker services for Web E2E tests (secure env + PR images)
+        shell: bash
+        working-directory: webauthn-server
+        env:
+          WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image }}
+          TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
+        run: |
+          echo "🚀 Starting Docker services with PR-specific images"
+          echo "WebAuthn Server: $WEBAUTHN_SERVER_IMAGE"
+          echo "Test Credentials: $TEST_CREDENTIALS_IMAGE"
+
+          # Use setup-secure-env.sh to configure environment variables securely
+          echo "🔐 Setting up secure environment variables"
+          ./setup-secure-env.sh
+
+          # Create docker-compose override to use PR images instead of building
+          cat > docker-compose.override.yml <<EOF
+          services:
+            webauthn-server:
+              image: \$WEBAUTHN_SERVER_IMAGE
+              build: null
+            webauthn-test-credentials-service:
+              image: \$TEST_CREDENTIALS_IMAGE  
+              build: null
+          EOF
+
+          # Export image environment variables for docker-compose
+          export WEBAUTHN_SERVER_IMAGE="$WEBAUTHN_SERVER_IMAGE"
+          export TEST_CREDENTIALS_IMAGE="$TEST_CREDENTIALS_IMAGE"
+
+          docker-compose up -d
+
+          # Wait for all services to be ready
+          echo "⏳ Waiting for services to be ready..."
+
+          timeout 120 bash -c '
+            while ! docker-compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
+              echo "⏳ Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! docker-compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
+              echo "⏳ Waiting for Redis..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:16686/ > /dev/null 2>&1; do
+              echo "⏳ Waiting for Jaeger..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8080/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for WebAuthn server..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8081/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for Test Credentials service..."
+              sleep 2
+            done
+          '
+
+          echo "✅ All services are ready"
+
+      - name: Run Web E2E tests
+        shell: bash
+        working-directory: web-test-client
+        run: |
+          echo "🌐 Running TypeScript Web E2E tests (Playwright)"
+          npm test
+
+      - name: Upload Web E2E test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-e2e-test-reports-pr-${{ inputs.pr_number }}
+          path: |
+            web-test-client/test-results/
+            web-test-client/playwright-report/
+          retention-days: 7
+
+      - name: Cleanup Web Docker containers
+        if: always()
+        working-directory: webauthn-server
+        run: |
+          echo "🧹 Cleaning up Web Docker containers"
+          docker-compose down -v
+          rm -f docker-compose.override.yml
+          docker system prune -f
+
+  # Job 3: Run Android E2E tests (connectedAndroidTest)
+  run-android-e2e-tests:
+    runs-on: ubuntu-latest
+    needs: validate-images
+    if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      # Branch-specific Gradle caching
+      - name: Setup branch-specific Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+            android-test-client/.gradle/configuration-cache
+          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+            gradle-${{ runner.os }}-
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker images
+        run: |
+          echo "🐳 Pulling Docker images for Android E2E tests"
+          docker pull "${{ inputs.webauthn_server_image }}"
+          docker pull "${{ inputs.test_credentials_image }}"
+          echo "✅ All images pulled successfully"
+
+      - name: Generate client libraries
+        shell: bash
+        run: |
+          echo "📚 Generating client libraries for E2E tests"
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+
+      - name: Enable KVM group permissions for Android Emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Start Docker services for Android E2E tests (secure env + PR images)
+        shell: bash
+        working-directory: webauthn-server
+        env:
+          WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image }}
+          TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
+        run: |
+          echo "🚀 Starting Docker services with PR-specific images"
+          echo "WebAuthn Server: $WEBAUTHN_SERVER_IMAGE"
+          echo "Test Credentials: $TEST_CREDENTIALS_IMAGE"
+
+          # Use setup-secure-env.sh to configure environment variables securely
+          echo "🔐 Setting up secure environment variables"
+          ./setup-secure-env.sh
+
+          # Create docker-compose override to use PR images instead of building
+          cat > docker-compose.override.yml <<EOF
+          services:
+            webauthn-server:
+              image: \$WEBAUTHN_SERVER_IMAGE
+              build: null
+            webauthn-test-credentials-service:
+              image: \$TEST_CREDENTIALS_IMAGE  
+              build: null
+          EOF
+
+          # Export image environment variables for docker-compose
+          export WEBAUTHN_SERVER_IMAGE="$WEBAUTHN_SERVER_IMAGE"
+          export TEST_CREDENTIALS_IMAGE="$TEST_CREDENTIALS_IMAGE"
+
+          docker-compose up -d
+
+          # Wait for all services to be ready
+          echo "⏳ Waiting for services to be ready..."
+
+          timeout 120 bash -c '
+            while ! docker-compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
+              echo "⏳ Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! docker-compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
+              echo "⏳ Waiting for Redis..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:16686/ > /dev/null 2>&1; do
+              echo "⏳ Waiting for Jaeger..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8080/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for WebAuthn server..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8081/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for Test Credentials service..."
+              sleep 2
+            done
+          '
+
+          echo "✅ All services are ready"
+
+      - name: Run Android E2E tests
+        shell: bash
+        working-directory: android-test-client
+        run: |
+          echo "🤖 Running Android E2E tests (connectedAndroidTest)"
+          ./gradlew connectedAndroidTest --build-cache --parallel --configuration-cache
+
+      - name: Upload Android E2E test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-e2e-test-reports-pr-${{ inputs.pr_number }}
+          path: |
+            android-test-client/build/reports/
+            android-test-client/build/outputs/
+          retention-days: 7
+
+      - name: Cleanup Android Docker containers
+        if: always()
+        working-directory: webauthn-server
+        run: |
+          echo "🧹 Cleaning up Android Docker containers"
+          docker-compose down -v
+          rm -f docker-compose.override.yml
+          docker system prune -f
+
+  # Job 4: Report E2E test results back to PR
+  report-results:
+    runs-on: ubuntu-latest
+    needs: [ validate-images, run-web-e2e-tests, run-android-e2e-tests ]
+    if: always()
+    steps:
+      - name: Comment on PR with E2E test results
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const prNumber = '${{ inputs.pr_number }}';
+            const validationSuccess = '${{ needs.validate-images.result }}' === 'success';
+            const webE2eSuccess = '${{ needs.run-web-e2e-tests.result }}' === 'success';
+            const androidE2eSuccess = '${{ needs.run-android-e2e-tests.result }}' === 'success';
+            const webE2eSkipped = '${{ needs.run-web-e2e-tests.result }}' === 'skipped';
+            const androidE2eSkipped = '${{ needs.run-android-e2e-tests.result }}' === 'skipped';
+
+            let message = `## 🧪 E2E Test Results for PR #${prNumber}\n\n`;
+
+            if (!validationSuccess) {
+              message += `❌ **Docker Image Validation Failed**\n`;
+              message += `- WebAuthn Server: \`${{ inputs.webauthn_server_image }}\`\n`;
+              message += `- Test Credentials: \`${{ inputs.test_credentials_image }}\`\n\n`;
+              message += `Please check that the Docker build step completed successfully.\n`;
+            } else if (webE2eSkipped && androidE2eSkipped) {
+              message += `⏭️ **E2E Tests Skipped**\n`;
+              message += `Docker images were not available for testing.\n`;
+            } else {
+              // Show detailed results for each test suite
+              message += `### Test Results Summary\n\n`;
+
+              // Web E2E Tests
+              if (webE2eSkipped) {
+                message += `⏭️ **Web E2E Tests**: Skipped (images not available)\n`;
+              } else if (webE2eSuccess) {
+                message += `✅ **Web E2E Tests**: Passed (Playwright)\n`;
+              } else {
+                message += `❌ **Web E2E Tests**: Failed (Playwright)\n`;
+              }
+
+              // Android E2E Tests
+              if (androidE2eSkipped) {
+                message += `⏭️ **Android E2E Tests**: Skipped (images not available)\n`;
+              } else if (androidE2eSuccess) {
+                message += `✅ **Android E2E Tests**: Passed (connectedAndroidTest)\n`;
+              } else {
+                message += `❌ **Android E2E Tests**: Failed (connectedAndroidTest)\n`;
+              }
+
+              message += `\n`;
+
+              // Overall status
+              if (webE2eSuccess && androidE2eSuccess) {
+                message += `🎉 **Overall Status: All E2E Tests Passed**\n`;
+                message += `- Cross-platform WebAuthn functionality verified\n`;
+                message += `- Full API contract validation completed\n`;
+                message += `- Both web and Android clients integration tested\n`;
+              } else if ((webE2eSuccess || webE2eSkipped) && (androidE2eSuccess || androidE2eSkipped) && (webE2eSuccess || androidE2eSuccess)) {
+                message += `⚠️ **Overall Status: Partial Success**\n`;
+                message += `Some tests passed, but others failed or were skipped.\n`;
+              } else {
+                message += `❌ **Overall Status: E2E Tests Failed**\n`;
+                message += `Integration tests did not pass. Please check the test logs.\n`;
+              }
+
+              message += `\n**Images tested:**\n`;
+              message += `- WebAuthn Server: \`${{ inputs.webauthn_server_image }}\`\n`;
+              message += `- Test Credentials: \`${{ inputs.test_credentials_image }}\`\n`;
+
+              message += `\n**Test Architecture:**\n`;
+              message += `- Docker Compose: \`webauthn-server/\` directory with all dependencies\n`;
+              message += `- Services: WebAuthn Server (8080), Test Credentials (8081), PostgreSQL, Redis, Jaeger\n`;
+              message += `- Tests: Web (Playwright) and Android (connectedAndroidTest) run in parallel\n`;
+            }
+
+            try {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: prNumber,
+                body: message
+              });
+              console.log(`✅ Posted E2E test results to PR #${prNumber}`);
+            } catch (error) {
+              console.error('Failed to post comment:', error);
+            }

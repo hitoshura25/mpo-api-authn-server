@@ -19,14 +19,9 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.util.pipeline.PipelineContext
 import org.koin.ktor.ext.inject
-import org.slf4j.LoggerFactory
 import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.util.UUID
-import com.fasterxml.jackson.core.JsonProcessingException
-import com.fasterxml.jackson.databind.JsonMappingException
-import com.fasterxml.jackson.databind.exc.MismatchedInputException
-import io.ktor.server.plugins.BadRequestException
-import redis.clients.jedis.exceptions.JedisException
 
 fun Application.configureAuthenticationRoutes() {
     val logger = LoggerFactory.getLogger("AuthenticationRoutes")
@@ -60,11 +55,13 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
         if (validateAuthenticationRequest(request)) return
 
         val requestId = UUID.randomUUID().toString()
-        val startAssertionOptions = createStartAssertionOptions(request, relyingParty, openTelemetryTracer)
+        val startAssertionOptions =
+            createStartAssertionOptions(request, relyingParty, openTelemetryTracer)
 
         assertionStorage.storeAssertionRequest(requestId, startAssertionOptions)
 
-        val authResponse = createAuthenticationResponse(requestId, startAssertionOptions, openTelemetryTracer)
+        val authResponse =
+            createAuthenticationResponse(requestId, startAssertionOptions, openTelemetryTracer)
         call.respond(authResponse)
     }.onFailure { exception ->
         handleAuthenticationError(call, logger, exception, "Authentication start failed")
@@ -79,9 +76,11 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationC
     runCatching {
         val request = call.receive<AuthenticationCompleteRequest>()
 
-        val startAssertionOptions = retrieveAssertionRequest(request.requestId, assertionStorage) ?: return
+        val startAssertionOptions =
+            retrieveAssertionRequest(request.requestId, assertionStorage) ?: return
 
-        val finishAssertionResult = processAssertionFinish(startAssertionOptions, request, relyingParty)
+        val finishAssertionResult =
+            processAssertionFinish(startAssertionOptions, request, relyingParty)
 
         if (finishAssertionResult.isSuccess) {
             handleSuccessfulAuthentication(finishAssertionResult.username, logger)
@@ -185,6 +184,8 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleSuccessfulAuthe
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleFailedAuthentication(
     logger: Logger,
 ) {
+    logger.warn("This is a test, remove")
+
     logger.warn("Authentication failed for assertion validation")
     call.respond(
         HttpStatusCode.Unauthorized,

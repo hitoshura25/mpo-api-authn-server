@@ -1,5 +1,5 @@
 # Smart PR Testing Workflow with Conditional Execution
-# 
+#
 # This workflow implements intelligent change detection and conditional execution
 # to optimize CI/CD performance for pull requests.
 #
@@ -213,7 +213,7 @@ jobs:
   # Job 4: Build and push Docker images when Docker-relevant changes detected
   build-docker-images:
     runs-on: ubuntu-latest
-    needs: [detect-changes, run-unit-tests]
+    needs: [ detect-changes, run-unit-tests ]
     if: needs.detect-changes.outputs.any-docker-changes == 'true' && (needs.run-unit-tests.result == 'success' || needs.run-unit-tests.result == 'skipped')
     permissions:
       contents: read
@@ -337,12 +337,13 @@ jobs:
   # Job 5: Trigger E2E tests when Docker images are built
   trigger-e2e-tests:
     runs-on: ubuntu-latest
-    needs: [detect-changes, build-docker-images]
+    needs: [ detect-changes, build-docker-images ]
     if: needs.build-docker-images.result == 'success'
     steps:
       - name: Trigger E2E Test Workflow
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.PAT_WORKFLOW_DISPATCH }}
           script: |
             const { data: workflow } = await github.rest.actions.createWorkflowDispatch({
               owner: context.repo.owner,
@@ -355,7 +356,7 @@ jobs:
                 test_credentials_image: '${{ needs.build-docker-images.outputs.test-credentials-image }}'
               }
             });
-            
+
             console.log('🚀 Triggered E2E tests workflow');
             console.log('WebAuthn Server Image:', '${{ needs.build-docker-images.outputs.webauthn-server-image }}');
             console.log('Test Credentials Image:', '${{ needs.build-docker-images.outputs.test-credentials-image }}');

@@ -30,11 +30,20 @@ on:
   push:
     branches: [main]
 
+permissions:
+  # Workflow-level permissions: minimal by default, jobs can request additional permissions
+  contents: read
+
 jobs:
   # Job 1: Build and test with smart change detection
   build-and-test:
     name: Build & Test (Unit Tests + Docker Images)
     uses: ./.github/workflows/build-and-test.yml
+    permissions:
+      contents: read          # Read repository code
+      packages: write         # Push Docker images to GHCR
+      attestations: write     # Generate build attestations  
+      id-token: write         # OIDC authentication with registries
     secrets: inherit
     
   # Job 2: E2E tests using built Docker images
@@ -43,6 +52,9 @@ jobs:
     needs: build-and-test
     if: needs.build-and-test.outputs.docker_images_built == 'true'
     uses: ./.github/workflows/e2e-tests.yml
+    permissions:
+      contents: read          # Read repository code
+      packages: read          # Pull Docker images from GHCR
     with:
       pr_number: ${{ github.event.number || github.run_number }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}

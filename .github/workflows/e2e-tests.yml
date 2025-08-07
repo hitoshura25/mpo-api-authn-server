@@ -542,83 +542,22 @@ jobs:
     needs: [ validate-images, run-web-e2e-tests, run-android-e2e-tests ]
     if: always()
     steps:
-      - name: Comment on PR with E2E test results
-        uses: actions/github-script@v7
+      - name: Checkout repository
+        uses: actions/checkout@v4
         with:
-          script: |
-            const prNumber = '${{ env.PR_NUMBER }}';
-            const validationSuccess = '${{ needs.validate-images.result }}' === 'success';
-            const webE2eSuccess = '${{ needs.run-web-e2e-tests.result }}' === 'success';
-            const androidE2eSuccess = '${{ needs.run-android-e2e-tests.result }}' === 'success';
-            const webE2eSkipped = '${{ needs.run-web-e2e-tests.result }}' === 'skipped';
-            const androidE2eSkipped = '${{ needs.run-android-e2e-tests.result }}' === 'skipped';
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-            let message = `## 🧪 E2E Test Results for PR #${prNumber}\n\n`;
-
-            if (!validationSuccess) {
-              message += `❌ **Docker Image Validation Failed**\n`;
-              message += `- WebAuthn Server: \`${{ env.WEBAUTHN_SERVER_IMAGE }}\`\n`;
-              message += `- Test Credentials: \`${{ env.TEST_CREDENTIALS_IMAGE }}\`\n\n`;
-              message += `Please check that the Docker build step completed successfully.\n`;
-            } else if (webE2eSkipped && androidE2eSkipped) {
-              message += `⏭️ **E2E Tests Skipped**\n`;
-              message += `Docker images were not available for testing.\n`;
-            } else {
-              // Show detailed results for each test suite
-              message += `### Test Results Summary\n\n`;
-
-              // Web E2E Tests
-              if (webE2eSkipped) {
-                message += `⏭️ **Web E2E Tests**: Skipped (images not available)\n`;
-              } else if (webE2eSuccess) {
-                message += `✅ **Web E2E Tests**: Passed (Playwright)\n`;
-              } else {
-                message += `❌ **Web E2E Tests**: Failed (Playwright)\n`;
-              }
-
-              // Android E2E Tests
-              if (androidE2eSkipped) {
-                message += `⏭️ **Android E2E Tests**: Skipped (images not available)\n`;
-              } else if (androidE2eSuccess) {
-                message += `✅ **Android E2E Tests**: Passed (connectedAndroidTest)\n`;
-              } else {
-                message += `❌ **Android E2E Tests**: Failed (connectedAndroidTest)\n`;
-              }
-
-              message += `\n`;
-
-              // Overall status
-              if (webE2eSuccess && androidE2eSuccess) {
-                message += `🎉 **Overall Status: All E2E Tests Passed**\n`;
-                message += `- Cross-platform WebAuthn functionality verified\n`;
-                message += `- Full API contract validation completed\n`;
-                message += `- Both web and Android clients integration tested\n`;
-              } else if ((webE2eSuccess || webE2eSkipped) && (androidE2eSuccess || androidE2eSkipped) && (webE2eSuccess || androidE2eSuccess)) {
-                message += `⚠️ **Overall Status: Partial Success**\n`;
-                message += `Some tests passed, but others failed or were skipped.\n`;
-              } else {
-                message += `❌ **Overall Status: E2E Tests Failed**\n`;
-                message += `Integration tests did not pass. Please check the test logs.\n`;
-              }
-
-              message += `\n**Images tested:**\n`;
-              message += `- WebAuthn Server: \`${{ env.WEBAUTHN_SERVER_IMAGE }}\`\n`;
-              message += `- Test Credentials: \`${{ env.TEST_CREDENTIALS_IMAGE }}\`\n`;
-
-              message += `\n**Test Architecture:**\n`;
-              message += `- Docker Compose: \`webauthn-server/\` directory with all dependencies\n`;
-              message += `- Services: WebAuthn Server (8080), Test Credentials (8081), PostgreSQL, Redis, Jaeger\n`;
-              message += `- Tests: Web (Playwright) and Android (connectedAndroidTest) run in parallel\n`;
-            }
-
-            try {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: prNumber,
-                body: message
-              });
-              console.log(`✅ Posted E2E test results to PR #${prNumber}`);
-            } catch (error) {
-              console.error('Failed to post comment:', error);
-            }
+      - name: Comment on PR with E2E test results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
+          PR_NUMBER: ${{ env.PR_NUMBER }}
+          VALIDATION_RESULT: ${{ needs.validate-images.result }}
+          WEB_E2E_RESULT: ${{ needs.run-web-e2e-tests.result }}
+          ANDROID_E2E_RESULT: ${{ needs.run-android-e2e-tests.result }}
+          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
+          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
+        run: |
+          chmod +x scripts/create-e2e-results-comment.cjs
+          node scripts/create-e2e-results-comment.cjs

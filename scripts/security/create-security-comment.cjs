@@ -1,4 +1,44 @@
 #!/usr/bin/env node
+
+// Use native fetch if available (Node.js 18+), otherwise use https module
+async function githubFetch(url, options) {
+    if (typeof fetch !== 'undefined') {
+        return fetch(url, options);
+    }
+    
+    // Fallback for older Node.js versions
+    const https = require('https');
+    const { URL } = require('url');
+    
+    return new Promise((resolve, reject) => {
+        const parsedUrl = new URL(url);
+        const requestOptions = {
+            hostname: parsedUrl.hostname,
+            path: parsedUrl.pathname + parsedUrl.search,
+            method: options.method || 'GET',
+            headers: options.headers || {}
+        };
+        
+        const req = https.request(requestOptions, (res) => {
+            let data = '';
+            res.on('data', chunk => data += chunk);
+            res.on('end', () => {
+                const response = {
+                    ok: res.statusCode >= 200 && res.statusCode < 300,
+                    status: res.statusCode,
+                    text: async () => data,
+                    json: async () => JSON.parse(data)
+                };
+                resolve(response);
+            });
+        });
+        
+        req.on('error', reject);
+        if (options.body) req.write(options.body);
+        req.end();
+    });
+}
+
 /**
  * Security PR Comment Generator
  *
@@ -281,18 +321,43 @@ ${vulnerabilitiesSection}${recommendationsSection}${testSection}${patternsSectio
     /**
      * Create the security comment using GitHub API
      */
-    async createComment(github, context) {
+    async createComment() {
         console.log('💬 Creating comprehensive security comment...');
         
         const commentBody = this.buildCommentBody();
         
         try {
-            await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: commentBody
+            const prNumber = process.env.PR_NUMBER;
+            const owner = process.env.REPOSITORY_OWNER;
+            const repo = process.env.REPOSITORY_NAME;
+            const token = process.env.GITHUB_TOKEN;
+            
+            if (!prNumber || !owner || !repo || !token) {
+                console.error('❌ Missing required environment variables:');
+                console.error(`  PR_NUMBER: ${prNumber || 'missing'}`);
+                console.error(`  REPOSITORY_OWNER: ${owner || 'missing'}`);
+                console.error(`  REPOSITORY_NAME: ${repo || 'missing'}`);
+                console.error(`  GITHUB_TOKEN: ${token ? 'present' : 'missing'}`);
+                throw new Error('Missing required environment variables');
+            }
+            
+            // Create comment using GitHub REST API
+            const response = await githubFetch(`https://api.github.com/repos/${owner}/${repo}/issues/${prNumber}/comments`, {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    body: commentBody
+                })
             });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`GitHub API error: ${response.status} ${errorText}`);
+            }
             
             console.log('✅ Security comment created successfully');
         } catch (error) {
@@ -308,32 +373,9 @@ ${vulnerabilitiesSection}${recommendationsSection}${testSection}${patternsSectio
 async function main() {
     console.log('🚀 Security Comment Generator Starting');
     
-    // This function is designed to be called from GitHub Actions with github and context objects
-    // For standalone testing, mock these objects
-    const github = global.github || {
-        rest: {
-            issues: {
-                createComment: async (params) => {
-                    console.log('Mock GitHub API call:', params);
-                    return { data: { id: 'mock-comment-id' } };
-                }
-            }
-        }
-    };
-    
-    const context = global.context || {
-        repo: {
-            owner: process.env.GITHUB_REPOSITORY_OWNER || 'test-owner',
-            repo: process.env.GITHUB_REPOSITORY?.split('/')[1] || 'test-repo'
-        },
-        issue: {
-            number: parseInt(process.env.PR_NUMBER || '1')
-        }
-    };
-    
     try {
         const generator = new SecurityCommentGenerator();
-        await generator.createComment(github, context);
+        await generator.createComment();
         console.log('🎉 Security comment generation completed successfully');
     } catch (error) {
         console.error('❌ Security comment generation failed:', error);

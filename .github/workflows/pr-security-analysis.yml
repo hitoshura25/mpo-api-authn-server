@@ -246,17 +246,18 @@ jobs:
           merge-multiple: true
 
       - name: Create comprehensive security comment
-        uses: actions/github-script@v7
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SECURITY_SCORE: ${{ needs.ai-security-analysis.outputs.security-score }}
           VULNERABILITIES_COUNT: ${{ needs.ai-security-analysis.outputs.vulnerabilities-found }}
           REQUIRES_REVIEW: ${{ needs.ai-security-analysis.outputs.requires-security-review }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
-        with:
-          script: |
-            const { SecurityCommentGenerator } = require('./scripts/security/create-security-comment.js');
-            const generator = new SecurityCommentGenerator();
-            await generator.createComment(github, context);
+          PR_NUMBER: ${{ github.event.number }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+        run: |
+          chmod +x scripts/security/create-security-comment.cjs
+          node scripts/security/create-security-comment.cjs
 
   # Job 5: Block merge if critical security issues found
   security-gate:
@@ -285,16 +286,20 @@ jobs:
     needs: [detect-security-changes, ai-security-analysis]
     if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: Add security labels
-        uses: actions/github-script@v7
         env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SECURITY_SCORE: ${{ needs.ai-security-analysis.outputs.security-score }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
           REQUIRES_SECURITY_REVIEW: ${{ needs.ai-security-analysis.outputs.requires-security-review }}
           HAS_AUTH_CHANGES: ${{ needs.detect-security-changes.outputs.has-auth-changes }}
           HAS_DEPENDENCY_CHANGES: ${{ needs.detect-security-changes.outputs.has-dependency-changes }}
-        with:
-          script: |
-            const { SecurityLabelManager } = require('./scripts/security/add-security-labels.js');
-            const labelManager = new SecurityLabelManager();
-            await labelManager.applyLabels(github, context);
+          PR_NUMBER: ${{ github.event.number }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+          REPOSITORY_NAME: ${{ github.event.repository.name }}
+        run: |
+          chmod +x scripts/security/add-security-labels.cjs
+          node scripts/security/add-security-labels.cjs

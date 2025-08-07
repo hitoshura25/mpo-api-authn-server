@@ -95,9 +95,9 @@ jobs:
         run: |
           # Convert environment variables to job outputs for conditional usage
           echo "anthropic-tier-enabled=${ANTHROPIC_TIER_ENABLED}" >> $GITHUB_OUTPUT
-          echo "gemini-tier-enabled=${GEMINI_TIER_ENABLED}" >> $GITHUB_OUTPUT  
+          echo "gemini-tier-enabled=${GEMINI_TIER_ENABLED}" >> $GITHUB_OUTPUT
           echo "template-tier-enabled=${TEMPLATE_TIER_ENABLED}" >> $GITHUB_OUTPUT
-          
+
           echo "🎯 Tier Configuration:"
           echo "  Anthropic Tier: ${ANTHROPIC_TIER_ENABLED}"
           echo "  Gemini Tier: ${GEMINI_TIER_ENABLED}"
@@ -166,7 +166,7 @@ jobs:
   tier1-anthropic-security-review:
     name: "Tier 1: Anthropic Security Review"
     runs-on: ubuntu-latest
-    needs: [setup-tier-configuration, detect-security-changes]
+    needs: [ setup-tier-configuration, detect-security-changes ]
     if: |
       needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
       needs.setup-tier-configuration.outputs.anthropic-tier-enabled == 'true'
@@ -187,7 +187,7 @@ jobs:
 
       - name: Run Official Anthropic Security Review
         id: anthropic-analysis
-        uses: anthropics/claude-code-security-review@v1
+        uses: anthropics/claude-code-security-review@main
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
           comment-pr: true
@@ -229,7 +229,7 @@ jobs:
   tier2-gemini-webauthn-analysis:
     name: "Tier 2: Gemini WebAuthn Analysis"
     runs-on: ubuntu-latest
-    needs: [setup-tier-configuration, detect-security-changes, tier1-anthropic-security-review]
+    needs: [ setup-tier-configuration, detect-security-changes, tier1-anthropic-security-review ]
     if: |
       needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
       needs.tier1-anthropic-security-review.outputs.analysis-completed != 'true' &&
@@ -314,7 +314,7 @@ jobs:
   tier3-template-analysis:
     name: "Tier 3: Template Security Analysis"
     runs-on: ubuntu-latest
-    needs: [setup-tier-configuration, detect-security-changes, tier1-anthropic-security-review, tier2-gemini-webauthn-analysis]
+    needs: [ setup-tier-configuration, detect-security-changes, tier1-anthropic-security-review, tier2-gemini-webauthn-analysis ]
     if: |
       always() &&
       needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
@@ -478,7 +478,7 @@ jobs:
   create-security-comment:
     name: Create PR security review comment
     runs-on: ubuntu-latest
-    needs: [setup-tier-configuration, detect-security-changes, consolidate-security-analysis]
+    needs: [ setup-tier-configuration, detect-security-changes, consolidate-security-analysis ]
     if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
     steps:
       - name: Checkout repository
@@ -488,9 +488,9 @@ jobs:
 
       - name: Download consolidated analysis results
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           name: consolidated-security-results
-          continue-on-error: true
 
       - name: Create comprehensive security comment
         env:
@@ -548,7 +548,7 @@ jobs:
   add-security-labels:
     name: Add security labels to PR
     runs-on: ubuntu-latest
-    needs: [setup-tier-configuration, detect-security-changes, consolidate-security-analysis]
+    needs: [ setup-tier-configuration, detect-security-changes, consolidate-security-analysis ]
     if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
     steps:
       - name: Checkout code

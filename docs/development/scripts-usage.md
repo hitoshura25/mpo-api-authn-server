@@ -107,7 +107,7 @@ scripts/
 ```
 
 ### analyze-pr.sh
-**Purpose**: AI-powered security analysis of pull request changes.
+**Purpose**: AI-powered security analysis of pull request changes with dual provider support (Anthropic → Gemini → Template fallback).
 
 **Usage**:
 ```bash
@@ -115,7 +115,7 @@ scripts/
 ```
 
 ### generate-tests.sh
-**Purpose**: Generates security tests based on detected vulnerabilities.
+**Purpose**: Generates security tests based on detected vulnerabilities with dual AI provider support.
 
 **Usage**:
 ```bash

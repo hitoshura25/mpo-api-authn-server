@@ -4,12 +4,14 @@
 #
 # This script performs intelligent security analysis on pull requests using AI
 # to detect WebAuthn vulnerabilities, security anti-patterns, and potential attack vectors.
+# Supports dual AI providers with automatic fallback: Anthropic (primary) → Gemini (fallback) → Template analysis
 #
 # USAGE:
 #   ./analyze-pr.sh <changed_files_json> <pr_title> <pr_body> <risk_level>
 #
 # ENVIRONMENT VARIABLES:
-#   ANTHROPIC_API_KEY - API key for AI analysis (optional, falls back to standard analysis)
+#   ANTHROPIC_API_KEY - API key for Anthropic AI analysis (primary, optional)
+#   GEMINI_API_KEY - API key for Google Gemini AI analysis (fallback, optional)
 #   PR_NUMBER - Pull request number
 #   WEBAUTHN_SECURITY_AGENT_PATH - Path to WebAuthn security agent file
 #   VULNERABILITY_DB_PATH - Path to vulnerability database JSON
@@ -49,14 +51,23 @@ check_dependencies() {
         return 1
     fi
     
-    # Check if @anthropic-ai/sdk is available
+    # Check if AI dependencies are available
+    local need_install=false
     if [ ! -d "node_modules/@anthropic-ai/sdk" ] && [ ! -d "../node_modules/@anthropic-ai/sdk" ]; then
+        need_install=true
+    fi
+    if [ ! -d "node_modules/@google/generative-ai" ] && [ ! -d "../node_modules/@google/generative-ai" ]; then
+        need_install=true
+    fi
+    
+    if [ "$need_install" = true ]; then
         log "⚠️ Installing AI analysis dependencies..."
         npm install --save-dev \
             @anthropic-ai/sdk \
+            @google/generative-ai \
             typescript \
             ts-node \
-            @types/node || log "⚠️ Failed to install dependencies, continuing with standard analysis"
+            @types/node || log "⚠️ Failed to install dependencies, continuing with fallback analysis"
     fi
     
     log "✅ Dependencies checked"
@@ -107,30 +118,52 @@ create_ai_analyzer() {
 const fs = require('fs');
 const path = require('path');
 
-// Try to import Anthropic SDK, fall back if not available
-let Anthropic;
+// Try to import AI SDKs, fall back if not available
+let Anthropic, GoogleGenerativeAI;
 try {
   Anthropic = require('@anthropic-ai/sdk').Anthropic;
 } catch (error) {
-  console.warn('⚠️ Anthropic SDK not available, using fallback analysis');
+  console.warn('⚠️ Anthropic SDK not available');
   Anthropic = null;
+}
+
+try {
+  const { GoogleGenerativeAI: GeminiAI } = require('@google/generative-ai');
+  GoogleGenerativeAI = GeminiAI;
+} catch (error) {
+  console.warn('⚠️ Google Generative AI SDK not available');
+  GoogleGenerativeAI = null;
 }
 
 class WebAuthnSecurityAnalyzer {
   constructor() {
-    this.anthropic = Anthropic ? new Anthropic({
+    // Initialize Anthropic client if available
+    this.anthropic = Anthropic && process.env.ANTHROPIC_API_KEY ? new Anthropic({
       apiKey: process.env.ANTHROPIC_API_KEY
     }) : null;
+    
+    // Initialize Gemini client if available
+    this.gemini = GoogleGenerativeAI && process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
+    this.geminiModel = this.gemini ? this.gemini.getGenerativeModel({ model: 'gemini-1.5-pro' }) : null;
+    
     this.maxRetries = 3;
     this.retryDelay = 2000;
+    
+    // Log available providers
+    const availableProviders = [];
+    if (this.anthropic) availableProviders.push('Anthropic');
+    if (this.geminiModel) availableProviders.push('Gemini');
+    if (availableProviders.length === 0) availableProviders.push('Fallback');
+    
+    console.log(`🔧 AI Providers available: ${availableProviders.join(', ')}`);
   }
 
   async analyzeSecurityChanges(changedFiles, prContext) {
     try {
       console.log('🔍 Analyzing security implications of code changes...');
       
-      if (!this.anthropic || !process.env.ANTHROPIC_API_KEY) {
-        console.log('⚠️ AI analysis not available, using fallback analysis');
+      if (!this.anthropic && !this.geminiModel) {
+        console.log('⚠️ No AI providers available, using fallback analysis');
         return this.createFallbackAnalysis();
       }
       
@@ -257,9 +290,37 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
   }
 
   async performAIAnalysis(prompt) {
+    // Try Anthropic first (primary provider)
+    if (this.anthropic) {
+      try {
+        console.log('🚀 Attempting analysis with Anthropic (primary)...');
+        return await this.performAnthropicAnalysis(prompt);
+      } catch (error) {
+        console.warn('🔄 Anthropic analysis failed:', error.message);
+        if (this.isRateLimitOrBudgetError(error)) {
+          console.log('💸 Anthropic budget/rate limit exceeded, trying Gemini...');
+        }
+      }
+    }
+    
+    // Fallback to Gemini (secondary provider)
+    if (this.geminiModel) {
+      try {
+        console.log('🔄 Attempting analysis with Gemini (fallback)...');
+        return await this.performGeminiAnalysis(prompt);
+      } catch (error) {
+        console.warn('❌ Gemini analysis failed:', error.message);
+      }
+    }
+    
+    // Both AI providers failed
+    throw new Error('All AI providers failed, using fallback analysis');
+  }
+
+  async performAnthropicAnalysis(prompt) {
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`🤖 AI Analysis attempt ${attempt}/${this.maxRetries}...`);
+        console.log(`🤖 Anthropic attempt ${attempt}/${this.maxRetries}...`);
         
         const message = await this.anthropic.messages.create({
           model: 'claude-3-5-sonnet-20241022',
@@ -271,10 +332,16 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
           }]
         });
 
+        console.log('✅ Anthropic analysis completed successfully');
         return message.content[0].text;
         
       } catch (error) {
-        console.warn(`⚠️ AI analysis attempt ${attempt} failed:`, error.message);
+        console.warn(`⚠️ Anthropic attempt ${attempt} failed:`, error.message);
+        
+        // Don't retry on budget/auth errors
+        if (this.isRateLimitOrBudgetError(error)) {
+          throw error;
+        }
         
         if (attempt === this.maxRetries) {
           throw error;
@@ -283,6 +350,61 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
         await new Promise(resolve => setTimeout(resolve, this.retryDelay * attempt));
       }
     }
+  }
+
+  async performGeminiAnalysis(prompt) {
+    for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
+      try {
+        console.log(`🔷 Gemini attempt ${attempt}/${this.maxRetries}...`);
+        
+        // Adapt prompt for Gemini format
+        const geminiPrompt = this.adaptPromptForGemini(prompt);
+        
+        const result = await this.geminiModel.generateContent(geminiPrompt);
+        const response = await result.response;
+        
+        console.log('✅ Gemini analysis completed successfully');
+        return response.text();
+        
+      } catch (error) {
+        console.warn(`⚠️ Gemini attempt ${attempt} failed:`, error.message);
+        
+        // Don't retry on quota/auth errors
+        if (this.isRateLimitOrBudgetError(error)) {
+          throw error;
+        }
+        
+        if (attempt === this.maxRetries) {
+          throw error;
+        }
+        
+        await new Promise(resolve => setTimeout(resolve, this.retryDelay * attempt));
+      }
+    }
+  }
+
+  adaptPromptForGemini(prompt) {
+    // Gemini works well with the same prompt format, but we can add specific instructions
+    return `${prompt}
+
+IMPORTANT: Provide your response as valid JSON only, with no additional text or explanations outside the JSON structure.`;
+  }
+
+  isRateLimitOrBudgetError(error) {
+    const errorMessage = error.message?.toLowerCase() || '';
+    const errorStatus = error.status || error.code || 0;
+    
+    // Check for common rate limit/budget error indicators
+    return (
+      errorStatus === 429 || // Rate limit
+      errorStatus === 402 || // Payment required
+      errorMessage.includes('rate limit') ||
+      errorMessage.includes('quota') ||
+      errorMessage.includes('budget') ||
+      errorMessage.includes('billing') ||
+      errorMessage.includes('insufficient credits') ||
+      errorMessage.includes('usage limit')
+    );
   }
 
   parseAnalysisResults(analysisText) {
@@ -313,6 +435,14 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
   }
 
   createFallbackAnalysis() {
+    const availableProviders = [];
+    if (this.anthropic) availableProviders.push('Anthropic');
+    if (this.geminiModel) availableProviders.push('Gemini');
+    
+    const analysisError = availableProviders.length === 0 
+      ? 'No AI providers configured - template analysis provided'
+      : `AI providers failed (${availableProviders.join(', ')}) - template analysis provided`;
+    
     return {
       securityScore: 5.0,
       vulnerabilitiesFound: [],
@@ -329,7 +459,8 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
           priority: 'HIGH'
         }
       ],
-      analysisError: 'AI analysis failed - fallback analysis provided'
+      analysisError: analysisError,
+      providersAttempted: availableProviders
     };
   }
 }

@@ -54,7 +54,7 @@ scripts/security/
 
 ### 2. analyze-pr.sh
 
-**Purpose**: Performs comprehensive AI-powered security analysis using Anthropic Claude.
+**Purpose**: Performs comprehensive AI-powered security analysis using dual AI providers with automatic fallback (Anthropic → Gemini → Template analysis).
 
 **Usage**:
 ```bash
@@ -62,7 +62,8 @@ scripts/security/
 ```
 
 **Environment Variables**:
-- `ANTHROPIC_API_KEY` - API key for AI analysis (optional)
+- `ANTHROPIC_API_KEY` - API key for Anthropic AI analysis (primary, optional)
+- `GEMINI_API_KEY` - API key for Google Gemini AI analysis (fallback, optional)
 - `PR_NUMBER` - Pull request number
 - `WEBAUTHN_SECURITY_AGENT_PATH` - Path to security agent file
 - `VULNERABILITY_DB_PATH` - Path to vulnerability database
@@ -72,9 +73,11 @@ scripts/security/
 - GitHub Actions outputs for security score, vulnerabilities, and recommendations
 
 **Features**:
-- AI-powered vulnerability detection
+- Dual AI provider support (Anthropic primary, Gemini fallback)
+- AI-powered vulnerability detection with provider redundancy
 - WebAuthn-specific security pattern analysis
-- Fallback analysis when AI is unavailable
+- Automatic provider switching on budget/rate limit errors
+- Three-tier fallback: Anthropic → Gemini → Template analysis
 - Integration with existing security test suites
 
 ### 3. generate-tests.sh
@@ -91,14 +94,17 @@ scripts/security/
 - Node.js environment with optional AI dependencies
 
 **Environment Variables**:
-- `ANTHROPIC_API_KEY` - API key for AI test generation (optional)
+- `ANTHROPIC_API_KEY` - API key for Anthropic AI test generation (primary, optional)
+- `GEMINI_API_KEY` - API key for Google Gemini AI test generation (fallback, optional)
 
 **Outputs**:
 - `security-test-implementations.json` - Generated test code and metadata
 
 **Features**:
-- AI-generated Kotlin test methods
-- Template-based fallback tests
+- Dual AI provider support for test generation
+- AI-generated Kotlin test methods with provider redundancy
+- Automatic provider switching on budget/rate limit errors
+- Three-tier fallback: Anthropic → Gemini → Template generation
 - Integration with existing VulnerabilityProtectionTest patterns
 
 ### 4. create-security-comment.js
@@ -150,6 +156,31 @@ node add-security-labels.js
 - `authentication` - Authentication flow changes
 - `dependencies` - Dependency changes
 
+## AI Provider Strategy
+
+The security scripts implement a 3-tier AI provider strategy for maximum reliability:
+
+### Provider Selection Logic
+1. **Primary (Anthropic)**: Attempts analysis with Anthropic Claude if `ANTHROPIC_API_KEY` is available
+2. **Fallback (Gemini)**: Falls back to Google Gemini if Anthropic fails due to:
+   - Rate limit errors (HTTP 429)
+   - Budget/billing issues (HTTP 402) 
+   - Authentication failures
+   - API quota exceeded
+3. **Template Analysis**: Uses structured templates if both AI providers fail
+
+### Benefits
+- **High Availability**: Continues operation even if one AI provider is unavailable
+- **Budget Management**: Automatically switches providers when budget limits are reached
+- **Cost Optimization**: Uses primary provider when available, fallback when needed
+- **Reliability**: Always provides some level of analysis regardless of AI availability
+
+### Logging and Transparency
+- Scripts log which AI provider is being used for each analysis
+- Error messages clearly indicate why provider switching occurred
+- Analysis results include metadata about which provider was used
+- Template fallbacks are clearly marked in output files
+
 ## WebAuthn Security Focus
 
 All scripts are specifically designed for WebAuthn authentication systems and focus on:
@@ -192,7 +223,8 @@ These scripts are designed to integrate with the `pr-security-analysis.yml` GitH
 - **GitHub Actions environment** - For workflow integration
 
 ### Optional
-- **@anthropic-ai/sdk** - For AI-powered analysis (fallback available)
+- **@anthropic-ai/sdk** - For Anthropic AI-powered analysis (fallback available)
+- **@google/generative-ai** - For Google Gemini AI-powered analysis (fallback available)
 - **TypeScript** - For enhanced JavaScript analysis
 
 ## Error Handling
@@ -235,7 +267,7 @@ Scripts are designed to be tested within GitHub Actions environment with proper 
 1. **Script not executable**: Run `chmod +x scripts/security/*.sh *.js`
 2. **Missing jq**: Install with `apt-get install jq` or `brew install jq`
 3. **Node.js dependencies**: Run `npm install` in repository root
-4. **AI analysis failing**: Verify `ANTHROPIC_API_KEY` is set; fallback analysis will be used
+4. **AI analysis failing**: Verify `ANTHROPIC_API_KEY` or `GEMINI_API_KEY` is set; scripts will try both providers before using fallback analysis
 
 ### Debug Logging
 All scripts include timestamp-based logging. Use `set -x` in shell scripts for verbose debugging.

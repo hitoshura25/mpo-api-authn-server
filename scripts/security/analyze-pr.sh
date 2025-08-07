@@ -167,10 +167,36 @@ class WebAuthnSecurityAnalyzer {
         return this.createFallbackAnalysis();
       }
       
+      // Token optimization: Skip AI for minimal risk changes with few files
+      if (prContext.riskLevel === 'MINIMAL' && changedFiles.length <= 2) {
+        console.log('💡 Minimal risk change detected - using optimized template analysis');
+        const optimizedResults = this.createFallbackAnalysis();
+        optimizedResults.analysisMetadata = {
+          aiProvider: 'Template (optimized for minimal risk)',
+          timestamp: new Date().toISOString(),
+          analysisType: 'optimized-template',
+          reason: 'Minimal risk change - AI analysis skipped for cost optimization'
+        };
+        return optimizedResults;
+      }
+      
       // Load security context
       const securityAgent = this.loadSecurityAgent();
       const vulnerabilityDB = this.loadVulnerabilityDatabase();
       const codeChanges = await this.extractCodeChanges(changedFiles);
+      
+      // Token optimization: If no security-relevant files found, use template
+      if (Object.keys(codeChanges).length === 0) {
+        console.log('💡 No security-relevant files found - using template analysis');
+        const templateResults = this.createFallbackAnalysis();
+        templateResults.analysisMetadata = {
+          aiProvider: 'Template (no security-relevant files)',
+          timestamp: new Date().toISOString(),
+          analysisType: 'optimized-template',
+          reason: 'No security-relevant files in changes'
+        };
+        return templateResults;
+      }
       
       const prompt = this.buildSecurityAnalysisPrompt(
         securityAgent, 
@@ -179,6 +205,10 @@ class WebAuthnSecurityAnalyzer {
         prContext
       );
       
+      // Log token estimate for cost tracking
+      const estimatedTokens = Math.ceil(prompt.length / 4); // Rough token estimate
+      console.log(`💰 Estimated tokens: ~${estimatedTokens} (${(estimatedTokens * 0.000015).toFixed(4)} USD for Claude Opus 4.1)`);
+      
       const { analysis, provider } = await this.performAIAnalysis(prompt);
       const results = this.parseAnalysisResults(analysis);
       
@@ -186,7 +216,8 @@ class WebAuthnSecurityAnalyzer {
       results.analysisMetadata = {
         aiProvider: provider,
         timestamp: new Date().toISOString(),
-        analysisType: 'ai-powered'
+        analysisType: 'ai-powered',
+        estimatedTokens: estimatedTokens
       };
       
       console.log(`📊 Analysis completed using: ${provider}`);
@@ -231,15 +262,36 @@ class WebAuthnSecurityAnalyzer {
 
   async extractCodeChanges(changedFiles) {
     const codeChanges = {};
+    const MAX_FILE_SIZE = 5000; // Reduced from 10000 for token efficiency
+    const SECURITY_RELEVANT_EXTENSIONS = ['.kt', '.java', '.js', '.ts', '.yml', '.yaml', '.json'];
     
-    for (const file of changedFiles) {
+    // Filter to only security-relevant files
+    const relevantFiles = changedFiles.filter(file => 
+      SECURITY_RELEVANT_EXTENSIONS.some(ext => file.endsWith(ext)) ||
+      file.includes('security') ||
+      file.includes('auth') ||
+      file.includes('webauthn') ||
+      file.includes('credential')
+    );
+    
+    console.log(`🔍 Focusing analysis on ${relevantFiles.length}/${changedFiles.length} security-relevant files`);
+    
+    for (const file of relevantFiles.slice(0, 10)) { // Limit to 10 most relevant files
       try {
         if (fs.existsSync(file)) {
           const content = fs.readFileSync(file, 'utf8');
+          
+          // Extract only security-relevant sections for large files
+          let relevantContent = content;
+          if (content.length > MAX_FILE_SIZE) {
+            relevantContent = this.extractSecurityRelevantCode(content, file);
+          }
+          
           codeChanges[file] = {
-            content: content.substring(0, 10000), // Limit for AI context
+            content: relevantContent.substring(0, MAX_FILE_SIZE),
             size: content.length,
-            extension: path.extname(file)
+            extension: path.extname(file),
+            truncated: content.length > MAX_FILE_SIZE
           };
         }
       } catch (error) {
@@ -249,65 +301,82 @@ class WebAuthnSecurityAnalyzer {
     
     return codeChanges;
   }
+  
+  extractSecurityRelevantCode(content, filename) {
+    // Extract security-relevant sections based on keywords
+    const securityKeywords = [
+      'authentication', 'webauthn', 'credential', 'security', 'auth',
+      'login', 'password', 'token', 'session', 'verify', 'validate',
+      'signature', 'challenge', 'origin', 'rpid', 'allowCredentials'
+    ];
+    
+    const lines = content.split('\n');
+    const relevantSections = [];
+    let currentSection = [];
+    let inSecuritySection = false;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].toLowerCase();
+      const isSecurityLine = securityKeywords.some(keyword => line.includes(keyword));
+      
+      if (isSecurityLine || inSecuritySection) {
+        currentSection.push(lines[i]);
+        inSecuritySection = true;
+        
+        // Include context (5 lines after security-relevant line)
+        if (currentSection.length > 8) {
+          relevantSections.push(...currentSection);
+          currentSection = [];
+          inSecuritySection = false;
+        }
+      } else if (inSecuritySection) {
+        currentSection.push(lines[i]);
+      }
+    }
+    
+    if (currentSection.length > 0) {
+      relevantSections.push(...currentSection);
+    }
+    
+    return relevantSections.length > 0 ? relevantSections.join('\n') : content.substring(0, 2000);
+  }
 
   buildSecurityAnalysisPrompt(securityAgent, vulnerabilityDB, codeChanges, prContext) {
-    return `You are a WebAuthn security expert analyzing a pull request for potential security vulnerabilities.
+    // Token optimization: Condense and focus content
+    const fileCount = Object.keys(codeChanges).length;
+    const relevantVulns = vulnerabilityDB.vulnerabilities?.slice(0, 3) || [];
+    
+    // Skip security agent if it's very large (reduce tokens)
+    const securityContext = securityAgent.length > 2000 ? 
+      "WebAuthn security focus: credential handling, origin validation, PoisonSeed prevention" :
+      securityAgent.substring(0, 1000);
+    
+    return `WebAuthn Security Analysis (${fileCount} files, Risk: ${prContext.riskLevel})
 
-SECURITY CONTEXT:
-${securityAgent}
+KEY VULNERABILITIES TO CHECK:
+${relevantVulns.map(v => `• ${v.type}: ${v.description?.substring(0, 80)}...`).join('\n')}
 
-KNOWN VULNERABILITIES DATABASE:
-${JSON.stringify(vulnerabilityDB.vulnerabilities, null, 2)}
+CONTEXT: ${securityContext}
 
-PULL REQUEST CONTEXT:
-- Title: ${prContext.title}
-- Risk Level: ${prContext.riskLevel}
-- Changed Files: ${Object.keys(codeChanges).join(', ')}
-
-CODE CHANGES TO ANALYZE:
+FILES:
 ${Object.entries(codeChanges).map(([file, data]) => 
-  `\n--- ${file} ---\n${data.content}`
-).join('\n')}
+  `--- ${file} ---\n${data.content}`
+).join('\n\n')}
 
-ANALYSIS REQUIREMENTS:
-1. **Vulnerability Detection**: Identify potential security issues using the known vulnerability patterns
-2. **WebAuthn-Specific Risks**: Focus on authentication flows, credential handling, origin validation
-3. **Information Leakage**: Check for sensitive data exposure in logs, errors, or responses
-4. **Attack Vector Analysis**: Assess potential for PoisonSeed, replay, tampering attacks
-5. **Defensive Programming**: Verify proper error handling and input validation
+ANALYZE FOR:
+- Authentication flows & credential handling
+- Origin/RPID validation issues  
+- Information leakage in responses
+- PoisonSeed attack vectors
 
-RESPONSE FORMAT (JSON):
+JSON RESPONSE:
 {
-  "securityScore": <0-10 float representing risk level>,
-  "vulnerabilitiesFound": [
-    {
-      "type": "vulnerability type",
-      "severity": "LOW|MEDIUM|HIGH|CRITICAL",
-      "location": "file:line",
-      "description": "detailed vulnerability description",
-      "cweId": "CWE-XXX if applicable",
-      "recommendedFix": "specific mitigation steps"
-    }
-  ],
-  "recommendations": [
-    "specific actionable security recommendations"
-  ],
+  "securityScore": <0-10>,
+  "vulnerabilitiesFound": [{"type":"", "severity":"", "location":"", "description":"", "recommendedFix":""}],
+  "recommendations": ["specific fixes"],
   "requiresSecurityReview": <boolean>,
-  "testRecommendations": [
-    {
-      "testType": "test category",
-      "description": "what should be tested",
-      "priority": "HIGH|MEDIUM|LOW"
-    }
-  ],
-  "securityPatterns": {
-    "good": ["security patterns found"],
-    "missing": ["missing security patterns"],
-    "antipatterns": ["problematic patterns found"]
-  }
-}
-
-Focus on practical, actionable analysis specific to WebAuthn authentication security.`;
+  "securityPatterns": {"good":[], "missing":[], "antipatterns":[]}
+}`;
   }
 
   async performAIAnalysis(prompt) {
@@ -352,7 +421,7 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
         
         const message = await this.anthropic.messages.create({
           model: 'claude-opus-4-1-20250805',
-          max_tokens: 4000,
+          max_tokens: 2500, // Reduced from 4000 for cost optimization
           temperature: 0.1, // Low temperature for consistent security analysis
           messages: [{
             role: 'user',

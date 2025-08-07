@@ -2,9 +2,9 @@
 #
 # This workflow implements a comprehensive 3-tier AI security analysis system
 # with intelligent fallbacks for WebAuthn authentication server security review.
-# 
+#
 # ARCHITECTURE:
-# 
+#
 # **Tier 1: Official Anthropic Security Action** (Primary)
 # - Uses: anthropics/claude-code-security-review@v1
 # - Purpose: Broad security coverage, maintained by Anthropic
@@ -42,7 +42,7 @@ name: 3-Tier AI Security Analysis
 
 on:
   pull_request:
-    types: [opened, synchronize, reopened]
+    types: [ opened, synchronize, reopened ]
     paths:
       # Security-sensitive file patterns
       - 'webauthn-server/src/main/kotlin/**/*Authentication*'
@@ -64,12 +64,12 @@ env:
   HIGH_RISK_SCORE_THRESHOLD: 7.0
   MEDIUM_RISK_SCORE_THRESHOLD: 4.0
   BLOCK_MERGE_ON_CRITICAL: true
-  
+
   # Tier Configuration
   ANTHROPIC_TIER_ENABLED: true
   GEMINI_TIER_ENABLED: true
   TEMPLATE_TIER_ENABLED: true
-  
+
   # WebAuthn Security Focus
   VULNERABILITY_DB_PATH: "./vulnerability-tracking.json"
   WEBAUTHN_SECURITY_AGENT_PATH: "./.claude/agents/webauthn-security-analysis.md"
@@ -106,7 +106,7 @@ jobs:
           files_yaml: |
             auth_flows:
               - 'webauthn-server/src/main/kotlin/**/*Authentication*'
-              - 'webauthn-server/src/main/kotlin/**/*WebAuthn*' 
+              - 'webauthn-server/src/main/kotlin/**/*WebAuthn*'
               - 'webauthn-server/src/main/kotlin/**/auth/**'
             security_components:
               - 'webauthn-server/src/main/kotlin/**/*Security*'
@@ -143,7 +143,7 @@ jobs:
     needs: detect-security-changes
     if: |
       needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
-      env.ANTHROPIC_TIER_ENABLED == 'true'
+      ${{ env.ANTHROPIC_TIER_ENABLED == 'true' }}
     outputs:
       analysis-completed: ${{ steps.anthropic-analysis.outputs.analysis-completed }}
       security-score: ${{ steps.anthropic-analysis.outputs.security-score }}
@@ -203,11 +203,11 @@ jobs:
   tier2-gemini-webauthn-analysis:
     name: "Tier 2: Gemini WebAuthn Analysis"
     runs-on: ubuntu-latest
-    needs: [detect-security-changes, tier1-anthropic-security-review]
+    needs: [ detect-security-changes, tier1-anthropic-security-review ]
     if: |
       needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
       needs.tier1-anthropic-security-review.outputs.analysis-completed != 'true' &&
-      env.GEMINI_TIER_ENABLED == 'true'
+      ${{ env.GEMINI_TIER_ENABLED == 'true' }}
     outputs:
       analysis-completed: ${{ steps.gemini-analysis.outputs.analysis-completed }}
       security-score: ${{ steps.gemini-analysis.outputs.security-score }}
@@ -235,13 +235,13 @@ jobs:
       - name: Load WebAuthn Security Context
         run: |
           echo "📚 Loading WebAuthn-specific security context..."
-          
+
           if [ -f "${{ env.WEBAUTHN_SECURITY_AGENT_PATH }}" ]; then
             echo "✅ WebAuthn Security Agent loaded"
           else
             echo "⚠️ WebAuthn Security Agent not found"
           fi
-          
+
           if [ -f "${{ env.VULNERABILITY_DB_PATH }}" ]; then
             VULN_COUNT=$(jq '.vulnerabilities | length' "${{ env.VULNERABILITY_DB_PATH }}" || echo 0)
             echo "📊 Known WebAuthn vulnerabilities: $VULN_COUNT"
@@ -262,9 +262,9 @@ jobs:
         run: |
           echo "🔷 Starting Tier 2: Gemini-Only WebAuthn Analysis"
           echo "🎯 Focus: WebAuthn-specific security patterns"
-          
+
           chmod +x scripts/security/analyze-pr.sh
-          
+
           if scripts/security/analyze-pr.sh "$CHANGED_FILES" "$PR_TITLE" "$PR_BODY" "$RISK_LEVEL"; then
             echo "analysis-completed=true" >> $GITHUB_OUTPUT
             echo "tier-used=Gemini WebAuthn-Focused" >> $GITHUB_OUTPUT
@@ -288,13 +288,13 @@ jobs:
   tier3-template-analysis:
     name: "Tier 3: Template Security Analysis"
     runs-on: ubuntu-latest
-    needs: [detect-security-changes, tier1-anthropic-security-review, tier2-gemini-webauthn-analysis]
+    needs: [ detect-security-changes, tier1-anthropic-security-review, tier2-gemini-webauthn-analysis ]
     if: |
       always() &&
       needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
       needs.tier1-anthropic-security-review.outputs.analysis-completed != 'true' &&
       needs.tier2-gemini-webauthn-analysis.outputs.analysis-completed != 'true' &&
-      env.TEMPLATE_TIER_ENABLED == 'true'
+      ${{ env.TEMPLATE_TIER_ENABLED == 'true' }}
     outputs:
       analysis-completed: ${{ steps.template-analysis.outputs.analysis-completed }}
       security-score: ${{ steps.template-analysis.outputs.security-score }}
@@ -327,9 +327,9 @@ jobs:
         run: |
           echo "📋 Starting Tier 3: Template Security Analysis"
           echo "⚠️ AI providers unavailable - using template-based analysis"
-          
+
           chmod +x scripts/security/analyze-pr.sh
-          
+
           if scripts/security/analyze-pr.sh "$CHANGED_FILES" "$PR_TITLE" "$PR_BODY" "$RISK_LEVEL"; then
             echo "analysis-completed=true" >> $GITHUB_OUTPUT
             echo "tier-used=Template-Based Analysis" >> $GITHUB_OUTPUT
@@ -354,13 +354,13 @@ jobs:
     name: Consolidate security analysis results
     runs-on: ubuntu-latest
     needs: [
-      detect-security-changes, 
-      tier1-anthropic-security-review, 
-      tier2-gemini-webauthn-analysis, 
+      detect-security-changes,
+      tier1-anthropic-security-review,
+      tier2-gemini-webauthn-analysis,
       tier3-template-analysis
     ]
     if: |
-      always() && 
+      always() &&
       needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
       (needs.tier1-anthropic-security-review.outputs.analysis-completed == 'true' ||
        needs.tier2-gemini-webauthn-analysis.outputs.analysis-completed == 'true' ||
@@ -388,7 +388,7 @@ jobs:
         id: consolidate
         run: |
           echo "🔍 Consolidating security analysis results from all tiers..."
-          
+
           # Determine which tier was successful and extract results
           if [ "${{ needs.tier1-anthropic-security-review.outputs.analysis-completed }}" == "true" ]; then
             TIER_USED="Tier 1: Anthropic Official Action"
@@ -415,12 +415,12 @@ jobs:
             echo "❌ All security analysis tiers failed"
             exit 1
           fi
-          
+
           echo "🎯 Final analysis completed using: $TIER_USED"
           echo "📊 Security Score: $SECURITY_SCORE/10"
           echo "🔍 Vulnerabilities Found: $VULNERABILITIES"
           echo "🔒 Requires Review: $REQUIRES_REVIEW"
-          
+
           # Set outputs
           echo "final-security-score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
           echo "final-vulnerabilities-found=$VULNERABILITIES" >> $GITHUB_OUTPUT
@@ -451,7 +451,7 @@ jobs:
   create-security-comment:
     name: Create PR security review comment
     runs-on: ubuntu-latest
-    needs: [detect-security-changes, consolidate-security-analysis]
+    needs: [ detect-security-changes, consolidate-security-analysis ]
     if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
     steps:
       - name: Checkout repository
@@ -480,7 +480,7 @@ jobs:
           echo "💬 Creating security review comment..."
           echo "🎯 Analysis Tier Used: $TIER_USED"
           echo "📊 Security Score: $SECURITY_SCORE/10"
-          
+
           chmod +x scripts/security/create-security-comment.cjs
           node scripts/security/create-security-comment.cjs
 
@@ -521,7 +521,7 @@ jobs:
   add-security-labels:
     name: Add security labels to PR
     runs-on: ubuntu-latest
-    needs: [detect-security-changes, consolidate-security-analysis]
+    needs: [ detect-security-changes, consolidate-security-analysis ]
     if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
     steps:
       - name: Checkout code
@@ -542,7 +542,7 @@ jobs:
         run: |
           echo "🏷️ Adding security labels..."
           echo "🎯 Analysis tier: $TIER_USED"
-          
+
           # Add tier-specific label
           TIER_LABEL=""
           if [[ "$TIER_USED" == *"Tier 1"* ]]; then
@@ -552,10 +552,10 @@ jobs:
           elif [[ "$TIER_USED" == *"Tier 3"* ]]; then
             TIER_LABEL="security:tier-3-template"
           fi
-          
+
           if [ -n "$TIER_LABEL" ]; then
             echo "🏷️ Adding tier label: $TIER_LABEL"
           fi
-          
+
           chmod +x scripts/security/add-security-labels.cjs
           node scripts/security/add-security-labels.cjs

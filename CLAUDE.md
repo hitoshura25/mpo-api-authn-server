@@ -101,6 +101,31 @@ Task: "[Detailed description of work to be done systematically]"
 - **Command**: `bash scripts/core/validate-markdown.sh`
 - **Result**: Must show "🎉 All markdown files are valid!" before considering work complete
 
+### 🔧 CRITICAL: GitHub Actions Workflow Development
+
+**ALWAYS follow GitHub Actions best practices to prevent workflow failures:**
+
+#### **Environment Variable Usage Rules:**
+- **❌ NEVER use `env.VARIABLE` in `if:` conditionals** - GitHub Actions security restrictions prevent this
+- **✅ ALWAYS use job outputs for conditionals** - Create setup jobs that convert env vars to outputs:
+  ```yaml
+  setup-job:
+    outputs:
+      tier-enabled: ${{ steps.config.outputs.tier-enabled }}
+    steps:
+      - id: config
+        run: echo "tier-enabled=${TIER_ENABLED}" >> $GITHUB_OUTPUT
+        env:
+          TIER_ENABLED: ${{ env.TIER_ENABLED }}
+  ```
+- **✅ Reference job outputs in conditionals**: `needs.setup-job.outputs.tier-enabled == 'true'`
+
+#### **Script Execution Patterns:**
+- **❌ NEVER use `actions/github-script` with external file requires** - Sandboxed environment restrictions
+- **✅ ALWAYS use direct Node.js execution**: `node scripts/security/script.cjs`
+- **✅ Scripts must use environment variables**: Not GitHub Actions context objects
+- **✅ Include cross-platform fetch helpers** for Node.js compatibility
+
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 
 **AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**

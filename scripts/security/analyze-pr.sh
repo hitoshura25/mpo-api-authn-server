@@ -179,12 +179,33 @@ class WebAuthnSecurityAnalyzer {
         prContext
       );
       
-      const analysis = await this.performAIAnalysis(prompt);
-      return this.parseAnalysisResults(analysis);
+      const { analysis, provider } = await this.performAIAnalysis(prompt);
+      const results = this.parseAnalysisResults(analysis);
+      
+      // Add metadata about which provider was used
+      results.analysisMetadata = {
+        aiProvider: provider,
+        timestamp: new Date().toISOString(),
+        analysisType: 'ai-powered'
+      };
+      
+      console.log(`📊 Analysis completed using: ${provider}`);
+      return results;
       
     } catch (error) {
       console.error('❌ AI analysis failed:', error.message);
-      return this.createFallbackAnalysis();
+      const fallbackResults = this.createFallbackAnalysis();
+      
+      // Add metadata about fallback analysis
+      fallbackResults.analysisMetadata = {
+        aiProvider: 'None (Template-based analysis)',
+        timestamp: new Date().toISOString(),
+        analysisType: 'template-fallback',
+        reason: error.message
+      };
+      
+      console.log('📊 Analysis completed using: Template-based fallback');
+      return fallbackResults;
     }
   }
 
@@ -294,7 +315,8 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
     if (this.anthropic) {
       try {
         console.log('🚀 Attempting analysis with Anthropic (primary)...');
-        return await this.performAnthropicAnalysis(prompt);
+        const analysis = await this.performAnthropicAnalysis(prompt);
+        return { analysis, provider: 'Anthropic Claude Opus 4.1' };
       } catch (error) {
         console.warn('🔄 Anthropic analysis failed:', error.message);
         if (this.isRateLimitOrBudgetError(error)) {
@@ -306,11 +328,17 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
     // Fallback to Gemini (secondary provider)
     if (this.geminiModel) {
       try {
-        console.log('🔄 Attempting analysis with Gemini (fallback)...');
-        return await this.performGeminiAnalysis(prompt);
+        console.log('🔷 Switching to Gemini (fallback provider)...');
+        console.log('🔷 Gemini model: gemini-1.5-pro');
+        const analysis = await this.performGeminiAnalysis(prompt);
+        console.log('✅ Gemini analysis completed successfully - switching back to main flow');
+        return { analysis, provider: 'Google Gemini 1.5 Pro' };
       } catch (error) {
         console.warn('❌ Gemini analysis failed:', error.message);
+        console.warn('❌ Both Anthropic and Gemini failed - falling back to template analysis');
       }
+    } else {
+      console.log('⚠️ Gemini not configured (GEMINI_API_KEY missing) - skipping to template fallback');
     }
     
     // Both AI providers failed
@@ -323,7 +351,7 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
         console.log(`🤖 Anthropic attempt ${attempt}/${this.maxRetries}...`);
         
         const message = await this.anthropic.messages.create({
-          model: 'claude-3-5-sonnet-20241022',
+          model: 'claude-opus-4-1-20250805',
           max_tokens: 4000,
           temperature: 0.1, // Low temperature for consistent security analysis
           messages: [{
@@ -353,18 +381,26 @@ Focus on practical, actionable analysis specific to WebAuthn authentication secu
   }
 
   async performGeminiAnalysis(prompt) {
+    console.log('🔷 Starting Gemini analysis process...');
+    console.log(`🔷 Gemini prompt length: ${prompt.length} characters`);
+    
     for (let attempt = 1; attempt <= this.maxRetries; attempt++) {
       try {
-        console.log(`🔷 Gemini attempt ${attempt}/${this.maxRetries}...`);
+        console.log(`🔷 Gemini analysis attempt ${attempt}/${this.maxRetries}...`);
         
         // Adapt prompt for Gemini format
         const geminiPrompt = this.adaptPromptForGemini(prompt);
+        console.log('🔷 Sending request to Gemini 1.5 Pro...');
         
         const result = await this.geminiModel.generateContent(geminiPrompt);
         const response = await result.response;
+        const responseText = response.text();
         
-        console.log('✅ Gemini analysis completed successfully');
-        return response.text();
+        console.log('✅ Gemini response received successfully');
+        console.log(`✅ Gemini response length: ${responseText.length} characters`);
+        console.log('✅ Gemini analysis completed - parsing results...');
+        
+        return responseText;
         
       } catch (error) {
         console.warn(`⚠️ Gemini attempt ${attempt} failed:`, error.message);
@@ -484,6 +520,12 @@ async function main() {
   console.log(`Security Score: ${results.securityScore}/10`);
   console.log(`Vulnerabilities Found: ${results.vulnerabilitiesFound.length}`);
   console.log(`Requires Security Review: ${results.requiresSecurityReview}`);
+  
+  if (results.analysisMetadata) {
+    console.log(`🤖 Analysis Provider: ${results.analysisMetadata.aiProvider}`);
+    console.log(`📅 Analysis Timestamp: ${results.analysisMetadata.timestamp}`);
+    console.log(`🔧 Analysis Type: ${results.analysisMetadata.analysisType}`);
+  }
   
   // Write results to files for GitHub Actions
   fs.writeFileSync('security-analysis-results.json', JSON.stringify(results, null, 2));

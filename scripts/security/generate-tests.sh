@@ -52,7 +52,7 @@ check_analysis_results() {
 create_test_generator() {
     log "🧪 Creating security test generator..."
     
-    cat > security-test-generator.js << 'EOF'
+    cat > security-test-generator.cjs << 'EOF'
 const fs = require('fs');
 
 // Try to import Anthropic SDK, fall back if not available
@@ -254,7 +254,7 @@ run_test_generator() {
     fi
     
     # Run test generator
-    if node security-test-generator.js; then
+    if node security-test-generator.cjs; then
         log "✅ Security test generation completed successfully"
         return 0
     else

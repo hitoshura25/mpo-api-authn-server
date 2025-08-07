@@ -103,7 +103,7 @@ create_ai_analyzer() {
     
     log "🤖 Creating AI security analyzer..."
     
-    cat > ai-security-analyzer.js << 'EOF'
+    cat > ai-security-analyzer.cjs << 'EOF'
 const fs = require('fs');
 const path = require('path');
 
@@ -406,7 +406,7 @@ run_ai_analysis() {
     export RISK_LEVEL="$risk_level"
     
     # Run AI security analysis
-    if node ai-security-analyzer.js; then
+    if node ai-security-analyzer.cjs; then
         log "✅ AI security analysis completed successfully"
         return 0
     else

@@ -73,6 +73,16 @@ validate_inputs() {
     done
     
     log "✅ Input validation completed"
+    
+    # Debug logging for environment variables
+    log "🔍 Debug - Environment variables:"
+    log "  AUTH_FLOWS_FILES='${AUTH_FLOWS_FILES:-}'"
+    log "  SECURITY_COMPONENTS_FILES='${SECURITY_COMPONENTS_FILES:-}'"
+    log "  SECURITY_TESTS_FILES='${SECURITY_TESTS_FILES:-}'"
+    log "  DEPENDENCIES_FILES='${DEPENDENCIES_FILES:-}'"
+    log "  INFRASTRUCTURE_FILES='${INFRASTRUCTURE_FILES:-}'"
+    log "  ALL_CHANGED_FILES='${ALL_CHANGED_FILES:-}'"
+    
     return 0
 }
 
@@ -93,6 +103,14 @@ analyze_security_impact() {
     test_changes=$(count_changes "$SECURITY_TESTS_FILES")
     dependency_changes=$(count_changes "$DEPENDENCIES_FILES")
     infra_changes=$(count_changes "$INFRASTRUCTURE_FILES")
+    
+    # Debug logging for troubleshooting
+    log "🔍 Debug - Change counts:"
+    log "  auth_changes='$auth_changes'"
+    log "  security_changes='$security_changes'"
+    log "  test_changes='$test_changes'"
+    log "  dependency_changes='$dependency_changes'"
+    log "  infra_changes='$infra_changes'"
     
     log "📈 Change Analysis Summary:"
     log "  Authentication flows: $auth_changes files"
@@ -137,13 +155,42 @@ set_github_outputs() {
     
     log "📤 Setting GitHub Actions outputs..."
     
-    # Set boolean outputs based on change counts
+    # Validate GITHUB_OUTPUT is writable
+    if [ ! -w "$GITHUB_OUTPUT" ]; then
+        log "❌ Error: GITHUB_OUTPUT file is not writable: $GITHUB_OUTPUT"
+        return 1
+    fi
+    
+    # Set boolean outputs based on change counts (using explicit conditionals to avoid command substitution issues)
+    local has_auth_changes="false"
+    local has_security_changes="false"
+    local has_dependency_changes="false"
+    local has_infrastructure_changes="false"
+    
+    # Set boolean values explicitly
+    if [ "${auth_changes:-0}" -gt 0 ]; then
+        has_auth_changes="true"
+    fi
+    
+    if [ "${security_changes:-0}" -gt 0 ]; then
+        has_security_changes="true"
+    fi
+    
+    if [ "${dependency_changes:-0}" -gt 0 ]; then
+        has_dependency_changes="true"
+    fi
+    
+    if [ "${infra_changes:-0}" -gt 0 ]; then
+        has_infrastructure_changes="true"
+    fi
+    
+    # Write outputs to GitHub Actions
     {
-        echo "has-auth-changes=$([ "$auth_changes" -gt 0 ] && echo 'true' || echo 'false')"
-        echo "has-security-changes=$([ "$security_changes" -gt 0 ] && echo 'true' || echo 'false')"
-        echo "has-dependency-changes=$([ "$dependency_changes" -gt 0 ] && echo 'true' || echo 'false')"
-        echo "has-infrastructure-changes=$([ "$infra_changes" -gt 0 ] && echo 'true' || echo 'false')"
-        echo "security-risk-level=$risk_level"
+        echo "has-auth-changes=$has_auth_changes"
+        echo "has-security-changes=$has_security_changes"
+        echo "has-dependency-changes=$has_dependency_changes"
+        echo "has-infrastructure-changes=$has_infrastructure_changes"
+        echo "security-risk-level=${risk_level:-MINIMAL}"
     } >> "$GITHUB_OUTPUT"
     
     # Create JSON array of all changed files for AI analysis
@@ -159,31 +206,44 @@ create_changed_files_json() {
     
     # Convert space-separated files to JSON array using jq
     # This ensures proper JSON escaping of file paths
-    local changed_files_json
+    local changed_files_json=""
     if command -v jq &> /dev/null; then
         # Use jq for robust JSON formatting
-        changed_files_json=$(echo "$ALL_CHANGED_FILES" | tr ' ' '\n' | jq -R . | jq -s .)
+        if [ -n "$ALL_CHANGED_FILES" ]; then
+            changed_files_json=$(echo "$ALL_CHANGED_FILES" | tr ' ' '\n' | jq -R . | jq -s .)
+        else
+            changed_files_json="[]"
+        fi
     else
         # Fallback to basic JSON formatting if jq is not available
         log "⚠️ jq not available, using basic JSON formatting"
-        local files_array="["
-        local first=true
-        for file in $ALL_CHANGED_FILES; do
-            if [ "$first" = true ]; then
-                first=false
-            else
-                files_array+=","
-            fi
-            # Basic escaping for JSON (not comprehensive but better than nothing)
-            local escaped_file
-            escaped_file=$(echo "$file" | sed 's/\\/\\\\/g; s/"/\\"/g')
-            files_array+="\"$escaped_file\""
-        done
-        files_array+="]"
-        changed_files_json="$files_array"
+        if [ -n "$ALL_CHANGED_FILES" ]; then
+            local files_array="["
+            local first=true
+            for file in $ALL_CHANGED_FILES; do
+                if [ "$first" = true ]; then
+                    first=false
+                else
+                    files_array+=","
+                fi
+                # Basic escaping for JSON (not comprehensive but better than nothing)
+                local escaped_file
+                escaped_file=$(echo "$file" | sed 's/\\/\\\\/g; s/"/\\"/g')
+                files_array+="\"$escaped_file\""
+            done
+            files_array+="]"
+            changed_files_json="$files_array"
+        else
+            changed_files_json="[]"
+        fi
     fi
     
-    echo "changed-files-json=$changed_files_json" >> "$GITHUB_OUTPUT"
+    # Write JSON output with proper validation
+    if [ -n "$changed_files_json" ]; then
+        echo "changed-files-json=$changed_files_json" >> "$GITHUB_OUTPUT"
+    else
+        echo "changed-files-json=[]" >> "$GITHUB_OUTPUT"
+    fi
     
     local file_count
     file_count=$(echo "$ALL_CHANGED_FILES" | wc -w)

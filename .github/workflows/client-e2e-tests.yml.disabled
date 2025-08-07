@@ -96,7 +96,7 @@ jobs:
         run: |
           echo "🎯 Using unified version manager"
           echo "Event: $GITHUB_EVENT_NAME, PR: $GITHUB_PR_NUMBER"
-          ./scripts/version-manager.sh generate
+          ./scripts/core/version-manager.sh generate
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -353,7 +353,7 @@ jobs:
           disable-animations: true
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
-          script: ./scripts/run-android-tests.sh
+          script: ./scripts/core/run-android-tests.sh
 
       - name: Stop full stack
         id: stop-full-stack

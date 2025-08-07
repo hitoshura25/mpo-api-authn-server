@@ -55,6 +55,7 @@ jobs:
     permissions:
       contents: read          # Read repository code
       packages: read          # Pull Docker images from GHCR
+      pull-requests: write    # Comment on PRs with test results
     with:
       pr_number: ${{ github.event.number || github.run_number }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}

@@ -114,7 +114,7 @@ Both clients use **unified npm-compatible 3-part semantic versioning** with **en
 - **Format**: `{BASE_VERSION}.{BUILD_NUMBER}` (e.g., `1.0.26`, `1.0.27`)
 - **Base Version**: Currently `1.0` (npm-compatible format)
 - **Build Number**: GitHub Actions run number  
-- **Script**: `scripts/version-manager.sh`
+- **Script**: `scripts/core/version-manager.sh`
 - **Validation Pattern**: `^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$`
 
 **Enhanced Validation Features**:

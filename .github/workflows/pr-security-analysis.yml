@@ -239,6 +239,11 @@ jobs:
     needs: [detect-security-changes, ai-security-analysis, security-test-recommendations]
     if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Download analysis artifacts
         uses: actions/download-artifact@v4
         with:

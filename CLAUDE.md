@@ -94,11 +94,11 @@ Task: "[Detailed description of work to be done systematically]"
 
 ### ⚠️ CRITICAL: Always Validate Generated Markdown
 
-**ALWAYS run `bash scripts/validate-markdown.sh` after generating or modifying any markdown files.**
+**ALWAYS run `bash scripts/core/validate-markdown.sh` after generating or modifying any markdown files.**
 
 - **Why**: Prevents syntax errors that break IDE display and documentation tools
 - **When**: After any markdown generation, editing, or updates to documentation
-- **Command**: `bash scripts/validate-markdown.sh`
+- **Command**: `bash scripts/core/validate-markdown.sh`
 - **Result**: Must show "🎉 All markdown files are valid!" before considering work complete
 
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
@@ -257,9 +257,9 @@ env:
 
 ### Key Files & Scripts
 - **Documentation**: Complete README files for project root and web-test-client with TypeScript architecture details
-- **Validation**: `scripts/validate-markdown.sh` - Comprehensive markdown syntax validation
-- **Security**: `scripts/vulnerability-monitor.js` - Weekly vulnerability scanning  
-- **Android Tests**: `scripts/run-android-tests.sh` - Cross-platform testing
+- **Validation**: `scripts/core/validate-markdown.sh` - Comprehensive markdown syntax validation
+- **Security**: `scripts/monitoring/vulnerability-monitor.js` - Weekly vulnerability scanning  
+- **Android Tests**: `scripts/core/run-android-tests.sh` - Cross-platform testing
 - **Development**: `webauthn-server/start-dev.sh` - Local development environment
 - **Port Cleanup**: `web-test-client/scripts/cleanup-port.js` - Port cleanup utility for tests
 - **TypeScript Build**: `web-test-client/tsconfig.build.json` - Build-specific TypeScript configuration

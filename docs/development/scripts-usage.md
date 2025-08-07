@@ -1,22 +1,64 @@
-# Scripts Directory - Refactored GitHub Actions Scripts
+# Scripts Directory - Organized Project Scripts
 
-This directory contains organized, reusable scripts that have been extracted from GitHub Actions workflows to improve maintainability, testing, and reusability.
+This directory contains organized, reusable scripts categorized by functionality for improved maintainability and clarity.
 
 ## Directory Structure
 
 ```
 scripts/
-├── docker/                 # Docker-related operations
-│   ├── detect-changes.sh   # Docker image change detection
-│   ├── scan-security.sh    # Comprehensive Docker security scanning
-│   ├── publish-dockerhub.sh# DockerHub publishing with conditional logic
-│   └── cleanup-ghcr.sh     # GitHub Container Registry cleanup
-├── security/               # Security analysis and testing
-│   ├── analyze-pr.sh       # AI-powered PR security analysis
-│   └── generate-tests.sh   # Security test generation
-├── monitoring/             # Vulnerability monitoring
-│   └── enhanced-monitor.sh # AI-enhanced vulnerability monitoring
-└── README.md              # This file
+├── core/                      # Essential utilities used across workflows
+│   ├── validate-markdown.sh   # Markdown syntax validation
+│   ├── version-manager.sh     # Synchronized version generation  
+│   └── run-android-tests.sh   # Cross-platform Android testing
+├── docker/                    # Docker-related operations
+│   ├── detect-changes.sh      # Docker image change detection
+│   ├── scan-security.sh       # Comprehensive Docker security scanning
+│   ├── publish-dockerhub.sh   # DockerHub publishing with conditional logic
+│   └── cleanup-ghcr.sh        # GitHub Container Registry cleanup
+├── security/                  # Security analysis and testing
+│   ├── analyze-changes.sh     # Change-based security analysis
+│   ├── analyze-pr.sh          # AI-powered PR security analysis
+│   ├── generate-tests.sh      # Security test generation
+│   ├── create-security-comment.cjs # PR security comment generation
+│   └── add-security-labels.cjs # Automated security labeling
+├── ci/                       # CI/CD specific scripts
+│   ├── create-e2e-results-comment.cjs # E2E test result comments
+│   ├── ai-docker-security-analyzer.cjs # AI-powered Docker analysis
+│   └── add-vulnerability-pr-labels.cjs # Vulnerability PR labeling
+├── monitoring/               # Monitoring and vulnerability scanning
+│   ├── enhanced-monitor.sh   # Enhanced vulnerability monitoring
+│   ├── vulnerability-monitor.js # Core vulnerability monitoring
+│   └── ai-enhanced-vulnerability-monitor.js # AI-enhanced monitoring
+└── setup/                    # One-time setup scripts
+    ├── setup-vulnerability-monitoring.sh # Vulnerability monitoring setup
+    └── setup-github-packages.sh # GitHub packages configuration
+```
+
+## Core Scripts (`scripts/core/`)
+
+### validate-markdown.sh
+**Purpose**: Validates markdown files for syntax errors and formatting issues.
+
+**Usage**:
+```bash
+./scripts/core/validate-markdown.sh
+```
+
+### version-manager.sh
+**Purpose**: Generates synchronized versions for both Android and npm clients.
+
+**Usage**:
+```bash
+./scripts/core/version-manager.sh generate
+./scripts/core/version-manager.sh validate "1.0.42"
+```
+
+### run-android-tests.sh
+**Purpose**: Executes Android instrumentation tests with proper environment setup.
+
+**Usage**:
+```bash
+./scripts/core/run-android-tests.sh
 ```
 
 ## Docker Scripts (`scripts/docker/`)
@@ -30,179 +72,158 @@ scripts/
 # where image_type is either "webauthn-server" or "test-credentials"
 ```
 
-**Environment Variables**:
-- `DOCKER_REGISTRY` - Docker registry URL (default: ghcr.io)
-- `DOCKER_IMAGE_NAME` - GHCR image name for webauthn-server
-- `DOCKER_TEST_CREDENTIALS_IMAGE_NAME` - GHCR image name for test-credentials
-- `DOCKERHUB_SERVER_REPO` - DockerHub repository for webauthn-server
-- `DOCKERHUB_TEST_CREDENTIALS_REPO` - DockerHub repository for test-credentials
-
-**Outputs**: Sets GitHub Actions output `has-changes` (true/false)
-
 ### scan-security.sh
-**Purpose**: Performs comprehensive security scanning using Trivy scanner for vulnerabilities, secrets, and configuration issues.
+**Purpose**: Performs comprehensive security scanning of Docker images with vulnerability assessment.
 
 **Usage**:
 ```bash
 ./scripts/docker/scan-security.sh <webauthn_changed> <test_credentials_changed>
-# where parameters are "true" or "false"
 ```
 
-**Features**:
-- Installs Trivy scanner automatically
-- Scans for vulnerabilities, secrets, and configuration issues
-- Blocks publishing on critical vulnerabilities
-- Generates detailed JSON reports
-
 ### publish-dockerhub.sh
-**Purpose**: Publishes Docker images from GHCR to DockerHub with conditional logic.
+**Purpose**: Publishes Docker images to DockerHub with conditional logic based on detected changes.
 
 **Usage**:
 ```bash
 ./scripts/docker/publish-dockerhub.sh <webauthn_changed> <test_credentials_changed>
 ```
 
-**Features**:
-- Conditional publishing based on change detection
-- Automatic re-tagging from GHCR to DockerHub
-- Support for repository description updates
-
 ### cleanup-ghcr.sh
-**Purpose**: Cleans up old versions of Docker packages in GHCR to prevent registry bloat.
+**Purpose**: Cleans up old Docker images from GitHub Container Registry to prevent storage bloat.
 
 **Usage**:
 ```bash
 ./scripts/docker/cleanup-ghcr.sh [repository_owner]
 ```
 
-**Features**:
-- Keeps latest 5 versions, deletes older ones
-- Uses GitHub API for package management
-- Graceful error handling
-
 ## Security Scripts (`scripts/security/`)
 
+### analyze-changes.sh
+**Purpose**: Analyzes code changes for potential security implications.
+
+**Usage**:
+```bash
+./scripts/security/analyze-changes.sh
+```
+
 ### analyze-pr.sh
-**Purpose**: AI-powered security analysis of pull request changes using Anthropic Claude API.
+**Purpose**: AI-powered security analysis of pull request changes.
 
 **Usage**:
 ```bash
 ./scripts/security/analyze-pr.sh <changed_files_json> <pr_title> <pr_body> <risk_level>
 ```
 
-**Environment Variables**:
-- `ANTHROPIC_API_KEY` - API key for AI analysis (optional, falls back to standard analysis)
-- `WEBAUTHN_SECURITY_AGENT_PATH` - Path to WebAuthn security agent file
-- `VULNERABILITY_DB_PATH` - Path to vulnerability database JSON
-
-**Features**:
-- AI-powered vulnerability detection
-- WebAuthn-specific security analysis
-- Fallback to standard analysis if AI unavailable
-- Generates comprehensive security reports
-
 ### generate-tests.sh
-**Purpose**: Generates security test implementations for detected vulnerabilities using AI.
+**Purpose**: Generates security tests based on detected vulnerabilities.
 
 **Usage**:
 ```bash
 ./scripts/security/generate-tests.sh
-# (Requires security-analysis-results.json from previous analysis)
 ```
 
-**Features**:
-- AI-generated Kotlin test methods
-- Template-based fallback for non-AI environments
-- Integration with existing VulnerabilityProtectionTest.kt patterns
+## CI Scripts (`scripts/ci/`)
+
+### create-e2e-results-comment.cjs
+**Purpose**: Creates GitHub PR comments with E2E test results and summaries.
+
+### ai-docker-security-analyzer.cjs
+**Purpose**: AI-powered analysis of Docker security scan results with intelligent insights.
+
+### add-vulnerability-pr-labels.cjs
+**Purpose**: Automatically adds appropriate labels to PRs based on vulnerability scans.
 
 ## Monitoring Scripts (`scripts/monitoring/`)
 
 ### enhanced-monitor.sh
-**Purpose**: Enhanced vulnerability monitoring with AI capabilities and fallback to standard monitoring.
+**Purpose**: Enhanced vulnerability monitoring with comprehensive checks.
 
 **Usage**:
 ```bash
 ./scripts/monitoring/enhanced-monitor.sh
 ```
 
-**Features**:
-- AI-enhanced monitoring when available
-- Automatic fallback to standard monitoring
-- Security test execution after changes
-- Comprehensive logging and reporting
+### vulnerability-monitor.js
+**Purpose**: Core vulnerability monitoring system for WebAuthn/FIDO2 security.
 
-## Benefits of This Refactoring
+### ai-enhanced-vulnerability-monitor.js
+**Purpose**: AI-enhanced vulnerability monitoring with advanced analysis capabilities.
 
-### 1. **Maintainability**
-- ✅ Scripts are organized in logical directories
-- ✅ Each script has a single, well-defined responsibility
-- ✅ Comprehensive documentation and error handling
-- ✅ Consistent logging and output formatting
+## Setup Scripts (`scripts/setup/`)
 
-### 2. **Testability**
-- ✅ Scripts can be tested independently outside of CI/CD
-- ✅ Proper error handling and exit codes
-- ✅ Support for both CI and local development environments
+### setup-vulnerability-monitoring.sh
+**Purpose**: One-time setup for vulnerability monitoring system.
 
-### 3. **Reusability**
-- ✅ Scripts can be shared across multiple workflows
-- ✅ Parameterized for different use cases
-- ✅ Environment variable configuration
+**Usage**:
+```bash
+./scripts/setup/setup-vulnerability-monitoring.sh
+```
 
-### 4. **Version Control**
-- ✅ Script changes are properly versioned
-- ✅ Easy to track changes and improvements
-- ✅ Better collaboration through code review
+### setup-github-packages.sh
+**Purpose**: Configures local environment for GitHub Packages consumption.
 
-### 5. **Security**
-- ✅ Proper input validation
-- ✅ Secure handling of environment variables
-- ✅ Comprehensive error trapping
+**Usage**:
+```bash
+./scripts/setup/setup-github-packages.sh
+```
 
-## Updated Workflows
+## Workflow Integration
 
-The following workflows have been updated to use these extracted scripts:
-
-1. **main-branch-post-processing.yml**
+### Used in GitHub Actions
+- **build-and-test.yml**: 
+   - Uses `scripts/core/version-manager.sh`
+- **e2e-tests.yml**:
+   - Uses `scripts/core/run-android-tests.sh`
+   - Uses `scripts/ci/create-e2e-results-comment.cjs`
+- **main-branch-post-processing.yml**:
    - Uses `scripts/docker/detect-changes.sh`
    - Uses `scripts/docker/scan-security.sh`
    - Uses `scripts/docker/publish-dockerhub.sh`
    - Uses `scripts/docker/cleanup-ghcr.sh`
-
-2. **pr-security-analysis.yml**
+   - Uses `scripts/ci/ai-docker-security-analyzer.cjs`
+- **pr-security-analysis.yml**:
+   - Uses `scripts/security/analyze-changes.sh`
    - Uses `scripts/security/analyze-pr.sh`
    - Uses `scripts/security/generate-tests.sh`
-
-3. **vulnerability-monitor.yml**
+   - Uses `scripts/security/create-security-comment.cjs`
+   - Uses `scripts/security/add-security-labels.cjs`
+- **vulnerability-monitor.yml**:
    - Uses `scripts/monitoring/enhanced-monitor.sh`
+   - Uses `scripts/ci/add-vulnerability-pr-labels.cjs`
 
-## Running Scripts Locally
+### Local Development
+- Security test execution after changes
+- Docker image management
+- Vulnerability monitoring setup
 
-All scripts can be run locally for testing and development:
+## Common Operations
 
+### Make scripts executable
 ```bash
-# Make scripts executable
 find scripts/ -name "*.sh" -exec chmod +x {} \;
+find scripts/ -name "*.js" -exec chmod +x {} \;  
+find scripts/ -name "*.cjs" -exec chmod +x {} \;
+```
 
-# Example: Test change detection locally
-export DOCKER_REGISTRY="ghcr.io"
-export DOCKER_IMAGE_NAME="hitoshura25/webauthn-server"
-export DOCKERHUB_SERVER_REPO="hitoshura25/webauthn-server"
+### Test individual scripts
+```bash
 ./scripts/docker/detect-changes.sh webauthn-server
-
-# Example: Test security analysis locally
-export ANTHROPIC_API_KEY="your-api-key"
 ./scripts/security/analyze-pr.sh '["file1.kt", "file2.kt"]' "PR Title" "PR Body" "MEDIUM"
 ```
 
 ## Best Practices
 
 1. **Always make scripts executable**: `chmod +x script.sh`
-2. **Test scripts locally** before using in workflows
-3. **Use proper error handling** with `set -euo pipefail`
+2. **Test scripts locally** before committing changes
+3. **Use proper error handling** with `set -e` in bash scripts
 4. **Validate required environment variables** before execution
-5. **Provide comprehensive logging** with timestamps
-6. **Follow consistent naming conventions** for parameters and outputs
-7. **Document all environment variables and usage** in script headers
+5. **Use descriptive output** for CI/CD pipeline visibility
 
-This refactoring significantly improves the maintainability and testability of the GitHub Actions workflows while preserving all existing functionality.
+## Script Categories by Function
+
+- **Essential Utilities** (`core/`): Scripts required for basic development workflow
+- **Docker Operations** (`docker/`): Container management and registry operations  
+- **Security** (`security/`): Security analysis and vulnerability management
+- **CI/CD** (`ci/`): Scripts specific to continuous integration pipelines
+- **Monitoring** (`monitoring/`): Vulnerability and security monitoring systems
+- **Setup** (`setup/`): One-time configuration and setup scripts

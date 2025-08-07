@@ -150,7 +150,7 @@ jobs:
         run: |
           echo "🎯 Using unified version manager"
           echo "Event: $GITHUB_EVENT_NAME, PR: $GITHUB_PR_NUMBER"
-          ./scripts/version-manager.sh generate
+          ./scripts/core/version-manager.sh generate
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -237,7 +237,7 @@ jobs:
         run: |
           echo "🎯 Using unified version manager"
           echo "Event: $GITHUB_EVENT_NAME, PR: $GITHUB_PR_NUMBER"
-          ./scripts/version-manager.sh generate
+          ./scripts/core/version-manager.sh generate
 
       - name: Set up JDK
         uses: actions/setup-java@v4

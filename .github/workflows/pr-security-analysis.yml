@@ -111,48 +111,16 @@ jobs:
 
       - name: Analyze security impact of changes
         id: analyze-changes
+        env:
+          AUTH_FLOWS_FILES: ${{ steps.changed-files.outputs.auth_flows_all_changed_files }}
+          SECURITY_COMPONENTS_FILES: ${{ steps.changed-files.outputs.security_components_all_changed_files }}
+          SECURITY_TESTS_FILES: ${{ steps.changed-files.outputs.security_tests_all_changed_files }}
+          DEPENDENCIES_FILES: ${{ steps.changed-files.outputs.dependencies_all_changed_files }}
+          INFRASTRUCTURE_FILES: ${{ steps.changed-files.outputs.infrastructure_all_changed_files }}
+          ALL_CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
         run: |
-          echo "🔍 Analyzing security impact of PR changes..."
-          
-          # Count changes by category
-          AUTH_CHANGES=$(echo '${{ steps.changed-files.outputs.auth_flows_all_changed_files }}' | wc -w)
-          SECURITY_CHANGES=$(echo '${{ steps.changed-files.outputs.security_components_all_changed_files }}' | wc -w)
-          TEST_CHANGES=$(echo '${{ steps.changed-files.outputs.security_tests_all_changed_files }}' | wc -w)
-          DEPENDENCY_CHANGES=$(echo '${{ steps.changed-files.outputs.dependencies_all_changed_files }}' | wc -w)
-          INFRA_CHANGES=$(echo '${{ steps.changed-files.outputs.infrastructure_all_changed_files }}' | wc -w)
-          
-          echo "📊 Change Analysis:"
-          echo "Authentication flows: $AUTH_CHANGES files"
-          echo "Security components: $SECURITY_CHANGES files"
-          echo "Security tests: $TEST_CHANGES files"
-          echo "Dependencies: $DEPENDENCY_CHANGES files"
-          echo "Infrastructure: $INFRA_CHANGES files"
-          
-          # Determine risk level
-          TOTAL_SECURITY_CHANGES=$((AUTH_CHANGES + SECURITY_CHANGES))
-          
-          if [ $TOTAL_SECURITY_CHANGES -gt 5 ] || [ $DEPENDENCY_CHANGES -gt 0 ]; then
-            RISK_LEVEL="HIGH"
-          elif [ $TOTAL_SECURITY_CHANGES -gt 2 ] || [ $INFRA_CHANGES -gt 0 ]; then
-            RISK_LEVEL="MEDIUM"
-          elif [ $TOTAL_SECURITY_CHANGES -gt 0 ]; then
-            RISK_LEVEL="LOW"
-          else
-            RISK_LEVEL="MINIMAL"
-          fi
-          
-          echo "🎯 Security Risk Level: $RISK_LEVEL"
-          
-          # Set outputs
-          echo "has-auth-changes=$([ $AUTH_CHANGES -gt 0 ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
-          echo "has-security-changes=$([ $SECURITY_CHANGES -gt 0 ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
-          echo "has-dependency-changes=$([ $DEPENDENCY_CHANGES -gt 0 ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
-          echo "has-infrastructure-changes=$([ $INFRA_CHANGES -gt 0 ] && echo 'true' || echo 'false')" >> $GITHUB_OUTPUT
-          echo "security-risk-level=$RISK_LEVEL" >> $GITHUB_OUTPUT
-          
-          # Create JSON of all changed files for AI analysis
-          ALL_CHANGED_FILES=$(echo '${{ steps.changed-files.outputs.all_changed_files }}' | tr ' ' '\n' | jq -R . | jq -s .)
-          echo "changed-files-json=$ALL_CHANGED_FILES" >> $GITHUB_OUTPUT
+          chmod +x scripts/security/analyze-changes.sh
+          scripts/security/analyze-changes.sh
 
   # Job 2: AI-Powered Security Code Analysis
   ai-security-analysis:
@@ -286,171 +254,9 @@ jobs:
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
         with:
           script: |
-            const fs = require('fs');
-            
-            // Load analysis results
-            let analysisResults = {};
-            let testResults = {};
-            
-            try {
-              if (fs.existsSync('security-analysis-results.json')) {
-                analysisResults = JSON.parse(fs.readFileSync('security-analysis-results.json', 'utf8'));
-              }
-              if (fs.existsSync('security-test-implementations.json')) {
-                testResults = JSON.parse(fs.readFileSync('security-test-implementations.json', 'utf8'));
-              }
-            } catch (error) {
-              console.warn('Could not load analysis files:', error.message);
-            }
-            
-            // Determine security status emoji and color
-            const securityScore = parseFloat(process.env.SECURITY_SCORE || '0');
-            let statusEmoji, statusColor, riskDescription;
-            
-            if (securityScore >= 8.0) {
-              statusEmoji = '🚨';
-              statusColor = 'red';
-              riskDescription = 'High security risk detected';
-            } else if (securityScore >= 6.0) {
-              statusEmoji = '⚠️';
-              statusColor = 'orange'; 
-              riskDescription = 'Medium security risk detected';
-            } else if (securityScore >= 3.0) {
-              statusEmoji = '🔍';
-              statusColor = 'yellow';
-              riskDescription = 'Low security risk detected';
-            } else {
-              statusEmoji = '✅';
-              statusColor = 'green';
-              riskDescription = 'No significant security risks detected';
-            }
-            
-            // Build vulnerabilities section
-            let vulnerabilitiesSection = '';
-            if (analysisResults.vulnerabilitiesFound && analysisResults.vulnerabilitiesFound.length > 0) {
-              vulnerabilitiesSection = '### 🔍 Security Issues Found\n\n';
-              for (const vuln of analysisResults.vulnerabilitiesFound) {
-                const severityEmoji = {
-                  'CRITICAL': '🚨',
-                  'HIGH': '⚠️', 
-                  'MEDIUM': '🔸',
-                  'LOW': '🔹'
-                }[vuln.severity] || '📋';
-                
-                vulnerabilitiesSection += `${severityEmoji} **${vuln.type}** (${vuln.severity})\n`;
-                vulnerabilitiesSection += `- **Location**: \`${vuln.location}\`\n`;
-                vulnerabilitiesSection += `- **Description**: ${vuln.description}\n`;
-                if (vuln.cweId) {
-                  vulnerabilitiesSection += `- **CWE ID**: ${vuln.cweId}\n`;
-                }
-                vulnerabilitiesSection += `- **Recommended Fix**: ${vuln.recommendedFix}\n\n`;
-              }
-            }
-            
-            // Build recommendations section
-            let recommendationsSection = '';
-            if (analysisResults.recommendations && analysisResults.recommendations.length > 0) {
-              recommendationsSection = '### 💡 Security Recommendations\n\n';
-              for (const recommendation of analysisResults.recommendations) {
-                recommendationsSection += `- ${recommendation}\n`;
-              }
-              recommendationsSection += '\n';
-            }
-            
-            // Build test recommendations section
-            let testSection = '';
-            if (testResults.testImplementations && testResults.testImplementations.length > 0) {
-              testSection = '### 🧪 Generated Security Tests\n\n';
-              testSection += `Generated ${testResults.summary.generatedTests} security tests for detected vulnerabilities.\n\n`;
-              
-              if (testResults.summary.generatedTests > 0) {
-                testSection += '<details>\n<summary>View Generated Tests</summary>\n\n';
-                for (const testImpl of testResults.testImplementations) {
-                  if (testImpl.generated) {
-                    testSection += `**Test for ${testImpl.vulnerability.type}**:\n`;
-                    testSection += '```kotlin\n';
-                    testSection += testImpl.testImplementation;
-                    testSection += '\n```\n\n';
-                  }
-                }
-                testSection += '</details>\n\n';
-              }
-            }
-            
-            // Build security patterns section
-            let patternsSection = '';
-            if (analysisResults.securityPatterns) {
-              patternsSection = '### 🛡️ Security Patterns Analysis\n\n';
-              
-              if (analysisResults.securityPatterns.good && analysisResults.securityPatterns.good.length > 0) {
-                patternsSection += '**✅ Good Security Patterns Found:**\n';
-                for (const pattern of analysisResults.securityPatterns.good) {
-                  patternsSection += `- ${pattern}\n`;
-                }
-                patternsSection += '\n';
-              }
-              
-              if (analysisResults.securityPatterns.missing && analysisResults.securityPatterns.missing.length > 0) {
-                patternsSection += '**⚠️ Missing Security Patterns:**\n';
-                for (const pattern of analysisResults.securityPatterns.missing) {
-                  patternsSection += `- ${pattern}\n`;
-                }
-                patternsSection += '\n';
-              }
-              
-              if (analysisResults.securityPatterns.antipatterns && analysisResults.securityPatterns.antipatterns.length > 0) {
-                patternsSection += '**🚨 Security Anti-patterns Found:**\n';
-                for (const pattern of analysisResults.securityPatterns.antipatterns) {
-                  patternsSection += `- ${pattern}\n`;
-                }
-                patternsSection += '\n';
-              }
-            }
-            
-            // Create the comprehensive comment
-            const commentBody = `## ${statusEmoji} AI-Powered Security Analysis
-            
-            **Security Risk Level**: \`${process.env.RISK_LEVEL}\`  
-            **Security Score**: \`${securityScore}/10\` ${statusEmoji}  
-            **Vulnerabilities Found**: \`${process.env.VULNERABILITIES_COUNT}\`  
-            **Requires Security Review**: \`${process.env.REQUIRES_REVIEW === 'true' ? 'Yes' : 'No'}\`
-            
-            ${riskDescription}
-            
-            ${vulnerabilitiesSection}
-            ${recommendationsSection}
-            ${testSection}
-            ${patternsSection}
-            
-            ### 🔐 Security Checklist
-            
-            Before merging this PR:
-            
-            - [ ] Review all identified security issues
-            - [ ] Implement recommended security fixes
-            - [ ] Add/update security tests as suggested
-            - [ ] Run existing security tests: \`./gradlew test --tests="*VulnerabilityProtectionTest*"\`
-            - [ ] Verify no sensitive data is exposed in logs or responses
-            ${process.env.REQUIRES_REVIEW === 'true' ? '- [ ] **Security team review required**' : ''}
-            
-            ### 📚 Security Resources
-            
-            - [WebAuthn Security Best Practices](/.claude/agents/webauthn-security-analysis.md)
-            - [Vulnerability Tracking Database](/vulnerability-tracking.json)
-            - [Existing Security Tests](/webauthn-server/src/test/kotlin/com/vmenon/mpo/api/authn/security/VulnerabilityProtectionTest.kt)
-            
-            ---
-            
-            🤖 *This analysis was performed by the AI-Powered Security Analysis system*  
-            📊 *Analysis completed at ${new Date().toISOString()}*`;
-            
-            // Post the comment
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body: commentBody
-            });
+            const { SecurityCommentGenerator } = require('./scripts/security/create-security-comment.js');
+            const generator = new SecurityCommentGenerator();
+            await generator.createComment(github, context);
 
   # Job 5: Block merge if critical security issues found
   security-gate:
@@ -481,39 +287,14 @@ jobs:
     steps:
       - name: Add security labels
         uses: actions/github-script@v7
+        env:
+          SECURITY_SCORE: ${{ needs.ai-security-analysis.outputs.security-score }}
+          RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
+          REQUIRES_SECURITY_REVIEW: ${{ needs.ai-security-analysis.outputs.requires-security-review }}
+          HAS_AUTH_CHANGES: ${{ needs.detect-security-changes.outputs.has-auth-changes }}
+          HAS_DEPENDENCY_CHANGES: ${{ needs.detect-security-changes.outputs.has-dependency-changes }}
         with:
           script: |
-            const securityScore = parseFloat('${{ needs.ai-security-analysis.outputs.security-score }}' || '0');
-            const riskLevel = '${{ needs.detect-security-changes.outputs.security-risk-level }}';
-            const requiresReview = '${{ needs.ai-security-analysis.outputs.requires-security-review }}' === 'true';
-            
-            const labels = ['security-analysis'];
-            
-            // Add risk level labels
-            if (riskLevel === 'HIGH' || securityScore >= 8.0) {
-              labels.push('security:high-risk');
-            } else if (riskLevel === 'MEDIUM' || securityScore >= 6.0) {
-              labels.push('security:medium-risk');
-            } else {
-              labels.push('security:low-risk');
-            }
-            
-            // Add review requirement label
-            if (requiresReview) {
-              labels.push('security-review-required');
-            }
-            
-            // Add component-specific labels
-            if ('${{ needs.detect-security-changes.outputs.has-auth-changes }}' === 'true') {
-              labels.push('authentication');
-            }
-            if ('${{ needs.detect-security-changes.outputs.has-dependency-changes }}' === 'true') {
-              labels.push('dependencies');
-            }
-            
-            await github.rest.issues.addLabels({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              labels: labels
-            });
+            const { SecurityLabelManager } = require('./scripts/security/add-security-labels.js');
+            const labelManager = new SecurityLabelManager();
+            await labelManager.applyLabels(github, context);

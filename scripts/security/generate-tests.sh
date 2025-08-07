@@ -1,11 +1,13 @@
 #!/bin/bash
 #
-# Security Test Generation Script
+# 3-Tier Security Test Generation Script
 #
 # This script generates security test implementations for detected vulnerabilities
-# using AI-powered analysis. It creates complete Kotlin test methods for WebAuthn
-# security issues found during PR analysis.
-# Supports dual AI providers with automatic fallback: Anthropic (primary) → Gemini (fallback) → Template generation
+# using a 3-tier AI system with intelligent mode detection.
+# Supports operation modes matching the security analysis workflow:
+#   - Standard Mode: Dual AI providers (Anthropic → Gemini → Template)
+#   - GEMINI_ONLY_MODE: Skip Anthropic, use Gemini with WebAuthn focus
+#   - TEMPLATE_ONLY_MODE: Skip all AI, use template-based test generation
 #
 # USAGE:
 #   ./generate-tests.sh
@@ -14,9 +16,11 @@
 # ENVIRONMENT VARIABLES:
 #   ANTHROPIC_API_KEY - API key for Anthropic AI analysis (primary, optional)
 #   GEMINI_API_KEY - API key for Google Gemini AI analysis (fallback, optional)
+#   GEMINI_ONLY_MODE - Set to "true" to skip Anthropic and use Gemini-only WebAuthn focus
+#   TEMPLATE_ONLY_MODE - Set to "true" to skip all AI and use template generation
 #
 # OUTPUTS:
-#   - security-test-implementations.json - Generated test implementations
+#   - security-test-implementations.json - Generated test implementations with tier metadata
 #
 # EXIT CODES:
 #   0 - Test generation completed successfully
@@ -25,9 +29,22 @@
 
 set -euo pipefail
 
-# Function to log with timestamp
+# Mode detection
+GEMINI_ONLY_MODE="${GEMINI_ONLY_MODE:-false}"
+TEMPLATE_ONLY_MODE="${TEMPLATE_ONLY_MODE:-false}"
+
+# Determine test generation tier
+if [ "$TEMPLATE_ONLY_MODE" = "true" ]; then
+    TEST_GENERATION_TIER="Tier 3: Template-Based Test Generation"
+Elif [ "$GEMINI_ONLY_MODE" = "true" ]; then
+    TEST_GENERATION_TIER="Tier 2: Gemini WebAuthn-Focused Test Generation"
+else
+    TEST_GENERATION_TIER="Standard Mode: Multi-Provider Test Generation"
+fi
+
+# Function to log with timestamp and tier info
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $*"
+    echo "$(date '+%Y-%m-%d %H:%M:%S') [$TEST_GENERATION_TIER] - $*"
 }
 
 # Function to check if security analysis results exist
@@ -76,22 +93,50 @@ try {
 
 class SecurityTestGenerator {
   constructor() {
-    // Initialize Anthropic client if available
-    this.anthropic = Anthropic && process.env.ANTHROPIC_API_KEY ? new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY
-    }) : null;
+    // Detect test generation mode from environment variables
+    this.geminiOnlyMode = process.env.GEMINI_ONLY_MODE === 'true';
+    this.templateOnlyMode = process.env.TEMPLATE_ONLY_MODE === 'true';
     
-    // Initialize Gemini client if available
-    this.gemini = GoogleGenerativeAI && process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-    this.geminiModel = this.gemini ? this.gemini.getGenerativeModel({ model: 'gemini-1.5-pro' }) : null;
+    // Initialize AI clients based on mode
+    this.anthropic = null;
+    this.gemini = null;
+    this.geminiModel = null;
     
-    // Log available providers
+    if (this.templateOnlyMode) {
+      console.log('📋 Template-Only Mode: Skipping all AI initialization for test generation');
+    } else if (this.geminiOnlyMode) {
+      console.log('🔷 Gemini-Only Mode: Initializing Gemini for WebAuthn-focused test generation');
+      // Only initialize Gemini in Gemini-only mode
+      if (GoogleGenerativeAI && process.env.GEMINI_API_KEY) {
+        this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        this.geminiModel = this.gemini.getGenerativeModel({ model: 'gemini-1.5-pro' });
+      } else {
+        console.warn('⚠️ Gemini-Only Mode requested but Gemini not available for test generation');
+      }
+    } else {
+      console.log('🤖 Standard Mode: Initializing all available AI providers for test generation');
+      // Initialize Anthropic client if available
+      this.anthropic = Anthropic && process.env.ANTHROPIC_API_KEY ? new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY
+      }) : null;
+      
+      // Initialize Gemini client if available
+      this.gemini = GoogleGenerativeAI && process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
+      this.geminiModel = this.gemini ? this.gemini.getGenerativeModel({ model: 'gemini-1.5-pro' }) : null;
+    }
+    
+    // Log available providers and mode
     const availableProviders = [];
     if (this.anthropic) availableProviders.push('Anthropic');
     if (this.geminiModel) availableProviders.push('Gemini');
     if (availableProviders.length === 0) availableProviders.push('Template');
     
-    console.log(`🔧 Test Generation Providers available: ${availableProviders.join(', ')}`);
+    let modeDescription = 'Standard';
+    if (this.templateOnlyMode) modeDescription = 'Template-Only (Tier 3)';
+    else if (this.geminiOnlyMode) modeDescription = 'Gemini-Only (Tier 2)';
+    
+    console.log(`🔧 Test Generation Mode: ${modeDescription}`);
+    console.log(`🔧 AI Providers available: ${availableProviders.join(', ')}`);
   }
 
   async generateSecurityTests(analysisResults) {
@@ -127,21 +172,37 @@ class SecurityTestGenerator {
   }
 
   async generateTestForVulnerability(vulnerability, existingTests) {
+    // Handle Template-Only Mode (Tier 3)
+    if (this.templateOnlyMode) {
+      console.log(`📋 Template-Only Mode: Generating template for ${vulnerability.type}`);
+      return this.generateTestTemplate(vulnerability);
+    }
+    
+    // Handle modes with no AI providers available
     if (!this.anthropic && !this.geminiModel) {
       console.log(`⚠️ No AI providers available, using template for ${vulnerability.type}`);
       return this.generateTestTemplate(vulnerability);
     }
 
-    const prompt = this.buildTestGenerationPrompt(vulnerability, existingTests);
+    // Build prompt based on mode
+    const prompt = this.geminiOnlyMode 
+      ? this.buildWebAuthnTestPrompt(vulnerability, existingTests)
+      : this.buildTestGenerationPrompt(vulnerability, existingTests);
 
     // Try AI generation with provider fallback
     try {
       const result = await this.performAITestGeneration(prompt, vulnerability);
+      const provider = result.includes('// Generated by Anthropic') ? 'Anthropic' : 'Gemini';
+      const tier = this.geminiOnlyMode ? 'Tier 2 (Gemini WebAuthn-Focused)' : 
+                   provider === 'Anthropic' ? 'Tier 1/Standard (Anthropic)' : 'Standard/Fallback (Gemini)';
+      
       return {
         vulnerability: vulnerability,
         testImplementation: result,
         generated: true,
-        provider: result.includes('// Generated by Anthropic') ? 'Anthropic' : 'Gemini'
+        provider: provider,
+        tier: tier,
+        mode: this.geminiOnlyMode ? 'gemini-only' : 'standard'
       };
     } catch (error) {
       console.error(`❌ AI test generation failed for ${vulnerability.type}:`, error.message);
@@ -181,8 +242,63 @@ fun \`test protection against [vulnerability name]\`() = testApplication {
 Focus on creating practical, executable tests that verify security protections are in place.`;
   }
 
+  buildWebAuthnTestPrompt(vulnerability, existingTests) {
+    // Specialized prompt for Gemini-only mode with WebAuthn focus
+    return `Generate a complete Kotlin test method for this WebAuthn-specific security vulnerability:
+
+🎯 WEBAUTHN VULNERABILITY (Tier 2 Analysis):
+- Type: ${vulnerability.type}
+- Severity: ${vulnerability.severity}
+- Location: ${vulnerability.location}
+- Description: ${vulnerability.description}
+- WebAuthn Specific: ${vulnerability.webauthnSpecific || 'true'}
+- Recommended Fix: ${vulnerability.recommendedFix}
+
+📚 EXISTING WEBAUTHN TEST CONTEXT:
+${existingTests.substring(0, 4000)}
+
+🔒 WEBAUTHN-FOCUSED REQUIREMENTS:
+1. Generate a complete, executable Kotlin test method targeting WebAuthn vulnerabilities
+2. Focus on WebAuthn-specific attack patterns (PoisonSeed, username enumeration, etc.)
+3. Use WebAuthnTestHelpers for credential creation and validation
+4. Include testStorageModule for proper test isolation
+5. Verify WebAuthn ceremony integrity and security boundaries
+6. Test both positive (attack blocked) and negative (legitimate flow works) cases
+7. Add detailed comments explaining the WebAuthn vulnerability context
+
+🧪 WEBAUTHN TEST TEMPLATE:
+@Test
+@DisplayName("Should protect against ${vulnerability.type} in WebAuthn flow")
+fun \`test webauthn protection against [specific attack]\`() = testApplication {
+    application {
+        testStorageModule()
+    }
+    
+    // WebAuthn-specific test implementation
+    // Focus on: credential validation, origin checks, challenge verification
+}
+
+💡 FOCUS: Assume general security (SQL injection, XSS) is handled elsewhere.
+EMPHASIZE: WebAuthn protocol security, FIDO2 compliance, and authentication ceremony protection.`;
+  }
+
   async performAITestGeneration(prompt, vulnerability) {
-    // Try Anthropic first (primary provider)
+    // Handle Gemini-Only Mode (Tier 2)
+    if (this.geminiOnlyMode) {
+      if (this.geminiModel) {
+        try {
+          console.log(`🔷 Gemini-Only Mode: Generating WebAuthn test for ${vulnerability.type}...`);
+          return await this.performGeminiTestGeneration(prompt);
+        } catch (error) {
+          console.warn(`❌ Gemini-only test generation failed: ${error.message}`);
+          throw error;
+        }
+      } else {
+        throw new Error('Gemini-only mode requested but Gemini not available');
+      }
+    }
+    
+    // Standard Mode: Try Anthropic first (primary provider)
     if (this.anthropic) {
       try {
         console.log(`🚀 Generating test for ${vulnerability.type} with Anthropic (primary)...`);
@@ -205,7 +321,7 @@ Focus on creating practical, executable tests that verify security protections a
       }
     }
     
-    // Both AI providers failed
+    // All AI providers failed
     throw new Error('All AI providers failed for test generation');
   }
 
@@ -286,9 +402,17 @@ fun \`test protection against ${testName}\`() = testApplication {
     if (this.anthropic) availableProviders.push('Anthropic');
     if (this.geminiModel) availableProviders.push('Gemini');
     
-    const errorMessage = availableProviders.length === 0 
-      ? 'No AI providers configured - template provided'
-      : `AI providers failed (${availableProviders.join(', ')}) - template provided`;
+    const availableProviders = [];
+    if (this.anthropic) availableProviders.push('Anthropic');
+    if (this.geminiModel) availableProviders.push('Gemini');
+    
+    const errorMessage = this.templateOnlyMode 
+      ? 'Template-Only Mode (Tier 3) - no AI providers used by design'
+      : availableProviders.length === 0 
+        ? 'No AI providers configured - template provided'
+        : `AI providers failed (${availableProviders.join(', ')}) - template provided`;
+    
+    const tier = this.templateOnlyMode ? 'Tier 3 (Template-Only)' : 'Tier 3 (Fallback)';
 
     return {
       vulnerability: vulnerability,
@@ -296,7 +420,9 @@ fun \`test protection against ${testName}\`() = testApplication {
       generated: false,
       template: true,
       error: errorMessage,
-      providersAttempted: availableProviders
+      providersAttempted: availableProviders,
+      tier: tier,
+      mode: this.templateOnlyMode ? 'template-only' : 'fallback'
     };
   }
 }
@@ -311,26 +437,42 @@ async function main() {
   // Generate test implementations
   const testImplementations = await generator.generateSecurityTests(analysisResults);
   
-  // Write test implementations to file
+  // Determine which tier was used for test generation
+  const tierUsed = process.env.TEMPLATE_ONLY_MODE === 'true' ? 'Tier 3 (Template-Only)' :
+                   process.env.GEMINI_ONLY_MODE === 'true' ? 'Tier 2 (Gemini WebAuthn-Focused)' :
+                   'Standard Multi-Provider';
+  
+  // Write test implementations to file with tier metadata
   const testReport = {
     timestamp: new Date().toISOString(),
+    tierUsed: tierUsed,
+    mode: process.env.TEMPLATE_ONLY_MODE === 'true' ? 'template-only' :
+           process.env.GEMINI_ONLY_MODE === 'true' ? 'gemini-only' : 'standard',
     vulnerabilityCount: analysisResults.vulnerabilitiesFound.length,
     testImplementations: testImplementations,
     summary: {
       totalTests: testImplementations.length,
       generatedTests: testImplementations.filter(t => t.generated).length,
       templateTests: testImplementations.filter(t => t.template).length,
-      failedGenerations: testImplementations.filter(t => t.error && !t.template).length
+      failedGenerations: testImplementations.filter(t => t.error && !t.template).length,
+      tierBreakdown: {
+        tier1: testImplementations.filter(t => t.provider === 'Anthropic').length,
+        tier2: testImplementations.filter(t => t.provider === 'Gemini').length,
+        tier3: testImplementations.filter(t => t.template).length
+      }
     }
   };
   
   fs.writeFileSync('security-test-implementations.json', JSON.stringify(testReport, null, 2));
   
   console.log('📋 Test Generation Summary:');
-  console.log(`Total vulnerabilities: ${testReport.vulnerabilityCount}`);
-  console.log(`Tests generated: ${testReport.summary.generatedTests}`);
-  console.log(`Template tests: ${testReport.summary.templateTests}`);
-  console.log(`Generation failures: ${testReport.summary.failedGenerations}`);
+  console.log(`🎯 Tier Used: ${testReport.tierUsed}`);
+  console.log(`🔧 Mode: ${testReport.mode}`);
+  console.log(`📊 Total vulnerabilities: ${testReport.vulnerabilityCount}`);
+  console.log(`🧪 Tests generated: ${testReport.summary.generatedTests}`);
+  console.log(`📋 Template tests: ${testReport.summary.templateTests}`);
+  console.log(`❌ Generation failures: ${testReport.summary.failedGenerations}`);
+  console.log(`🏷️ Tier breakdown: T1=${testReport.summary.tierBreakdown.tier1}, T2=${testReport.summary.tierBreakdown.tier2}, T3=${testReport.summary.tierBreakdown.tier3}`);
 }
 
 main().catch(error => {
@@ -394,13 +536,20 @@ main() {
             cat > security-test-implementations.json << EOF
 {
   "timestamp": "$(date -Iseconds)",
+  "tierUsed": "$TEST_GENERATION_TIER",
+  "mode": "${TEMPLATE_ONLY_MODE:+template-only}${GEMINI_ONLY_MODE:+gemini-only}${TEMPLATE_ONLY_MODE:+${GEMINI_ONLY_MODE:+}}${TEMPLATE_ONLY_MODE:-${GEMINI_ONLY_MODE:-standard}}",
   "vulnerabilityCount": 0,
   "testImplementations": [],
   "summary": {
     "totalTests": 0,
     "generatedTests": 0,
     "templateTests": 0,
-    "failedGenerations": 0
+    "failedGenerations": 0,
+    "tierBreakdown": {
+      "tier1": 0,
+      "tier2": 0,
+      "tier3": 0
+    }
   },
   "message": "No vulnerabilities found - no tests generated"
 }

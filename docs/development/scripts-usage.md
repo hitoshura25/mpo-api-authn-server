@@ -107,19 +107,39 @@ scripts/
 ```
 
 ### analyze-pr.sh
-**Purpose**: AI-powered security analysis of pull request changes with dual provider support (Anthropic → Gemini → Template fallback).
+**Purpose**: **3-Tier AI Security Analysis** with intelligent mode detection and WebAuthn specialization:
+- **Tier 1**: Official Anthropic Security Action (primary)
+- **Tier 2**: Gemini WebAuthn-focused analysis (specialized fallback)
+- **Tier 3**: Template-based analysis (always-available fallback)
 
 **Usage**:
 ```bash
+# Standard mode (tries all tiers)
 ./scripts/security/analyze-pr.sh <changed_files_json> <pr_title> <pr_body> <risk_level>
+
+# Gemini-only mode (skip Tier 1, focus on WebAuthn)
+GEMINI_ONLY_MODE=true ./scripts/security/analyze-pr.sh <args>
+
+# Template-only mode (skip AI, zero-cost analysis)
+TEMPLATE_ONLY_MODE=true ./scripts/security/analyze-pr.sh <args>
 ```
 
 ### generate-tests.sh
-**Purpose**: Generates security tests based on detected vulnerabilities with dual AI provider support.
+**Purpose**: **3-Tier Test Generation** with mode-aware prompts and WebAuthn specialization:
+- **Tier 1**: Anthropic test generation (primary)
+- **Tier 2**: Gemini WebAuthn-focused test generation (specialized)  
+- **Tier 3**: Template-based test generation (always-available)
 
 **Usage**:
 ```bash
+# Standard mode (tries all tiers)
 ./scripts/security/generate-tests.sh
+
+# Gemini-only mode (WebAuthn-focused test generation)
+GEMINI_ONLY_MODE=true ./scripts/security/generate-tests.sh
+
+# Template-only mode (zero-cost template tests)
+TEMPLATE_ONLY_MODE=true ./scripts/security/generate-tests.sh
 ```
 
 ## CI Scripts (`scripts/ci/`)

@@ -1,24 +1,28 @@
-# AI-Powered PR Security Analysis
+# 3-Tier AI Security Analysis Workflow
 #
-# This workflow performs intelligent security analysis on pull requests using AI
-# to detect WebAuthn vulnerabilities, security anti-patterns, and potential attack vectors.
+# This workflow implements a comprehensive 3-tier AI security analysis system
+# with intelligent fallbacks for WebAuthn authentication server security review.
 # 
 # ARCHITECTURE:
-# 1. Security-Sensitive Change Detection: Identifies PR changes to authentication flows
-# 2. AI Code Analysis: Uses specialized WebAuthn Security Analysis Agent patterns
-# 3. Vulnerability Pattern Matching: Cross-references with known vulnerability database
-# 4. Intelligent Test Recommendations: Suggests specific security tests
-# 5. PR Security Scoring: Provides risk assessment and mitigation recommendations
+# 
+# **Tier 1: Official Anthropic Security Action** (Primary)
+# - Uses: anthropics/claude-code-security-review@v1
+# - Purpose: Broad security coverage, maintained by Anthropic
+# - Triggers: All PRs with security-relevant changes
+# - Cost: Medium, but comprehensive analysis
 #
-# INTEGRATION POINTS:
-# - Uses WebAuthn Security Analysis Agent from .claude/agents/
-# - References vulnerability-tracking.json for known patterns
-# - Correlates with existing VulnerabilityProtectionTest.kt coverage
-# - Integrates with existing vulnerability monitoring system
+# **Tier 2: Gemini-Only WebAuthn Analysis** (Fallback)
+# - Uses: Modified custom script in Gemini-only mode
+# - Purpose: WebAuthn-specific security patterns when Anthropic unavailable
+# - Triggers: When Tier 1 fails (budget/availability issues)
+# - Focus: WebAuthn vulnerabilities, PoisonSeed attacks, username enumeration
+# - Cost: Lower, focused analysis
 #
-# TRIGGERS:
-# - Pull request opened/updated with changes to security-sensitive files
-# - Focuses on authentication flows, credential handling, and WebAuthn components
+# **Tier 3: Template Analysis** (Final Fallback)
+# - Uses: Template-based security analysis
+# - Purpose: Zero-cost basic security patterns
+# - Triggers: When both AI providers fail
+# - Cost: None, but limited analysis depth
 #
 # SECURITY FOCUS AREAS:
 # - PoisonSeed attack patterns
@@ -27,8 +31,14 @@
 # - Credential tampering detection
 # - Information leakage in error responses
 # - Challenge reuse and replay attacks
+#
+# FALLBACK STRATEGY:
+# - Each tier detects when to hand off to the next tier
+# - Proper error propagation and logging
+# - Cost optimization through intelligent tier selection
+# - Quality maintenance with WebAuthn-specific focus
 
-name: AI-Powered PR Security Analysis
+name: 3-Tier AI Security Analysis
 
 on:
   pull_request:
@@ -50,15 +60,19 @@ on:
       - '.github/workflows/**'
 
 env:
-  # AI Analysis Configuration
-  SECURITY_ANALYSIS_MODEL: "claude-sonnet-4"
-  VULNERABILITY_DB_PATH: "./vulnerability-tracking.json"
-  WEBAUTHN_SECURITY_AGENT_PATH: "./.claude/agents/webauthn-security-analysis.md"
-  
-  # Security Analysis Thresholds
+  # Security Analysis Configuration
   HIGH_RISK_SCORE_THRESHOLD: 7.0
   MEDIUM_RISK_SCORE_THRESHOLD: 4.0
   BLOCK_MERGE_ON_CRITICAL: true
+  
+  # Tier Configuration
+  ANTHROPIC_TIER_ENABLED: true
+  GEMINI_TIER_ENABLED: true
+  TEMPLATE_TIER_ENABLED: true
+  
+  # WebAuthn Security Focus
+  VULNERABILITY_DB_PATH: "./vulnerability-tracking.json"
+  WEBAUTHN_SECURITY_AGENT_PATH: "./.claude/agents/webauthn-security-analysis.md"
 
 permissions:
   contents: read
@@ -67,7 +81,7 @@ permissions:
   issues: write
 
 jobs:
-  # Job 1: Detect Security-Sensitive Changes
+  # Change Detection (Shared across all tiers)
   detect-security-changes:
     name: Detect security-sensitive changes
     runs-on: ubuntu-latest
@@ -122,18 +136,22 @@ jobs:
           chmod +x scripts/security/analyze-changes.sh
           scripts/security/analyze-changes.sh
 
-  # Job 2: AI-Powered Security Code Analysis
-  ai-security-analysis:
-    name: AI security code analysis
+  # Tier 1: Official Anthropic Security Action (Primary)
+  tier1-anthropic-security-review:
+    name: "Tier 1: Anthropic Security Review"
     runs-on: ubuntu-latest
     needs: detect-security-changes
-    if: needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
+    if: |
+      needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
+      env.ANTHROPIC_TIER_ENABLED == 'true'
     outputs:
-      security-score: ${{ steps.ai-analysis.outputs.security-score }}
-      vulnerabilities-found: ${{ steps.ai-analysis.outputs.vulnerabilities-found }}
-      recommendations: ${{ steps.ai-analysis.outputs.recommendations }}
-      analysis-report: ${{ steps.ai-analysis.outputs.analysis-report }}
-      requires-security-review: ${{ steps.ai-analysis.outputs.requires-security-review }}
+      analysis-completed: ${{ steps.anthropic-analysis.outputs.analysis-completed }}
+      security-score: ${{ steps.anthropic-analysis.outputs.security-score }}
+      vulnerabilities-found: ${{ steps.anthropic-analysis.outputs.vulnerabilities-found }}
+      recommendations: ${{ steps.anthropic-analysis.outputs.recommendations }}
+      analysis-report: ${{ steps.anthropic-analysis.outputs.analysis-report }}
+      requires-security-review: ${{ steps.anthropic-analysis.outputs.requires-security-review }}
+      tier-used: ${{ steps.anthropic-analysis.outputs.tier-used }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -141,102 +159,299 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Setup Node.js for AI analysis
+      - name: Run Official Anthropic Security Review
+        id: anthropic-analysis
+        uses: anthropics/claude-code-security-review@v1
+        with:
+          claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          comment-pr: true
+          upload-results: true
+          exclude-directories: 'docs,scripts/monitoring,android-test-client,web-test-client'
+          claudecode-timeout: 15
+          custom-security-scan-instructions: 'docs/security/webauthn-security-instructions.txt'
+        continue-on-error: true
+
+      - name: Process Anthropic Results
+        if: steps.anthropic-analysis.conclusion == 'success'
+        run: |
+          echo "analysis-completed=true" >> $GITHUB_OUTPUT
+          echo "tier-used=Anthropic Official Action" >> $GITHUB_OUTPUT
+          echo "findings-count=${{ steps.anthropic-analysis.outputs.findings-count }}" >> $GITHUB_OUTPUT
+          echo "new-findings-count=${{ steps.anthropic-analysis.outputs.new-findings-count }}" >> $GITHUB_OUTPUT
+          echo "🎯 Tier 1 (Anthropic Official Action) completed successfully"
+          echo "📊 Total findings: ${{ steps.anthropic-analysis.outputs.findings-count }}"
+          echo "📊 New findings: ${{ steps.anthropic-analysis.outputs.new-findings-count }}"
+
+      - name: Handle Anthropic Failure
+        if: steps.anthropic-analysis.conclusion != 'success'
+        run: |
+          echo "analysis-completed=false" >> $GITHUB_OUTPUT
+          echo "tier-used=none" >> $GITHUB_OUTPUT
+          echo "findings-count=0" >> $GITHUB_OUTPUT
+          echo "new-findings-count=0" >> $GITHUB_OUTPUT
+          echo "⚠️ Tier 1 (Anthropic Official Action) failed - will fallback to Tier 2"
+
+      - name: Upload Anthropic results
+        if: steps.anthropic-analysis.conclusion == 'success' && steps.anthropic-analysis.outputs.results-file
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier1-anthropic-results
+          path: ${{ steps.anthropic-analysis.outputs.results-file }}
+          retention-days: 7
+
+  # Tier 2: Gemini-Only WebAuthn Analysis (Fallback)
+  tier2-gemini-webauthn-analysis:
+    name: "Tier 2: Gemini WebAuthn Analysis"
+    runs-on: ubuntu-latest
+    needs: [detect-security-changes, tier1-anthropic-security-review]
+    if: |
+      needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
+      needs.tier1-anthropic-security-review.outputs.analysis-completed != 'true' &&
+      env.GEMINI_TIER_ENABLED == 'true'
+    outputs:
+      analysis-completed: ${{ steps.gemini-analysis.outputs.analysis-completed }}
+      security-score: ${{ steps.gemini-analysis.outputs.security-score }}
+      vulnerabilities-found: ${{ steps.gemini-analysis.outputs.vulnerabilities-found }}
+      recommendations: ${{ steps.gemini-analysis.outputs.recommendations }}
+      analysis-report: ${{ steps.gemini-analysis.outputs.analysis-report }}
+      requires-security-review: ${{ steps.gemini-analysis.outputs.requires-security-review }}
+      tier-used: ${{ steps.gemini-analysis.outputs.tier-used }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js for Gemini analysis
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
-      - name: Install AI analysis dependencies
+      - name: Install dependencies for Gemini analysis
         run: |
-          npm install
-          
-          # Install additional dependencies for AI analysis
-          npm install --save-dev \
-            @anthropic-ai/sdk \
-            typescript \
-            ts-node \
-            @types/node
+          npm install --save-dev @google/generative-ai typescript ts-node @types/node
 
-      - name: Load WebAuthn Security Agent and Vulnerability Database
-        id: load-security-context
+      - name: Load WebAuthn Security Context
         run: |
-          echo "📚 Loading security analysis context..."
+          echo "📚 Loading WebAuthn-specific security context..."
           
-          # Load WebAuthn Security Analysis Agent
           if [ -f "${{ env.WEBAUTHN_SECURITY_AGENT_PATH }}" ]; then
             echo "✅ WebAuthn Security Agent loaded"
-            AGENT_CONTENT=$(cat "${{ env.WEBAUTHN_SECURITY_AGENT_PATH }}")
-            echo "agent-loaded=true" >> $GITHUB_OUTPUT
           else
             echo "⚠️ WebAuthn Security Agent not found"
-            echo "agent-loaded=false" >> $GITHUB_OUTPUT
           fi
           
-          # Load vulnerability tracking database
           if [ -f "${{ env.VULNERABILITY_DB_PATH }}" ]; then
-            echo "✅ Vulnerability database loaded"
-            VULN_COUNT=$(jq '.vulnerabilities | length' "${{ env.VULNERABILITY_DB_PATH }}")
-            echo "📊 Known vulnerabilities: $VULN_COUNT"
-            echo "vuln-db-loaded=true" >> $GITHUB_OUTPUT
+            VULN_COUNT=$(jq '.vulnerabilities | length' "${{ env.VULNERABILITY_DB_PATH }}" || echo 0)
+            echo "📊 Known WebAuthn vulnerabilities: $VULN_COUNT"
           else
             echo "⚠️ Vulnerability database not found"
-            echo "vuln-db-loaded=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: AI Security Analysis
-        id: ai-analysis
+      - name: Run Gemini-Only WebAuthn Analysis
+        id: gemini-analysis
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_ONLY_MODE: "true"
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
           PR_BODY: ${{ github.event.pull_request.body }}
           CHANGED_FILES: ${{ needs.detect-security-changes.outputs.changed-files-json }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
         run: |
+          echo "🔷 Starting Tier 2: Gemini-Only WebAuthn Analysis"
+          echo "🎯 Focus: WebAuthn-specific security patterns"
+          
           chmod +x scripts/security/analyze-pr.sh
-          scripts/security/analyze-pr.sh "$CHANGED_FILES" "$PR_TITLE" "$PR_BODY" "$RISK_LEVEL"
+          
+          if scripts/security/analyze-pr.sh "$CHANGED_FILES" "$PR_TITLE" "$PR_BODY" "$RISK_LEVEL"; then
+            echo "analysis-completed=true" >> $GITHUB_OUTPUT
+            echo "tier-used=Gemini WebAuthn-Focused" >> $GITHUB_OUTPUT
+            echo "✅ Tier 2 (Gemini WebAuthn Analysis) completed successfully"
+          else
+            echo "analysis-completed=false" >> $GITHUB_OUTPUT
+            echo "tier-used=none" >> $GITHUB_OUTPUT
+            echo "❌ Tier 2 (Gemini WebAuthn Analysis) failed - will fallback to Tier 3"
+            exit 0  # Don't fail the job, let Tier 3 handle it
+          fi
 
-      - name: Upload security analysis results
+      - name: Upload Gemini results
+        if: steps.gemini-analysis.outputs.analysis-completed == 'true'
         uses: actions/upload-artifact@v4
         with:
-          name: security-analysis-results
+          name: tier2-gemini-results
           path: security-analysis-results.json
+          retention-days: 7
 
-  # Job 3: Security Test Recommendation
-  security-test-recommendations:
-    name: Generate security test recommendations
+  # Tier 3: Template Analysis (Final Fallback)
+  tier3-template-analysis:
+    name: "Tier 3: Template Security Analysis"
     runs-on: ubuntu-latest
-    needs: [detect-security-changes, ai-security-analysis]
-    if: needs.ai-security-analysis.outputs.vulnerabilities-found > 0
+    needs: [detect-security-changes, tier1-anthropic-security-review, tier2-gemini-webauthn-analysis]
+    if: |
+      always() &&
+      needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
+      needs.tier1-anthropic-security-review.outputs.analysis-completed != 'true' &&
+      needs.tier2-gemini-webauthn-analysis.outputs.analysis-completed != 'true' &&
+      env.TEMPLATE_TIER_ENABLED == 'true'
+    outputs:
+      analysis-completed: ${{ steps.template-analysis.outputs.analysis-completed }}
+      security-score: ${{ steps.template-analysis.outputs.security-score }}
+      vulnerabilities-found: ${{ steps.template-analysis.outputs.vulnerabilities-found }}
+      recommendations: ${{ steps.template-analysis.outputs.recommendations }}
+      analysis-report: ${{ steps.template-analysis.outputs.analysis-report }}
+      requires-security-review: ${{ steps.template-analysis.outputs.requires-security-review }}
+      tier-used: ${{ steps.template-analysis.outputs.tier-used }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js for template analysis
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Run Template-Based Security Analysis
+        id: template-analysis
+        env:
+          TEMPLATE_ONLY_MODE: "true"
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          CHANGED_FILES: ${{ needs.detect-security-changes.outputs.changed-files-json }}
+          RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
+        run: |
+          echo "📋 Starting Tier 3: Template Security Analysis"
+          echo "⚠️ AI providers unavailable - using template-based analysis"
+          
+          chmod +x scripts/security/analyze-pr.sh
+          
+          if scripts/security/analyze-pr.sh "$CHANGED_FILES" "$PR_TITLE" "$PR_BODY" "$RISK_LEVEL"; then
+            echo "analysis-completed=true" >> $GITHUB_OUTPUT
+            echo "tier-used=Template-Based Analysis" >> $GITHUB_OUTPUT
+            echo "✅ Tier 3 (Template Analysis) completed successfully"
+          else
+            echo "analysis-completed=false" >> $GITHUB_OUTPUT
+            echo "tier-used=none" >> $GITHUB_OUTPUT
+            echo "❌ All security analysis tiers failed"
+            exit 1
+          fi
+
+      - name: Upload template results
+        if: steps.template-analysis.outputs.analysis-completed == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: tier3-template-results
+          path: security-analysis-results.json
+          retention-days: 7
+
+  # Consolidate Results and Generate Tests
+  consolidate-security-analysis:
+    name: Consolidate security analysis results
+    runs-on: ubuntu-latest
+    needs: [
+      detect-security-changes, 
+      tier1-anthropic-security-review, 
+      tier2-gemini-webauthn-analysis, 
+      tier3-template-analysis
+    ]
+    if: |
+      always() && 
+      needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
+      (needs.tier1-anthropic-security-review.outputs.analysis-completed == 'true' ||
+       needs.tier2-gemini-webauthn-analysis.outputs.analysis-completed == 'true' ||
+       needs.tier3-template-analysis.outputs.analysis-completed == 'true')
+    outputs:
+      final-security-score: ${{ steps.consolidate.outputs.final-security-score }}
+      final-vulnerabilities-found: ${{ steps.consolidate.outputs.final-vulnerabilities-found }}
+      final-recommendations: ${{ steps.consolidate.outputs.final-recommendations }}
+      final-analysis-report: ${{ steps.consolidate.outputs.final-analysis-report }}
+      final-requires-security-review: ${{ steps.consolidate.outputs.final-requires-security-review }}
+      tier-used: ${{ steps.consolidate.outputs.tier-used }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download security analysis results
+      - name: Download all analysis artifacts
         uses: actions/download-artifact@v4
         with:
-          name: security-analysis-results
+          pattern: tier*-*-results
+          merge-multiple: true
 
-      - name: Generate security test implementations
+      - name: Consolidate analysis results
+        id: consolidate
+        run: |
+          echo "🔍 Consolidating security analysis results from all tiers..."
+          
+          # Determine which tier was successful and extract results
+          if [ "${{ needs.tier1-anthropic-security-review.outputs.analysis-completed }}" == "true" ]; then
+            TIER_USED="Tier 1: Anthropic Official Action"
+            SECURITY_SCORE="${{ needs.tier1-anthropic-security-review.outputs.security-score || '5.0' }}"
+            VULNERABILITIES="${{ needs.tier1-anthropic-security-review.outputs.vulnerabilities-found || '0' }}"
+            REQUIRES_REVIEW="${{ needs.tier1-anthropic-security-review.outputs.requires-security-review || 'true' }}"
+            RECOMMENDATIONS="${{ needs.tier1-anthropic-security-review.outputs.recommendations || 'Manual review recommended' }}"
+            ANALYSIS_REPORT="${{ needs.tier1-anthropic-security-review.outputs.analysis-report || 'Anthropic analysis completed' }}"
+          elif [ "${{ needs.tier2-gemini-webauthn-analysis.outputs.analysis-completed }}" == "true" ]; then
+            TIER_USED="Tier 2: Gemini WebAuthn-Focused"
+            SECURITY_SCORE="${{ needs.tier2-gemini-webauthn-analysis.outputs.security-score || '5.0' }}"
+            VULNERABILITIES="${{ needs.tier2-gemini-webauthn-analysis.outputs.vulnerabilities-found || '0' }}"
+            REQUIRES_REVIEW="${{ needs.tier2-gemini-webauthn-analysis.outputs.requires-security-review || 'true' }}"
+            RECOMMENDATIONS="${{ needs.tier2-gemini-webauthn-analysis.outputs.recommendations || 'Manual WebAuthn review recommended' }}"
+            ANALYSIS_REPORT="${{ needs.tier2-gemini-webauthn-analysis.outputs.analysis-report || 'Gemini WebAuthn analysis completed' }}"
+          elif [ "${{ needs.tier3-template-analysis.outputs.analysis-completed }}" == "true" ]; then
+            TIER_USED="Tier 3: Template-Based Analysis"
+            SECURITY_SCORE="${{ needs.tier3-template-analysis.outputs.security-score || '5.0' }}"
+            VULNERABILITIES="${{ needs.tier3-template-analysis.outputs.vulnerabilities-found || '0' }}"
+            REQUIRES_REVIEW="${{ needs.tier3-template-analysis.outputs.requires-security-review || 'true' }}"
+            RECOMMENDATIONS="${{ needs.tier3-template-analysis.outputs.recommendations || 'Manual security review required' }}"
+            ANALYSIS_REPORT="${{ needs.tier3-template-analysis.outputs.analysis-report || 'Template analysis completed' }}"
+          else
+            echo "❌ All security analysis tiers failed"
+            exit 1
+          fi
+          
+          echo "🎯 Final analysis completed using: $TIER_USED"
+          echo "📊 Security Score: $SECURITY_SCORE/10"
+          echo "🔍 Vulnerabilities Found: $VULNERABILITIES"
+          echo "🔒 Requires Review: $REQUIRES_REVIEW"
+          
+          # Set outputs
+          echo "final-security-score=$SECURITY_SCORE" >> $GITHUB_OUTPUT
+          echo "final-vulnerabilities-found=$VULNERABILITIES" >> $GITHUB_OUTPUT
+          echo "final-requires-security-review=$REQUIRES_REVIEW" >> $GITHUB_OUTPUT
+          echo "final-recommendations=$RECOMMENDATIONS" >> $GITHUB_OUTPUT
+          echo "final-analysis-report=$ANALYSIS_REPORT" >> $GITHUB_OUTPUT
+          echo "tier-used=$TIER_USED" >> $GITHUB_OUTPUT
+
+      - name: Generate security test recommendations
+        if: steps.consolidate.outputs.final-vulnerabilities-found > 0
         env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           chmod +x scripts/security/generate-tests.sh
-          scripts/security/generate-tests.sh
+          scripts/security/generate-tests.sh || echo "⚠️ Test generation failed, continuing"
 
-      - name: Upload security test implementations
+      - name: Upload consolidated results
         uses: actions/upload-artifact@v4
         with:
-          name: security-test-implementations
-          path: security-test-implementations.json
+          name: consolidated-security-results
+          path: |
+            security-analysis-results.json
+            security-test-implementations.json
+          retention-days: 7
 
-  # Job 4: Create PR Security Review Comment
+  # Create PR Security Review Comment
   create-security-comment:
     name: Create PR security review comment
     runs-on: ubuntu-latest
-    needs: [detect-security-changes, ai-security-analysis, security-test-recommendations]
+    needs: [detect-security-changes, consolidate-security-analysis]
     if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
     steps:
       - name: Checkout repository
@@ -244,51 +459,69 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download analysis artifacts
+      - name: Download consolidated analysis results
         uses: actions/download-artifact@v4
         with:
-          pattern: security-*
-          merge-multiple: true
+          name: consolidated-security-results
+          continue-on-error: true
 
       - name: Create comprehensive security comment
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SECURITY_SCORE: ${{ needs.ai-security-analysis.outputs.security-score }}
-          VULNERABILITIES_COUNT: ${{ needs.ai-security-analysis.outputs.vulnerabilities-found }}
-          REQUIRES_REVIEW: ${{ needs.ai-security-analysis.outputs.requires-security-review }}
+          SECURITY_SCORE: ${{ needs.consolidate-security-analysis.outputs.final-security-score || '5.0' }}
+          VULNERABILITIES_COUNT: ${{ needs.consolidate-security-analysis.outputs.final-vulnerabilities-found || '0' }}
+          REQUIRES_REVIEW: ${{ needs.consolidate-security-analysis.outputs.final-requires-security-review || 'true' }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
+          TIER_USED: ${{ needs.consolidate-security-analysis.outputs.tier-used || 'None (Analysis Failed)' }}
           PR_NUMBER: ${{ github.event.number }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
+          echo "💬 Creating security review comment..."
+          echo "🎯 Analysis Tier Used: $TIER_USED"
+          echo "📊 Security Score: $SECURITY_SCORE/10"
+          
           chmod +x scripts/security/create-security-comment.cjs
           node scripts/security/create-security-comment.cjs
 
-  # Job 5: Block merge if critical security issues found
+  # Security Gate Check
   security-gate:
     name: Security gate check
     runs-on: ubuntu-latest
-    needs: ai-security-analysis
-    if: needs.ai-security-analysis.outputs.security-score >= 8.0
-    env:
-      BLOCK_MERGE_ON_CRITICAL: 'true'  # Move env to job level
+    needs: consolidate-security-analysis
+    if: |
+      needs.consolidate-security-analysis.outputs.final-security-score >= 8.0 ||
+      needs.consolidate-security-analysis.outputs.final-requires-security-review == 'true'
     steps:
       - name: Block merge for critical security issues
-        if: env.BLOCK_MERGE_ON_CRITICAL == 'true'  # Now check at step level
+        if: needs.consolidate-security-analysis.outputs.final-security-score >= 8.0
         run: |
           echo "🚨 CRITICAL SECURITY ISSUES DETECTED"
-          echo "Security Score: ${{ needs.ai-security-analysis.outputs.security-score }}/10"
-          echo "Vulnerabilities: ${{ needs.ai-security-analysis.outputs.vulnerabilities-found }}"
+          echo "Security Score: ${{ needs.consolidate-security-analysis.outputs.final-security-score }}/10"
+          echo "Vulnerabilities: ${{ needs.consolidate-security-analysis.outputs.final-vulnerabilities-found }}"
+          echo "Analysis Tier Used: ${{ needs.consolidate-security-analysis.outputs.tier-used }}"
           echo ""
           echo "❌ This PR cannot be merged until security issues are resolved"
           echo "📋 Review the security analysis comment for details"
           exit 1
 
-  # Job 6: Add security labels
+      - name: Require security review
+        if: |
+          needs.consolidate-security-analysis.outputs.final-requires-security-review == 'true' &&
+          needs.consolidate-security-analysis.outputs.final-security-score < 8.0
+        run: |
+          echo "🔍 SECURITY REVIEW REQUIRED"
+          echo "Security Score: ${{ needs.consolidate-security-analysis.outputs.final-security-score }}/10"
+          echo "Analysis Tier Used: ${{ needs.consolidate-security-analysis.outputs.tier-used }}"
+          echo ""
+          echo "⚠️ Manual security review recommended before merge"
+          echo "📋 See security analysis comment for recommendations"
+
+  # Add Security Labels
   add-security-labels:
     name: Add security labels to PR
     runs-on: ubuntu-latest
-    needs: [detect-security-changes, ai-security-analysis]
+    needs: [detect-security-changes, consolidate-security-analysis]
     if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
     steps:
       - name: Checkout code
@@ -297,14 +530,32 @@ jobs:
       - name: Add security labels
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SECURITY_SCORE: ${{ needs.ai-security-analysis.outputs.security-score }}
+          SECURITY_SCORE: ${{ needs.consolidate-security-analysis.outputs.final-security-score || '5.0' }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
-          REQUIRES_SECURITY_REVIEW: ${{ needs.ai-security-analysis.outputs.requires-security-review }}
+          REQUIRES_SECURITY_REVIEW: ${{ needs.consolidate-security-analysis.outputs.final-requires-security-review || 'true' }}
+          TIER_USED: ${{ needs.consolidate-security-analysis.outputs.tier-used || 'none' }}
           HAS_AUTH_CHANGES: ${{ needs.detect-security-changes.outputs.has-auth-changes }}
           HAS_DEPENDENCY_CHANGES: ${{ needs.detect-security-changes.outputs.has-dependency-changes }}
           PR_NUMBER: ${{ github.event.number }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
+          echo "🏷️ Adding security labels..."
+          echo "🎯 Analysis tier: $TIER_USED"
+          
+          # Add tier-specific label
+          TIER_LABEL=""
+          if [[ "$TIER_USED" == *"Tier 1"* ]]; then
+            TIER_LABEL="security:tier-1-anthropic"
+          elif [[ "$TIER_USED" == *"Tier 2"* ]]; then
+            TIER_LABEL="security:tier-2-gemini"
+          elif [[ "$TIER_USED" == *"Tier 3"* ]]; then
+            TIER_LABEL="security:tier-3-template"
+          fi
+          
+          if [ -n "$TIER_LABEL" ]; then
+            echo "🏷️ Adding tier label: $TIER_LABEL"
+          fi
+          
           chmod +x scripts/security/add-security-labels.cjs
           node scripts/security/add-security-labels.cjs

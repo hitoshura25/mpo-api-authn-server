@@ -1,10 +1,14 @@
 #!/bin/bash
 #
-# AI-Powered PR Security Analysis Script
+# 3-Tier AI Security Analysis Script
 #
-# This script performs intelligent security analysis on pull requests using AI
-# to detect WebAuthn vulnerabilities, security anti-patterns, and potential attack vectors.
-# Supports dual AI providers with automatic fallback: Anthropic (primary) → Gemini (fallback) → Template analysis
+# This script performs intelligent security analysis on pull requests using a 3-tier
+# AI system with specialized modes for different analysis strategies.
+# 
+# TIER MODES:
+#   Default Mode: Dual AI providers (Anthropic primary → Gemini fallback → Template)
+#   GEMINI_ONLY_MODE: Skip Anthropic, use Gemini with WebAuthn-specific focus
+#   TEMPLATE_ONLY_MODE: Skip all AI, use template-based security patterns
 #
 # USAGE:
 #   ./analyze-pr.sh <changed_files_json> <pr_title> <pr_body> <risk_level>
@@ -12,12 +16,14 @@
 # ENVIRONMENT VARIABLES:
 #   ANTHROPIC_API_KEY - API key for Anthropic AI analysis (primary, optional)
 #   GEMINI_API_KEY - API key for Google Gemini AI analysis (fallback, optional)
+#   GEMINI_ONLY_MODE - Set to "true" to skip Anthropic and use Gemini-only WebAuthn focus
+#   TEMPLATE_ONLY_MODE - Set to "true" to skip all AI and use template analysis
 #   PR_NUMBER - Pull request number
 #   WEBAUTHN_SECURITY_AGENT_PATH - Path to WebAuthn security agent file
 #   VULNERABILITY_DB_PATH - Path to vulnerability database JSON
 #
 # OUTPUTS:
-#   - security-analysis-results.json - Complete AI analysis results
+#   - security-analysis-results.json - Complete analysis results with tier metadata
 #   - GitHub Actions outputs:
 #     - security-score: Risk score 0-10
 #     - vulnerabilities-found: Count of vulnerabilities
@@ -35,6 +41,22 @@ set -euo pipefail
 # Default paths
 WEBAUTHN_SECURITY_AGENT_PATH="${WEBAUTHN_SECURITY_AGENT_PATH:-./.claude/agents/webauthn-security-analysis.md}"
 VULNERABILITY_DB_PATH="${VULNERABILITY_DB_PATH:-./vulnerability-tracking.json}"
+
+# Mode detection
+GEMINI_ONLY_MODE="${GEMINI_ONLY_MODE:-false}"
+TEMPLATE_ONLY_MODE="${TEMPLATE_ONLY_MODE:-false}"
+
+# Determine analysis tier
+if [ "$TEMPLATE_ONLY_MODE" = "true" ]; then
+    ANALYSIS_TIER="Tier 3: Template-Based Analysis"
+    log "📋 Running in Template-Only Mode (Tier 3)"
+elif [ "$GEMINI_ONLY_MODE" = "true" ]; then
+    ANALYSIS_TIER="Tier 2: Gemini WebAuthn-Focused Analysis"
+    log "🔷 Running in Gemini-Only Mode (Tier 2) - WebAuthn focus"
+else
+    ANALYSIS_TIER="Standard Mode: Multi-Provider Analysis"
+    log "🤖 Running in Standard Mode - Multi-provider analysis"
+fi
 
 # Function to log with timestamp
 log() {
@@ -137,24 +159,52 @@ try {
 
 class WebAuthnSecurityAnalyzer {
   constructor() {
-    // Initialize Anthropic client if available
-    this.anthropic = Anthropic && process.env.ANTHROPIC_API_KEY ? new Anthropic({
-      apiKey: process.env.ANTHROPIC_API_KEY
-    }) : null;
+    // Detect analysis mode from environment variables
+    this.geminiOnlyMode = process.env.GEMINI_ONLY_MODE === 'true';
+    this.templateOnlyMode = process.env.TEMPLATE_ONLY_MODE === 'true';
     
-    // Initialize Gemini client if available
-    this.gemini = GoogleGenerativeAI && process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
-    this.geminiModel = this.gemini ? this.gemini.getGenerativeModel({ model: 'gemini-1.5-pro' }) : null;
+    // Initialize AI clients based on mode
+    this.anthropic = null;
+    this.gemini = null;
+    this.geminiModel = null;
+    
+    if (this.templateOnlyMode) {
+      console.log('📋 Template-Only Mode: Skipping all AI initialization');
+    } else if (this.geminiOnlyMode) {
+      console.log('🔷 Gemini-Only Mode: Initializing Gemini for WebAuthn-focused analysis');
+      // Only initialize Gemini in Gemini-only mode
+      if (GoogleGenerativeAI && process.env.GEMINI_API_KEY) {
+        this.gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        this.geminiModel = this.gemini.getGenerativeModel({ model: 'gemini-1.5-pro' });
+      } else {
+        console.warn('⚠️ Gemini-Only Mode requested but Gemini not available');
+      }
+    } else {
+      console.log('🤖 Standard Mode: Initializing all available AI providers');
+      // Initialize Anthropic client if available
+      this.anthropic = Anthropic && process.env.ANTHROPIC_API_KEY ? new Anthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY
+      }) : null;
+      
+      // Initialize Gemini client if available
+      this.gemini = GoogleGenerativeAI && process.env.GEMINI_API_KEY ? new GoogleGenerativeAI(process.env.GEMINI_API_KEY) : null;
+      this.geminiModel = this.gemini ? this.gemini.getGenerativeModel({ model: 'gemini-1.5-pro' }) : null;
+    }
     
     this.maxRetries = 3;
     this.retryDelay = 2000;
     
-    // Log available providers
+    // Log available providers and mode
     const availableProviders = [];
     if (this.anthropic) availableProviders.push('Anthropic');
     if (this.geminiModel) availableProviders.push('Gemini');
-    if (availableProviders.length === 0) availableProviders.push('Fallback');
+    if (availableProviders.length === 0) availableProviders.push('Template');
     
+    let modeDescription = 'Standard';
+    if (this.templateOnlyMode) modeDescription = 'Template-Only (Tier 3)';
+    else if (this.geminiOnlyMode) modeDescription = 'Gemini-Only (Tier 2)';
+    
+    console.log(`🔧 Analysis Mode: ${modeDescription}`);
     console.log(`🔧 AI Providers available: ${availableProviders.join(', ')}`);
   }
 
@@ -162,20 +212,28 @@ class WebAuthnSecurityAnalyzer {
     try {
       console.log('🔍 Analyzing security implications of code changes...');
       
-      if (!this.anthropic && !this.geminiModel) {
-        console.log('⚠️ No AI providers available, using fallback analysis');
-        return this.createFallbackAnalysis();
+      // Handle Template-Only Mode (Tier 3)
+      if (this.templateOnlyMode) {
+        console.log('📋 Template-Only Mode: Using template-based security analysis');
+        return this.createTemplateAnalysis(changedFiles, prContext);
       }
       
-      // Token optimization: Skip AI for minimal risk changes with few files
-      if (prContext.riskLevel === 'MINIMAL' && changedFiles.length <= 2) {
+      // Handle modes with AI providers
+      if (!this.anthropic && !this.geminiModel) {
+        console.log('⚠️ No AI providers available, falling back to template analysis');
+        return this.createTemplateAnalysis(changedFiles, prContext);
+      }
+      
+      // Token optimization: Skip AI for minimal risk changes with few files (except in Gemini-only mode)
+      if (!this.geminiOnlyMode && prContext.riskLevel === 'MINIMAL' && changedFiles.length <= 2) {
         console.log('💡 Minimal risk change detected - using optimized template analysis');
-        const optimizedResults = this.createFallbackAnalysis();
+        const optimizedResults = this.createTemplateAnalysis(changedFiles, prContext);
         optimizedResults.analysisMetadata = {
           aiProvider: 'Template (optimized for minimal risk)',
           timestamp: new Date().toISOString(),
           analysisType: 'optimized-template',
-          reason: 'Minimal risk change - AI analysis skipped for cost optimization'
+          reason: 'Minimal risk change - AI analysis skipped for cost optimization',
+          tier: 'Tier 3 (Optimized)'
         };
         return optimizedResults;
       }
@@ -185,25 +243,24 @@ class WebAuthnSecurityAnalyzer {
       const vulnerabilityDB = this.loadVulnerabilityDatabase();
       const codeChanges = await this.extractCodeChanges(changedFiles);
       
-      // Token optimization: If no security-relevant files found, use template
-      if (Object.keys(codeChanges).length === 0) {
+      // Token optimization: If no security-relevant files found, use template (except in Gemini-only mode)
+      if (!this.geminiOnlyMode && Object.keys(codeChanges).length === 0) {
         console.log('💡 No security-relevant files found - using template analysis');
-        const templateResults = this.createFallbackAnalysis();
+        const templateResults = this.createTemplateAnalysis(changedFiles, prContext);
         templateResults.analysisMetadata = {
           aiProvider: 'Template (no security-relevant files)',
           timestamp: new Date().toISOString(),
           analysisType: 'optimized-template',
-          reason: 'No security-relevant files in changes'
+          reason: 'No security-relevant files in changes',
+          tier: 'Tier 3 (Optimized)'
         };
         return templateResults;
       }
       
-      const prompt = this.buildSecurityAnalysisPrompt(
-        securityAgent, 
-        vulnerabilityDB, 
-        codeChanges, 
-        prContext
-      );
+      // Build prompt based on analysis mode
+      const prompt = this.geminiOnlyMode 
+        ? this.buildWebAuthnFocusedPrompt(securityAgent, vulnerabilityDB, codeChanges, prContext)
+        : this.buildSecurityAnalysisPrompt(securityAgent, vulnerabilityDB, codeChanges, prContext);
       
       // Log token estimate for cost tracking
       const estimatedTokens = Math.ceil(prompt.length / 4); // Rough token estimate
@@ -212,12 +269,14 @@ class WebAuthnSecurityAnalyzer {
       const { analysis, provider } = await this.performAIAnalysis(prompt);
       const results = this.parseAnalysisResults(analysis);
       
-      // Add metadata about which provider was used
+      // Add metadata about which provider was used and analysis tier
       results.analysisMetadata = {
         aiProvider: provider,
         timestamp: new Date().toISOString(),
         analysisType: 'ai-powered',
-        estimatedTokens: estimatedTokens
+        estimatedTokens: estimatedTokens,
+        tier: this.geminiOnlyMode ? 'Tier 2 (Gemini WebAuthn-Focused)' : 'Standard Multi-Provider',
+        mode: this.geminiOnlyMode ? 'gemini-only' : 'standard'
       };
       
       console.log(`📊 Analysis completed using: ${provider}`);
@@ -225,14 +284,16 @@ class WebAuthnSecurityAnalyzer {
       
     } catch (error) {
       console.error('❌ AI analysis failed:', error.message);
-      const fallbackResults = this.createFallbackAnalysis();
+      const fallbackResults = this.createTemplateAnalysis(changedFiles, prContext);
       
       // Add metadata about fallback analysis
       fallbackResults.analysisMetadata = {
         aiProvider: 'None (Template-based analysis)',
         timestamp: new Date().toISOString(),
         analysisType: 'template-fallback',
-        reason: error.message
+        reason: error.message,
+        tier: 'Tier 3 (Fallback)',
+        mode: this.templateOnlyMode ? 'template-only' : 'fallback'
       };
       
       console.log('📊 Analysis completed using: Template-based fallback');
@@ -376,6 +437,57 @@ JSON RESPONSE:
   "recommendations": ["specific fixes"],
   "requiresSecurityReview": <boolean>,
   "securityPatterns": {"good":[], "missing":[], "antipatterns":[]}
+}`;
+  }
+
+  buildWebAuthnFocusedPrompt(securityAgent, vulnerabilityDB, codeChanges, prContext) {
+    // Specialized prompt for Gemini-only mode with WebAuthn focus
+    const fileCount = Object.keys(codeChanges).length;
+    const webauthnVulns = vulnerabilityDB.vulnerabilities?.filter(v => 
+      v.type?.toLowerCase().includes('webauthn') || 
+      v.type?.toLowerCase().includes('credential') ||
+      v.type?.toLowerCase().includes('authentication') ||
+      v.type?.toLowerCase().includes('origin') ||
+      v.type?.toLowerCase().includes('poison')
+    ).slice(0, 5) || [];
+    
+    const webauthnContext = securityAgent.length > 1500 ? 
+      "WebAuthn vulnerability focus: PoisonSeed attacks, username enumeration (CVE-2024-39912), credential tampering, origin/RPID validation" :
+      securityAgent.substring(0, 1500);
+    
+    return `WebAuthn Security Analysis - Tier 2 Gemini Focus (${fileCount} files, Risk: ${prContext.riskLevel})
+
+🎯 SPECIALIZED WEBAUTHN VULNERABILITY ANALYSIS:
+${webauthnVulns.map(v => `• ${v.type}: ${v.description?.substring(0, 100)}...`).join('\n')}
+
+🔒 WEBAUTHN CONTEXT: ${webauthnContext}
+
+📁 FILES:
+${Object.entries(codeChanges).map(([file, data]) => 
+  `--- ${file} ---\n${data.content}`
+).join('\n\n')}
+
+🔍 PRIORITY WEBAUTHN SECURITY CHECKS:
+- PoisonSeed attack patterns (cross-origin credential abuse)
+- Username enumeration vulnerabilities (CVE-2024-39912)
+- Challenge reuse and replay attack vectors
+- Origin and RPID validation bypass attempts
+- Credential tampering and signature validation
+- Information leakage in WebAuthn error responses
+- Cross-origin authentication flow abuse
+- WebAuthn ceremony tampering
+
+💡 ASSUME Tier 1 handled: SQL injection, XSS, general OWASP issues
+FOCUS ON: WebAuthn-specific attack patterns and FIDO2 vulnerabilities
+
+JSON RESPONSE:
+{
+  "securityScore": <0-10>,
+  "vulnerabilitiesFound": [{"type":"", "severity":"", "location":"", "description":"", "recommendedFix":"", "webauthnSpecific": true}],
+  "recommendations": ["WebAuthn-specific fixes"],
+  "requiresSecurityReview": <boolean>,
+  "webauthnPatterns": {"goodPractices":[], "vulnerablePatterns":[], "missingProtections":[]},
+  "tierAnalysis": "Tier 2: WebAuthn-focused analysis by Gemini"
 }`;
   }
 
@@ -537,6 +649,118 @@ IMPORTANT: Provide your response as valid JSON only, with no additional text or 
       console.log('Raw AI response:', analysisText);
       return this.createFallbackAnalysis();
     }
+  }
+
+  createTemplateAnalysis(changedFiles, prContext) {
+    console.log('📋 Creating template-based security analysis...');
+    
+    // Analyze file patterns to determine potential security risks
+    const securityRisks = this.analyzeFilePatterns(changedFiles);
+    const templateScore = this.calculateTemplateScore(securityRisks, prContext);
+    
+    return {
+      securityScore: templateScore,
+      vulnerabilitiesFound: securityRisks.vulnerabilities,
+      recommendations: securityRisks.recommendations,
+      requiresSecurityReview: templateScore >= 4.0 || securityRisks.hasHighRiskPatterns,
+      securityPatterns: securityRisks.patterns,
+      testRecommendations: securityRisks.testRecommendations,
+      analysisType: 'template-based',
+      templateAnalysis: {
+        filePatterns: securityRisks.filePatterns,
+        riskFactors: securityRisks.riskFactors,
+        webauthnFiles: securityRisks.webauthnFiles
+      }
+    };
+  }
+
+  analyzeFilePatterns(changedFiles) {
+    const webauthnFiles = changedFiles.filter(file => 
+      file.includes('auth') || file.includes('webauthn') || file.includes('credential')
+    );
+    
+    const securityFiles = changedFiles.filter(file => 
+      file.includes('security') || file.includes('Security')
+    );
+    
+    const testFiles = changedFiles.filter(file => 
+      file.includes('test') && (file.includes('Security') || file.includes('Vulnerability'))
+    );
+    
+    const configFiles = changedFiles.filter(file => 
+      file.endsWith('.yml') || file.endsWith('.yaml') || file.includes('Dockerfile')
+    );
+    
+    const vulnerabilities = [];
+    const recommendations = [];
+    const riskFactors = [];
+    
+    // Analyze WebAuthn files
+    if (webauthnFiles.length > 0) {
+      riskFactors.push('WebAuthn authentication files modified');
+      recommendations.push('Review WebAuthn implementation for PoisonSeed attack protection');
+      recommendations.push('Verify username enumeration protection (CVE-2024-39912)');
+      
+      vulnerabilities.push({
+        type: 'WebAuthn Implementation Change',
+        severity: 'MEDIUM',
+        location: webauthnFiles.join(', '),
+        description: 'Changes to WebAuthn authentication logic require security review',
+        recommendedFix: 'Verify against WebAuthn security best practices'
+      });
+    }
+    
+    // Analyze security files
+    if (securityFiles.length > 0) {
+      riskFactors.push('Security component files modified');
+      recommendations.push('Review security logic changes for potential bypasses');
+    }
+    
+    // Analyze config files
+    if (configFiles.length > 0) {
+      riskFactors.push('Infrastructure configuration files modified');
+      recommendations.push('Review configuration changes for security implications');
+    }
+    
+    return {
+      vulnerabilities,
+      recommendations: [...recommendations, 'Run security tests: ./gradlew test --tests="*VulnerabilityProtectionTest*"'],
+      patterns: {
+        good: testFiles.length > 0 ? ['Security tests included'] : [],
+        missing: testFiles.length === 0 ? ['No security tests updated'] : [],
+        antipatterns: []
+      },
+      testRecommendations: [{
+        testType: 'Existing Security Tests',
+        description: 'Run existing vulnerability protection tests',
+        priority: 'HIGH'
+      }],
+      filePatterns: {
+        webauthn: webauthnFiles.length,
+        security: securityFiles.length,
+        tests: testFiles.length,
+        config: configFiles.length
+      },
+      riskFactors,
+      webauthnFiles,
+      hasHighRiskPatterns: webauthnFiles.length > 2 || securityFiles.length > 1
+    };
+  }
+  
+  calculateTemplateScore(securityRisks, prContext) {
+    let score = 3.0; // Base score
+    
+    // Increase score based on risk factors
+    if (securityRisks.webauthnFiles.length > 0) score += 1.0;
+    if (securityRisks.filePatterns.security > 0) score += 1.0;
+    if (securityRisks.hasHighRiskPatterns) score += 1.5;
+    
+    // Adjust based on PR risk level
+    if (prContext.riskLevel === 'HIGH') score += 1.0;
+    else if (prContext.riskLevel === 'CRITICAL') score += 2.0;
+    else if (prContext.riskLevel === 'MINIMAL') score -= 1.0;
+    
+    return Math.min(Math.max(score, 1.0), 10.0);
   }
 
   createFallbackAnalysis() {

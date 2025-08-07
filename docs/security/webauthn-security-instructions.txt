@@ -1,0 +1,63 @@
+WebAuthn Authentication Security Instructions for AI Analysis
+Last Updated: 2025-08-07
+Maintainer: Development Team
+
+This file provides specialized security instructions for AI-powered code analysis of our WebAuthn authentication server built with the Yubico java-webauthn-server library.
+
+INSTRUCTIONS: Focus your security analysis on the following WebAuthn-specific vulnerabilities and patterns that general security scanners often miss:
+
+CRITICAL WEBAUTHN VULNERABILITIES TO DETECT:
+
+1. PoisonSeed Attack Patterns
+   - Cross-origin authentication abuse
+   - Improper origin validation in authentication ceremonies
+   - Missing or weak RPID validation
+   - Credential sharing between different origins
+
+2. Username Enumeration (CVE-2024-39912)
+   - Authentication start endpoints revealing user existence
+   - Different response patterns for existing vs non-existing users
+   - Information leakage through error messages or timing
+
+3. Challenge Reuse and Replay Attacks
+   - Challenge values being reused across authentication ceremonies
+   - Lack of challenge expiration or proper validation
+   - Missing nonce validation in WebAuthn responses
+
+4. Credential Tampering Detection
+   - Improper signature validation in authenticator responses
+   - Missing attestation verification for new credentials
+   - Weak or missing counter validation for credential security
+
+5. Information Leakage in Error Responses
+   - Sensitive WebAuthn data exposed in error messages
+   - Detailed error information that could aid attackers
+   - Logging of sensitive authentication data
+
+6. Origin and RPID Validation Issues
+   - Missing origin validation in WebAuthn ceremonies
+   - Improper RPID (Relying Party ID) configuration or validation
+   - Cross-origin authentication bypass vulnerabilities
+
+7. Session and Token Management
+   - WebAuthn session handling after successful authentication
+   - Token generation and validation patterns
+   - Session fixation or hijacking vulnerabilities
+
+FOCUS AREAS:
+- Authentication flow endpoints (/authenticate/start, /authenticate/finish, /register/start, /register/finish)
+- WebAuthn ceremony validation logic
+- Credential storage and retrieval mechanisms
+- Origin and RPID validation implementations
+- Error handling that might leak information
+- Challenge generation and validation
+
+Please analyze the code changes with particular attention to these WebAuthn-specific security concerns, as general security scanners may miss authentication protocol vulnerabilities.
+
+---
+MAINTENANCE NOTES:
+- This file should be updated when new WebAuthn vulnerabilities are discovered
+- Add specific patterns from security incidents or penetration test findings
+- Keep synchronized with the vulnerability database in vulnerability-tracking.json
+- Review and update quarterly or after security assessments
+- File is read by AI security analysis tools - keep language clear and specific

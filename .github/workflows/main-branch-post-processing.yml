@@ -94,6 +94,11 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
         continue-on-error: true  # Don't fail if DockerHub credentials missing
 
+      - name: Checkout repository for change detection
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Check WebAuthn Server changes
         id: check-server
         run: |
@@ -406,7 +411,8 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "🎯 Generating version for TypeScript client library"
+          echo "🎯 Using unified version manager"
+          echo "Event: $GITHUB_EVENT_NAME, Run: $GITHUB_RUN_NUMBER"
           ./scripts/core/version-manager.sh generate
 
       - name: Generate TypeScript client from OpenAPI spec
@@ -439,21 +445,21 @@ jobs:
           echo "🔧 Updating TypeScript client version to: $CLIENT_VERSION"
           cd web-test-client/generated-client
 
-          # Generate package.json with proper npm metadata
+          # Generate package.json with proper npm metadata - using heredoc approach from working reference
           PACKAGE_NAME="${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}"
-          cat > package.json << 'EOF'
+          cat > package.json << EOF
           {
-          "name": "PACKAGE_NAME_PLACEHOLDER",
-          "version": "CLIENT_VERSION_PLACEHOLDER",
+          "name": "$PACKAGE_NAME",
+          "version": "$CLIENT_VERSION",
           "description": "TypeScript/JavaScript client for MPO WebAuthn API",
           "author": "MPO WebAuthn Server Team",
           "repository": {
            "type": "git",
-           "url": "REPOSITORY_URL_PLACEHOLDER"
+           "url": "https://github.com/${{ github.repository }}.git"
           },
-          "homepage": "HOMEPAGE_PLACEHOLDER",
+          "homepage": "https://github.com/${{ github.repository }}#readme",
           "bugs": {
-           "url": "BUGS_URL_PLACEHOLDER"
+           "url": "https://github.com/${{ github.repository }}/issues"
           },
           "keywords": [
            "webauthn",
@@ -487,13 +493,6 @@ jobs:
           }
           EOF
 
-          # Replace placeholders with actual values
-          sed -i "s/PACKAGE_NAME_PLACEHOLDER/$PACKAGE_NAME/g" package.json
-          sed -i "s/CLIENT_VERSION_PLACEHOLDER/$CLIENT_VERSION/g" package.json
-          sed -i "s|REPOSITORY_URL_PLACEHOLDER|https://github.com/${{ github.repository }}.git|g" package.json
-          sed -i "s|HOMEPAGE_PLACEHOLDER|https://github.com/${{ github.repository }}#readme|g" package.json
-          sed -i "s|BUGS_URL_PLACEHOLDER|https://github.com/${{ github.repository }}/issues|g" package.json
-
           echo "Generated package.json for: $PACKAGE_NAME"
 
           # Install dependencies and build
@@ -519,7 +518,7 @@ jobs:
           echo "✅ TypeScript client published successfully to npm registry"
 
       - name: Create GitHub Release for TypeScript Library
-        if: steps.generate-version.outputs.is-prerelease == 'false'
+        if: steps.generate-version.outputs.is-prerelease == 'false' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "npm-client-v${{ steps.generate-version.outputs.version }}"
@@ -598,7 +597,8 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
-          echo "🎯 Generating version for Android client library"
+          echo "🎯 Using unified version manager"
+          echo "Event: $GITHUB_EVENT_NAME, Run: $GITHUB_RUN_NUMBER"
           ./scripts/core/version-manager.sh generate
 
       - name: Generate Android client from OpenAPI spec
@@ -633,10 +633,10 @@ jobs:
             -PclientVersion="${CLIENT_VERSION}" \
             --build-cache --parallel --configuration-cache --no-daemon --info
 
-          echo "✅ Android client published successfully to GitHub Packages"
+          echo "✅ Android client published successfully"
 
       - name: Create GitHub Release for Android Client Library
-        if: steps.generate-version.outputs.is-prerelease == 'false'
+        if: steps.generate-version.outputs.is-prerelease == 'false' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: "android-client-v${{ steps.generate-version.outputs.version }}"

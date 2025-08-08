@@ -120,12 +120,12 @@ jobs:
           WEBAUTHN_DOCKER="${{ steps.changes.outputs.webauthn-server-docker }}"
           TEST_CREDS_TESTS="${{ steps.changes.outputs.test-credentials-tests }}"
           TEST_CREDS_DOCKER="${{ steps.changes.outputs.test-credentials-docker }}"
-          
+
           echo "🧮 Applying Decision Matrix Logic..."
           echo ""
           echo "📋 Reference Decision Matrix:"
           echo "| Change Type        | Unit Tests | Docker Build | E2E Tests |"
-          echo "|--------------------|-----------|-------------|-----------|" 
+          echo "|--------------------|-----------|-------------|-----------|"
           echo "| Documentation only |    ❌ Skip |     ❌ Skip |  ❌ Skip |"
           echo "| Workflow changes   |    ❌ Skip |     ❌ Skip |  ❌ Skip |"
           echo "| Source code        |     ✅ Run |      ✅ Build |   ✅ Run |"
@@ -139,10 +139,10 @@ jobs:
           echo "  3️⃣ Documentation-only changes: $([ "$DOCS_CHANGED" = "true" ] && [ "$WORKFLOWS_CHANGED" = "false" ] && echo "YES" || echo "no") (only if no code/docker changes)"
           echo "  4️⃣ Workflow-only changes: $([ "$WORKFLOWS_CHANGED" = "true" ] && [ "$DOCS_CHANGED" = "false" ] && echo "YES" || echo "no") (only if no code/docker changes)"
           echo ""
-          
+
           # Calculate decision matrix categories based on PRIORITY ORDER
           # Higher priority conditions override lower priority ones
-          
+
           # Priority 1: Source code changes (any test changes) - highest priority
           if [[ "$WEBAUTHN_TESTS" == "true" ]] || [[ "$TEST_CREDS_TESTS" == "true" ]]; then
             echo "source-code-changes=true" >> $GITHUB_OUTPUT
@@ -216,7 +216,7 @@ jobs:
             echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
             DECISION="No significant changes detected"
           fi
-          
+
           echo "🎯 Decision: $DECISION"
 
       - name: Print execution strategy
@@ -234,7 +234,7 @@ jobs:
           echo "  • Should run unit tests: ${{ steps.decision-matrix.outputs.should-run-tests }}"
           echo "  • Should build Docker images: ${{ steps.decision-matrix.outputs.should-build-docker }}"
           echo ""
-          
+
           if [[ "${{ steps.decision-matrix.outputs.source-code-changes }}" == "true" ]]; then
             echo "✅ Source code changes - Will run unit tests AND build Docker images for E2E tests"
             echo "    🧪 Unit Tests: ENABLED (source code changed)"
@@ -336,9 +336,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ detect-changes, run-unit-tests ]
     if: |
-      needs.detect-changes.outputs.should-build-docker == 'true' && 
-      (needs.run-unit-tests.result == 'success' || 
-       needs.run-unit-tests.result == 'skipped' || 
+      always() &&
+      needs.detect-changes.outputs.should-build-docker == 'true' &&
+      (needs.run-unit-tests.result == 'success' ||
+       needs.run-unit-tests.result == 'skipped' ||
        needs.detect-changes.outputs.should-run-tests == 'false')
     permissions:
       contents: read
@@ -470,7 +471,7 @@ jobs:
           echo "Dockerfile-only changes: ${{ needs.detect-changes.outputs.dockerfile-only-changes }}"
           echo "Unit tests: ${{ needs.run-unit-tests.result }}"
           echo "Docker images built: ${{ needs.build-docker-images.result == 'success' }}"
-          
+
           if [[ "${{ needs.build-docker-images.result }}" == "success" ]]; then
             echo "✅ Docker images successfully built:"
             echo "  WebAuthn Server: ${{ needs.build-docker-images.outputs.webauthn-server-image }}"

@@ -126,6 +126,18 @@ Task: "[Detailed description of work to be done systematically]"
 - **✅ Scripts must use environment variables**: Not GitHub Actions context objects
 - **✅ Include cross-platform fetch helpers** for Node.js compatibility
 
+#### **Common Shell Script Pitfalls:**
+- **❌ Function ordering issues**: Functions must be defined before first call (move `log()` to script top)
+- **❌ Case sensitivity errors**: Use `elif` not `Elif`, `then` not `Then`, etc.
+- **❌ Action version assumptions**: Verify tagged versions exist, use `@main` if no `@v1` available
+- **✅ Test scripts locally** before committing to catch syntax errors
+- **✅ Use `set -euo pipefail`** for proper error handling
+
+#### **Recently Fixed Issues (Manual Fixes Applied):**
+1. **analyze-pr.sh Function Ordering**: `log` function called before definition - moved function to top of script
+2. **generate-tests.sh Syntax Error**: `Elif` used instead of `elif` on line 39 - case sensitivity issue
+3. **claude-code-security-review Action**: Used `@v1` but only `@main` exists - verify action versions before use
+
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 
 **AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**

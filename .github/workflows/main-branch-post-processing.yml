@@ -47,6 +47,13 @@ env:
   DOCKER_TEST_CREDENTIALS_IMAGE_NAME: hitoshura25/webauthn-test-credentials-service
   DOCKERHUB_SERVER_REPO: hitoshura25/webauthn-server
   DOCKERHUB_TEST_CREDENTIALS_REPO: hitoshura25/webauthn-test-credentials-service
+  
+  # 3-Tier AI Security Analysis Configuration
+  GEMINI_ONLY_MODE: false
+  TEMPLATE_ONLY_MODE: false
+  
+  # Docker Security Analysis Focus
+  DOCKER_SECURITY_CONTEXT: "WebAuthn container security with FIDO2 authentication focus"
 
 permissions:
   # Workflow-level permissions: minimal by default
@@ -165,9 +172,9 @@ jobs:
         with:
           sarif_file: docker-security-scan-results.json
 
-  # Job 3: AI-Enhanced Security Analysis (After scanning)
+  # Job 3: 3-Tier AI-Enhanced Security Analysis (After scanning)
   ai-security-analysis:
-    name: AI-Enhanced security analysis
+    name: 3-Tier AI-Enhanced Docker security analysis
     runs-on: ubuntu-latest
     needs: [ detect-changes, docker-security-scan ]
     if: needs.detect-changes.outputs.any-changes == 'true'
@@ -190,16 +197,39 @@ jobs:
         with:
           name: docker-security-scan-results
 
-      - name: Install AI analysis dependencies
+      - name: Install 3-Tier AI analysis dependencies
         run: |
-          npm install @anthropic-ai/sdk || echo "SDK installation optional for this job"
+          echo "📦 Installing AI analysis dependencies for 3-tier system..."
+          npm install --save-dev \
+            @anthropic-ai/sdk \
+            @google/generative-ai \
+            typescript \
+            ts-node \
+            @types/node || echo "⚠️ AI SDK installation failed, will use template analysis"
 
-      - name: AI-Enhanced Vulnerability Analysis
+      - name: 3-Tier AI-Enhanced Docker Security Analysis
         env:
+          # AI Provider Configuration
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          
+          # Analysis Mode Configuration  
+          GEMINI_ONLY_MODE: ${{ env.GEMINI_ONLY_MODE }}
+          TEMPLATE_ONLY_MODE: ${{ env.TEMPLATE_ONLY_MODE }}
+          
+          # Docker Security Context
           SCAN_RESULTS: ${{ needs.docker-security-scan.outputs.scan-results }}
           CRITICAL_VULN_COUNT: ${{ needs.docker-security-scan.outputs.critical-vulnerabilities }}
+          DOCKER_SECURITY_CONTEXT: ${{ env.DOCKER_SECURITY_CONTEXT }}
+          
+          # Analysis Metadata
+          WORKFLOW_TYPE: "docker-security-analysis"
+          IMAGE_NAMES: "${{ env.DOCKER_IMAGE_NAME }},${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
         run: |
+          echo "🤖 Starting 3-Tier AI-Enhanced Docker Security Analysis"
+          echo "🎯 Analysis Mode: Standard (Anthropic → Gemini → Template)"
+          echo "🐳 Docker Images: ${{ env.DOCKER_IMAGE_NAME }}, ${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
+          
           chmod +x scripts/ci/ai-docker-security-analyzer.cjs
           node scripts/ci/ai-docker-security-analyzer.cjs
 

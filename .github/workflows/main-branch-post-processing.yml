@@ -37,7 +37,7 @@ name: Main Branch Post-Processing
 
 on:
   workflow_run:
-    workflows: [ ".github/workflows/main-ci-cd.yml" ]
+    workflows: [ "Main CI/CD Pipeline" ]
     branches: [ main ]
     types: [ completed ]
 

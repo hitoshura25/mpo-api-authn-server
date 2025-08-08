@@ -45,24 +45,12 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      # Raw change detection outputs
-      docs-changed: ${{ steps.changes.outputs.docs-changed }}
-      workflows-changed: ${{ steps.changes.outputs.workflows-changed }}
-      webauthn-server-tests: ${{ steps.changes.outputs.webauthn-server-tests }}
-      webauthn-server-docker: ${{ steps.changes.outputs.webauthn-server-docker }}
-      test-credentials-tests: ${{ steps.changes.outputs.test-credentials-tests }}
-      test-credentials-docker: ${{ steps.changes.outputs.test-credentials-docker }}
-      # Derived decision matrix outputs (calculated in decision-matrix step)
-      docs-only: ${{ steps.decision-matrix.outputs.docs-only }}
-      workflows-only: ${{ steps.decision-matrix.outputs.workflows-only }}
-      source-code-changes: ${{ steps.decision-matrix.outputs.source-code-changes }}
-      tests-only-changes: ${{ steps.decision-matrix.outputs.tests-only-changes }}
-      dockerfile-only-changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }}
-      build-config-changes: ${{ steps.decision-matrix.outputs.build-config-changes }}
-      # Legacy outputs for compatibility
-      any-docker-changes: ${{ steps.decision-matrix.outputs.should-build-docker }}
-      any-test-changes: ${{ steps.decision-matrix.outputs.should-run-tests }}
-      fast-path-eligible: ${{ steps.decision-matrix.outputs.fast-path-eligible }}
+      # Core decision outputs - used by other jobs/steps in this workflow
+      should-build-docker: ${{ steps.decision-matrix.outputs.should-build-docker }}        # Used by: build-docker-images job condition & reporting
+      should-run-tests: ${{ steps.decision-matrix.outputs.should-run-tests }}              # Used by: run-unit-tests job condition & reporting
+      fast-path-eligible: ${{ steps.decision-matrix.outputs.fast-path-eligible }}          # Used by: reporting steps for status display
+      source-code-changes: ${{ steps.decision-matrix.outputs.source-code-changes }}        # Used by: reporting step to show change type
+      dockerfile-only-changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }} # Used by: reporting step to show change type
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

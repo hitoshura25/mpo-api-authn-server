@@ -197,7 +197,11 @@ jobs:
   build-docker-images:
     runs-on: ubuntu-latest
     needs: [ detect-changes, run-unit-tests ]
-    if: needs.detect-changes.outputs.any-docker-changes == 'true' && (needs.run-unit-tests.result == 'success' || needs.run-unit-tests.result == 'skipped')
+    if: |
+      needs.detect-changes.outputs.any-docker-changes == 'true' && 
+      (needs.run-unit-tests.result == 'success' || 
+       needs.run-unit-tests.result == 'skipped' || 
+       needs.detect-changes.outputs.any-test-changes == 'false')
     permissions:
       contents: read
       packages: write

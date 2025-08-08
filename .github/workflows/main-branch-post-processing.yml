@@ -162,7 +162,15 @@ jobs:
         id: security-scan
         run: |
           chmod +x scripts/docker/scan-security.sh
-          scripts/docker/scan-security.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}"
+          echo "🔍 Starting Docker security scanning with detailed logging..."
+          set -x  # Enable verbose logging for debugging
+          scripts/docker/scan-security.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}" || {
+            echo "❌ Security scan failed - check logs above for details"
+            echo "📋 Listing available scan files for debugging:"
+            ls -la *.json *.sarif 2>/dev/null || echo "No scan files found"
+            exit 1
+          }
+          set +x  # Disable verbose logging
 
       - name: Upload scan results
         if: always()
@@ -174,6 +182,8 @@ jobs:
             *-vulns.json
             *-secrets.json
             *-config.json
+            *.sarif
+            scan-security.log
 
       - name: Upload scan results to GitHub Security
         if: always()
@@ -384,7 +394,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success'
     permissions:
-      contents: read
+      contents: write  # Required for creating GitHub releases
       packages: write
     steps:
       - name: Checkout repository
@@ -407,12 +417,11 @@ jobs:
         id: generate-version
         env:
           BASE_VERSION: ${{ env.BASE_VERSION }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          echo "🎯 Using unified version manager"
-          echo "Event: $GITHUB_EVENT_NAME, Run: $GITHUB_RUN_NUMBER"
+          echo "🎯 Generating TypeScript client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
       - name: Generate TypeScript client from OpenAPI spec
@@ -570,7 +579,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success'
     permissions:
-      contents: read
+      contents: write  # Required for creating GitHub releases
       packages: write
     steps:
       - name: Checkout repository
@@ -593,12 +602,11 @@ jobs:
         id: generate-version
         env:
           BASE_VERSION: ${{ env.BASE_VERSION }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          echo "🎯 Using unified version manager"
-          echo "Event: $GITHUB_EVENT_NAME, Run: $GITHUB_RUN_NUMBER"
+          echo "🎯 Generating Android client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
       - name: Generate Android client from OpenAPI spec

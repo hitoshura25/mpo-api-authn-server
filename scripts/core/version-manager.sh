@@ -12,50 +12,89 @@ EVENT_NAME="${GITHUB_EVENT_NAME:-push}"
 REF_NAME="${GITHUB_REF_NAME:-main}"
 GITHUB_PR_NUMBER="${GITHUB_PR_NUMBER:-}"
 
+# Get version continuity from existing git tags
+get_next_build_number() {
+    echo "🔍 Checking existing client library tags for version continuity..." >&2
+    
+    # Get the highest existing version from git tags to ensure continuity
+    local highest_npm_tag highest_android_tag highest_version
+    
+    highest_npm_tag=$(git tag -l "npm-client-v*" 2>/dev/null | sed 's/npm-client-v//' | sort -V | tail -1 || echo "")
+    highest_android_tag=$(git tag -l "android-client-v*" 2>/dev/null | sed 's/android-client-v//' | sort -V | tail -1 || echo "")
+    
+    # Find the highest version between npm and android tags
+    if [[ -n "$highest_npm_tag" && -n "$highest_android_tag" ]]; then
+        highest_version=$(printf '%s\n%s' "$highest_npm_tag" "$highest_android_tag" | sort -V | tail -1)
+    elif [[ -n "$highest_npm_tag" ]]; then
+        highest_version="$highest_npm_tag"
+    elif [[ -n "$highest_android_tag" ]]; then
+        highest_version="$highest_android_tag"
+    else
+        highest_version=""
+    fi
+    
+    if [[ -n "$highest_version" ]]; then
+        # Extract build number and increment (e.g., 1.0.32 -> 33)
+        local current_build next_build
+        current_build=$(echo "$highest_version" | cut -d. -f3)
+        next_build=$((current_build + 1))
+        echo "📈 Highest existing client version: $highest_version, using next build: $next_build" >&2
+        echo "$next_build"
+    else
+        # No existing client tags, use provided build number
+        echo "🆕 No existing client tags found, starting with build: $BUILD_NUMBER" >&2
+        echo "$BUILD_NUMBER"
+    fi
+}
+
 # Generate version based on event type and branch
 generate_version() {
     local version
     local is_prerelease
+    local actual_build_number
+    
+    # Get the actual build number (may be adjusted for continuity)
+    actual_build_number=$(get_next_build_number)
     
     case "$EVENT_NAME" in
         "push")
             if [[ "$REF_NAME" == "main" ]]; then
                 # Main branch: patch version increment with build number
                 # Convert 1.0 + build 26 → 1.0.26 (npm-safe 3-part version)
-                version="${BASE_VERSION}.${BUILD_NUMBER}"
+                version="${BASE_VERSION}.${actual_build_number}"
                 is_prerelease="false"
                 echo "📦 Main branch release: $version" >&2
             else
                 # Other branches (shouldn't happen with current config, but defensive)
                 branch_name=$(echo "$REF_NAME" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
-                version="${BASE_VERSION}.0-${branch_name}.${BUILD_NUMBER}"
+                version="${BASE_VERSION}.0-${branch_name}.${actual_build_number}"
                 is_prerelease="true"
                 echo "🌿 Branch release: $version" >&2
             fi
             ;;
         "pull_request")
             # PR: prerelease version with PR and build identifiers (npm-safe)
-            pr_number="${GITHUB_PR_NUMBER:-${BUILD_NUMBER}}"
-            version="${BASE_VERSION}.0-pr.${pr_number}.${BUILD_NUMBER}"
+            pr_number="${GITHUB_PR_NUMBER:-${actual_build_number}}"
+            version="${BASE_VERSION}.0-pr.${pr_number}.${actual_build_number}"
             is_prerelease="true"
             echo "🔄 PR snapshot release: $version" >&2
             ;;
         "workflow_dispatch")
-            # Manual dispatch: use base version
-            version="${BASE_VERSION}.0"
+            # Manual dispatch: use base version with continuity
+            version="${BASE_VERSION}.${actual_build_number}"
             is_prerelease="false"
             echo "🚀 Manual release: $version" >&2
             ;;
         "workflow_run")
             # Workflow run (e.g., main-branch-post-processing): treat as main branch release
             # This runs after successful main branch CI/CD completion
-            version="${BASE_VERSION}.${BUILD_NUMBER}"
+            version="${BASE_VERSION}.${actual_build_number}"
             is_prerelease="false"
             echo "📦 Post-processing release: $version" >&2
             ;;
         *)
             # Default case
-            version="${BASE_VERSION}.0-unknown.${BUILD_NUMBER}"
+            version="${BASE_VERSION}.0-unknown.${actual_build_number}"
             is_prerelease="true"
             echo "❓ Unknown event release: $version" >&2
             ;;

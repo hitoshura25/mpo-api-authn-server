@@ -384,7 +384,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success'
     permissions:
-      contents: read
+      contents: write  # Required for creating GitHub releases
       packages: write
     steps:
       - name: Checkout repository
@@ -407,12 +407,11 @@ jobs:
         id: generate-version
         env:
           BASE_VERSION: ${{ env.BASE_VERSION }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          echo "🎯 Using unified version manager"
-          echo "Event: $GITHUB_EVENT_NAME, Run: $GITHUB_RUN_NUMBER"
+          echo "🎯 Generating TypeScript client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
       - name: Generate TypeScript client from OpenAPI spec
@@ -570,7 +569,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success'
     permissions:
-      contents: read
+      contents: write  # Required for creating GitHub releases
       packages: write
     steps:
       - name: Checkout repository
@@ -593,12 +592,11 @@ jobs:
         id: generate-version
         env:
           BASE_VERSION: ${{ env.BASE_VERSION }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          echo "🎯 Using unified version manager"
-          echo "Event: $GITHUB_EVENT_NAME, Run: $GITHUB_RUN_NUMBER"
+          echo "🎯 Generating Android client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
       - name: Generate Android client from OpenAPI spec

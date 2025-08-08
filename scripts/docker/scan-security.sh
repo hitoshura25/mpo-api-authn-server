@@ -32,7 +32,9 @@ set -euo pipefail
 
 # Function to log with timestamp
 log() {
-    echo "$(date '+%Y-%m-%d %H:%M:%S') - $*"
+    local message="$(date '+%Y-%m-%d %H:%M:%S') - $*"
+    echo "$message"
+    echo "$message" >> "scan-security.log"
 }
 
 # Function to install Trivy scanner
@@ -94,10 +96,11 @@ EOF
     local image_basename
     image_basename="${image_name##*/}"
     
-    # Vulnerability scan with Trivy
+    # Vulnerability scan with Trivy - generate both JSON for processing and SARIF for GitHub
     log "  📋 Running vulnerability scan..."
-    if trivy image --format json --output "${image_basename}-vulns.json" "$full_image" 2>/dev/null; then
-        log "  ✅ Vulnerability scan completed"
+    if trivy image --format json --output "${image_basename}-vulns.json" "$full_image" 2>/dev/null && \
+       trivy image --format sarif --output "${image_basename}-vulns.sarif" "$full_image" 2>/dev/null; then
+        log "  ✅ Vulnerability scan completed (JSON + SARIF)"
         
         # Count critical and high vulnerabilities
         local critical_count high_count total_count
@@ -110,8 +113,13 @@ EOF
         
         log "    📊 Found $critical_count CRITICAL, $high_count HIGH, $total_count total vulnerabilities"
         
-        # Update scan result
-        scan_entry=$(echo "$scan_entry" | jq ".scans.vulnerabilities = $(cat "${image_basename}-vulns.json")")
+        # Update scan result - use jq with file input to avoid argument length limits
+        local temp_scan_file
+        temp_scan_file=$(mktemp)
+        echo "$scan_entry" > "$temp_scan_file"
+        jq --slurpfile vulns "${image_basename}-vulns.json" '.scans.vulnerabilities = $vulns[0]' "$temp_scan_file" > "${temp_scan_file}.tmp"
+        scan_entry=$(cat "${temp_scan_file}.tmp")
+        rm -f "$temp_scan_file" "${temp_scan_file}.tmp"
     else
         log "  ❌ Vulnerability scan failed"
         scan_success=false
@@ -122,7 +130,13 @@ EOF
     log "  🔐 Running secret scan..."
     if trivy image --scanners secret --format json --output "${image_basename}-secrets.json" "$full_image" 2>/dev/null; then
         log "  ✅ Secret scan completed"
-        scan_entry=$(echo "$scan_entry" | jq ".scans.secrets = $(cat "${image_basename}-secrets.json")")
+        # Update scan result - use jq with file input to avoid argument length limits
+        local temp_scan_file
+        temp_scan_file=$(mktemp)
+        echo "$scan_entry" > "$temp_scan_file"
+        jq --slurpfile secrets "${image_basename}-secrets.json" '.scans.secrets = $secrets[0]' "$temp_scan_file" > "${temp_scan_file}.tmp"
+        scan_entry=$(cat "${temp_scan_file}.tmp")
+        rm -f "$temp_scan_file" "${temp_scan_file}.tmp"
     else
         log "  ⚠️ Secret scan failed or no secrets found"
     fi
@@ -131,15 +145,30 @@ EOF
     log "  ⚙️ Running configuration scan..."
     if trivy image --scanners config --format json --output "${image_basename}-config.json" "$full_image" 2>/dev/null; then
         log "  ✅ Configuration scan completed"
-        scan_entry=$(echo "$scan_entry" | jq ".scans.config = $(cat "${image_basename}-config.json")")
+        # Update scan result - use jq with file input to avoid argument length limits  
+        local temp_scan_file
+        temp_scan_file=$(mktemp)
+        echo "$scan_entry" > "$temp_scan_file"
+        jq --slurpfile config "${image_basename}-config.json" '.scans.config = $config[0]' "$temp_scan_file" > "${temp_scan_file}.tmp"
+        scan_entry=$(cat "${temp_scan_file}.tmp")
+        rm -f "$temp_scan_file" "${temp_scan_file}.tmp"
     else
         log "  ⚠️ Configuration scan failed"
     fi
     
-    # Add to results
-    local temp_file
+    # Add to results - use jq with file input to avoid argument length limits
+    local temp_file temp_scan_entry_file
     temp_file=$(mktemp)
-    jq ".scans += [$scan_entry]" "$SCAN_RESULTS_FILE" > "$temp_file" && mv "$temp_file" "$SCAN_RESULTS_FILE"
+    temp_scan_entry_file=$(mktemp)
+    
+    # Write scan entry to temp file
+    echo "$scan_entry" > "$temp_scan_entry_file"
+    
+    # Use jq to merge files instead of command line variables
+    jq --slurpfile new_scan "$temp_scan_entry_file" '.scans += $new_scan' "$SCAN_RESULTS_FILE" > "$temp_file" && mv "$temp_file" "$SCAN_RESULTS_FILE"
+    
+    # Clean up temp files
+    rm -f "$temp_scan_entry_file"
     
     return $([[ "$scan_success" == true ]] && echo 0 || echo 1)
 }
@@ -160,6 +189,14 @@ perform_security_scan() {
     # Initialize results file
     echo '{"timestamp": "'$(date -Iseconds)'", "scans": []}' > "$SCAN_RESULTS_FILE"
     
+    # Initialize SARIF results file for GitHub Security
+    local sarif_results_file="docker-security-scan-results.sarif"
+    echo '{
+        "version": "2.1.0",
+        "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+        "runs": []
+    }' > "$sarif_results_file"
+    
     # Scan images that have changes
     if [[ "$webauthn_changed" == "true" ]]; then
         if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}" "latest"; then
@@ -171,6 +208,44 @@ perform_security_scan() {
         if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}" "latest"; then
             SCAN_SUCCESS=false
         fi
+    fi
+    
+    # Consolidate SARIF files for GitHub Security upload
+    log "📄 Consolidating SARIF results for GitHub Security..."
+    local consolidated_sarif="docker-security-scan-results.json"
+    
+    # Find all SARIF files and merge them
+    local sarif_files=(*.sarif)
+    if [ -e "${sarif_files[0]}" ]; then
+        # Create consolidated SARIF by merging all individual SARIF files
+        local temp_sarif
+        temp_sarif=$(mktemp)
+        
+        # Start with first SARIF file
+        cp "${sarif_files[0]}" "$temp_sarif"
+        
+        # Merge additional SARIF files if they exist
+        for sarif_file in "${sarif_files[@]:1}"; do
+            if [ -f "$sarif_file" ]; then
+                # Merge the runs array from each SARIF file
+                jq --slurpfile additional "$sarif_file" '.runs += $additional[].runs' "$temp_sarif" > "${temp_sarif}.tmp"
+                mv "${temp_sarif}.tmp" "$temp_sarif"
+            fi
+        done
+        
+        # Copy final consolidated SARIF to expected filename
+        cp "$temp_sarif" "$consolidated_sarif"
+        rm -f "$temp_sarif"
+        
+        log "  ✅ SARIF consolidation completed: $consolidated_sarif"
+    else
+        # No SARIF files found, create empty valid SARIF
+        echo '{
+            "version": "2.1.0",
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "runs": []
+        }' > "$consolidated_sarif"
+        log "  ⚠️ No SARIF files found, created empty SARIF file"
     fi
     
     # Generate scan summary

@@ -162,7 +162,15 @@ jobs:
         id: security-scan
         run: |
           chmod +x scripts/docker/scan-security.sh
-          scripts/docker/scan-security.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}"
+          echo "🔍 Starting Docker security scanning with detailed logging..."
+          set -x  # Enable verbose logging for debugging
+          scripts/docker/scan-security.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}" || {
+            echo "❌ Security scan failed - check logs above for details"
+            echo "📋 Listing available scan files for debugging:"
+            ls -la *.json *.sarif 2>/dev/null || echo "No scan files found"
+            exit 1
+          }
+          set +x  # Disable verbose logging
 
       - name: Upload scan results
         if: always()
@@ -174,6 +182,8 @@ jobs:
             *-vulns.json
             *-secrets.json
             *-config.json
+            *.sarif
+            scan-security.log
 
       - name: Upload scan results to GitHub Security
         if: always()

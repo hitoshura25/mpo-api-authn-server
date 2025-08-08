@@ -37,7 +37,7 @@ name: Main Branch Post-Processing
 
 on:
   workflow_run:
-    workflows: [ "main-ci-cd.yml" ]
+    workflows: [ ".github/workflows/main-ci-cd.yml" ]
     branches: [ main ]
     types: [ completed ]
 
@@ -47,16 +47,16 @@ env:
   DOCKER_TEST_CREDENTIALS_IMAGE_NAME: hitoshura25/webauthn-test-credentials-service
   DOCKERHUB_SERVER_REPO: hitoshura25/webauthn-server
   DOCKERHUB_TEST_CREDENTIALS_REPO: hitoshura25/webauthn-test-credentials-service
-  
+
   # Client Library Publishing Configuration
   BASE_VERSION: "1.0"
   NPM_SCOPE: "@vmenon25"
   NPM_PACKAGE_NAME: "mpo-webauthn-client"
-  
+
   # 3-Tier AI Security Analysis Configuration
   GEMINI_ONLY_MODE: false
   TEMPLATE_ONLY_MODE: false
-  
+
   # Docker Security Analysis Focus
   DOCKER_SECURITY_CONTEXT: "WebAuthn container security with FIDO2 authentication focus"
 
@@ -217,16 +217,16 @@ jobs:
           # AI Provider Configuration
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          
-          # Analysis Mode Configuration  
+
+          # Analysis Mode Configuration
           GEMINI_ONLY_MODE: ${{ env.GEMINI_ONLY_MODE }}
           TEMPLATE_ONLY_MODE: ${{ env.TEMPLATE_ONLY_MODE }}
-          
+
           # Docker Security Context
           SCAN_RESULTS: ${{ needs.docker-security-scan.outputs.scan-results }}
           CRITICAL_VULN_COUNT: ${{ needs.docker-security-scan.outputs.critical-vulnerabilities }}
           DOCKER_SECURITY_CONTEXT: ${{ env.DOCKER_SECURITY_CONTEXT }}
-          
+
           # Analysis Metadata
           WORKFLOW_TYPE: "docker-security-analysis"
           IMAGE_NAMES: "${{ env.DOCKER_IMAGE_NAME }},${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
@@ -234,7 +234,7 @@ jobs:
           echo "🤖 Starting 3-Tier AI-Enhanced Docker Security Analysis"
           echo "🎯 Analysis Mode: Standard (Anthropic → Gemini → Template)"
           echo "🐳 Docker Images: ${{ env.DOCKER_IMAGE_NAME }}, ${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
-          
+
           chmod +x scripts/ci/ai-docker-security-analyzer.cjs
           node scripts/ci/ai-docker-security-analyzer.cjs
 
@@ -486,7 +486,7 @@ jobs:
           }
           }
           EOF
-          
+
           # Replace placeholders with actual values
           sed -i "s/PACKAGE_NAME_PLACEHOLDER/$PACKAGE_NAME/g" package.json
           sed -i "s/CLIENT_VERSION_PLACEHOLDER/$CLIENT_VERSION/g" package.json

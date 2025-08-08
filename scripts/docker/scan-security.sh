@@ -221,20 +221,32 @@ perform_security_scan() {
         local temp_sarif
         temp_sarif=$(mktemp)
         
-        # Start with first SARIF file
-        cp "${sarif_files[0]}" "$temp_sarif"
+        # Start with first SARIF file and ensure it's valid SARIF (no unauthorized properties)
+        jq '{
+            "version": .version,
+            "$schema": ."$schema", 
+            "runs": .runs
+        }' "${sarif_files[0]}" > "$temp_sarif"
         
         # Merge additional SARIF files if they exist
         for sarif_file in "${sarif_files[@]:1}"; do
             if [ -f "$sarif_file" ]; then
-                # Merge the runs array from each SARIF file
-                jq --slurpfile additional "$sarif_file" '.runs += $additional[].runs' "$temp_sarif" > "${temp_sarif}.tmp"
+                # Extract only valid SARIF properties and merge runs
+                jq --slurpfile additional <(jq '{
+                    "version": .version,
+                    "$schema": ."$schema",
+                    "runs": .runs
+                }' "$sarif_file") '.runs += $additional[].runs' "$temp_sarif" > "${temp_sarif}.tmp"
                 mv "${temp_sarif}.tmp" "$temp_sarif"
             fi
         done
         
-        # Copy final consolidated SARIF to expected filename
-        cp "$temp_sarif" "$consolidated_sarif"
+        # Ensure final SARIF is clean (remove any non-standard properties)
+        jq '{
+            "version": "2.1.0",
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "runs": .runs
+        }' "$temp_sarif" > "$consolidated_sarif"
         rm -f "$temp_sarif"
         
         log "  ✅ SARIF consolidation completed: $consolidated_sarif"

@@ -45,15 +45,24 @@ jobs:
   detect-changes:
     runs-on: ubuntu-latest
     outputs:
-      docs-only: ${{ steps.changes.outputs.docs-only }}
-      workflows-only: ${{ steps.changes.outputs.workflows-only }}
+      # Raw change detection outputs
+      docs-changed: ${{ steps.changes.outputs.docs-changed }}
+      workflows-changed: ${{ steps.changes.outputs.workflows-changed }}
       webauthn-server-tests: ${{ steps.changes.outputs.webauthn-server-tests }}
       webauthn-server-docker: ${{ steps.changes.outputs.webauthn-server-docker }}
       test-credentials-tests: ${{ steps.changes.outputs.test-credentials-tests }}
       test-credentials-docker: ${{ steps.changes.outputs.test-credentials-docker }}
-      any-docker-changes: ${{ steps.changes.outputs.webauthn-server-docker == 'true' || steps.changes.outputs.test-credentials-docker == 'true' }}
-      any-test-changes: ${{ steps.changes.outputs.webauthn-server-tests == 'true' || steps.changes.outputs.test-credentials-tests == 'true' }}
-      fast-path-eligible: ${{ steps.changes.outputs.docs-only == 'true' || steps.changes.outputs.workflows-only == 'true' }}
+      # Derived decision matrix outputs (calculated in decision-matrix step)
+      docs-only: ${{ steps.decision-matrix.outputs.docs-only }}
+      workflows-only: ${{ steps.decision-matrix.outputs.workflows-only }}
+      source-code-changes: ${{ steps.decision-matrix.outputs.source-code-changes }}
+      tests-only-changes: ${{ steps.decision-matrix.outputs.tests-only-changes }}
+      dockerfile-only-changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }}
+      build-config-changes: ${{ steps.decision-matrix.outputs.build-config-changes }}
+      # Legacy outputs for compatibility
+      any-docker-changes: ${{ steps.decision-matrix.outputs.should-build-docker }}
+      any-test-changes: ${{ steps.decision-matrix.outputs.should-run-tests }}
+      fast-path-eligible: ${{ steps.decision-matrix.outputs.fast-path-eligible }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -63,11 +72,11 @@ jobs:
         uses: dorny/paths-filter@v3
         with:
           filters: |
-            docs-only:
+            docs-changed:
               - '**.md'
               - 'docs/**'
               - '!.github/workflows/**'
-            workflows-only:
+            workflows-changed:
               - '.github/workflows/**'
               - '!.github/workflows/webauthn-server-tests-publish-docker-client-libs.yml'
             webauthn-server-tests:
@@ -103,35 +112,176 @@ jobs:
               - 'build.gradle.kts'
               - 'gradle.properties'
 
-      - name: Print change detection results
+      - name: Print raw change detection results
         run: |
-          echo "🔍 Change Detection Results:"
-          echo "docs-only: ${{ steps.changes.outputs.docs-only }}"
-          echo "workflows-only: ${{ steps.changes.outputs.workflows-only }}"
+          echo "🔍 Raw Change Detection Results:"
+          echo "docs-changed: ${{ steps.changes.outputs.docs-changed }}"
+          echo "workflows-changed: ${{ steps.changes.outputs.workflows-changed }}"
           echo "webauthn-server-tests: ${{ steps.changes.outputs.webauthn-server-tests }}"
           echo "webauthn-server-docker: ${{ steps.changes.outputs.webauthn-server-docker }}"
           echo "test-credentials-tests: ${{ steps.changes.outputs.test-credentials-tests }}"
           echo "test-credentials-docker: ${{ steps.changes.outputs.test-credentials-docker }}"
+
+      - name: Apply decision matrix logic
+        id: decision-matrix
+        run: |
+          # Store raw filter results in variables
+          DOCS_CHANGED="${{ steps.changes.outputs.docs-changed }}"
+          WORKFLOWS_CHANGED="${{ steps.changes.outputs.workflows-changed }}"
+          WEBAUTHN_TESTS="${{ steps.changes.outputs.webauthn-server-tests }}"
+          WEBAUTHN_DOCKER="${{ steps.changes.outputs.webauthn-server-docker }}"
+          TEST_CREDS_TESTS="${{ steps.changes.outputs.test-credentials-tests }}"
+          TEST_CREDS_DOCKER="${{ steps.changes.outputs.test-credentials-docker }}"
+          
+          echo "🧮 Applying Decision Matrix Logic..."
           echo ""
-          echo "🚀 Execution Strategy:"
-          if [[ "${{ steps.changes.outputs.docs-only }}" == "true" ]]; then
-            echo "✅ Documentation-only changes - Fast path (no tests/builds needed)"
-          elif [[ "${{ steps.changes.outputs.workflows-only }}" == "true" ]]; then
-            echo "✅ Workflow-only changes - Fast path (no tests/builds needed)"
-          elif [[ "${{ steps.changes.outputs.webauthn-server-tests }}" == "true" || "${{ steps.changes.outputs.test-credentials-tests }}" == "true" ]]; then
-            echo "🧪 Code changes detected - Will run unit tests"
-            if [[ "${{ steps.changes.outputs.webauthn-server-docker }}" == "true" || "${{ steps.changes.outputs.test-credentials-docker }}" == "true" ]]; then
-              echo "🐳 Docker-relevant changes detected - Will build Docker images for E2E tests"
-            else
-              echo "🏃‍♂️ Test-only changes - Will skip Docker build and E2E tests"
-            fi
+          echo "📋 Reference Decision Matrix:"
+          echo "| Change Type        | Unit Tests | Docker Build | E2E Tests |"
+          echo "|--------------------|-----------|-------------|-----------|" 
+          echo "| Documentation only |    ❌ Skip |     ❌ Skip |  ❌ Skip |"
+          echo "| Workflow changes   |    ❌ Skip |     ❌ Skip |  ❌ Skip |"
+          echo "| Source code        |     ✅ Run |      ✅ Build |   ✅ Run |"
+          echo "| Tests only         |     ✅ Run |     ❌ Skip |  ❌ Skip |"
+          echo "| Dockerfile only    |    ❌ Skip |      ✅ Build |   ✅ Run |"
+          echo "| Build config       |     ✅ Run |      ✅ Build |   ✅ Run |"
+          echo ""
+          echo "🔍 Analyzing current changes (using PRIORITY ORDER):"
+          echo "  1️⃣ Source code changes (highest priority): $([ "$WEBAUTHN_TESTS" = "true" ] || [ "$TEST_CREDS_TESTS" = "true" ] && echo "YES" || echo "no")"
+          echo "  2️⃣ Dockerfile-only changes: $([ "$WEBAUTHN_DOCKER" = "true" ] || [ "$TEST_CREDS_DOCKER" = "true" ] && echo "YES" || echo "no") (only if no source code changes)"
+          echo "  3️⃣ Documentation-only changes: $([ "$DOCS_CHANGED" = "true" ] && [ "$WORKFLOWS_CHANGED" = "false" ] && echo "YES" || echo "no") (only if no code/docker changes)"
+          echo "  4️⃣ Workflow-only changes: $([ "$WORKFLOWS_CHANGED" = "true" ] && [ "$DOCS_CHANGED" = "false" ] && echo "YES" || echo "no") (only if no code/docker changes)"
+          echo ""
+          
+          # Calculate decision matrix categories based on PRIORITY ORDER
+          # Higher priority conditions override lower priority ones
+          
+          # Priority 1: Source code changes (any test changes) - highest priority
+          if [[ "$WEBAUTHN_TESTS" == "true" ]] || [[ "$TEST_CREDS_TESTS" == "true" ]]; then
+            echo "source-code-changes=true" >> $GITHUB_OUTPUT
+            echo "should-run-tests=true" >> $GITHUB_OUTPUT
+            echo "should-build-docker=true" >> $GITHUB_OUTPUT
+            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "build-config-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only=false" >> $GITHUB_OUTPUT
+            echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+            DECISION="Source code changes detected"
+          # Priority 2: Dockerfile only (docker changes but no test changes)
+          elif [[ "$WEBAUTHN_DOCKER" == "true" ]] || [[ "$TEST_CREDS_DOCKER" == "true" ]]; then
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "should-run-tests=false" >> $GITHUB_OUTPUT
+            echo "should-build-docker=true" >> $GITHUB_OUTPUT
+            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=true" >> $GITHUB_OUTPUT
+            echo "build-config-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only=false" >> $GITHUB_OUTPUT
+            echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+            DECISION="Dockerfile-only changes detected"
+          # Priority 3: Documentation only (docs changed but nothing else)
+          elif [[ "$DOCS_CHANGED" == "true" ]] && [[ "$WORKFLOWS_CHANGED" == "false" ]]; then
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "should-run-tests=false" >> $GITHUB_OUTPUT
+            echo "should-build-docker=false" >> $GITHUB_OUTPUT
+            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "build-config-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only=true" >> $GITHUB_OUTPUT
+            echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
+            DECISION="Documentation-only changes detected"
+          # Priority 4: Workflow only (workflows changed but nothing else)
+          elif [[ "$WORKFLOWS_CHANGED" == "true" ]] && [[ "$DOCS_CHANGED" == "false" ]]; then
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "should-run-tests=false" >> $GITHUB_OUTPUT
+            echo "should-build-docker=false" >> $GITHUB_OUTPUT
+            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "build-config-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only=false" >> $GITHUB_OUTPUT
+            echo "workflows-only=true" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
+            DECISION="Workflow-only changes detected"
+          # Priority 5: Mixed docs + workflow changes (fast path)
+          elif [[ "$DOCS_CHANGED" == "true" ]] && [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "should-run-tests=false" >> $GITHUB_OUTPUT
+            echo "should-build-docker=false" >> $GITHUB_OUTPUT
+            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "build-config-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only=false" >> $GITHUB_OUTPUT
+            echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
+            DECISION="Documentation + workflow changes (no code changes)"
+          # Default: No significant changes
+          else
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "should-run-tests=false" >> $GITHUB_OUTPUT
+            echo "should-build-docker=false" >> $GITHUB_OUTPUT
+            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "build-config-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only=false" >> $GITHUB_OUTPUT
+            echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
+            DECISION="No significant changes detected"
+          fi
+          
+          echo "🎯 Decision: $DECISION"
+
+      - name: Print execution strategy
+        run: |
+          echo "🚀 Execution Strategy Based on Decision Matrix:"
+          echo "📊 Calculated Decisions:"
+          echo "  • Source code changes: ${{ steps.decision-matrix.outputs.source-code-changes }}"
+          echo "  • Tests-only changes: ${{ steps.decision-matrix.outputs.tests-only-changes }}"
+          echo "  • Dockerfile-only changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }}"
+          echo "  • Documentation-only: ${{ steps.decision-matrix.outputs.docs-only }}"
+          echo "  • Workflow-only: ${{ steps.decision-matrix.outputs.workflows-only }}"
+          echo "  • Fast path eligible: ${{ steps.decision-matrix.outputs.fast-path-eligible }}"
+          echo ""
+          echo "⚙️  Pipeline Actions:"
+          echo "  • Should run unit tests: ${{ steps.decision-matrix.outputs.should-run-tests }}"
+          echo "  • Should build Docker images: ${{ steps.decision-matrix.outputs.should-build-docker }}"
+          echo ""
+          
+          if [[ "${{ steps.decision-matrix.outputs.source-code-changes }}" == "true" ]]; then
+            echo "✅ Source code changes - Will run unit tests AND build Docker images for E2E tests"
+            echo "    🧪 Unit Tests: ENABLED (source code changed)"
+            echo "    🐳 Docker Build: ENABLED (for E2E testing)"
+            echo "    🎯 E2E Tests: ENABLED (using built images)"
+          elif [[ "${{ steps.decision-matrix.outputs.dockerfile-only-changes }}" == "true" ]]; then
+            echo "✅ Dockerfile-only changes - Will build Docker images for E2E tests (skip unit tests)"
+            echo "    🧪 Unit Tests: SKIPPED (no test code changes)"
+            echo "    🐳 Docker Build: ENABLED (Dockerfile changed)"
+            echo "    🎯 E2E Tests: ENABLED (using built images)"
+          elif [[ "${{ steps.decision-matrix.outputs.docs-only }}" == "true" ]]; then
+            echo "⚡ Documentation-only changes - Fast path (no tests/builds needed)"
+            echo "    🧪 Unit Tests: SKIPPED (no code changes)"
+            echo "    🐳 Docker Build: SKIPPED (no code/Docker changes)"
+            echo "    🎯 E2E Tests: SKIPPED (no images to test)"
+          elif [[ "${{ steps.decision-matrix.outputs.workflows-only }}" == "true" ]]; then
+            echo "⚡ Workflow-only changes - Fast path (no tests/builds needed)"
+            echo "    🧪 Unit Tests: SKIPPED (no code changes)"
+            echo "    🐳 Docker Build: SKIPPED (no code/Docker changes)"
+            echo "    🎯 E2E Tests: SKIPPED (no images to test)"
+          elif [[ "${{ steps.decision-matrix.outputs.fast-path-eligible }}" == "true" ]]; then
+            echo "⚡ Fast path - No significant code changes detected"
+            echo "    🧪 Unit Tests: SKIPPED (no significant changes)"
+            echo "    🐳 Docker Build: SKIPPED (no significant changes)"
+            echo "    🎯 E2E Tests: SKIPPED (no significant changes)"
+          else
+            echo "🤔 Unexpected state - Please check decision matrix logic"
+            echo "    This should not happen - all cases should be covered"
           fi
 
   # Job 2: Run unit tests when code changes detected
   run-unit-tests:
     runs-on: ubuntu-latest
     needs: detect-changes
-    if: needs.detect-changes.outputs.any-test-changes == 'true'
+    if: needs.detect-changes.outputs.should-run-tests == 'true'
     permissions:
       contents: read
     steps:
@@ -198,10 +348,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ detect-changes, run-unit-tests ]
     if: |
-      needs.detect-changes.outputs.any-docker-changes == 'true' && 
+      needs.detect-changes.outputs.should-build-docker == 'true' && 
       (needs.run-unit-tests.result == 'success' || 
        needs.run-unit-tests.result == 'skipped' || 
-       needs.detect-changes.outputs.any-test-changes == 'false')
+       needs.detect-changes.outputs.should-run-tests == 'false')
     permissions:
       contents: read
       packages: write
@@ -326,8 +476,10 @@ jobs:
         run: |
           echo "📊 Build and Test Results Summary:"
           echo "Fast path eligible: ${{ needs.detect-changes.outputs.fast-path-eligible }}"
-          echo "Any test changes: ${{ needs.detect-changes.outputs.any-test-changes }}"
-          echo "Any docker changes: ${{ needs.detect-changes.outputs.any-docker-changes }}"
+          echo "Should run tests: ${{ needs.detect-changes.outputs.should-run-tests }}"
+          echo "Should build Docker: ${{ needs.detect-changes.outputs.should-build-docker }}"
+          echo "Source code changes: ${{ needs.detect-changes.outputs.source-code-changes }}"
+          echo "Dockerfile-only changes: ${{ needs.detect-changes.outputs.dockerfile-only-changes }}"
           echo "Unit tests: ${{ needs.run-unit-tests.result }}"
           echo "Docker images built: ${{ needs.build-docker-images.result == 'success' }}"
           

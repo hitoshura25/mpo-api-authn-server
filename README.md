@@ -2,7 +2,7 @@
 
 [![codecov](https://codecov.io/github/hitoshura25/mpo-api-authn-server/graph/badge.svg?token=G4WWCSG5KR)](https://codecov.io/github/hitoshura25/mpo-api-authn-server)
 
-A production-ready WebAuthn (FIDO2/Passkeys) authentication server built with KTor and comprehensive security testing.
+A production-ready WebAuthn (FIDO2/Passkeys) authentication server built with KTor, comprehensive security testing, and **3-tier AI-powered security analysis** for continuous protection.
 
 ## 🏗️ Multi-Module Project Structure
 
@@ -61,11 +61,44 @@ npm test       # Run Playwright E2E tests
 
 ## 🔐 Security Features
 
+### WebAuthn Security
 - **WebAuthn 2.0/FIDO2** compliance using Yubico library
 - **Username enumeration protection** - Authentication start doesn't reveal user existence
 - **Replay attack prevention** - Challenge/response validation
 - **Cross-origin protection** - Proper RP ID validation
 - **Comprehensive vulnerability testing** - 7 security test categories
+
+### 🤖 3-Tier AI Security Analysis System
+
+Automatic security analysis on all pull requests with intelligent fallback strategy:
+
+**Tier 1: Anthropic Official Security Action** (Primary)
+- Uses official `anthropics/claude-code-security-review@v1` action
+- Comprehensive security coverage maintained by Anthropic
+- Broad attack pattern detection and analysis
+
+**Tier 2: Gemini WebAuthn-Focused Analysis** (Fallback)
+- Custom WebAuthn-specific security analysis using Gemini AI
+- Focused on FIDO2/WebAuthn vulnerability patterns
+- PoisonSeed attacks, username enumeration, credential tampering detection
+
+**Tier 3: Template-Based Analysis** (Final Fallback)
+- Zero-cost security pattern analysis
+- Template-driven vulnerability detection
+- Ensures security coverage even when AI providers unavailable
+
+**Security Focus Areas**:
+- PoisonSeed attack patterns (CVE-2024-39912)
+- Username enumeration vulnerabilities
+- Cross-origin authentication abuse
+- Credential tampering and replay attacks
+- Information leakage in error responses
+
+**Automated Features**:
+- 🚨 **Critical vulnerability blocking** - PRs with high security scores cannot merge
+- 🏷️ **Automatic security labeling** - PRs tagged with analysis tier and risk level
+- 💬 **Detailed security comments** - AI-generated analysis and recommendations
+- 🧪 **Security test generation** - Automated test creation for discovered vulnerabilities
 
 ## 📱 Published Client Libraries
 
@@ -133,10 +166,31 @@ Start the test service for external clients:
 
 ## 📊 Monitoring & Observability
 
+### Application Monitoring
 - **OpenTelemetry** tracing with OTLP export
 - **Micrometer** metrics with Prometheus export
-- **Automated vulnerability monitoring** - Weekly scans with PR generation
 - **Code coverage** reports with Kover
+
+### 🔍 AI-Enhanced Security Monitoring
+
+**Weekly Vulnerability Monitoring**:
+- Automated WebAuthn vulnerability database scanning
+- AI-enhanced risk assessment using Anthropic Claude
+- Automatic security test generation and PR creation
+- Complete test implementations (not just stubs)
+- Library correlation analysis with java-webauthn-server
+
+**Docker Security Scanning**:
+- Multi-layer vulnerability detection (OS, dependencies, secrets)
+- AI-powered vulnerability analysis and prioritization
+- GitHub Security integration with SARIF reporting
+- Automated security gate for DockerHub publishing
+
+**Continuous Security Validation**:
+- PR-triggered security analysis with 3-tier AI system
+- Environment variable pattern security validation
+- Automated security labeling and workflow management
+- Real-time security feedback in pull request comments
 
 ## 🏛️ Architecture
 
@@ -167,6 +221,87 @@ Start the test service for external clients:
 - [Client Generation](docs/setup/client-generation.md) - Multi-platform client setup
 - [GitHub Packages Setup](docs/setup/github-packages-setup.md) - Publishing configuration
 - [MCP Development](docs/setup/mcp-development.md) - Claude Code integration
+
+## 🚀 CI/CD Pipeline & Workflows
+
+### 🔄 Intelligent Pipeline Architecture
+
+The project uses a **smart CI/CD pipeline** with conditional execution and optimized resource usage:
+
+**Main Orchestrator**: `main-ci-cd.yml`
+- Orchestrates entire CI/CD pipeline using callable workflows
+- Eliminates workflow dispatch complexity and 404 errors
+- Conditional E2E test execution only when Docker images built
+
+**Smart Change Detection**: `build-and-test.yml`
+```
+| Change Type        | Unit Tests | Docker Build | E2E Tests |
+|--------------------|-----------|-------------|----------|
+| Documentation only |  ❌ Skip  |   ❌ Skip   |  ❌ Skip  |
+| Workflow changes   |  ❌ Skip  |   ❌ Skip   |  ❌ Skip  |
+| Source code        |  ✅ Run   |   ✅ Build  |  ✅ Run   |
+| Tests only         |  ✅ Run   |   ❌ Skip   |  ❌ Skip  |
+| Dockerfile only    |  ❌ Skip  |   ✅ Build  |  ✅ Run   |
+| Build config       |  ✅ Run   |   ✅ Build  |  ✅ Run   |
+```
+
+**Performance Benefits**:
+- ⚡ **Fast path**: Documentation/workflow changes complete in ~30 seconds
+- 🏃‍♂️ **Standard path**: Full CI pipeline ~8 minutes when needed
+- 🎯 **Smart detection**: Only run tests/builds for relevant changes
+
+**Cross-Platform E2E Testing**: `e2e-tests.yml`
+- Docker Compose with real service dependencies
+- Parallel Web (Playwright) and Android (connectedAndroidTest) testing
+- Uses exact Docker images built for the PR
+- Comprehensive integration validation
+
+### 🔒 Security Automation Workflows
+
+**3-Tier Security Analysis**: `pr-security-analysis.yml`
+- Triggered on security-sensitive file changes
+- Intelligent tier selection with fallback strategy
+- Automated security gates and PR labeling
+- Complete security analysis consolidation
+
+**Docker Security & Publishing**: `main-branch-post-processing.yml`
+- AI-enhanced Docker vulnerability scanning
+- Change detection to prevent unnecessary publishing
+- Automated DockerHub publishing with security gates
+- GHCR cleanup and git tagging on successful publish
+
+**Vulnerability Monitoring**: `vulnerability-monitor.yml`
+- Weekly WebAuthn vulnerability database scans
+- AI-enhanced analysis and test generation
+- Automated PR creation with complete test implementations
+- Security label management and prioritization
+
+### 🏗️ Environment Variable Management
+
+**Centralized Configuration**:
+```yaml
+env:
+  # Security Analysis Configuration
+  HIGH_RISK_SCORE_THRESHOLD: 7.0
+  ANTHROPIC_TIER_ENABLED: true
+  GEMINI_TIER_ENABLED: true
+  TEMPLATE_TIER_ENABLED: true
+  
+  # Docker Registry Configuration  
+  DOCKER_REGISTRY: ghcr.io
+  BASE_VERSION: "1.0"
+  
+  # Service Ports
+  WEBAUTHN_SERVER_PORT: 8080
+  TEST_CREDENTIALS_PORT: 8081
+  WEB_CLIENT_PORT: 8082
+```
+
+**Security Best Practices**:
+- Secure environment variable handling in all workflows
+- Minimal required permissions per job
+- Branch-specific caching strategies
+- Encrypted secrets management
 
 ## 🛠️ Development
 

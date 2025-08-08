@@ -94,12 +94,49 @@ Task: "[Detailed description of work to be done systematically]"
 
 ### ⚠️ CRITICAL: Always Validate Generated Markdown
 
-**ALWAYS run `bash scripts/validate-markdown.sh` after generating or modifying any markdown files.**
+**ALWAYS run `bash scripts/core/validate-markdown.sh` after generating or modifying any markdown files.**
 
 - **Why**: Prevents syntax errors that break IDE display and documentation tools
 - **When**: After any markdown generation, editing, or updates to documentation
-- **Command**: `bash scripts/validate-markdown.sh`
+- **Command**: `bash scripts/core/validate-markdown.sh`
 - **Result**: Must show "🎉 All markdown files are valid!" before considering work complete
+
+### 🔧 CRITICAL: GitHub Actions Workflow Development
+
+**ALWAYS follow GitHub Actions best practices to prevent workflow failures:**
+
+#### **Environment Variable Usage Rules:**
+- **❌ NEVER use `env.VARIABLE` in `if:` conditionals** - GitHub Actions security restrictions prevent this
+- **✅ ALWAYS use job outputs for conditionals** - Create setup jobs that convert env vars to outputs:
+  ```yaml
+  setup-job:
+    outputs:
+      tier-enabled: ${{ steps.config.outputs.tier-enabled }}
+    steps:
+      - id: config
+        run: echo "tier-enabled=${TIER_ENABLED}" >> $GITHUB_OUTPUT
+        env:
+          TIER_ENABLED: ${{ env.TIER_ENABLED }}
+  ```
+- **✅ Reference job outputs in conditionals**: `needs.setup-job.outputs.tier-enabled == 'true'`
+
+#### **Script Execution Patterns:**
+- **❌ NEVER use `actions/github-script` with external file requires** - Sandboxed environment restrictions
+- **✅ ALWAYS use direct Node.js execution**: `node scripts/security/script.cjs`
+- **✅ Scripts must use environment variables**: Not GitHub Actions context objects
+- **✅ Include cross-platform fetch helpers** for Node.js compatibility
+
+#### **Common Shell Script Pitfalls:**
+- **❌ Function ordering issues**: Functions must be defined before first call (move `log()` to script top)
+- **❌ Case sensitivity errors**: Use `elif` not `Elif`, `then` not `Then`, etc.
+- **❌ Action version assumptions**: Verify tagged versions exist, use `@main` if no `@v1` available
+- **✅ Test scripts locally** before committing to catch syntax errors
+- **✅ Use `set -euo pipefail`** for proper error handling
+
+#### **Recently Fixed Issues (Manual Fixes Applied):**
+1. **analyze-pr.sh Function Ordering**: `log` function called before definition - moved function to top of script
+2. **generate-tests.sh Syntax Error**: `Elif` used instead of `elif` on line 39 - case sensitivity issue
+3. **claude-code-security-review Action**: Used `@v1` but only `@main` exists - verify action versions before use
 
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 
@@ -257,9 +294,9 @@ env:
 
 ### Key Files & Scripts
 - **Documentation**: Complete README files for project root and web-test-client with TypeScript architecture details
-- **Validation**: `scripts/validate-markdown.sh` - Comprehensive markdown syntax validation
-- **Security**: `scripts/vulnerability-monitor.js` - Weekly vulnerability scanning  
-- **Android Tests**: `scripts/run-android-tests.sh` - Cross-platform testing
+- **Validation**: `scripts/core/validate-markdown.sh` - Comprehensive markdown syntax validation
+- **Security**: `scripts/monitoring/vulnerability-monitor.js` - Weekly vulnerability scanning  
+- **Android Tests**: `scripts/core/run-android-tests.sh` - Cross-platform testing
 - **Development**: `webauthn-server/start-dev.sh` - Local development environment
 - **Port Cleanup**: `web-test-client/scripts/cleanup-port.js` - Port cleanup utility for tests
 - **TypeScript Build**: `web-test-client/tsconfig.build.json` - Build-specific TypeScript configuration

@@ -14,7 +14,7 @@ on:
       - 'gradle.properties'
       - 'gradle/**'
       - '.github/workflows/default-branch-push.yml'
-      - '.github/workflows/client-e2e-tests.yml'
+      - '.github/workflows/client-e2e-tests.yml.disabled'
 
 permissions:
   contents: write
@@ -24,7 +24,7 @@ permissions:
 jobs:
   default-branch-run-client-e2e-tests:
     name: Client E2E Tests (Web + Android)
-    uses: ./.github/workflows/client-e2e-tests.yml
+    uses: ./.github/workflows/client-e2e-tests.yml.disabled
     with:
       node-version: '18'
     secrets:

@@ -46,6 +46,13 @@ generate_version() {
             is_prerelease="false"
             echo "🚀 Manual release: $version" >&2
             ;;
+        "workflow_run")
+            # Workflow run (e.g., main-branch-post-processing): treat as main branch release
+            # This runs after successful main branch CI/CD completion
+            version="${BASE_VERSION}.${BUILD_NUMBER}"
+            is_prerelease="false"
+            echo "📦 Post-processing release: $version" >&2
+            ;;
         *)
             # Default case
             version="${BASE_VERSION}.0-unknown.${BUILD_NUMBER}"

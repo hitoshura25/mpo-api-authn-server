@@ -201,11 +201,13 @@ Task: "[Detailed description of work to be done systematically]"
    - Check available tags with registry APIs or Docker Hub before specifying versions
    - Example: `eclipse-temurin:21.0.8_9-jre-jammy` (verified) vs `21.0.6_3-jre-jammy` (non-existent)
 7. **GitHub Actions always() Conditional**: CRITICAL workflow dependency gotcha
-   - Jobs are **automatically skipped** if ANY dependency is skipped, regardless of conditional logic
+   - Jobs are **automatically skipped** if ANY dependency in the **entire dependency chain** is skipped
+   - This includes **indirect/transitive dependencies** - if A→B→C and A is skipped, C is also skipped
    - Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped
+   - **Rule**: If ANY job in your dependency tree can be conditionally skipped, ALL downstream jobs need `always()`
    - **Common pattern**: `if: always() && needs.job.result == 'success' && other_conditions`
-   - **Example failure**: Job with `needs: [skipped-job]` will never run, even with perfect conditions
-   - **Solution**: `if: always() && needs.skipped-job.outputs.value == 'true'` will evaluate properly
+   - **Example failure**: Job with `needs: [job-that-depends-on-skipped-job]` will be skipped even if direct dependency ran
+   - **Solution**: `if: always() && needs.dependency.outputs.value == 'true'` evaluates properly regardless of dependency chain
 
 ### Token Optimization Strategies
 

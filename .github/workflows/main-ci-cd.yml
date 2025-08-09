@@ -51,7 +51,9 @@ jobs:
   e2e-tests:
     name: E2E Tests (Web + Android)
     needs: build-and-test
-    if: needs.build-and-test.outputs.docker_images_built == 'true'
+    if: |
+      always() &&
+      needs.build-and-test.outputs.docker_images_built == 'true'
     uses: ./.github/workflows/e2e-tests.yml
     permissions:
       contents: read          # Read repository code

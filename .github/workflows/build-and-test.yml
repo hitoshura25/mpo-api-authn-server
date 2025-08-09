@@ -454,7 +454,7 @@ jobs:
   security-scan-docker-images:
     runs-on: ubuntu-latest
     needs: [ detect-changes, build-docker-images ]
-    if: needs.detect-changes.outputs.should-build-docker == 'true'
+    if: always() && needs.detect-changes.outputs.should-build-docker == 'true'
     permissions:
       contents: read
       security-events: write
@@ -479,7 +479,7 @@ jobs:
       - name: Download Docker images from previous job
         run: |
           echo "🔍 Checking for Docker images to scan..."
-          
+
           # Check if webauthn-server image should be scanned
           if [[ "${{ needs.detect-changes.outputs.source-code-changes }}" == "true" || "${{ needs.detect-changes.outputs.dockerfile-only-changes }}" == "true" ]]; then
             echo "Will scan webauthn-server image"
@@ -488,7 +488,7 @@ jobs:
             echo "Will skip webauthn-server image"
             echo "webauthn_changed=false" >> $GITHUB_ENV
           fi
-          
+
           # Test credentials image follows same logic
           echo "test_credentials_changed=true" >> $GITHUB_ENV
 
@@ -496,10 +496,10 @@ jobs:
         id: security-scan
         run: |
           echo "🔍 Starting security scan of locally built Docker images..."
-          
+
           # Make sure the script is executable
           chmod +x scripts/docker/scan-security.sh
-          
+
           # Run security scanning on local images (they were built with load: true)
           # The scan script will work with locally available images
           scripts/docker/scan-security.sh "${{ env.webauthn_changed }}" "${{ env.test_credentials_changed }}"

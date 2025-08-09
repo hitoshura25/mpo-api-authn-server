@@ -51,21 +51,45 @@ install_trivy() {
     log "✅ Trivy scanner installed successfully"
 }
 
-# Function to pull Docker images for scanning
+# Function to pull Docker images for scanning (if they're not already local)
 pull_images() {
     local webauthn_changed="$1"
     local test_credentials_changed="$2"
+    local scan_local_images="${3:-false}"
     
-    log "📦 Pulling images from GHCR for security scanning..."
-    
-    if [[ "$webauthn_changed" == "true" ]]; then
-        docker pull "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-        log "✅ Pulled webauthn-server image"
-    fi
-    
-    if [[ "$test_credentials_changed" == "true" ]]; then
-        docker pull "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
-        log "✅ Pulled test-credentials-service image"
+    if [[ "$scan_local_images" == "true" ]]; then
+        log "📦 Using locally built images for security scanning (build-and-test workflow)"
+        # In build-and-test, images are already built locally with load: true
+        # Check if images exist locally
+        if [[ "$webauthn_changed" == "true" ]]; then
+            if docker image inspect "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest" >/dev/null 2>&1; then
+                log "✅ Found local webauthn-server image"
+            else
+                log "❌ Local webauthn-server image not found - may need to check build step"
+                exit 1
+            fi
+        fi
+        
+        if [[ "$test_credentials_changed" == "true" ]]; then
+            if docker image inspect "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest" >/dev/null 2>&1; then
+                log "✅ Found local test-credentials-service image"
+            else
+                log "❌ Local test-credentials-service image not found - may need to check build step"
+                exit 1
+            fi
+        fi
+    else
+        log "📦 Pulling images from GHCR for security scanning (post-processing workflow)..."
+        
+        if [[ "$webauthn_changed" == "true" ]]; then
+            docker pull "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+            log "✅ Pulled webauthn-server image"
+        fi
+        
+        if [[ "$test_credentials_changed" == "true" ]]; then
+            docker pull "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
+            log "✅ Pulled test-credentials-service image"
+        fi
     fi
 }
 
@@ -177,6 +201,7 @@ EOF
 perform_security_scan() {
     local webauthn_changed="$1"
     local test_credentials_changed="$2"
+    local scan_local_images="${3:-false}"
     
     log "🔍 Starting comprehensive Docker security scanning..."
     
@@ -221,20 +246,32 @@ perform_security_scan() {
         local temp_sarif
         temp_sarif=$(mktemp)
         
-        # Start with first SARIF file
-        cp "${sarif_files[0]}" "$temp_sarif"
+        # Start with first SARIF file and ensure it's valid SARIF (no unauthorized properties)
+        jq '{
+            "version": .version,
+            "$schema": ."$schema", 
+            "runs": .runs
+        }' "${sarif_files[0]}" > "$temp_sarif"
         
         # Merge additional SARIF files if they exist
         for sarif_file in "${sarif_files[@]:1}"; do
             if [ -f "$sarif_file" ]; then
-                # Merge the runs array from each SARIF file
-                jq --slurpfile additional "$sarif_file" '.runs += $additional[].runs' "$temp_sarif" > "${temp_sarif}.tmp"
+                # Extract only valid SARIF properties and merge runs
+                jq --slurpfile additional <(jq '{
+                    "version": .version,
+                    "$schema": ."$schema",
+                    "runs": .runs
+                }' "$sarif_file") '.runs += $additional[].runs' "$temp_sarif" > "${temp_sarif}.tmp"
                 mv "${temp_sarif}.tmp" "$temp_sarif"
             fi
         done
         
-        # Copy final consolidated SARIF to expected filename
-        cp "$temp_sarif" "$consolidated_sarif"
+        # Ensure final SARIF is clean (remove any non-standard properties)
+        jq '{
+            "version": "2.1.0",
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "runs": .runs
+        }' "$temp_sarif" > "$consolidated_sarif"
         rm -f "$temp_sarif"
         
         log "  ✅ SARIF consolidation completed: $consolidated_sarif"

@@ -231,6 +231,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ setup-tier-configuration, detect-security-changes, tier1-anthropic-security-review ]
     if: |
+      always() &&
       needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' &&
       needs.tier1-anthropic-security-review.outputs.analysis-completed != 'true' &&
       needs.setup-tier-configuration.outputs.gemini-tier-enabled == 'true'

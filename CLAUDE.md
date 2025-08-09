@@ -200,6 +200,12 @@ Task: "[Detailed description of work to be done systematically]"
    - Use `docker manifest inspect <image>` to validate image existence
    - Check available tags with registry APIs or Docker Hub before specifying versions
    - Example: `eclipse-temurin:21.0.8_9-jre-jammy` (verified) vs `21.0.6_3-jre-jammy` (non-existent)
+7. **GitHub Actions always() Conditional**: CRITICAL workflow dependency gotcha
+   - Jobs are **automatically skipped** if ANY dependency is skipped, regardless of conditional logic
+   - Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped
+   - **Common pattern**: `if: always() && needs.job.result == 'success' && other_conditions`
+   - **Example failure**: Job with `needs: [skipped-job]` will never run, even with perfect conditions
+   - **Solution**: `if: always() && needs.skipped-job.outputs.value == 'true'` will evaluate properly
 
 ### Token Optimization Strategies
 

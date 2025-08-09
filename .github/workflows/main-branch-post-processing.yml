@@ -65,11 +65,70 @@ permissions:
   contents: read
 
 jobs:
-  # Job 1: Detect Changes (Only runs on CI/CD success, needs GHCR images to exist)
-  detect-changes:
-    name: Detect DockerHub publishing needs
+  # Job 1: Check if main CI built new Docker images (determines processing strategy)
+  check-main-ci-images:
+    name: Check if main CI built new images
     runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      images-were-built: ${{ steps.check-artifact.outputs.images-were-built }}
+      skip-security-scan: ${{ steps.check-artifact.outputs.skip-security-scan }}
+      skip-all-docker-processing: ${{ steps.set-strategy.outputs.skip-all-docker-processing }}
+      publish-from-main-ci: ${{ steps.set-strategy.outputs.publish-from-main-ci }}
+    steps:
+      - name: Download Docker build manifest from main CI
+        id: download-manifest
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: docker-build-manifest
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ github.event.workflow_run.id }}
+          
+      - name: Check if images were built in main CI
+        id: check-artifact
+        run: |
+          if [[ -f "build-manifest.txt" ]]; then
+            echo "📦 Found Docker build manifest from main CI run"
+            cat build-manifest.txt
+            echo ""
+            echo "✅ Images were built in main CI - security scanning was already performed"
+            echo "images-were-built=true" >> $GITHUB_OUTPUT
+            echo "skip-security-scan=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ No Docker build manifest found - main CI may not have built images"
+            echo "🔄 Will perform security scanning as fallback"
+            echo "images-were-built=false" >> $GITHUB_OUTPUT
+            echo "skip-security-scan=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set post-processing execution strategy
+        id: set-strategy
+        run: |
+          if [[ "${{ steps.check-artifact.outputs.skip-security-scan }}" == "true" ]]; then
+            echo "🐳 STRATEGY: Skip all Docker processing - Main CI handled everything"
+            echo "✅ Main CI built and scanned new Docker images" 
+            echo "🚀 Images are already published to GHCR with security validation"
+            echo "📦 Will publish to DockerHub directly from GHCR images"
+            echo "⏭️  Skipping: Change detection, security scanning, AI analysis"
+            echo "skip-all-docker-processing=true" >> $GITHUB_OUTPUT
+            echo "publish-from-main-ci=true" >> $GITHUB_OUTPUT
+          else
+            echo "🔄 STRATEGY: Full Docker processing pipeline (fallback)"
+            echo "❓ Main CI may not have built new images"
+            echo "🔍 Will perform: Change detection, security scanning, AI analysis"
+            echo "⚠️  This should be rare - main CI usually handles Docker builds"
+            echo "skip-all-docker-processing=false" >> $GITHUB_OUTPUT
+            echo "publish-from-main-ci=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Job 2: Detect Changes (Only runs if main CI didn't build images - fallback)
+  detect-changes:
+    name: Detect DockerHub publishing needs (fallback)
+    runs-on: ubuntu-latest
+    needs: check-main-ci-images
+    if: |
+      github.event.workflow_run.conclusion == 'success' &&
+      needs.check-main-ci-images.outputs.skip-all-docker-processing == 'false'
     outputs:
       webauthn-server-changed: ${{ steps.check-server.outputs.has-changes }}
       test-credentials-changed: ${{ steps.check-test-credentials.outputs.has-changes }}
@@ -129,12 +188,15 @@ jobs:
             echo "any-changes=false" >> $GITHUB_OUTPUT
           fi
 
-  # Job 2: Docker Security Scanning (Before Publishing)
+  # Job 3: Docker Security Scanning (Only if images weren't scanned in main CI)
   docker-security-scan:
-    name: AI-Enhanced Docker security scan
+    name: AI-Enhanced Docker security scan (fallback)
     runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.any-changes == 'true'
+    needs: [ detect-changes, check-main-ci-images ]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.any-changes == 'true' &&
+      needs.check-main-ci-images.outputs.skip-security-scan == 'false'
     permissions:
       contents: read
       security-events: write
@@ -192,12 +254,16 @@ jobs:
         with:
           sarif_file: docker-security-scan-results.json
 
-  # Job 3: 3-Tier AI-Enhanced Security Analysis (After scanning)
+  # Job 4: 3-Tier AI-Enhanced Security Analysis (Only if new scan was performed)
   ai-security-analysis:
     name: 3-Tier AI-Enhanced Docker security analysis
     runs-on: ubuntu-latest
-    needs: [ detect-changes, docker-security-scan ]
-    if: needs.detect-changes.outputs.any-changes == 'true'
+    needs: [ detect-changes, check-main-ci-images, docker-security-scan ]
+    if: |
+      always() &&
+      needs.detect-changes.outputs.any-changes == 'true' &&
+      needs.check-main-ci-images.outputs.skip-security-scan == 'false' &&
+      needs.docker-security-scan.result == 'success'
     permissions:
       contents: read
       security-events: write
@@ -259,17 +325,32 @@ jobs:
           name: ai-security-analysis
           path: ai-security-analysis.json
 
-  # Job 4: Publish to DockerHub (Conditional on security scan passing)
+  # Job 5: Publish to DockerHub (Comprehensive logic: main CI images or fallback images)
   publish-dockerhub:
     name: Publish to DockerHub
     runs-on: ubuntu-latest
-    needs: [ detect-changes, docker-security-scan, ai-security-analysis ]
+    needs: [ check-main-ci-images, detect-changes, docker-security-scan, ai-security-analysis ]
     if: |
       always() &&
-      needs.docker-security-scan.outputs.scan-passed == 'true'
+      (
+        needs.check-main-ci-images.outputs.publish-from-main-ci == 'true' ||
+        (needs.detect-changes.outputs.any-changes == 'true' && needs.docker-security-scan.outputs.scan-passed == 'true')
+      )
     permissions:
       contents: read
     steps:
+      - name: DockerHub publishing strategy
+        run: |
+          if [[ "${{ needs.check-main-ci-images.outputs.publish-from-main-ci }}" == "true" ]]; then
+            echo "📦 PUBLISHING STRATEGY: Using images from main CI"
+            echo "✅ Images were built and scanned in main CI pipeline"
+            echo "🚀 Publishing pre-validated images from GHCR to DockerHub"
+          else
+            echo "📦 PUBLISHING STRATEGY: Using fallback images"  
+            echo "🔄 Images were built and scanned in post-processing fallback"
+            echo "⚠️  This path should be rare"
+          fi
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -349,12 +430,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Job 5: Git Tagging (Only on successful DockerHub publish)
+  # Job 6: Git Tagging (Only on successful DockerHub publish)
   tag-repository:
     name: Tag repository on successful publish
     runs-on: ubuntu-latest
     needs: [ detect-changes, publish-dockerhub ]
-    if: needs.publish-dockerhub.result == 'success'
+    if: |
+      always() &&
+      needs.publish-dockerhub.result == 'success'
     permissions:
       contents: write  # Required to create git tags
     steps:

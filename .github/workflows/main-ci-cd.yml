@@ -44,6 +44,7 @@ jobs:
       packages: write         # Push Docker images to GHCR
       attestations: write     # Generate build attestations  
       id-token: write         # OIDC authentication with registries
+      security-events: write  # Upload security scan results (SARIF)
     secrets: inherit
     
   # Job 2: E2E tests using built Docker images

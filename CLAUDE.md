@@ -196,6 +196,10 @@ Task: "[Detailed description of work to be done systematically]"
 3. **Explicit Imports**: No wildcard imports - always use specific class imports
 4. **Security-First**: All WebAuthn vulnerabilities have test coverage (100% protection achieved)
 5. **Git History**: Always use `git mv` instead of `mv` for file moves to preserve history
+6. **Docker Image Validation**: ALWAYS verify Docker images exist before updating Dockerfiles
+   - Use `docker manifest inspect <image>` to validate image existence
+   - Check available tags with registry APIs or Docker Hub before specifying versions
+   - Example: `eclipse-temurin:21.0.8_9-jre-jammy` (verified) vs `21.0.6_3-jre-jammy` (non-existent)
 
 ### Token Optimization Strategies
 

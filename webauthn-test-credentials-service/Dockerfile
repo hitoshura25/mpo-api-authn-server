@@ -1,8 +1,8 @@
 # Test service prioritizes debuggability while maintaining good security
 # Using Ubuntu LTS for glibc performance and debugging tools
 
-# Updated to latest Eclipse Temurin to include January 2025 security patches (Java 21.0.6+)
-FROM eclipse-temurin:21.0.6_3-jre-jammy AS base
+# Updated to latest Eclipse Temurin to include January 2025 security patches (Java 21.0.8+)
+FROM eclipse-temurin:21.0.8_9-jre-jammy AS base
 
 # Install debugging and monitoring tools (better layer caching)
 RUN apt-get update && apt-get install -y --no-install-recommends \

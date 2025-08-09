@@ -2,8 +2,8 @@
 # Production WebAuthn server prioritizes security with distroless image
 
 # Stage 1: Setup stage with tools
-# Updated to latest Eclipse Temurin to include January 2025 security patches (Java 21.0.6+)
-FROM eclipse-temurin:21.0.6_3-jre-jammy AS setup
+# Updated to latest Eclipse Temurin to include January 2025 security patches (Java 21.0.8+)
+FROM eclipse-temurin:21.0.8_9-jre-jammy AS setup
 
 # Install tools needed for setup (better layer caching)
 RUN apt-get update && apt-get install -y --no-install-recommends \

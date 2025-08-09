@@ -264,7 +264,9 @@ jobs:
     name: Publish to DockerHub
     runs-on: ubuntu-latest
     needs: [ detect-changes, docker-security-scan, ai-security-analysis ]
-    if: needs.docker-security-scan.outputs.scan-passed == 'true'
+    if: |
+      always() &&
+      needs.docker-security-scan.outputs.scan-passed == 'true'
     permissions:
       contents: read
     steps:

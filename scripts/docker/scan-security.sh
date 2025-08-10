@@ -277,7 +277,7 @@ perform_security_scan() {
     
     # Consolidate SARIF files for GitHub Security upload
     log "📄 Consolidating SARIF results for GitHub Security..."
-    local consolidated_sarif="docker-security-scan-results.json"
+    local consolidated_sarif="docker-security-scan-results.sarif"
     
     # Find all SARIF files and merge them
     local sarif_files=(*.sarif)

@@ -220,7 +220,9 @@ Task: "[Detailed description of work to be done systematically]"
    - **Image Source**: Scan locally built images (built with `load: true`), NOT registry pulls
    - **Image Tags**: Use actual built image tags from build job outputs, NOT hardcoded `:latest`
    - **Job Dependencies**: Security scan job needs `needs.build-docker-images.result == 'success'` condition
-   - **Common failure**: Scanning wrong images when hardcoding `:latest` or trying to pull unpushed images
+   - **SARIF Format**: GitHub Security upload requires PURE SARIF (no custom fields like `summary`)
+   - **File Separation**: Use `.sarif` extension for GitHub Security, `.json` for PR comments with custom fields
+   - **Common failures**: Scanning wrong images, uploading JSON with custom fields as SARIF
 
 ### Token Optimization Strategies
 

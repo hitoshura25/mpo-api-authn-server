@@ -521,6 +521,7 @@ jobs:
           name: docker-security-scan-results
           path: |
             docker-security-scan-results.json
+            docker-security-scan-results.sarif
             *-vulns.json
             *-secrets.json
             *-config.json
@@ -533,7 +534,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@v3
         continue-on-error: true
         with:
-          sarif_file: docker-security-scan-results.json
+          sarif_file: docker-security-scan-results.sarif
 
       - name: Post security scan results to PR
         if: always() && github.event_name == 'pull_request'

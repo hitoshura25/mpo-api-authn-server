@@ -228,6 +228,94 @@ Task: "[Detailed description of work to be done systematically]"
    - **PR Comment Format**: PR script must handle consolidated scan results format, not direct Trivy format
    - **Common failures**: Assuming `load: true` images available across runners, SARIF category collisions, wrong data format for PR comments
 
+### 🔍 CRITICAL: Script Integration & Testing Patterns
+
+**ALWAYS validate script output formats and workflow data passing to prevent silent failures in complex integrations.**
+
+#### **Data Structure Mismatch Prevention:**
+- **Producer-Consumer Contract Validation**: Scripts that generate data MUST match consumer expectations exactly
+- **Common Failure Pattern**: Security scan script outputs `{scans: [{image: "...", scans: {vulnerabilities: {...}}}]}` but PR comment consumer expects `{scans: [{image: "...", vulnerabilities: {...}}]}`
+- **Result**: Vulnerability counts show as 0 when they should be >0 (silent data loss)
+- **Solution**: Create contract validation tests that verify data structure compatibility
+
+#### **Testing Strategy for Script Data Flow:**
+```bash
+# 1. Test script output format matches consumer expectations
+node scripts/security/scan-docker-images.js | jq '.scans[0] | keys' # Should show expected keys
+node -e "
+const data = JSON.parse(require('fs').readFileSync('/tmp/scan-results.json'));
+console.log('Expected format:', data.scans[0].vulnerabilities ? 'PASS' : 'FAIL - wrong structure');
+"
+
+# 2. Validate GitHub Actions workflow data passing
+# Test that outputs from one job match inputs expected by next job
+echo "Testing workflow data compatibility..."
+```
+
+#### **SARIF File Management:**
+- **Category Collision Prevention**: Each Docker image scan MUST generate unique SARIF categories
+- **File Separation Strategy**: 
+  - `.sarif` files for GitHub Security (pure SARIF format only)
+  - `.json` files for PR comments (can include custom summary fields)
+- **Category Naming Pattern**: Use image name + timestamp or unique identifier
+- **Common Failure**: Multiple images with identical categories cause GitHub Security upload failures
+
+#### **Cross-Runner Integration Validation:**
+- **Image Availability Rule**: Docker images built with `load: true` are NOT available on different runners
+- **Solution**: Rebuild strategy with consistent tagging from job outputs
+- **Testing Pattern**: Always verify rebuild produces identical image tags as original build
+- **Cache Optimization**: Rebuilds leverage Docker layer cache for performance
+
+#### **Integration Testing Checklist:**
+1. **Data Format Compatibility**:
+   ```bash
+   # Test producer output format
+   ./scripts/producer.js > /tmp/output.json
+   # Test consumer can process the output
+   ./scripts/consumer.js /tmp/output.json && echo "PASS" || echo "FAIL"
+   ```
+
+2. **Workflow Output Passing**:
+   ```yaml
+   # In GitHub Actions, test with debug output
+   - name: Validate Job Output Format
+     run: |
+       echo "Testing output format: ${{ needs.previous-job.outputs.data }}"
+       echo '${{ needs.previous-job.outputs.data }}' | jq '.expectedField' || exit 1
+   ```
+
+3. **Cross-Job Resource Access**:
+   ```yaml
+   # Verify resources built in one job work in another
+   - name: Test Resource Availability
+     run: |
+       docker images | grep expected-image-tag || {
+         echo "ERROR: Expected image not available, implementing rebuild strategy"
+         exit 1
+       }
+   ```
+
+4. **SARIF Validation**:
+   ```bash
+   # Validate SARIF format before upload
+   jq '.runs[0].tool.driver.name' scan-results.sarif || echo "Invalid SARIF format"
+   # Check for category uniqueness
+   find . -name "*.sarif" -exec jq -r '.runs[0].results[0].ruleId // "no-rule"' {} \; | sort | uniq -d
+   ```
+
+#### **Debugging Complex Integration Failures:**
+1. **Silent Data Loss Detection**: Compare expected vs actual data at each workflow step
+2. **Format Mismatch Identification**: Use `jq` queries to validate data structure at boundaries  
+3. **Resource Availability Verification**: Test cross-job resource access before depending on it
+4. **Category Collision Prevention**: Generate unique identifiers for all SARIF categories
+
+#### **Prevention Guidelines:**
+- **Never assume data structures** - always validate with sample data
+- **Test cross-job dependencies** with manual verification steps
+- **Use unique identifiers** for all resources that might collide
+- **Implement contract tests** between script producers and consumers
+- **Log intermediate data** to debug silent transformation failures
+
 ### Token Optimization Strategies
 
 #### 1. Batch Operations

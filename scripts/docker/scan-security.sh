@@ -395,8 +395,8 @@ main() {
     # Install Trivy scanner
     install_trivy
     
-    # Verify locally built images are available for scanning
-    verify_local_images "$webauthn_changed" "$test_credentials_changed" "$webauthn_image_tag" "$test_credentials_image_tag"
+    # Images were rebuilt locally by workflow, no need to verify - they're guaranteed to exist
+    log "📦 Using locally rebuilt Docker images for security scanning..."
     
     # Perform security scanning
     perform_security_scan "$webauthn_changed" "$test_credentials_changed" "$webauthn_image_tag" "$test_credentials_image_tag"

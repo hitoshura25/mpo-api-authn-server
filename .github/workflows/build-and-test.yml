@@ -481,21 +481,80 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Download Docker images from previous job
+      - name: Set up JDK for JAR builds
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      # Job-specific Gradle caching for security scan builds
+      - name: Setup Gradle cache for security scan
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: gradle-security-scan-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-security-scan-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-security-scan-${{ runner.os }}-main-
+            gradle-security-scan-${{ runner.os }}-
+            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
+
+      - name: Build JAR files and Docker images for scanning
         run: |
-          echo "🔍 Checking for Docker images to scan..."
+          echo "🔧 Rebuilding Docker images locally for security scanning..."
+          echo "Note: Images were built on different runner, rebuilding with cache for local scanning"
+          
+          # Build JARs first  
+          ./gradlew :webauthn-server:shadowJar :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
+          
+          # Rebuild Docker images locally with same tags as build job
+          docker build -t "${{ needs.build-docker-images.outputs.webauthn-server-image }}" ./webauthn-server
+          docker build -t "${{ needs.build-docker-images.outputs.test-credentials-image }}" ./webauthn-test-credentials-service
+
+      - name: Verify rebuilt images are available
+        run: |
+          echo "🔍 Verifying rebuilt Docker images are available for scanning..."
 
           # Check if webauthn-server image should be scanned
           if [[ "${{ needs.detect-changes.outputs.source-code-changes }}" == "true" || "${{ needs.detect-changes.outputs.dockerfile-only-changes }}" == "true" ]]; then
-            echo "Will scan webauthn-server image"
             echo "webauthn_changed=true" >> $GITHUB_ENV
+            # Verify the rebuilt image exists locally
+            if docker image inspect "${{ needs.build-docker-images.outputs.webauthn-server-image }}" >/dev/null 2>&1; then
+              echo "✅ WebAuthn server image rebuilt and ready: ${{ needs.build-docker-images.outputs.webauthn-server-image }}"
+            else
+              echo "❌ Failed to rebuild WebAuthn server image"
+              exit 1
+            fi
           else
-            echo "Will skip webauthn-server image"
             echo "webauthn_changed=false" >> $GITHUB_ENV
+            echo "⏭️  Skipping WebAuthn server image scan"
           fi
 
-          # Test credentials image follows same logic
+          # Test credentials image - always scan for now
           echo "test_credentials_changed=true" >> $GITHUB_ENV
+          # Verify the rebuilt image exists locally  
+          if docker image inspect "${{ needs.build-docker-images.outputs.test-credentials-image }}" >/dev/null 2>&1; then
+            echo "✅ Test credentials image rebuilt and ready: ${{ needs.build-docker-images.outputs.test-credentials-image }}"
+          else
+            echo "❌ Failed to rebuild test credentials image"
+            exit 1
+          fi
 
       - name: Comprehensive Docker Security Scanning
         id: security-scan
@@ -510,8 +569,8 @@ jobs:
           # Make sure the script is executable
           chmod +x scripts/docker/scan-security.sh
 
-          # Run security scanning on local images (they were built with load: true)
-          # Pass the actual image tags instead of hardcoded :latest
+          # Run security scanning on locally rebuilt images
+          # Pass the actual image tags from build job outputs
           scripts/docker/scan-security.sh "${{ env.webauthn_changed }}" "${{ env.test_credentials_changed }}" "$WEBAUTHN_IMAGE_TAG" "$TEST_CREDENTIALS_IMAGE_TAG"
 
       - name: Upload security scan results

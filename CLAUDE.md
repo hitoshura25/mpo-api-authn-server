@@ -217,12 +217,14 @@ Task: "[Detailed description of work to be done systematically]"
    - **Common failure**: PR comment scripts fail with 403/422 errors when missing `issues: write` permission
 9. **Docker Security Scan Architecture**: CRITICAL for proper image scanning workflow
    - **Scan Timing**: Security scan MUST run AFTER Docker build succeeds AND before registry push
-   - **Image Source**: Scan locally built images (built with `load: true`), NOT registry pulls
+   - **Image Source**: Rebuild images locally in security job (different runner from build job)
    - **Image Tags**: Use actual built image tags from build job outputs, NOT hardcoded `:latest`
    - **Job Dependencies**: Security scan job needs `needs.build-docker-images.result == 'success'` condition
+   - **Runner Isolation**: Each job runs on separate runner - `load: true` images don't transfer between jobs
+   - **Rebuild Strategy**: Rebuild with same tags as build job, leverages Docker layer cache for speed
    - **SARIF Format**: GitHub Security upload requires PURE SARIF (no custom fields like `summary`)
    - **File Separation**: Use `.sarif` extension for GitHub Security, `.json` for PR comments with custom fields
-   - **Common failures**: Scanning wrong images, uploading JSON with custom fields as SARIF
+   - **Common failures**: Assuming `load: true` images available across runners, wrong image tags, SARIF format issues
 
 ### Token Optimization Strategies
 

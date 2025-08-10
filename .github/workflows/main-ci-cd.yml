@@ -8,7 +8,7 @@
 # 2. E2E Tests: Runs only when Docker images are built, uses built images for integration tests
 #
 # BENEFITS:
-# ✅ Eliminates 404 errors (workflows exist in PR branch)  
+# ✅ Eliminates 404 errors (workflows exist in PR branch)
 # ✅ No PAT permission issues (direct calls)
 # ✅ Modular, maintainable architecture
 # ✅ E2E tests run in PRs when Docker images built
@@ -26,9 +26,9 @@ name: Main CI/CD Pipeline
 
 on:
   pull_request:
-    branches: [main]  
+    branches: [ main ]
   push:
-    branches: [main]
+    branches: [ main ]
 
 permissions:
   # Workflow-level permissions: minimal by default, jobs can request additional permissions
@@ -42,11 +42,13 @@ jobs:
     permissions:
       contents: read          # Read repository code
       packages: write         # Push Docker images to GHCR
-      attestations: write     # Generate build attestations  
+      attestations: write     # Generate build attestations
       id-token: write         # OIDC authentication with registries
       security-events: write  # Upload security scan results (SARIF)
+      pull-requests: write
+      issues: write
     secrets: inherit
-    
+
   # Job 2: E2E tests using built Docker images
   e2e-tests:
     name: E2E Tests (Web + Android)
@@ -64,12 +66,12 @@ jobs:
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}
       test_credentials_image: ${{ needs.build-and-test.outputs.test_credentials_image }}
     secrets: inherit
-    
+
   # Job 3: Report pipeline status
   report-pipeline-status:
     name: Report Pipeline Status
     runs-on: ubuntu-latest
-    needs: [build-and-test, e2e-tests]
+    needs: [ build-and-test, e2e-tests ]
     if: always()
     steps:
       - name: Report overall pipeline status
@@ -78,15 +80,15 @@ jobs:
           echo "Build & Test: ${{ needs.build-and-test.result }}"
           echo "Docker Images Built: ${{ needs.build-and-test.outputs.docker_images_built }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
-          
+
           if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
             echo "✅ Build and test phase completed successfully"
-            
+
             if [[ "${{ needs.build-and-test.outputs.docker_images_built }}" == "true" ]]; then
               echo "🐳 Docker images were built:"
               echo "  WebAuthn Server: ${{ needs.build-and-test.outputs.webauthn_server_image }}"
               echo "  Test Credentials: ${{ needs.build-and-test.outputs.test_credentials_image }}"
-              
+
               if [[ "${{ needs.e2e-tests.result }}" == "success" ]]; then
                 echo "🎉 Complete CI/CD pipeline passed - all tests successful!"
               elif [[ "${{ needs.e2e-tests.result }}" == "failure" ]]; then

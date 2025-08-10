@@ -27,7 +27,10 @@ class MonitoringModuleTest : KoinTest {
     // OpenTelemetry Service Name Tests
     @Test
     fun `OpenTelemetry service name should work through Koin DI when configured via system property`() {
-        System.setProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME, "test-service")
+        System.setProperty(
+            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME,
+            "test-service",
+        )
 
         startKoin {
             modules(monitoringModule)
@@ -76,7 +79,10 @@ class MonitoringModuleTest : KoinTest {
     // OpenTelemetry Jaeger Endpoint Tests
     @Test
     fun `OpenTelemetry Jaeger endpoint should work through Koin DI when configured via system property`() {
-        System.setProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT, "http://jaeger:14250")
+        System.setProperty(
+            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
+            "http://jaeger:14250",
+        )
 
         startKoin {
             modules(monitoringModule)

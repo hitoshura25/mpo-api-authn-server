@@ -46,7 +46,11 @@ object WebAuthnTestHelpers {
         keyPair: KeyPair,
     ): HttpResponse {
         val startRegResponse = startRegistration(client, username, displayName)
-        assertEquals(HttpStatusCode.OK, startRegResponse.status, "Registration start should succeed")
+        assertEquals(
+            HttpStatusCode.OK,
+            startRegResponse.status,
+            "Registration start should succeed",
+        )
 
         return completeRegistration(client, startRegResponse, keyPair)
     }
@@ -234,7 +238,10 @@ object WebAuthnTestHelpers {
 
         // Create malicious client data JSON
         val maliciousClientData = """{"type":"webauthn.get","challenge":"$challenge","origin":"$maliciousOrigin"}"""
-        val maliciousClientDataB64 = java.util.Base64.getEncoder().encodeToString(maliciousClientData.toByteArray())
+        val maliciousClientDataB64 =
+            java.util.Base64.getEncoder().encodeToString(
+                maliciousClientData.toByteArray(),
+            )
 
         credentialNode.put("clientDataJSON", maliciousClientDataB64)
         return objectMapper.writeValueAsString(credentialNode)
@@ -247,7 +254,10 @@ object WebAuthnTestHelpers {
      */
     fun tamperCredentialSignature(credentialJson: String): String {
         val credentialNode = objectMapper.readTree(credentialJson) as ObjectNode
-        credentialNode.put("signature", "dGFtcGVyZWRfc2lnbmF0dXJl") // "tampered_signature" in base64
+        credentialNode.put(
+            "signature",
+            "dGFtcGVyZWRfc2lnbmF0dXJl",
+        ) // "tampered_signature" in base64
         return objectMapper.writeValueAsString(credentialNode)
     }
 

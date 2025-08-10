@@ -48,9 +48,10 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
     logger: Logger,
 ) {
     runCatching {
-        val request = openTelemetryTracer.traceOperation("call.receive") {
-            call.receive<AuthenticationRequest>()
-        }
+        val request =
+            openTelemetryTracer.traceOperation("call.receive") {
+                call.receive<AuthenticationRequest>()
+            }
 
         if (validateAuthenticationRequest(request)) return
 
@@ -131,9 +132,10 @@ private suspend fun createAuthenticationResponse(
     startAssertionOptions: com.yubico.webauthn.AssertionRequest,
     openTelemetryTracer: OpenTelemetryTracer,
 ): AuthenticationResponse {
-    val credentialsJson = openTelemetryTracer.traceOperation("toCredentialsGetJson") {
-        startAssertionOptions.toCredentialsGetJson()
-    }
+    val credentialsJson =
+        openTelemetryTracer.traceOperation("toCredentialsGetJson") {
+            startAssertionOptions.toCredentialsGetJson()
+        }
     val credentialsObject = openTelemetryTracer.readTree(credentialsJson)
 
     return AuthenticationResponse(
@@ -197,7 +199,7 @@ private suspend fun handleAuthenticationError(
     call: ApplicationCall,
     logger: Logger,
     exception: Throwable,
-    message: String
+    message: String,
 ) {
     logger.error(message, exception)
     call.respond(

@@ -102,7 +102,10 @@ abstract class BaseIntegrationTest : KoinTest {
             EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
             "http://${jaeger.host}:${jaeger.getMappedPort(14250)}",
         )
-        System.setProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME, "mpo-authn-server-test")
+        System.setProperty(
+            EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME,
+            "mpo-authn-server-test",
+        )
     }
 
     /**

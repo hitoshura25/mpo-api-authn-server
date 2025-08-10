@@ -1,8 +1,8 @@
 package com.vmenon.mpo.api.authn.storage
 
 import com.yubico.webauthn.RegisteredCredential
-import java.util.Optional
 import com.yubico.webauthn.data.ByteArray
+import java.util.Optional
 
 interface CredentialStorage {
     fun addRegistration(registration: CredentialRegistration)

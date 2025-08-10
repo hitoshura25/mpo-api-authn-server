@@ -39,6 +39,13 @@ repositories {
 }
 
 dependencies {
+    // Force specific versions to avoid configuration cache issues with version ranges
+    constraints {
+        implementation("com.upokecenter:cbor:4.5.2") {
+            because("Avoid version ranges that break Gradle configuration cache")
+        }
+    }
+
     // Shared WebAuthn test library
     implementation(project(":webauthn-test-lib"))
 
@@ -71,7 +78,7 @@ kotlin {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    
+
     // Disable global OpenTelemetry registration in tests to prevent race conditions
     systemProperty("otel.global.disabled", "true")
 }

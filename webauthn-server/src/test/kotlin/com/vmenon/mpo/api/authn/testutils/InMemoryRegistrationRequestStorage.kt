@@ -17,7 +17,8 @@ class InMemoryRegistrationRequestStorage : RegistrationRequestStorage {
         val expirationTime: Long,
     )
 
-    private val storage = ConcurrentHashMap<String, StoredItem<PublicKeyCredentialCreationOptions>>()
+    private val storage =
+        ConcurrentHashMap<String, StoredItem<PublicKeyCredentialCreationOptions>>()
     private val cleanupExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
 
     init {
@@ -36,7 +37,9 @@ class InMemoryRegistrationRequestStorage : RegistrationRequestStorage {
         storage[requestId] = StoredItem(options, expirationTime)
     }
 
-    override suspend fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
+    override suspend fun retrieveAndRemoveRegistrationRequest(
+        requestId: String,
+    ): PublicKeyCredentialCreationOptions? {
         val stored = storage.remove(requestId)
         return if (stored != null && stored.expirationTime > System.currentTimeMillis()) {
             stored.value

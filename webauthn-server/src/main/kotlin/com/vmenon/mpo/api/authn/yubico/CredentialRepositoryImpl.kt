@@ -8,7 +8,9 @@ import com.yubico.webauthn.data.PublicKeyCredentialDescriptor
 import java.util.Optional
 
 class CredentialRepositoryImpl(private val credentialStorage: CredentialStorage) : CredentialRepository {
-    override fun getCredentialIdsForUsername(username: String): Set<PublicKeyCredentialDescriptor?>? {
+    override fun getCredentialIdsForUsername(
+        username: String,
+    ): Set<PublicKeyCredentialDescriptor?>? {
         return credentialStorage.getRegistrationsByUsername(username)
             .map { registration ->
                 PublicKeyCredentialDescriptor.builder()

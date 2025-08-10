@@ -35,7 +35,7 @@ fun Application.configureHealthRoutes() {
                         HttpStatusCode.InternalServerError,
                         mapOf("error" to "Metrics unavailable"),
                     )
-                }
+                },
             )
         }
 

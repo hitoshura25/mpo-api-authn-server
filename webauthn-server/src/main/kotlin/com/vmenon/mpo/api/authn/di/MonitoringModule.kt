@@ -24,10 +24,10 @@ val monitoringModule =
         single(named("openTelemetryServiceName")) {
             val value =
                 System.getProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME)
-                    ?: System.getenv(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME) 
+                    ?: System.getenv(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME)
                     ?: "MPO-API-AUTHN"
-            require(value.isNotBlank()) { 
-                "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME} cannot be blank" 
+            require(value.isNotBlank()) {
+                "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME} cannot be blank"
             }
             value
         }
@@ -37,8 +37,8 @@ val monitoringModule =
                 System.getProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT)
                     ?: System.getenv(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT)
             if (value != null) {
-                require(value.isNotBlank()) { 
-                    "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT} cannot be blank" 
+                require(value.isNotBlank()) {
+                    "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT} cannot be blank"
                 }
             }
             Optional.ofNullable(value)
@@ -46,10 +46,10 @@ val monitoringModule =
 
         single<OpenTelemetry> {
             val jaegerEndpoint: Optional<String> by inject(named("openTelemetryJaegerEndpoint"))
-            
+
             // Control global OpenTelemetry registration via system property
             val isGlobalOpenTelemetryEnabled = System.getProperty("otel.global.disabled") != "true"
-            
+
             if (jaegerEndpoint.isPresent) {
                 val endpoint = jaegerEndpoint.get()
                 logger.info("Using Jaeger endpoint: $endpoint")
@@ -74,10 +74,13 @@ val monitoringModule =
                         .setResource(resource)
                         .build()
 
-                val openTelemetrySdk = OpenTelemetrySdk.builder()
-                    .setTracerProvider(tracerProvider)
-                    .setPropagators(ContextPropagators.create(W3CTraceContextPropagator.getInstance()))
-                    .build()
+                val openTelemetrySdk =
+                    OpenTelemetrySdk.builder()
+                        .setTracerProvider(tracerProvider)
+                        .setPropagators(
+                            ContextPropagators.create(W3CTraceContextPropagator.getInstance()),
+                        )
+                        .build()
 
                 if (isGlobalOpenTelemetryEnabled) {
                     // Production: Register globally for automatic context propagation

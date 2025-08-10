@@ -458,6 +458,8 @@ jobs:
     permissions:
       contents: read
       security-events: write
+      pull-requests: write
+      issues: write
     outputs:
       scan-passed: ${{ steps.security-scan.outputs.scan-passed }}
       critical-vulnerabilities: ${{ steps.security-scan.outputs.critical-vulnerabilities }}

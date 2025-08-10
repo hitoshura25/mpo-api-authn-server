@@ -26,7 +26,9 @@ class RedisAssertionRequestStorage(
     }
 
     override suspend fun retrieveAndRemoveAssertionRequest(requestId: String): AssertionRequest? {
-        return openTelemetryTracer.traceOperation("RedisAssertionRequestStorage.retrieveAndRemoveAssertionRequest") {
+        return openTelemetryTracer.traceOperation(
+            "RedisAssertionRequestStorage.retrieveAndRemoveAssertionRequest",
+        ) {
             val key = "$keyPrefix$requestId"
             val value = openTelemetryTracer.get(jedisPool, key)
             if (value != null) {

@@ -5,9 +5,11 @@ import com.vmenon.mpo.api.authn.RegistrationRequest
 import com.vmenon.mpo.api.authn.RegistrationResponse
 import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
+import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.yubico.webauthn.FinishRegistrationOptions
 import com.yubico.webauthn.RegisteredCredential
+import com.yubico.webauthn.RegistrationResult
 import com.yubico.webauthn.RelyingParty
 import com.yubico.webauthn.StartRegistrationOptions
 import com.yubico.webauthn.data.ByteArray
@@ -16,8 +18,6 @@ import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
 import com.yubico.webauthn.data.UserIdentity
 import java.util.Base64
 import java.util.UUID
-import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
-import com.yubico.webauthn.RegistrationResult
 
 object RegistrationUtils {
     suspend fun createRegistrationResponse(
@@ -27,32 +27,36 @@ object RegistrationUtils {
         registrationStorage: RegistrationRequestStorage,
         openTelemetryTracer: OpenTelemetryTracer,
     ): RegistrationResponse {
-        val userHandle = ByteArray.fromBase64Url(
-            Base64.getUrlEncoder().withoutPadding()
-                .encodeToString(UUID.randomUUID().toString().toByteArray()),
-        )
-
-        val user = openTelemetryTracer.traceOperation("buildUserIdentity") {
-            UserIdentity.builder()
-                .name(request.username)
-                .displayName(request.displayName)
-                .id(userHandle)
-                .build()
-        }
-
-        val startRegistrationOptions = openTelemetryTracer.traceOperation("relyingParty.startRegistration") {
-            relyingParty.startRegistration(
-                StartRegistrationOptions.builder()
-                    .user(user)
-                    .build(),
+        val userHandle =
+            ByteArray.fromBase64Url(
+                Base64.getUrlEncoder().withoutPadding()
+                    .encodeToString(UUID.randomUUID().toString().toByteArray()),
             )
-        }
+
+        val user =
+            openTelemetryTracer.traceOperation("buildUserIdentity") {
+                UserIdentity.builder()
+                    .name(request.username)
+                    .displayName(request.displayName)
+                    .id(userHandle)
+                    .build()
+            }
+
+        val startRegistrationOptions =
+            openTelemetryTracer.traceOperation("relyingParty.startRegistration") {
+                relyingParty.startRegistration(
+                    StartRegistrationOptions.builder()
+                        .user(user)
+                        .build(),
+                )
+            }
 
         registrationStorage.storeRegistrationRequest(requestId, startRegistrationOptions)
 
-        val credentialsJson = openTelemetryTracer.traceOperation("toCredentialsCreateJson") {
-            startRegistrationOptions.toCredentialsCreateJson()
-        }
+        val credentialsJson =
+            openTelemetryTracer.traceOperation("toCredentialsCreateJson") {
+                startRegistrationOptions.toCredentialsCreateJson()
+            }
         val credentialsObject = openTelemetryTracer.readTree(credentialsJson)
 
         return RegistrationResponse(
@@ -84,11 +88,12 @@ object RegistrationUtils {
         finishRegistrationResult: RegistrationResult,
     ) = CredentialRegistration(
         userAccount = userAccount,
-        credential = RegisteredCredential.builder()
-            .credentialId(finishRegistrationResult.keyId.id)
-            .userHandle(userAccount.userHandle)
-            .publicKeyCose(finishRegistrationResult.publicKeyCose)
-            .signatureCount(finishRegistrationResult.signatureCount)
-            .build(),
+        credential =
+            RegisteredCredential.builder()
+                .credentialId(finishRegistrationResult.keyId.id)
+                .userHandle(userAccount.userHandle)
+                .publicKeyCose(finishRegistrationResult.publicKeyCose)
+                .signatureCount(finishRegistrationResult.signatureCount)
+                .build(),
     )
 }

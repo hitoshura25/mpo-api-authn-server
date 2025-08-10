@@ -339,6 +339,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - name: DockerHub publishing strategy
         run: |
           if [[ "${{ needs.check-main-ci-images.outputs.publish-from-main-ci }}" == "true" ]]; then

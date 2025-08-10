@@ -344,6 +344,28 @@ This project emphasizes security testing and vulnerability protection:
 - **Credential tampering** - Signature validation
 - **Result**: 7/7 security tests passing, 100% coverage achieved
 
+### Docker Security Standardization
+
+**CRITICAL: Both services now use secure, standardized base images with 0 critical vulnerabilities**
+
+#### **Base Image Strategy:**
+- **Standard Image**: `eclipse-temurin:21.0.8_9-jre-noble` (Ubuntu 24.04 LTS)
+- **Security Status**: 0 critical vulnerabilities (verified via security scanning)
+- **Previous Issues**: webauthn-server used `gcr.io/distroless/java21-debian12` (1 CRITICAL vulnerability)
+- **Resolution**: Migrated webauthn-server to match webauthn-test-credentials-service secure base
+
+#### **Security Hardening (Both Services):**
+- **Non-root execution**: Both run as `appuser` (uid 1001, gid 1001)  
+- **Minimal attack surface**: Only essential packages installed (wget, curl for health checks)
+- **Health monitoring**: Production-ready health checks on both services
+- **JVM optimization**: Identical containerized JVM settings for performance and security
+- **Layer optimization**: Clean apt cache, minimal layers, proper ownership
+
+#### **Verification Commands:**
+- **Security Scan**: `docker scout cves <image>` (should show 0 critical vulnerabilities)
+- **Base Image Check**: Both Dockerfiles should reference `eclipse-temurin:21.0.8_9-jre-noble`
+- **Build Validation**: `./gradlew build` and Docker build should succeed without security warnings
+
 ## OpenAPI Specification Management 
 
 **CRITICAL: Keep OpenAPI specification synchronized with server implementation at all times**
@@ -387,6 +409,7 @@ env:
 ## Completed Work Summary
 
 ### Major Achievements ✅
+- **Docker Security Standardization**: Migrated webauthn-server from distroless (1 CRITICAL vulnerability) to eclipse-temurin:21.0.8_9-jre-noble (0 critical vulnerabilities), achieving consistent secure base images across both services
 - **Centralized npm Package Configuration**: Established workflow environment variables (`NPM_SCOPE`, `NPM_PACKAGE_NAME`) for single-point configuration management
 - **Enhanced Regex Validation**: Upgraded version validation from `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9]+(\\.[a-zA-Z0-9]+)*)?$` to `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*)?$` supporting hyphens in prerelease identifiers for full npm semver compliance\n- **Robust Version Validation**: All version formats now properly validated - rejects invalid 2-part, 4-part, and empty prerelease formats while supporting advanced prerelease identifiers like `1.0.0-alpha-beta.1`\n- **Unified 3-Part Versioning**: Standardized both Android and npm clients to use identical semantic versioning with enhanced validation ensuring 100% npm compatibility\n- **PR Publishing Support**: Added automatic snapshot publishing for pull requests with version format 1.0.0-pr.42.123 for testing client changes before merge
 - **Dual Registry Publishing**: Configured production releases to npm/GitHub Packages and PR snapshots to GitHub Packages with automated PR comments

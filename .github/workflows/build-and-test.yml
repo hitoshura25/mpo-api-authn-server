@@ -499,15 +499,20 @@ jobs:
 
       - name: Comprehensive Docker Security Scanning
         id: security-scan
+        env:
+          WEBAUTHN_IMAGE_TAG: ${{ needs.build-docker-images.outputs.webauthn-server-image }}
+          TEST_CREDENTIALS_IMAGE_TAG: ${{ needs.build-docker-images.outputs.test-credentials-image }}
         run: |
           echo "🔍 Starting security scan of locally built Docker images..."
+          echo "WebAuthn image: $WEBAUTHN_IMAGE_TAG"
+          echo "Test credentials image: $TEST_CREDENTIALS_IMAGE_TAG"
 
           # Make sure the script is executable
           chmod +x scripts/docker/scan-security.sh
 
           # Run security scanning on local images (they were built with load: true)
-          # The scan script will work with locally available images
-          scripts/docker/scan-security.sh "${{ env.webauthn_changed }}" "${{ env.test_credentials_changed }}"
+          # Pass the actual image tags instead of hardcoded :latest
+          scripts/docker/scan-security.sh "${{ env.webauthn_changed }}" "${{ env.test_credentials_changed }}" "$WEBAUTHN_IMAGE_TAG" "$TEST_CREDENTIALS_IMAGE_TAG"
 
       - name: Upload security scan results
         if: always()

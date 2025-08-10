@@ -215,6 +215,12 @@ Task: "[Detailed description of work to be done systematically]"
    - **Attestations**: Requires both `attestations: write` and `id-token: write` for build provenance
    - **Rule**: ALWAYS verify required permissions are set at both job level AND workflow level
    - **Common failure**: PR comment scripts fail with 403/422 errors when missing `issues: write` permission
+9. **Docker Security Scan Architecture**: CRITICAL for proper image scanning workflow
+   - **Scan Timing**: Security scan MUST run AFTER Docker build succeeds AND before registry push
+   - **Image Source**: Scan locally built images (built with `load: true`), NOT registry pulls
+   - **Image Tags**: Use actual built image tags from build job outputs, NOT hardcoded `:latest`
+   - **Job Dependencies**: Security scan job needs `needs.build-docker-images.result == 'success'` condition
+   - **Common failure**: Scanning wrong images when hardcoding `:latest` or trying to pull unpushed images
 
 ### Token Optimization Strategies
 

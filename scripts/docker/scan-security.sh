@@ -7,8 +7,9 @@
 # and blocking publication on critical vulnerabilities.
 #
 # USAGE:
-#   ./scan-security.sh <webauthn_changed> <test_credentials_changed>
-#   where parameters are "true" or "false"
+#   ./scan-security.sh <webauthn_changed> <test_credentials_changed> [webauthn_image_tag] [test_credentials_image_tag]
+#   where first two parameters are "true" or "false"
+#   and optional image tags specify the actual built images to scan
 #
 # ENVIRONMENT VARIABLES:
 #   DOCKER_REGISTRY - Docker registry URL
@@ -51,46 +52,60 @@ install_trivy() {
     log "✅ Trivy scanner installed successfully"
 }
 
-# Function to pull Docker images for scanning (if they're not already local)
-pull_images() {
+# Function to verify locally built Docker images are available for scanning
+verify_local_images() {
     local webauthn_changed="$1"
     local test_credentials_changed="$2"
-    local scan_local_images="${3:-false}"
+    local webauthn_image_tag="$3"
+    local test_credentials_image_tag="$4"
     
-    if [[ "$scan_local_images" == "true" ]]; then
-        log "📦 Using locally built images for security scanning (build-and-test workflow)"
-        # In build-and-test, images are already built locally with load: true
-        # Check if images exist locally
-        if [[ "$webauthn_changed" == "true" ]]; then
+    log "📦 Verifying locally built images are available for security scanning..."
+    
+    # Check WebAuthn server image
+    if [[ "$webauthn_changed" == "true" ]]; then
+        if [[ -n "$webauthn_image_tag" ]]; then
+            # Use the full image tag provided from build job
+            if docker image inspect "$webauthn_image_tag" >/dev/null 2>&1; then
+                log "✅ Found local WebAuthn server image: $webauthn_image_tag"
+            else
+                log "❌ Local WebAuthn server image not found: $webauthn_image_tag"
+                log "   This indicates the Docker build step may have failed or the image wasn't loaded locally"
+                exit 1
+            fi
+        else
+            log "⚠️ No WebAuthn image tag provided, checking for latest tag"
             if docker image inspect "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest" >/dev/null 2>&1; then
-                log "✅ Found local webauthn-server image"
+                log "✅ Found local WebAuthn server image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
             else
-                log "❌ Local webauthn-server image not found - may need to check build step"
+                log "❌ Local WebAuthn server image not found with latest tag"
                 exit 1
             fi
-        fi
-        
-        if [[ "$test_credentials_changed" == "true" ]]; then
-            if docker image inspect "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest" >/dev/null 2>&1; then
-                log "✅ Found local test-credentials-service image"
-            else
-                log "❌ Local test-credentials-service image not found - may need to check build step"
-                exit 1
-            fi
-        fi
-    else
-        log "📦 Pulling images from GHCR for security scanning (post-processing workflow)..."
-        
-        if [[ "$webauthn_changed" == "true" ]]; then
-            docker pull "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-            log "✅ Pulled webauthn-server image"
-        fi
-        
-        if [[ "$test_credentials_changed" == "true" ]]; then
-            docker pull "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
-            log "✅ Pulled test-credentials-service image"
         fi
     fi
+    
+    # Check Test Credentials service image  
+    if [[ "$test_credentials_changed" == "true" ]]; then
+        if [[ -n "$test_credentials_image_tag" ]]; then
+            # Use the full image tag provided from build job
+            if docker image inspect "$test_credentials_image_tag" >/dev/null 2>&1; then
+                log "✅ Found local Test Credentials service image: $test_credentials_image_tag"
+            else
+                log "❌ Local Test Credentials service image not found: $test_credentials_image_tag"
+                log "   This indicates the Docker build step may have failed or the image wasn't loaded locally"
+                exit 1
+            fi
+        else
+            log "⚠️ No Test Credentials image tag provided, checking for latest tag"
+            if docker image inspect "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest" >/dev/null 2>&1; then
+                log "✅ Found local Test Credentials service image: ${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
+            else
+                log "❌ Local Test Credentials service image not found with latest tag"
+                exit 1
+            fi
+        fi
+    fi
+    
+    log "✅ All required local images verified and ready for scanning"
 }
 
 # Function to scan a single image
@@ -201,7 +216,8 @@ EOF
 perform_security_scan() {
     local webauthn_changed="$1"
     local test_credentials_changed="$2"
-    local scan_local_images="${3:-false}"
+    local webauthn_image_tag="$3"
+    local test_credentials_image_tag="$4"
     
     log "🔍 Starting comprehensive Docker security scanning..."
     
@@ -224,14 +240,38 @@ perform_security_scan() {
     
     # Scan images that have changes
     if [[ "$webauthn_changed" == "true" ]]; then
-        if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}" "latest"; then
-            SCAN_SUCCESS=false
+        # Use provided full image name or fall back to constructing one
+        if [[ -n "$webauthn_image_tag" ]]; then
+            log "🔍 Scanning WebAuthn server image: $webauthn_image_tag"
+            # Extract base name and tag from full image name for scan_image function
+            local base_name="${webauthn_image_tag%:*}"
+            local tag="${webauthn_image_tag##*:}"
+            if ! scan_image "$base_name" "$tag"; then
+                SCAN_SUCCESS=false
+            fi
+        else
+            log "⚠️ No WebAuthn image tag provided, falling back to latest"
+            if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}" "latest"; then
+                SCAN_SUCCESS=false
+            fi
         fi
     fi
     
     if [[ "$test_credentials_changed" == "true" ]]; then
-        if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}" "latest"; then
-            SCAN_SUCCESS=false
+        # Use provided full image name or fall back to constructing one
+        if [[ -n "$test_credentials_image_tag" ]]; then
+            log "🔍 Scanning Test Credentials service image: $test_credentials_image_tag"
+            # Extract base name and tag from full image name for scan_image function
+            local base_name="${test_credentials_image_tag%:*}"
+            local tag="${test_credentials_image_tag##*:}"
+            if ! scan_image "$base_name" "$tag"; then
+                SCAN_SUCCESS=false
+            fi
+        else
+            log "⚠️ No Test Credentials image tag provided, falling back to latest"
+            if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}" "latest"; then
+                SCAN_SUCCESS=false
+            fi
         fi
     fi
     
@@ -329,6 +369,8 @@ perform_security_scan() {
 main() {
     local webauthn_changed="${1:-false}"
     local test_credentials_changed="${2:-false}"
+    local webauthn_image_tag="${3:-}"
+    local test_credentials_image_tag="${4:-}"
     
     # Validate required environment variables
     if [ -z "${DOCKER_REGISTRY:-}" ] || [ -z "${DOCKER_IMAGE_NAME:-}" ] || [ -z "${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-}" ]; then
@@ -353,11 +395,11 @@ main() {
     # Install Trivy scanner
     install_trivy
     
-    # Pull images for scanning
-    pull_images "$webauthn_changed" "$test_credentials_changed"
+    # Verify locally built images are available for scanning
+    verify_local_images "$webauthn_changed" "$test_credentials_changed" "$webauthn_image_tag" "$test_credentials_image_tag"
     
     # Perform security scanning
-    perform_security_scan "$webauthn_changed" "$test_credentials_changed"
+    perform_security_scan "$webauthn_changed" "$test_credentials_changed" "$webauthn_image_tag" "$test_credentials_image_tag"
 }
 
 # Trap errors for better debugging

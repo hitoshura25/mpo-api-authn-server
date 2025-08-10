@@ -454,7 +454,10 @@ jobs:
   security-scan-docker-images:
     runs-on: ubuntu-latest
     needs: [ detect-changes, build-docker-images ]
-    if: always() && needs.detect-changes.outputs.should-build-docker == 'true'
+    if: |
+      always() &&
+      needs.detect-changes.outputs.should-build-docker == 'true' &&
+      needs.build-docker-images.result == 'success'
     permissions:
       contents: read
       security-events: write

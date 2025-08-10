@@ -525,6 +525,18 @@ jobs:
         with:
           sarif_file: docker-security-scan-results.json
 
+      - name: Post security scan results to PR
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.number }}
+          SCAN_RESULTS_FILE: docker-security-scan-results.json
+        run: |
+          echo "📝 Posting security scan results to PR #${{ github.event.number }}"
+          chmod +x scripts/ci/security-scan-pr-comment.cjs
+          node scripts/ci/security-scan-pr-comment.cjs
+
   # Job 5: Push Docker images to registry (only after security scan passes)
   push-docker-images:
     runs-on: ubuntu-latest

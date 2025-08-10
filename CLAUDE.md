@@ -208,6 +208,13 @@ Task: "[Detailed description of work to be done systematically]"
    - **Common pattern**: `if: always() && needs.job.result == 'success' && other_conditions`
    - **Example failure**: Job with `needs: [job-that-depends-on-skipped-job]` will be skipped even if direct dependency ran
    - **Solution**: `if: always() && needs.dependency.outputs.value == 'true'` evaluates properly regardless of dependency chain
+8. **GitHub Actions Permissions for PR Operations**: CRITICAL for automated PR interactions
+   - **PR Commenting**: Requires both `pull-requests: write` AND `issues: write` permissions
+   - **Security Scanning**: Requires `security-events: write` for uploading SARIF results
+   - **Package Publishing**: Requires `packages: write` for Docker registry pushes
+   - **Attestations**: Requires both `attestations: write` and `id-token: write` for build provenance
+   - **Rule**: ALWAYS verify required permissions are set at both job level AND workflow level
+   - **Common failure**: PR comment scripts fail with 403/422 errors when missing `issues: write` permission
 
 ### Token Optimization Strategies
 

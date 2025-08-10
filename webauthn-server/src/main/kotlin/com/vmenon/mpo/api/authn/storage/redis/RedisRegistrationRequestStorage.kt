@@ -18,16 +18,20 @@ class RedisRegistrationRequestStorage(
         options: PublicKeyCredentialCreationOptions,
         ttlSeconds: Long,
     ) {
-        openTelemetryTracer.traceOperation("RedisRegistrationRequestStorage.storeRegistrationRequest") {
+        openTelemetryTracer.traceOperation(
+            "RedisRegistrationRequestStorage.storeRegistrationRequest",
+        ) {
             val key = "$keyPrefix$requestId"
             val value = openTelemetryTracer.writeValueAsString(options)
             openTelemetryTracer.setex(jedisPool, key, ttlSeconds, value)
         }
     }
 
-    override suspend fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions? {
+    override suspend fun retrieveAndRemoveRegistrationRequest(
+        requestId: String,
+    ): PublicKeyCredentialCreationOptions? {
         return openTelemetryTracer.traceOperation(
-            "RedisRegistrationRequestStorage.retrieveAndRemoveRegistrationRequest"
+            "RedisRegistrationRequestStorage.retrieveAndRemoveRegistrationRequest",
         ) {
             val key = "$keyPrefix$requestId"
             val value = openTelemetryTracer.get(jedisPool, key)

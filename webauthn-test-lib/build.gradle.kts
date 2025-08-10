@@ -42,6 +42,13 @@ repositories {
 }
 
 dependencies {
+    // Force specific versions to avoid configuration cache issues with version ranges
+    constraints {
+        api("com.upokecenter:cbor:$cborVersion") {
+            because("Avoid version ranges that break Gradle configuration cache")
+        }
+    }
+
     // WebAuthn Core (exposed as API for dependent projects)
     api("com.yubico:webauthn-server-core:$webauthnVersion")
 

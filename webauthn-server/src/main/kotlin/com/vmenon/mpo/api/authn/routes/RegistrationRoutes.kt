@@ -16,12 +16,10 @@ import io.ktor.server.response.respond
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import io.ktor.util.pipeline.PipelineContext
-import java.util.UUID
 import org.koin.ktor.ext.inject
-import org.slf4j.LoggerFactory
 import org.slf4j.Logger
-import com.fasterxml.jackson.core.JsonProcessingException
-import redis.clients.jedis.exceptions.JedisException
+import org.slf4j.LoggerFactory
+import java.util.UUID
 
 fun Application.configureRegistrationRoutes() {
     val logger = LoggerFactory.getLogger("RegistrationRoutes")
@@ -34,7 +32,11 @@ fun Application.configureRegistrationRoutes() {
 
         post("/register/start") {
             handleRegistrationStart(
-                registrationStorage, relyingParty, credentialStorage, openTelemetryTracer, logger
+                registrationStorage,
+                relyingParty,
+                credentialStorage,
+                openTelemetryTracer,
+                logger,
             )
         }
 
@@ -52,19 +54,31 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
     logger: Logger,
 ) {
     runCatching {
-        val request = openTelemetryTracer.traceOperation("call.receive") {
-            call.receive<RegistrationRequest>()
-        }
+        val request =
+            openTelemetryTracer.traceOperation("call.receive") {
+                call.receive<RegistrationRequest>()
+            }
 
         if (validateRegistrationRequest(request)) return
-        if (checkUserDoesNotExist(request.username, credentialStorage, openTelemetryTracer, logger)) {
+        if (checkUserDoesNotExist(
+                request.username,
+                credentialStorage,
+                openTelemetryTracer,
+                logger,
+            )
+        ) {
             return
         }
 
         val requestId = UUID.randomUUID().toString()
-        val registrationResponse = RegistrationUtils.createRegistrationResponse(
-            request, requestId, relyingParty, registrationStorage, openTelemetryTracer
-        )
+        val registrationResponse =
+            RegistrationUtils.createRegistrationResponse(
+                request,
+                requestId,
+                relyingParty,
+                registrationStorage,
+                openTelemetryTracer,
+            )
 
         call.respond(registrationResponse)
     }.onFailure { exception ->
@@ -75,11 +89,12 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationSta
 private suspend fun PipelineContext<Unit, ApplicationCall>.validateRegistrationRequest(
     request: RegistrationRequest,
 ): Boolean {
-    val errorMessage = when {
-        request.username.isBlank() -> "Username is required"
-        request.displayName.isBlank() -> "Display name is required"
-        else -> null
-    }
+    val errorMessage =
+        when {
+            request.username.isBlank() -> "Username is required"
+            request.displayName.isBlank() -> "Display name is required"
+            else -> null
+        }
 
     return if (errorMessage != null) {
         call.respond(HttpStatusCode.BadRequest, mapOf("error" to errorMessage))
@@ -95,9 +110,10 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.checkUserDoesNotExist
     openTelemetryTracer: OpenTelemetryTracer,
     logger: Logger,
 ): Boolean {
-    val userAlreadyExists = openTelemetryTracer.traceOperation("checkUserExists") {
-        credentialStorage.userExists(username)
-    }
+    val userAlreadyExists =
+        openTelemetryTracer.traceOperation("checkUserExists") {
+            credentialStorage.userExists(username)
+        }
 
     return if (userAlreadyExists) {
         logger.info("Registration attempt for existing user: $username")
@@ -111,7 +127,6 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.checkUserDoesNotExist
     }
 }
 
-
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationComplete(
     registrationStorage: RegistrationRequestStorage,
     relyingParty: RelyingParty,
@@ -121,14 +136,22 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleRegistrationCom
     runCatching {
         val request = call.receive<RegistrationCompleteRequest>()
 
-        val startRegistrationOptions = retrieveRegistrationRequest(request.requestId, registrationStorage)
-            ?: return
+        val startRegistrationOptions =
+            retrieveRegistrationRequest(request.requestId, registrationStorage)
+                ?: return
 
-        val finishRegistrationResult = RegistrationUtils.processRegistrationFinish(
-            startRegistrationOptions, request, relyingParty
-        )
+        val finishRegistrationResult =
+            RegistrationUtils.processRegistrationFinish(
+                startRegistrationOptions,
+                request,
+                relyingParty,
+            )
         val userAccount = RegistrationUtils.createUserAccount(startRegistrationOptions)
-        val registration = RegistrationUtils.createCredentialRegistration(userAccount, finishRegistrationResult)
+        val registration =
+            RegistrationUtils.createCredentialRegistration(
+                userAccount,
+                finishRegistrationResult,
+            )
 
         if (checkForRaceCondition(userAccount.username, credentialStorage, logger)) {
             return
@@ -156,7 +179,6 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.retrieveRegistrationR
     return options
 }
 
-
 private suspend fun PipelineContext<Unit, ApplicationCall>.checkForRaceCondition(
     username: String,
     credentialStorage: CredentialStorage,
@@ -178,7 +200,7 @@ private suspend fun handleRegistrationError(
     call: ApplicationCall,
     logger: Logger,
     exception: Throwable,
-    message: String
+    message: String,
 ) {
     logger.error(message, exception)
     call.respond(

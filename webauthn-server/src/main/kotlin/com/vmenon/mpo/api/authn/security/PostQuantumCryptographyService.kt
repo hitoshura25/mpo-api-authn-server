@@ -117,18 +117,28 @@ class PostQuantumCryptographyService {
         // Extract components from keyMaterial
         val kemIv = keyMaterial.sliceArray(0 until GCM_IV_LENGTH)
         val encryptedAESKeySize = AES_KEY_SIZE_BYTES + GCM_TAG_LENGTH
-        val encryptedAESKey = keyMaterial.sliceArray(GCM_IV_LENGTH until GCM_IV_LENGTH + encryptedAESKeySize)
+        val encryptedAESKey =
+            keyMaterial.sliceArray(
+                GCM_IV_LENGTH until GCM_IV_LENGTH + encryptedAESKeySize,
+            )
 
         val kemEncapsulationStart = GCM_IV_LENGTH + encryptedAESKeySize
         val kemEncapsulationSize = KYBER768_ENCAPSULATION_SIZE
         val kemEncapsulation =
-            keyMaterial.sliceArray(kemEncapsulationStart until kemEncapsulationStart + kemEncapsulationSize)
+            keyMaterial.sliceArray(
+                kemEncapsulationStart until kemEncapsulationStart + kemEncapsulationSize,
+            )
 
         val kyberPrivateKeyBytes =
-            keyMaterial.sliceArray(kemEncapsulationStart + kemEncapsulationSize until keyMaterial.size)
+            keyMaterial.sliceArray(
+                kemEncapsulationStart + kemEncapsulationSize until keyMaterial.size,
+            )
 
         // Use BouncyCastle Kyber KEM to extract the shared secret
-        val kyberPrivateKeyBC = PrivateKeyFactory.createKey(kyberPrivateKeyBytes) as KyberPrivateKeyParameters
+        val kyberPrivateKeyBC =
+            PrivateKeyFactory.createKey(
+                kyberPrivateKeyBytes,
+            ) as KyberPrivateKeyParameters
         val kemExtractor = KyberKEMExtractor(kyberPrivateKeyBC)
         val kemSharedSecret = kemExtractor.extractSecret(kemEncapsulation)
 

@@ -32,7 +32,7 @@ object WebAuthnTestAuthenticator {
 
     const val DEFAULT_RP_ID = "localhost"
     const val DEFAULT_ORIGIN = "https://localhost"
-    
+
     // Constants for magic numbers
     const val CREDENTIAL_ID_SIZE = 32
     const val USER_PRESENT_USER_VERIFIED_ATTESTED = 0x45
@@ -82,7 +82,8 @@ object WebAuthnTestAuthenticator {
         val clientDataJsonBytes = com.yubico.webauthn.data.ByteArray(clientDataJson.toByteArray())
 
         // Create authenticator data
-        val authenticatorData = createAuthenticatorData(rpId, credentialId, keyPair.public as ECPublicKey)
+        val authenticatorData =
+            createAuthenticatorData(rpId, credentialId, keyPair.public as ECPublicKey)
 
         // Create attestation object (using "none" format)
         val attestationObject =
@@ -91,9 +92,10 @@ object WebAuthnTestAuthenticator {
                 "attStmt" to emptyMap<String, Any>(),
                 "authData" to authenticatorData.bytes,
             )
-        val attestationObjectBytes = com.yubico.webauthn.data.ByteArray(
-            WebAuthnCryptoHelper.cborEncode(attestationObject)
-        )
+        val attestationObjectBytes =
+            com.yubico.webauthn.data.ByteArray(
+                WebAuthnCryptoHelper.cborEncode(attestationObject),
+            )
 
         val response =
             AuthenticatorAttestationResponse.builder()
@@ -164,14 +166,15 @@ object WebAuthnTestAuthenticator {
         val flags = USER_PRESENT_USER_VERIFIED_ATTESTED.toByte()
         val counter = byteArrayOf(0x00, 0x00, 0x00, 0x01)
         val aaguid = kotlin.ByteArray(AAGUID_SIZE)
-        val credIdLength = byteArrayOf(
-            (credentialId.size() shr BITS_PER_BYTE).toByte(),
-            (credentialId.size() and BYTE_MASK).toByte()
-        )
+        val credIdLength =
+            byteArrayOf(
+                (credentialId.size() shr BITS_PER_BYTE).toByte(),
+                (credentialId.size() and BYTE_MASK).toByte(),
+            )
         val publicKeyCose = WebAuthnCryptoHelper.encodePublicKeyToCose(publicKey)
 
         return com.yubico.webauthn.data.ByteArray(
-            rpIdHash + flags + counter + aaguid + credIdLength + credentialId.bytes + publicKeyCose
+            rpIdHash + flags + counter + aaguid + credIdLength + credentialId.bytes + publicKeyCose,
         )
     }
 
@@ -189,35 +192,41 @@ object WebAuthnTestAuthenticator {
 object WebAuthnCryptoHelper {
     fun encodePublicKeyToCose(publicKey: ECPublicKey): kotlin.ByteArray {
         val point = publicKey.w
-        val x = point.affineX.toByteArray().let {
-            if (it.size > WebAuthnTestAuthenticator.COORDINATE_SIZE) {
-                it.sliceArray(it.size - WebAuthnTestAuthenticator.COORDINATE_SIZE until it.size)
-            } else {
-                it.padStart(WebAuthnTestAuthenticator.COORDINATE_SIZE)
+        val x =
+            point.affineX.toByteArray().let {
+                if (it.size > WebAuthnTestAuthenticator.COORDINATE_SIZE) {
+                    it.sliceArray(it.size - WebAuthnTestAuthenticator.COORDINATE_SIZE until it.size)
+                } else {
+                    it.padStart(WebAuthnTestAuthenticator.COORDINATE_SIZE)
+                }
             }
-        }
-        val y = point.affineY.toByteArray().let {
-            if (it.size > WebAuthnTestAuthenticator.COORDINATE_SIZE) {
-                it.sliceArray(it.size - WebAuthnTestAuthenticator.COORDINATE_SIZE until it.size)
-            } else {
-                it.padStart(WebAuthnTestAuthenticator.COORDINATE_SIZE)
+        val y =
+            point.affineY.toByteArray().let {
+                if (it.size > WebAuthnTestAuthenticator.COORDINATE_SIZE) {
+                    it.sliceArray(it.size - WebAuthnTestAuthenticator.COORDINATE_SIZE until it.size)
+                } else {
+                    it.padStart(WebAuthnTestAuthenticator.COORDINATE_SIZE)
+                }
             }
-        }
 
-        val coseKey = mapOf(
-            WebAuthnTestAuthenticator.COSE_KEY_TYPE to WebAuthnTestAuthenticator.COSE_KEY_TYPE_EC2,
-            WebAuthnTestAuthenticator.COSE_ALG to WebAuthnTestAuthenticator.COSE_ALG_ES256,
-            WebAuthnTestAuthenticator.COSE_EC2_CURVE to WebAuthnTestAuthenticator.COSE_EC2_CURVE_P256,
-            WebAuthnTestAuthenticator.COSE_EC2_X to x,
-            WebAuthnTestAuthenticator.COSE_EC2_Y to y
-        )
+        val coseKey =
+            mapOf(
+                WebAuthnTestAuthenticator.COSE_KEY_TYPE to WebAuthnTestAuthenticator.COSE_KEY_TYPE_EC2,
+                WebAuthnTestAuthenticator.COSE_ALG to WebAuthnTestAuthenticator.COSE_ALG_ES256,
+                WebAuthnTestAuthenticator.COSE_EC2_CURVE to WebAuthnTestAuthenticator.COSE_EC2_CURVE_P256,
+                WebAuthnTestAuthenticator.COSE_EC2_X to x,
+                WebAuthnTestAuthenticator.COSE_EC2_Y to y,
+            )
         return cborEncode(coseKey)
     }
 
     fun kotlin.ByteArray.padStart(length: Int): kotlin.ByteArray =
         if (this.size >= length) this else kotlin.ByteArray(length - this.size) + this
 
-    fun sha256(data: kotlin.ByteArray): kotlin.ByteArray = MessageDigest.getInstance("SHA-256").digest(data)
+    fun sha256(data: kotlin.ByteArray): kotlin.ByteArray =
+        MessageDigest.getInstance(
+            "SHA-256",
+        ).digest(data)
 
     fun sign(
         data: kotlin.ByteArray,
@@ -234,7 +243,10 @@ object WebAuthnCryptoHelper {
             when (obj) {
                 is Map<*, *> -> {
                     val cborMap = CBORObject.NewMap()
-                    obj.forEach { (key, value) -> cborMap[toCBORObject(key!!)] = toCBORObject(value!!) }
+                    obj.forEach {
+                            (key, value) ->
+                        cborMap[toCBORObject(key!!)] = toCBORObject(value!!)
+                    }
                     cborMap
                 }
                 else -> toCBORObject(obj)
@@ -257,4 +269,3 @@ object WebAuthnCryptoHelper {
         }
     }
 }
-

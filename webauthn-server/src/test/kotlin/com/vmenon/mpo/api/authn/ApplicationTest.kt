@@ -1,22 +1,28 @@
 package com.vmenon.mpo.api.authn
 
+import com.fasterxml.jackson.core.JsonParseException
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
 import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
+import com.yubico.webauthn.RegistrationResult
 import com.yubico.webauthn.RelyingParty
 import com.yubico.webauthn.data.ByteArray
+import com.yubico.webauthn.data.COSEAlgorithmIdentifier
 import com.yubico.webauthn.data.PublicKeyCredential
 import com.yubico.webauthn.data.PublicKeyCredentialCreationOptions
+import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import io.ktor.server.routing.get
+import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
 import io.micrometer.prometheus.PrometheusMeterRegistry
 import io.mockk.coEvery
@@ -35,12 +41,6 @@ import java.util.UUID
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
-import com.fasterxml.jackson.core.JsonParseException
-import com.yubico.webauthn.RegistrationResult
-import com.yubico.webauthn.data.COSEAlgorithmIdentifier
-import io.ktor.server.testing.ApplicationTestBuilder
-import io.ktor.client.HttpClient
-import io.ktor.client.statement.HttpResponse
 
 class ApplicationTest : KoinTest {
     private val objectMapper = JacksonUtils.objectMapper
@@ -234,9 +234,18 @@ class ApplicationTest : KoinTest {
             assertNotNull(responseBody)
             assertTrue(responseBody.isNotEmpty(), "OpenAPI specification should not be empty")
             assertTrue(responseBody.contains("openapi: 3.0.3"), "Should contain OpenAPI version")
-            assertTrue(responseBody.contains("MPO WebAuthn Authentication Server API"), "Should contain API title")
-            assertTrue(responseBody.contains("/register/start"), "Should contain registration endpoints")
-            assertTrue(responseBody.contains("/authenticate/start"), "Should contain authentication endpoints")
+            assertTrue(
+                responseBody.contains("MPO WebAuthn Authentication Server API"),
+                "Should contain API title",
+            )
+            assertTrue(
+                responseBody.contains("/register/start"),
+                "Should contain registration endpoints",
+            )
+            assertTrue(
+                responseBody.contains("/authenticate/start"),
+                "Should contain authentication endpoints",
+            )
 
             // Verify YAML structure and key components
             assertTrue(responseBody.contains("info:"), "Should contain info section")
@@ -249,8 +258,8 @@ class ApplicationTest : KoinTest {
 
             // Verify it's valid YAML format (basic check)
             assertTrue(
-                responseBody.lines().any { it.trim().startsWith("openapi:") }, 
-                "Should start with openapi version"
+                responseBody.lines().any { it.trim().startsWith("openapi:") },
+                "Should start with openapi version",
             )
         }
 
@@ -268,7 +277,10 @@ class ApplicationTest : KoinTest {
             assertNotNull(responseBody)
             assertTrue(responseBody.isNotEmpty(), "Swagger UI should not be empty")
             assertTrue(responseBody.contains("Swagger UI"), "Should contain Swagger UI title")
-            assertTrue(responseBody.contains("swagger-ui-bundle"), "Should contain Swagger UI bundle")
+            assertTrue(
+                responseBody.contains("swagger-ui-bundle"),
+                "Should contain Swagger UI bundle",
+            )
         }
 
     @Test
@@ -355,7 +367,7 @@ class ApplicationTest : KoinTest {
     fun testRegistrationStartWithRelyingPartyFailure() =
         testApplication {
             // Mock RelyingParty to throw an exception
-            every { mockRelyingParty.startRegistration(any()) } throws 
+            every { mockRelyingParty.startRegistration(any()) } throws
                 JsonParseException(null, "RelyingParty configuration error")
 
             application {
@@ -379,7 +391,10 @@ class ApplicationTest : KoinTest {
 
             assertEquals(HttpStatusCode.InternalServerError, response.status)
             val responseBody = objectMapper.readTree(response.bodyAsText())
-            assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
+            assertEquals(
+                "Registration failed. Please try again.",
+                responseBody.get("error").asText(),
+            )
         }
 
     @Test
@@ -415,7 +430,10 @@ class ApplicationTest : KoinTest {
 
             assertEquals(HttpStatusCode.InternalServerError, response.status)
             val responseBody = objectMapper.readTree(response.bodyAsText())
-            assertEquals("Registration failed. Please try again.", responseBody.get("error").asText())
+            assertEquals(
+                "Registration failed. Please try again.",
+                responseBody.get("error").asText(),
+            )
         }
 
     @Test
@@ -451,7 +469,11 @@ class ApplicationTest : KoinTest {
     fun testRegistrationCompleteWithUserThatAlreadyExists() =
         testApplication {
             val testChallenge = ByteArray.fromBase64Url("test-challenge").bytes
-            val credential = WebAuthnTestAuthenticator.createRegistrationCredential(testChallenge, keyPair)
+            val credential =
+                WebAuthnTestAuthenticator.createRegistrationCredential(
+                    testChallenge,
+                    keyPair,
+                )
 
             setupMocksForUserExistsScenario()
             setupApplicationWithMocks()
@@ -463,7 +485,7 @@ class ApplicationTest : KoinTest {
 
     private fun setupMocksForUserExistsScenario() {
         every { mockRelyingParty.finishRegistration(any()) }.returns(
-            createMockRegistrationResult()
+            createMockRegistrationResult(),
         )
         every { mockCredentialStorage.userExists("testuser") } returns true
         coEvery {
@@ -471,32 +493,37 @@ class ApplicationTest : KoinTest {
         } returns createMockPublicKeyCredentialCreationOptions()
     }
 
-    private fun createMockRegistrationResult() = mockk<RegistrationResult> {
-        every { keyId } returns mockk {
-            every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
+    private fun createMockRegistrationResult() =
+        mockk<RegistrationResult> {
+            every { keyId } returns
+                mockk {
+                    every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
+                }
+            every { publicKeyCose } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
+            every { signatureCount } returns 0
         }
-        every { publicKeyCose } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
-        every { signatureCount } returns 0
-    }
 
     private fun createMockPublicKeyCredentialCreationOptions() =
         mockk<PublicKeyCredentialCreationOptions> {
             every { challenge } returns ByteArray.fromBase64Url("test-challenge")
-            every { authenticatorSelection } returns Optional.of(
+            every { authenticatorSelection } returns
+                Optional.of(
+                    mockk {
+                        every { userVerification } returns Optional.of(mockk())
+                    },
+                )
+            every { pubKeyCredParams } returns
+                listOf(
+                    mockk {
+                        every { alg } returns COSEAlgorithmIdentifier.ES256
+                    },
+                )
+            every { user } returns
                 mockk {
-                    every { userVerification } returns Optional.of(mockk())
+                    every { name } returns "testuser"
+                    every { displayName } returns "teruser displayName"
+                    every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
                 }
-            )
-            every { pubKeyCredParams } returns listOf(
-                mockk {
-                    every { alg } returns COSEAlgorithmIdentifier.ES256
-                }
-            )
-            every { user } returns mockk {
-                every { name } returns "testuser"
-                every { displayName } returns "teruser displayName"
-                every { id } returns ByteArray.fromBase64Url(UUID.randomUUID().toString())
-            }
         }
 
     private fun ApplicationTestBuilder.setupApplicationWithMocks() {
@@ -508,23 +535,23 @@ class ApplicationTest : KoinTest {
                         single<CredentialStorage> { mockCredentialStorage }
                         single<RegistrationRequestStorage> { mockRegistrationStorage }
                         single<RelyingParty> { mockRelyingParty }
-                    }
-                )
+                    },
+                ),
             )
         }
     }
 
     private suspend fun HttpClient.performRegistrationCompleteRequest(
-        credential: PublicKeyCredential<*, *>
+        credential: PublicKeyCredential<*, *>,
     ) = post("/register/complete") {
         contentType(ContentType.Application.Json)
         setBody(
             objectMapper.writeValueAsString(
                 RegistrationCompleteRequest(
                     requestId = "testRequest",
-                    credential = objectMapper.writeValueAsString(credential)
-                )
-            )
+                    credential = objectMapper.writeValueAsString(credential),
+                ),
+            ),
         )
     }
 
@@ -558,7 +585,7 @@ class ApplicationTest : KoinTest {
     fun testAuthenticationCompleteWithRelyingPartyFailure() =
         testApplication {
             // Mock RelyingParty to throw an exception
-            every { mockRelyingParty.finishAssertion(any()) } throws 
+            every { mockRelyingParty.finishAssertion(any()) } throws
                 RuntimeException("RelyingParty service unavailable")
 
             application {
@@ -582,7 +609,10 @@ class ApplicationTest : KoinTest {
 
             assertEquals(HttpStatusCode.InternalServerError, response.status)
             val responseBody = objectMapper.readTree(response.bodyAsText())
-            assertEquals("Authentication failed. Please try again.", responseBody.get("error").asText())
+            assertEquals(
+                "Authentication failed. Please try again.",
+                responseBody.get("error").asText(),
+            )
         }
 
     @Test
@@ -618,7 +648,10 @@ class ApplicationTest : KoinTest {
 
             assertEquals(HttpStatusCode.InternalServerError, response.status)
             val responseBody = objectMapper.readTree(response.bodyAsText())
-            assertEquals("Authentication failed. Please try again.", responseBody.get("error").asText())
+            assertEquals(
+                "Authentication failed. Please try again.",
+                responseBody.get("error").asText(),
+            )
         }
 
     @Test

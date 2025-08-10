@@ -1,25 +1,22 @@
 package com.vmenon.mpo.api.authn.storage.postgresql
 
+import com.vmenon.mpo.api.authn.security.EncryptedData
 import com.vmenon.mpo.api.authn.security.PostQuantumCryptographyService
 import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
+import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.vmenon.mpo.api.authn.utils.JacksonUtils.objectMapper
 import com.yubico.webauthn.RegisteredCredential
+import com.yubico.webauthn.data.ByteArray
 import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import java.io.Closeable
 import java.security.MessageDigest
-import java.sql.SQLException
-import java.util.Optional
-import javax.sql.DataSource
-import com.yubico.webauthn.data.ByteArray
-import com.vmenon.mpo.api.authn.security.EncryptedData
-import java.security.GeneralSecurityException
-import com.fasterxml.jackson.core.JsonProcessingException
 import java.sql.Connection
 import java.sql.ResultSet
-import com.vmenon.mpo.api.authn.utils.JacksonUtils
+import java.util.Optional
+import javax.sql.DataSource
 
 /**
  * Configuration for database connection
@@ -66,7 +63,10 @@ internal class UserDataManager(
         }
     }
 
-    private fun executeQueryForUser(sql: String, parameter: String): UserAccount? {
+    private fun executeQueryForUser(
+        sql: String,
+        parameter: String,
+    ): UserAccount? {
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
                 statement.setString(1, parameter)
@@ -76,7 +76,6 @@ internal class UserDataManager(
             }
         }
     }
-
 }
 
 /**
@@ -150,19 +149,26 @@ class QuantumSafeCredentialStorage(
         private const val PARAM_3 = 3
     }
 
-
     override fun addRegistration(registration: CredentialRegistration) {
         dataSource.connection.use { connection ->
             connection.autoCommit = false
             runCatching {
-                val userHandleHash = cryptoHelper.hash(registration.userAccount.userHandle.base64Url)
+                val userHandleHash =
+                    cryptoHelper.hash(
+                        registration.userAccount.userHandle.base64Url,
+                    )
                 val usernameHash = cryptoHelper.hash(registration.userAccount.username)
-                val credentialIdHash = cryptoHelper.hash(registration.credential.credentialId.base64Url)
+                val credentialIdHash =
+                    cryptoHelper.hash(
+                        registration.credential.credentialId.base64Url,
+                    )
 
                 // Encrypt user data with quantum-safe encryption
                 val encryptedUserData =
                     cryptoHelper.encryptedDataToString(
-                        cryptoHelper.encrypt(objectMapper.writeValueAsString(registration.userAccount)),
+                        cryptoHelper.encrypt(
+                            objectMapper.writeValueAsString(registration.userAccount),
+                        ),
                     )
 
                 // Insert or update user
@@ -229,7 +235,12 @@ class QuantumSafeCredentialStorage(
                         while (resultSet.next()) {
                             val encryptedData = resultSet.getString("encrypted_credential_data")
                             val credentialJson = cryptoHelper.decrypt(encryptedData)
-                            add(objectMapper.readValue(credentialJson, CredentialRegistration::class.java))
+                            add(
+                                objectMapper.readValue(
+                                    credentialJson,
+                                    CredentialRegistration::class.java,
+                                ),
+                            )
                         }
                     }
                 }
@@ -240,11 +251,10 @@ class QuantumSafeCredentialStorage(
     override fun getUserByHandle(userHandle: ByteArray): UserAccount? =
         userDataManager.getUserByHandle(userHandle)
 
-    override fun getUserByUsername(username: String): UserAccount? = 
+    override fun getUserByUsername(username: String): UserAccount? =
         userDataManager.getUserByUsername(username)
 
-    override fun userExists(username: String): Boolean = 
-        userDataManager.userExists(username)
+    override fun userExists(username: String): Boolean = userDataManager.userExists(username)
 
     override fun close() {
         (dataSource as Closeable).close()
@@ -267,12 +277,15 @@ class QuantumSafeCredentialStorage(
         return executeQueryForCredential(sql, credentialIdHash, userHandleHash)
     }
 
-    private fun executeQueryForCredential(sql: String, param1: String, param2: String): Optional<RegisteredCredential> {
+    private fun executeQueryForCredential(
+        sql: String,
+        param1: String,
+        param2: String,
+    ): Optional<RegisteredCredential> {
         return executeCredentialQuery(dataSource, sql, param1, param2) { resultSet ->
             extractCredentialFromResultSet(resultSet, cryptoHelper)
         }
     }
-
 
     override fun lookupAll(credentialId: ByteArray): Set<RegisteredCredential> {
         val credentialIdHash = cryptoHelper.hash(credentialId.base64Url)
@@ -287,7 +300,10 @@ class QuantumSafeCredentialStorage(
                             val encryptedData = resultSet.getString("encrypted_credential_data")
                             val credentialJson = cryptoHelper.decrypt(encryptedData)
                             val registration =
-                                objectMapper.readValue(credentialJson, CredentialRegistration::class.java)
+                                objectMapper.readValue(
+                                    credentialJson,
+                                    CredentialRegistration::class.java,
+                                )
                             add(registration.credential)
                         }
                     }
@@ -296,7 +312,10 @@ class QuantumSafeCredentialStorage(
         }
     }
 
-    private fun handleTransactionException(connection: Connection, exception: Throwable): Nothing {
+    private fun handleTransactionException(
+        connection: Connection,
+        exception: Throwable,
+    ): Nothing {
         connection.rollback()
         throw exception
     }
@@ -305,7 +324,7 @@ class QuantumSafeCredentialStorage(
 // Connection pool constants for factory function
 private const val MINIMUM_IDLE_CONNECTIONS = 2
 private const val CONNECTION_TIMEOUT_MS = 30000L // 30 seconds
-private const val IDLE_TIMEOUT_MS = 600000L // 10 minutes  
+private const val IDLE_TIMEOUT_MS = 600000L // 10 minutes
 private const val MAX_LIFETIME_MS = 1800000L // 30 minutes
 private const val LEAK_DETECTION_THRESHOLD_MS = 60000L // 1 minute
 
@@ -313,17 +332,18 @@ private const val LEAK_DETECTION_THRESHOLD_MS = 60000L // 1 minute
  * Factory function to create QuantumSafeCredentialStorage with proper connection pooling
  */
 fun createQuantumSafeCredentialStorage(config: DatabaseConfig): QuantumSafeCredentialStorage {
-    val hikariConfig = HikariConfig().apply {
-        jdbcUrl = "jdbc:postgresql://${config.host}:${config.port}/${config.database}?sslmode=disable"
-        this.username = config.username
-        this.password = config.password
-        maximumPoolSize = config.maxPoolSize
-        minimumIdle = MINIMUM_IDLE_CONNECTIONS
-        connectionTimeout = CONNECTION_TIMEOUT_MS
-        idleTimeout = IDLE_TIMEOUT_MS
-        maxLifetime = MAX_LIFETIME_MS
-        leakDetectionThreshold = LEAK_DETECTION_THRESHOLD_MS
-    }
+    val hikariConfig =
+        HikariConfig().apply {
+            jdbcUrl = "jdbc:postgresql://${config.host}:${config.port}/${config.database}?sslmode=disable"
+            this.username = config.username
+            this.password = config.password
+            maximumPoolSize = config.maxPoolSize
+            minimumIdle = MINIMUM_IDLE_CONNECTIONS
+            connectionTimeout = CONNECTION_TIMEOUT_MS
+            idleTimeout = IDLE_TIMEOUT_MS
+            maxLifetime = MAX_LIFETIME_MS
+            leakDetectionThreshold = LEAK_DETECTION_THRESHOLD_MS
+        }
 
     val dataSource = HikariDataSource(hikariConfig)
     return QuantumSafeCredentialStorage(dataSource)
@@ -334,16 +354,17 @@ fun createQuantumSafeCredentialStorage(config: DatabaseConfig): QuantumSafeCrede
  */
 private fun extractUserFromJson(userJson: String): UserAccount {
     return JacksonUtils.objectMapper.readValue(
-        userJson, UserAccount::class.java
+        userJson,
+        UserAccount::class.java,
     )
 }
 
-private fun extractCredentialFromJson(
-    credentialJson: String
-): Optional<RegisteredCredential> {
-    val registration = JacksonUtils.objectMapper.readValue(
-        credentialJson, CredentialRegistration::class.java
-    )
+private fun extractCredentialFromJson(credentialJson: String): Optional<RegisteredCredential> {
+    val registration =
+        JacksonUtils.objectMapper.readValue(
+            credentialJson,
+            CredentialRegistration::class.java,
+        )
     return Optional.of(registration.credential)
 }
 
@@ -352,7 +373,7 @@ private fun <T> executeCredentialQuery(
     sql: String,
     param1: String,
     param2: String,
-    resultExtractor: (ResultSet) -> T
+    resultExtractor: (ResultSet) -> T,
 ): T {
     return dataSource.connection.use { connection ->
         connection.prepareStatement(sql).use { statement ->
@@ -365,7 +386,10 @@ private fun <T> executeCredentialQuery(
     }
 }
 
-private fun extractUserFromResultSet(resultSet: ResultSet, cryptoHelper: QuantumCryptoHelper): UserAccount? {
+private fun extractUserFromResultSet(
+    resultSet: ResultSet,
+    cryptoHelper: QuantumCryptoHelper,
+): UserAccount? {
     return if (resultSet.next()) {
         val encryptedData = resultSet.getString("encrypted_user_data")
         val userJson = cryptoHelper.decrypt(encryptedData)
@@ -376,8 +400,8 @@ private fun extractUserFromResultSet(resultSet: ResultSet, cryptoHelper: Quantum
 }
 
 private fun extractCredentialFromResultSet(
-    resultSet: ResultSet, 
-    cryptoHelper: QuantumCryptoHelper
+    resultSet: ResultSet,
+    cryptoHelper: QuantumCryptoHelper,
 ): Optional<RegisteredCredential> {
     return if (resultSet.next()) {
         val encryptedData = resultSet.getString("encrypted_credential_data")

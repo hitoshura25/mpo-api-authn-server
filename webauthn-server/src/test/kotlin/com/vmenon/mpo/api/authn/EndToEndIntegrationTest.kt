@@ -44,7 +44,12 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             assertEquals("WebAuthn Server is running!", healthResponse.bodyAsText())
 
             // Step 1: Start registration
-            val startRegResponse = WebAuthnTestHelpers.startRegistration(client, username, displayName)
+            val startRegResponse =
+                WebAuthnTestHelpers.startRegistration(
+                    client,
+                    username,
+                    displayName,
+                )
             assertEquals(HttpStatusCode.OK, startRegResponse.status)
 
             val startRegBody = objectMapper.readTree(startRegResponse.bodyAsText())
@@ -59,7 +64,12 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             assertEquals(displayName, publicKey.get("user").get("displayName").asText())
 
             // Step 2: Complete registration
-            val completeRegResponse = WebAuthnTestHelpers.completeRegistration(client, startRegResponse, keyPair)
+            val completeRegResponse =
+                WebAuthnTestHelpers.completeRegistration(
+                    client,
+                    startRegResponse,
+                    keyPair,
+                )
 
             assertEquals(HttpStatusCode.OK, completeRegResponse.status)
             val completeRegBody = objectMapper.readTree(completeRegResponse.bodyAsText())
@@ -74,7 +84,12 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             assertNotNull(startAuthBody.get("publicKeyCredentialRequestOptions"))
 
             // Step 4: Complete authentication
-            val completeAuthResponse = WebAuthnTestHelpers.completeAuthentication(client, startAuthResponse, keyPair)
+            val completeAuthResponse =
+                WebAuthnTestHelpers.completeAuthentication(
+                    client,
+                    startAuthResponse,
+                    keyPair,
+                )
             assertEquals(HttpStatusCode.OK, completeAuthResponse.status)
             val completeAuthBody = objectMapper.readTree(completeAuthResponse.bodyAsText())
             assertTrue(completeAuthBody.get("success").asBoolean())
@@ -118,7 +133,10 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
 
             val requestCredentialOptions = startAuthBody.get("publicKeyCredentialRequestOptions")
             val allowCredentials = requestCredentialOptions.get("publicKey").get("allowCredentials")
-            assertTrue(allowCredentials.size() > 0, "User credentials should be found after restart")
+            assertTrue(
+                allowCredentials.size() > 0,
+                "User credentials should be found after restart",
+            )
         }
     }
 
@@ -157,7 +175,12 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             val username = "integration_test_user"
             val displayName = "Integration Test User"
             val keyPair = WebAuthnTestHelpers.generateTestKeypair()
-            val startRegResponse = WebAuthnTestHelpers.startRegistration(client, username, displayName)
+            val startRegResponse =
+                WebAuthnTestHelpers.startRegistration(
+                    client,
+                    username,
+                    displayName,
+                )
             WebAuthnTestHelpers.completeRegistration(client, startRegResponse, keyPair)
             WebAuthnTestHelpers.startAuthentication(client, username)
             val completeAuthRequest =
@@ -213,10 +236,20 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             val displayName = "Redis Failure Test"
             val keyPair = WebAuthnTestHelpers.generateTestKeypair()
 
-            val startRegResponse = WebAuthnTestHelpers.startRegistration(client, username, displayName)
+            val startRegResponse =
+                WebAuthnTestHelpers.startRegistration(
+                    client,
+                    username,
+                    displayName,
+                )
             redis.stop()
 
-            val completeRegResponse = WebAuthnTestHelpers.completeRegistration(client, startRegResponse, keyPair)
+            val completeRegResponse =
+                WebAuthnTestHelpers.completeRegistration(
+                    client,
+                    startRegResponse,
+                    keyPair,
+                )
             assertEquals(HttpStatusCode.InternalServerError, completeRegResponse.status)
 
             redis.start()
@@ -255,15 +288,21 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
                 assertTrue(encryptedUserData.isNotEmpty())
                 assertTrue(encryptedCredentialData.isNotEmpty())
                 assertTrue(
-                    encryptedUserData.contains("KYBER768-AES256-GCM"), 
-                    "Should use quantum-safe encryption"
+                    encryptedUserData.contains("KYBER768-AES256-GCM"),
+                    "Should use quantum-safe encryption",
                 )
                 assertTrue(
-                    encryptedCredentialData.contains("KYBER768-AES256-GCM"), 
-                    "Should use quantum-safe encryption"
+                    encryptedCredentialData.contains("KYBER768-AES256-GCM"),
+                    "Should use quantum-safe encryption",
                 )
-                assertFalse(encryptedUserData.contains(username), "Username should not be in plaintext")
-                assertFalse(encryptedUserData.contains(displayName), "Display name should not be in plaintext")
+                assertFalse(
+                    encryptedUserData.contains(username),
+                    "Username should not be in plaintext",
+                )
+                assertFalse(
+                    encryptedUserData.contains(displayName),
+                    "Display name should not be in plaintext",
+                )
             }
         }
 }

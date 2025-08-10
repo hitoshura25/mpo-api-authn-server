@@ -1,6 +1,5 @@
 package com.vmenon.webauthn.testservice.routes
 
-import com.fasterxml.jackson.core.JsonProcessingException
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.datatype.jdk8.Jdk8Module
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
@@ -83,12 +82,13 @@ private suspend fun ApplicationCall.handleRegistrationCredential(
         val keyPairId = UUID.randomUUID().toString()
         testKeyPairs[keyPairId] = keyPair
 
-        val credential = WebAuthnTestAuthenticator.createRegistrationCredential(
-            challenge = ByteArray.fromBase64Url(request.challenge).bytes,
-            keyPair = keyPair,
-            rpId = request.rpId,
-            origin = request.origin,
-        )
+        val credential =
+            WebAuthnTestAuthenticator.createRegistrationCredential(
+                challenge = ByteArray.fromBase64Url(request.challenge).bytes,
+                keyPair = keyPair,
+                rpId = request.rpId,
+                origin = request.origin,
+            )
 
         val credentialJson = objectMapper.writeValueAsString(credential)
         val credentialId = credential.id.base64Url
@@ -129,13 +129,14 @@ private suspend fun ApplicationCall.handleAuthenticationCredential(
             return
         }
 
-        val credential = WebAuthnTestAuthenticator.createAuthenticationCredential(
-            challenge = ByteArray.fromBase64Url(request.challenge).bytes,
-            credentialId = ByteArray.fromBase64Url(request.credentialId).bytes,
-            keyPair = keyPair,
-            rpId = request.rpId,
-            origin = request.origin,
-        )
+        val credential =
+            WebAuthnTestAuthenticator.createAuthenticationCredential(
+                challenge = ByteArray.fromBase64Url(request.challenge).bytes,
+                credentialId = ByteArray.fromBase64Url(request.credentialId).bytes,
+                keyPair = keyPair,
+                rpId = request.rpId,
+                origin = request.origin,
+            )
 
         val credentialJson = objectMapper.writeValueAsString(credential)
 
@@ -178,7 +179,10 @@ private suspend fun ApplicationCall.handleListSessions(testKeyPairs: Map<String,
     )
 }
 
-private suspend fun ApplicationCall.respondWithError(error: String, details: String?) {
+private suspend fun ApplicationCall.respondWithError(
+    error: String,
+    details: String?,
+) {
     respond(
         HttpStatusCode.InternalServerError,
         ErrorResponse(

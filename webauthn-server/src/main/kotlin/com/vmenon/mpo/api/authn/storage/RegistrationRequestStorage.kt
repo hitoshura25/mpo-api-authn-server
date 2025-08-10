@@ -23,7 +23,9 @@ interface RegistrationRequestStorage {
      * @param requestId the request identifier
      * @return the stored options or null if not found/expired
      */
-    suspend fun retrieveAndRemoveRegistrationRequest(requestId: String): PublicKeyCredentialCreationOptions?
+    suspend fun retrieveAndRemoveRegistrationRequest(
+        requestId: String,
+    ): PublicKeyCredentialCreationOptions?
 
     /**
      * Close/cleanup resources

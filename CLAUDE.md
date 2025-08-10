@@ -196,6 +196,125 @@ Task: "[Detailed description of work to be done systematically]"
 3. **Explicit Imports**: No wildcard imports - always use specific class imports
 4. **Security-First**: All WebAuthn vulnerabilities have test coverage (100% protection achieved)
 5. **Git History**: Always use `git mv` instead of `mv` for file moves to preserve history
+6. **Docker Image Validation**: ALWAYS verify Docker images exist before updating Dockerfiles
+   - Use `docker manifest inspect <image>` to validate image existence
+   - Check available tags with registry APIs or Docker Hub before specifying versions
+   - Example: `eclipse-temurin:21.0.8_9-jre-jammy` (verified) vs `21.0.6_3-jre-jammy` (non-existent)
+7. **GitHub Actions always() Conditional**: CRITICAL workflow dependency gotcha
+   - Jobs are **automatically skipped** if ANY dependency in the **entire dependency chain** is skipped
+   - This includes **indirect/transitive dependencies** - if A→B→C and A is skipped, C is also skipped
+   - Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped
+   - **Rule**: If ANY job in your dependency tree can be conditionally skipped, ALL downstream jobs need `always()`
+   - **Common pattern**: `if: always() && needs.job.result == 'success' && other_conditions`
+   - **Example failure**: Job with `needs: [job-that-depends-on-skipped-job]` will be skipped even if direct dependency ran
+   - **Solution**: `if: always() && needs.dependency.outputs.value == 'true'` evaluates properly regardless of dependency chain
+8. **GitHub Actions Permissions for PR Operations**: CRITICAL for automated PR interactions
+   - **PR Commenting**: Requires both `pull-requests: write` AND `issues: write` permissions
+   - **Security Scanning**: Requires `security-events: write` for uploading SARIF results
+   - **Package Publishing**: Requires `packages: write` for Docker registry pushes
+   - **Attestations**: Requires both `attestations: write` and `id-token: write` for build provenance
+   - **Rule**: ALWAYS verify required permissions are set at both job level AND workflow level
+   - **Common failure**: PR comment scripts fail with 403/422 errors when missing `issues: write` permission
+9. **Docker Security Scan Architecture**: CRITICAL for proper image scanning workflow
+   - **Scan Timing**: Security scan MUST run AFTER Docker build succeeds AND before registry push
+   - **Image Source**: Rebuild images locally in security job (different runner from build job)
+   - **Image Tags**: Use actual built image tags from build job outputs, NOT hardcoded `:latest`
+   - **Job Dependencies**: Security scan job needs `needs.build-docker-images.result == 'success'` condition
+   - **Runner Isolation**: Each job runs on separate runner - `load: true` images don't transfer between jobs
+   - **Rebuild Strategy**: Rebuild with same tags as build job, leverages Docker layer cache for speed
+   - **SARIF Format**: GitHub Security upload requires PURE SARIF (no custom fields like `summary`)
+   - **SARIF Categories**: Each image must have unique SARIF category to avoid upload collision
+   - **File Separation**: Use `.sarif` extension for GitHub Security, `.json` for PR comments with custom fields
+   - **PR Comment Format**: PR script must handle consolidated scan results format, not direct Trivy format
+   - **Common failures**: Assuming `load: true` images available across runners, SARIF category collisions, wrong data format for PR comments
+
+### 🔍 CRITICAL: Script Integration & Testing Patterns
+
+**ALWAYS validate script output formats and workflow data passing to prevent silent failures in complex integrations.**
+
+#### **Data Structure Mismatch Prevention:**
+- **Producer-Consumer Contract Validation**: Scripts that generate data MUST match consumer expectations exactly
+- **Common Failure Pattern**: Security scan script outputs `{scans: [{image: "...", scans: {vulnerabilities: {...}}}]}` but PR comment consumer expects `{scans: [{image: "...", vulnerabilities: {...}}]}`
+- **Result**: Vulnerability counts show as 0 when they should be >0 (silent data loss)
+- **Solution**: Create contract validation tests that verify data structure compatibility
+
+#### **Testing Strategy for Script Data Flow:**
+```bash
+# 1. Test script output format matches consumer expectations
+node scripts/security/scan-docker-images.js | jq '.scans[0] | keys' # Should show expected keys
+node -e "
+const data = JSON.parse(require('fs').readFileSync('/tmp/scan-results.json'));
+console.log('Expected format:', data.scans[0].vulnerabilities ? 'PASS' : 'FAIL - wrong structure');
+"
+
+# 2. Validate GitHub Actions workflow data passing
+# Test that outputs from one job match inputs expected by next job
+echo "Testing workflow data compatibility..."
+```
+
+#### **SARIF File Management:**
+- **Category Collision Prevention**: Each Docker image scan MUST generate unique SARIF categories
+- **File Separation Strategy**: 
+  - `.sarif` files for GitHub Security (pure SARIF format only)
+  - `.json` files for PR comments (can include custom summary fields)
+- **Category Naming Pattern**: Use image name + timestamp or unique identifier
+- **Common Failure**: Multiple images with identical categories cause GitHub Security upload failures
+
+#### **Cross-Runner Integration Validation:**
+- **Image Availability Rule**: Docker images built with `load: true` are NOT available on different runners
+- **Solution**: Rebuild strategy with consistent tagging from job outputs
+- **Testing Pattern**: Always verify rebuild produces identical image tags as original build
+- **Cache Optimization**: Rebuilds leverage Docker layer cache for performance
+
+#### **Integration Testing Checklist:**
+1. **Data Format Compatibility**:
+   ```bash
+   # Test producer output format
+   ./scripts/producer.js > /tmp/output.json
+   # Test consumer can process the output
+   ./scripts/consumer.js /tmp/output.json && echo "PASS" || echo "FAIL"
+   ```
+
+2. **Workflow Output Passing**:
+   ```yaml
+   # In GitHub Actions, test with debug output
+   - name: Validate Job Output Format
+     run: |
+       echo "Testing output format: ${{ needs.previous-job.outputs.data }}"
+       echo '${{ needs.previous-job.outputs.data }}' | jq '.expectedField' || exit 1
+   ```
+
+3. **Cross-Job Resource Access**:
+   ```yaml
+   # Verify resources built in one job work in another
+   - name: Test Resource Availability
+     run: |
+       docker images | grep expected-image-tag || {
+         echo "ERROR: Expected image not available, implementing rebuild strategy"
+         exit 1
+       }
+   ```
+
+4. **SARIF Validation**:
+   ```bash
+   # Validate SARIF format before upload
+   jq '.runs[0].tool.driver.name' scan-results.sarif || echo "Invalid SARIF format"
+   # Check for category uniqueness
+   find . -name "*.sarif" -exec jq -r '.runs[0].results[0].ruleId // "no-rule"' {} \; | sort | uniq -d
+   ```
+
+#### **Debugging Complex Integration Failures:**
+1. **Silent Data Loss Detection**: Compare expected vs actual data at each workflow step
+2. **Format Mismatch Identification**: Use `jq` queries to validate data structure at boundaries  
+3. **Resource Availability Verification**: Test cross-job resource access before depending on it
+4. **Category Collision Prevention**: Generate unique identifiers for all SARIF categories
+
+#### **Prevention Guidelines:**
+- **Never assume data structures** - always validate with sample data
+- **Test cross-job dependencies** with manual verification steps
+- **Use unique identifiers** for all resources that might collide
+- **Implement contract tests** between script producers and consumers
+- **Log intermediate data** to debug silent transformation failures
 
 ### Token Optimization Strategies
 
@@ -224,6 +343,28 @@ This project emphasizes security testing and vulnerability protection:
 - **Replay attacks** - Challenge/response reuse
 - **Credential tampering** - Signature validation
 - **Result**: 7/7 security tests passing, 100% coverage achieved
+
+### Docker Security Standardization
+
+**CRITICAL: Both services now use secure, standardized base images with 0 critical vulnerabilities**
+
+#### **Base Image Strategy:**
+- **Standard Image**: `eclipse-temurin:21.0.8_9-jre-noble` (Ubuntu 24.04 LTS)
+- **Security Status**: 0 critical vulnerabilities (verified via security scanning)
+- **Previous Issues**: webauthn-server used `gcr.io/distroless/java21-debian12` (1 CRITICAL vulnerability)
+- **Resolution**: Migrated webauthn-server to match webauthn-test-credentials-service secure base
+
+#### **Security Hardening (Both Services):**
+- **Non-root execution**: Both run as `appuser` (uid 1001, gid 1001)  
+- **Minimal attack surface**: Only essential packages installed (wget, curl for health checks)
+- **Health monitoring**: Production-ready health checks on both services
+- **JVM optimization**: Identical containerized JVM settings for performance and security
+- **Layer optimization**: Clean apt cache, minimal layers, proper ownership
+
+#### **Verification Commands:**
+- **Security Scan**: `docker scout cves <image>` (should show 0 critical vulnerabilities)
+- **Base Image Check**: Both Dockerfiles should reference `eclipse-temurin:21.0.8_9-jre-noble`
+- **Build Validation**: `./gradlew build` and Docker build should succeed without security warnings
 
 ## OpenAPI Specification Management 
 
@@ -268,6 +409,7 @@ env:
 ## Completed Work Summary
 
 ### Major Achievements ✅
+- **Docker Security Standardization**: Migrated webauthn-server from distroless (1 CRITICAL vulnerability) to eclipse-temurin:21.0.8_9-jre-noble (0 critical vulnerabilities), achieving consistent secure base images across both services
 - **Centralized npm Package Configuration**: Established workflow environment variables (`NPM_SCOPE`, `NPM_PACKAGE_NAME`) for single-point configuration management
 - **Enhanced Regex Validation**: Upgraded version validation from `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9]+(\\.[a-zA-Z0-9]+)*)?$` to `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*)?$` supporting hyphens in prerelease identifiers for full npm semver compliance\n- **Robust Version Validation**: All version formats now properly validated - rejects invalid 2-part, 4-part, and empty prerelease formats while supporting advanced prerelease identifiers like `1.0.0-alpha-beta.1`\n- **Unified 3-Part Versioning**: Standardized both Android and npm clients to use identical semantic versioning with enhanced validation ensuring 100% npm compatibility\n- **PR Publishing Support**: Added automatic snapshot publishing for pull requests with version format 1.0.0-pr.42.123 for testing client changes before merge
 - **Dual Registry Publishing**: Configured production releases to npm/GitHub Packages and PR snapshots to GitHub Packages with automated PR comments

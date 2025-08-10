@@ -4,7 +4,6 @@ import com.vmenon.mpo.api.authn.storage.CredentialRegistration
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.UserAccount
 import com.vmenon.mpo.api.authn.storage.postgresql.DatabaseConfig
-import com.vmenon.mpo.api.authn.storage.postgresql.QuantumSafeCredentialStorage
 import com.vmenon.mpo.api.authn.storage.postgresql.createQuantumSafeCredentialStorage
 import com.vmenon.mpo.api.authn.testutils.BaseIntegrationTest
 import com.yubico.webauthn.RegisteredCredential
@@ -30,7 +29,7 @@ class CredentialsRepositoryImplTest : BaseIntegrationTest() {
                     username = postgres.username,
                     password = postgres.password,
                     maxPoolSize = 5,
-                )
+                ),
             )
 
         credentialRepositoryImpl = CredentialRepositoryImpl(credentialStorage)
@@ -78,7 +77,10 @@ class CredentialsRepositoryImplTest : BaseIntegrationTest() {
         val userHandleByteArray = ByteArray(userHandle)
         val registration = addRegistration(username, displayName, userHandleByteArray)
 
-        val storedCredentials = credentialRepositoryImpl.lookupAll(registration.credential.credentialId)
+        val storedCredentials =
+            credentialRepositoryImpl.lookupAll(
+                registration.credential.credentialId,
+            )
         assertEquals(registration.credential.credentialId, storedCredentials.first().credentialId)
     }
 

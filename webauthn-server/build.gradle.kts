@@ -19,7 +19,7 @@ detekt {
 ktlint {
     version.set("1.0.1")
     android.set(false)
-    ignoreFailures.set(false)  // Fail build on formatting violations
+    ignoreFailures.set(false) // Fail build on formatting violations
     reporters {
         reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.PLAIN)
         reporter(org.jlleitschuh.gradle.ktlint.reporter.ReporterType.CHECKSTYLE)
@@ -58,6 +58,13 @@ repositories {
 }
 
 dependencies {
+    // Force specific versions to avoid configuration cache issues with version ranges
+    constraints {
+        implementation("com.upokecenter:cbor:$cborVersion") {
+            because("Avoid version ranges that break Gradle configuration cache")
+        }
+    }
+
     // Kotlin Standard Library
     implementation("org.jetbrains.kotlin:kotlin-stdlib")
 
@@ -109,10 +116,16 @@ dependencies {
     // OpenTelemetry Tracing
     implementation("io.opentelemetry:opentelemetry-api:$openTelemetryVersion")
     implementation("io.opentelemetry:opentelemetry-sdk:$openTelemetryVersion")
-    implementation("io.opentelemetry:opentelemetry-extension-trace-propagators:$openTelemetryVersion")
+    implementation(
+        "io.opentelemetry:opentelemetry-extension-trace-propagators:$openTelemetryVersion",
+    )
     implementation("io.opentelemetry:opentelemetry-exporter-otlp:$openTelemetryVersion")
-    implementation("io.opentelemetry.instrumentation:opentelemetry-ktor-2.0:$openTelemetryKtorVersion")
-    implementation("io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$openTelemetryVersion")
+    implementation(
+        "io.opentelemetry.instrumentation:opentelemetry-ktor-2.0:$openTelemetryKtorVersion",
+    )
+    implementation(
+        "io.opentelemetry.instrumentation:opentelemetry-instrumentation-annotations:$openTelemetryVersion",
+    )
     runtimeOnly("io.opentelemetry.semconv:opentelemetry-semconv:$openTelemetryVersion")
 
     // OpenAPI/Swagger Documentation
@@ -162,7 +175,7 @@ tasks.build {
 
 tasks.withType<Test> {
     useJUnitPlatform()
-    
+
     // Disable global OpenTelemetry registration in tests to prevent race conditions
     systemProperty("otel.global.disabled", "true")
 }
@@ -195,7 +208,9 @@ tasks.register<Copy>("copyOpenApiSpec") {
 }
 
 // Android client generation (specifically configured for Android)
-tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generateAndroidClient") {
+tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
+    "generateAndroidClient",
+) {
     group = "openapi"
     description = "Generate Android client library"
 
@@ -250,7 +265,9 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
 
     generatorName.set("typescript-fetch")
     inputSpec.set(staticOpenApiSpecFile.absolutePath)
-    outputDir.set(layout.buildDirectory.dir("generated-clients/typescript").get().asFile.absolutePath)
+    outputDir.set(
+        layout.buildDirectory.dir("generated-clients/typescript").get().asFile.absolutePath,
+    )
 
     configOptions.set(
         mapOf(
@@ -261,8 +278,8 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
             "supportsES6" to "true",
             "withInterfaces" to "true",
             "typescriptThreePlus" to "true",
-            "useSingleRequestParameter" to "false"
-        )
+            "useSingleRequestParameter" to "false",
+        ),
     )
 
     inputs.file(staticOpenApiSpecFile)

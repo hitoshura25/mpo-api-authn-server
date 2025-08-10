@@ -68,7 +68,10 @@ class AppModuleTest : KoinTest {
 
     @Test
     fun `Relying Party Name should work through system property`() {
-        System.setProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME, "Test WebAuthn Service")
+        System.setProperty(
+            EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME,
+            "Test WebAuthn Service",
+        )
 
         startKoin {
             modules(appModule)
@@ -85,7 +88,10 @@ class AppModuleTest : KoinTest {
         }
 
         val relyingPartyName = get<String>(named("relyingPartyName"))
-        assertEquals("MPO Api Authn", relyingPartyName) // Default value when neither system property nor env var is set
+        assertEquals(
+            "MPO Api Authn",
+            relyingPartyName,
+        ) // Default value when neither system property nor env var is set
     }
 
     @Test

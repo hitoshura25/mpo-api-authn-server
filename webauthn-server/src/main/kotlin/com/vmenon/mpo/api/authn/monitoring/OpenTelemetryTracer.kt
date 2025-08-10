@@ -34,7 +34,7 @@ class OpenTelemetryTracer(
                 span.recordException(exception)
                 span.end()
                 throw exception
-            }
+            },
         )
     }
 
@@ -88,7 +88,7 @@ class OpenTelemetryTracer(
                 span.recordException(exception)
                 span.end()
                 throw exception
-            }
+            },
         )
     }
 
@@ -120,7 +120,7 @@ class OpenTelemetryTracer(
                 span.recordException(exception)
                 span.end()
                 throw exception
-            }
+            },
         )
     }
 
@@ -150,7 +150,7 @@ class OpenTelemetryTracer(
                 span.recordException(exception)
                 span.end()
                 throw exception
-            }
+            },
         )
     }
 

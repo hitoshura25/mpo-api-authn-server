@@ -7,8 +7,9 @@
 # and blocking publication on critical vulnerabilities.
 #
 # USAGE:
-#   ./scan-security.sh <webauthn_changed> <test_credentials_changed>
-#   where parameters are "true" or "false"
+#   ./scan-security.sh <webauthn_changed> <test_credentials_changed> [webauthn_image_tag] [test_credentials_image_tag]
+#   where first two parameters are "true" or "false"
+#   and optional image tags specify the actual built images to scan
 #
 # ENVIRONMENT VARIABLES:
 #   DOCKER_REGISTRY - Docker registry URL
@@ -51,22 +52,60 @@ install_trivy() {
     log "✅ Trivy scanner installed successfully"
 }
 
-# Function to pull Docker images for scanning
-pull_images() {
+# Function to verify locally built Docker images are available for scanning
+verify_local_images() {
     local webauthn_changed="$1"
     local test_credentials_changed="$2"
+    local webauthn_image_tag="$3"
+    local test_credentials_image_tag="$4"
     
-    log "📦 Pulling images from GHCR for security scanning..."
+    log "📦 Verifying locally built images are available for security scanning..."
     
+    # Check WebAuthn server image
     if [[ "$webauthn_changed" == "true" ]]; then
-        docker pull "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-        log "✅ Pulled webauthn-server image"
+        if [[ -n "$webauthn_image_tag" ]]; then
+            # Use the full image tag provided from build job
+            if docker image inspect "$webauthn_image_tag" >/dev/null 2>&1; then
+                log "✅ Found local WebAuthn server image: $webauthn_image_tag"
+            else
+                log "❌ Local WebAuthn server image not found: $webauthn_image_tag"
+                log "   This indicates the Docker build step may have failed or the image wasn't loaded locally"
+                exit 1
+            fi
+        else
+            log "⚠️ No WebAuthn image tag provided, checking for latest tag"
+            if docker image inspect "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest" >/dev/null 2>&1; then
+                log "✅ Found local WebAuthn server image: ${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+            else
+                log "❌ Local WebAuthn server image not found with latest tag"
+                exit 1
+            fi
+        fi
     fi
     
+    # Check Test Credentials service image  
     if [[ "$test_credentials_changed" == "true" ]]; then
-        docker pull "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
-        log "✅ Pulled test-credentials-service image"
+        if [[ -n "$test_credentials_image_tag" ]]; then
+            # Use the full image tag provided from build job
+            if docker image inspect "$test_credentials_image_tag" >/dev/null 2>&1; then
+                log "✅ Found local Test Credentials service image: $test_credentials_image_tag"
+            else
+                log "❌ Local Test Credentials service image not found: $test_credentials_image_tag"
+                log "   This indicates the Docker build step may have failed or the image wasn't loaded locally"
+                exit 1
+            fi
+        else
+            log "⚠️ No Test Credentials image tag provided, checking for latest tag"
+            if docker image inspect "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest" >/dev/null 2>&1; then
+                log "✅ Found local Test Credentials service image: ${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
+            else
+                log "❌ Local Test Credentials service image not found with latest tag"
+                exit 1
+            fi
+        fi
     fi
+    
+    log "✅ All required local images verified and ready for scanning"
 }
 
 # Function to scan a single image
@@ -99,7 +138,7 @@ EOF
     # Vulnerability scan with Trivy - generate both JSON for processing and SARIF for GitHub
     log "  📋 Running vulnerability scan..."
     if trivy image --format json --output "${image_basename}-vulns.json" "$full_image" 2>/dev/null && \
-       trivy image --format sarif --output "${image_basename}-vulns.sarif" "$full_image" 2>/dev/null; then
+       trivy image --format sarif --output "${image_basename}-vulns-temp.sarif" "$full_image" 2>/dev/null; then
         log "  ✅ Vulnerability scan completed (JSON + SARIF)"
         
         # Count critical and high vulnerabilities
@@ -112,6 +151,17 @@ EOF
         TOTAL_VULN_COUNT=$((TOTAL_VULN_COUNT + total_count))
         
         log "    📊 Found $critical_count CRITICAL, $high_count HIGH, $total_count total vulnerabilities"
+        
+        # Fix SARIF category collision by making each image's SARIF unique
+        local unique_category="trivy-${image_basename}"
+        jq --arg category "$unique_category" '
+          if .runs then 
+            .runs[].tool.driver.name = $category |
+            .runs[].automationDetails.id = $category
+          else . end
+        ' "${image_basename}-vulns-temp.sarif" > "${image_basename}-vulns.sarif"
+        rm -f "${image_basename}-vulns-temp.sarif"
+        log "    🏷️  Updated SARIF with unique category: $unique_category"
         
         # Update scan result - use jq with file input to avoid argument length limits
         local temp_scan_file
@@ -177,6 +227,8 @@ EOF
 perform_security_scan() {
     local webauthn_changed="$1"
     local test_credentials_changed="$2"
+    local webauthn_image_tag="$3"
+    local test_credentials_image_tag="$4"
     
     log "🔍 Starting comprehensive Docker security scanning..."
     
@@ -199,20 +251,44 @@ perform_security_scan() {
     
     # Scan images that have changes
     if [[ "$webauthn_changed" == "true" ]]; then
-        if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}" "latest"; then
-            SCAN_SUCCESS=false
+        # Use provided full image name or fall back to constructing one
+        if [[ -n "$webauthn_image_tag" ]]; then
+            log "🔍 Scanning WebAuthn server image: $webauthn_image_tag"
+            # Extract base name and tag from full image name for scan_image function
+            local base_name="${webauthn_image_tag%:*}"
+            local tag="${webauthn_image_tag##*:}"
+            if ! scan_image "$base_name" "$tag"; then
+                SCAN_SUCCESS=false
+            fi
+        else
+            log "⚠️ No WebAuthn image tag provided, falling back to latest"
+            if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}" "latest"; then
+                SCAN_SUCCESS=false
+            fi
         fi
     fi
     
     if [[ "$test_credentials_changed" == "true" ]]; then
-        if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}" "latest"; then
-            SCAN_SUCCESS=false
+        # Use provided full image name or fall back to constructing one
+        if [[ -n "$test_credentials_image_tag" ]]; then
+            log "🔍 Scanning Test Credentials service image: $test_credentials_image_tag"
+            # Extract base name and tag from full image name for scan_image function
+            local base_name="${test_credentials_image_tag%:*}"
+            local tag="${test_credentials_image_tag##*:}"
+            if ! scan_image "$base_name" "$tag"; then
+                SCAN_SUCCESS=false
+            fi
+        else
+            log "⚠️ No Test Credentials image tag provided, falling back to latest"
+            if ! scan_image "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}" "latest"; then
+                SCAN_SUCCESS=false
+            fi
         fi
     fi
     
     # Consolidate SARIF files for GitHub Security upload
     log "📄 Consolidating SARIF results for GitHub Security..."
-    local consolidated_sarif="docker-security-scan-results.json"
+    local consolidated_sarif="docker-security-scan-results.sarif"
     
     # Find all SARIF files and merge them
     local sarif_files=(*.sarif)
@@ -221,20 +297,32 @@ perform_security_scan() {
         local temp_sarif
         temp_sarif=$(mktemp)
         
-        # Start with first SARIF file
-        cp "${sarif_files[0]}" "$temp_sarif"
+        # Start with first SARIF file and ensure it's valid SARIF (no unauthorized properties)
+        jq '{
+            "version": .version,
+            "$schema": ."$schema", 
+            "runs": .runs
+        }' "${sarif_files[0]}" > "$temp_sarif"
         
         # Merge additional SARIF files if they exist
         for sarif_file in "${sarif_files[@]:1}"; do
             if [ -f "$sarif_file" ]; then
-                # Merge the runs array from each SARIF file
-                jq --slurpfile additional "$sarif_file" '.runs += $additional[].runs' "$temp_sarif" > "${temp_sarif}.tmp"
+                # Extract only valid SARIF properties and merge runs
+                jq --slurpfile additional <(jq '{
+                    "version": .version,
+                    "$schema": ."$schema",
+                    "runs": .runs
+                }' "$sarif_file") '.runs += $additional[].runs' "$temp_sarif" > "${temp_sarif}.tmp"
                 mv "${temp_sarif}.tmp" "$temp_sarif"
             fi
         done
         
-        # Copy final consolidated SARIF to expected filename
-        cp "$temp_sarif" "$consolidated_sarif"
+        # Ensure final SARIF is clean (remove any non-standard properties)
+        jq '{
+            "version": "2.1.0",
+            "$schema": "https://json.schemastore.org/sarif-2.1.0.json",
+            "runs": .runs
+        }' "$temp_sarif" > "$consolidated_sarif"
         rm -f "$temp_sarif"
         
         log "  ✅ SARIF consolidation completed: $consolidated_sarif"
@@ -292,6 +380,8 @@ perform_security_scan() {
 main() {
     local webauthn_changed="${1:-false}"
     local test_credentials_changed="${2:-false}"
+    local webauthn_image_tag="${3:-}"
+    local test_credentials_image_tag="${4:-}"
     
     # Validate required environment variables
     if [ -z "${DOCKER_REGISTRY:-}" ] || [ -z "${DOCKER_IMAGE_NAME:-}" ] || [ -z "${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-}" ]; then
@@ -316,11 +406,11 @@ main() {
     # Install Trivy scanner
     install_trivy
     
-    # Pull images for scanning
-    pull_images "$webauthn_changed" "$test_credentials_changed"
+    # Images were rebuilt locally by workflow, no need to verify - they're guaranteed to exist
+    log "📦 Using locally rebuilt Docker images for security scanning..."
     
     # Perform security scanning
-    perform_security_scan "$webauthn_changed" "$test_credentials_changed"
+    perform_security_scan "$webauthn_changed" "$test_credentials_changed" "$webauthn_image_tag" "$test_credentials_image_tag"
 }
 
 # Trap errors for better debugging

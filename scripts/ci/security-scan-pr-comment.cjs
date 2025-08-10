@@ -54,9 +54,9 @@ function categorizeVulnerabilities(results) {
             const image = scan.image;
             console.log(`🔍 Processing vulnerabilities for image: ${image}`);
             
-            // Each scan contains vulnerabilities in Trivy format
-            if (scan.vulnerabilities && scan.vulnerabilities.Results) {
-                scan.vulnerabilities.Results.forEach(result => {
+            // Each scan contains vulnerabilities in Trivy format under scan.scans.vulnerabilities
+            if (scan.scans && scan.scans.vulnerabilities && scan.scans.vulnerabilities.Results) {
+                scan.scans.vulnerabilities.Results.forEach(result => {
                     if (result.Vulnerabilities) {
                         result.Vulnerabilities.forEach(vuln => {
                             const severity = vuln.Severity.toLowerCase();

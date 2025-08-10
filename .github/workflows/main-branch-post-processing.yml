@@ -83,7 +83,7 @@ jobs:
           name: docker-build-manifest
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{ github.event.workflow_run.id }}
-          
+
       - name: Check if images were built in main CI
         id: check-artifact
         run: |
@@ -106,7 +106,7 @@ jobs:
         run: |
           if [[ "${{ steps.check-artifact.outputs.skip-security-scan }}" == "true" ]]; then
             echo "🐳 STRATEGY: Skip all Docker processing - Main CI handled everything"
-            echo "✅ Main CI built and scanned new Docker images" 
+            echo "✅ Main CI built and scanned new Docker images"
             echo "🚀 Images are already published to GHCR with security validation"
             echo "📦 Will publish to DockerHub directly from GHCR images"
             echo "⏭️  Skipping: Change detection, security scanning, AI analysis"
@@ -155,8 +155,6 @@ jobs:
 
       - name: Checkout repository for change detection
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Check WebAuthn Server changes
         id: check-server
@@ -207,8 +205,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -270,8 +266,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Node.js for AI analysis
         uses: actions/setup-node@v4
@@ -339,6 +333,9 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: DockerHub publishing strategy
         run: |
           if [[ "${{ needs.check-main-ci-images.outputs.publish-from-main-ci }}" == "true" ]]; then
@@ -346,7 +343,7 @@ jobs:
             echo "✅ Images were built and scanned in main CI pipeline"
             echo "🚀 Publishing pre-validated images from GHCR to DockerHub"
           else
-            echo "📦 PUBLISHING STRATEGY: Using fallback images"  
+            echo "📦 PUBLISHING STRATEGY: Using fallback images"
             echo "🔄 Images were built and scanned in post-processing fallback"
             echo "⚠️  This path should be rare"
           fi
@@ -444,7 +441,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0  # Full history for tagging
 
       - name: Create and push git tag
@@ -485,7 +481,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0  # Fetch all history and tags for version continuity
 
       - name: Set up JDK for OpenAPI generation
@@ -671,7 +666,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
           fetch-depth: 0  # Fetch all history and tags for version continuity
 
       - name: Set up JDK for Android client generation

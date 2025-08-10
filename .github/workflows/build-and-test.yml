@@ -72,7 +72,6 @@ jobs:
               - '!.github/workflows/**'
             workflows-changed:
               - '.github/workflows/**'
-              - '!.github/workflows/webauthn-server-tests-publish-docker-client-libs.yml'
             webauthn-server-tests:
               - 'webauthn-server/src/**'
               - 'webauthn-server/build.gradle.kts'
@@ -519,10 +518,10 @@ jobs:
         run: |
           echo "🔧 Rebuilding Docker images locally for security scanning..."
           echo "Note: Images were built on different runner, rebuilding with cache for local scanning"
-          
-          # Build JARs first  
+
+          # Build JARs first
           ./gradlew :webauthn-server:shadowJar :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
-          
+
           # Rebuild Docker images locally with same tags as build job
           docker build -t "${{ needs.build-docker-images.outputs.webauthn-server-image }}" ./webauthn-server
           docker build -t "${{ needs.build-docker-images.outputs.test-credentials-image }}" ./webauthn-test-credentials-service
@@ -548,7 +547,7 @@ jobs:
 
           # Test credentials image - always scan for now
           echo "test_credentials_changed=true" >> $GITHUB_ENV
-          # Verify the rebuilt image exists locally  
+          # Verify the rebuilt image exists locally
           if docker image inspect "${{ needs.build-docker-images.outputs.test-credentials-image }}" >/dev/null 2>&1; then
             echo "✅ Test credentials image rebuilt and ready: ${{ needs.build-docker-images.outputs.test-credentials-image }}"
           else

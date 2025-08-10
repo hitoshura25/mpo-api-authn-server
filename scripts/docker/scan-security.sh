@@ -138,7 +138,7 @@ EOF
     # Vulnerability scan with Trivy - generate both JSON for processing and SARIF for GitHub
     log "  📋 Running vulnerability scan..."
     if trivy image --format json --output "${image_basename}-vulns.json" "$full_image" 2>/dev/null && \
-       trivy image --format sarif --output "${image_basename}-vulns.sarif" "$full_image" 2>/dev/null; then
+       trivy image --format sarif --output "${image_basename}-vulns-temp.sarif" "$full_image" 2>/dev/null; then
         log "  ✅ Vulnerability scan completed (JSON + SARIF)"
         
         # Count critical and high vulnerabilities
@@ -151,6 +151,17 @@ EOF
         TOTAL_VULN_COUNT=$((TOTAL_VULN_COUNT + total_count))
         
         log "    📊 Found $critical_count CRITICAL, $high_count HIGH, $total_count total vulnerabilities"
+        
+        # Fix SARIF category collision by making each image's SARIF unique
+        local unique_category="trivy-${image_basename}"
+        jq --arg category "$unique_category" '
+          if .runs then 
+            .runs[].tool.driver.name = $category |
+            .runs[].automationDetails.id = $category
+          else . end
+        ' "${image_basename}-vulns-temp.sarif" > "${image_basename}-vulns.sarif"
+        rm -f "${image_basename}-vulns-temp.sarif"
+        log "    🏷️  Updated SARIF with unique category: $unique_category"
         
         # Update scan result - use jq with file input to avoid argument length limits
         local temp_scan_file

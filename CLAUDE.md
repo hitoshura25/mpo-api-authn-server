@@ -223,8 +223,10 @@ Task: "[Detailed description of work to be done systematically]"
    - **Runner Isolation**: Each job runs on separate runner - `load: true` images don't transfer between jobs
    - **Rebuild Strategy**: Rebuild with same tags as build job, leverages Docker layer cache for speed
    - **SARIF Format**: GitHub Security upload requires PURE SARIF (no custom fields like `summary`)
+   - **SARIF Categories**: Each image must have unique SARIF category to avoid upload collision
    - **File Separation**: Use `.sarif` extension for GitHub Security, `.json` for PR comments with custom fields
-   - **Common failures**: Assuming `load: true` images available across runners, wrong image tags, SARIF format issues
+   - **PR Comment Format**: PR script must handle consolidated scan results format, not direct Trivy format
+   - **Common failures**: Assuming `load: true` images available across runners, SARIF category collisions, wrong data format for PR comments
 
 ### Token Optimization Strategies
 

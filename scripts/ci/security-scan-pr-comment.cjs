@@ -46,8 +46,35 @@ function categorizeVulnerabilities(results) {
         low: []
     };
 
-    // Handle Trivy format
-    if (results.Results) {
+    // Handle our custom scan results format
+    if (results.scans && Array.isArray(results.scans)) {
+        console.log(`📋 Processing ${results.scans.length} scanned images`);
+        
+        results.scans.forEach(scan => {
+            const image = scan.image;
+            console.log(`🔍 Processing vulnerabilities for image: ${image}`);
+            
+            // Each scan contains vulnerabilities in Trivy format
+            if (scan.vulnerabilities && scan.vulnerabilities.Results) {
+                scan.vulnerabilities.Results.forEach(result => {
+                    if (result.Vulnerabilities) {
+                        result.Vulnerabilities.forEach(vuln => {
+                            const severity = vuln.Severity.toLowerCase();
+                            if (categories[severity]) {
+                                categories[severity].push({
+                                    ...vuln,
+                                    target: result.Target,
+                                    image: image
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    }
+    // Handle direct Trivy format (fallback)
+    else if (results.Results) {
         results.Results.forEach(result => {
             if (result.Vulnerabilities) {
                 result.Vulnerabilities.forEach(vuln => {
@@ -95,6 +122,7 @@ function generateCommentBody(categories, scanPassed) {
         
         categories.critical.slice(0, 5).forEach((vuln, index) => {
             comment += `#### ${index + 1}. ${vuln.VulnerabilityID || 'Unknown ID'}\n`;
+            comment += `- **Image**: ${vuln.image || 'Unknown image'}\n`;
             comment += `- **Package**: ${vuln.PkgName || 'Unknown'} (${vuln.InstalledVersion || 'Unknown version'})\n`;
             comment += `- **Target**: ${vuln.target || 'Unknown target'}\n`;
             comment += `- **Description**: ${vuln.Description || 'No description available'}\n`;

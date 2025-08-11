@@ -13,7 +13,7 @@ jobs:
       - name: Delete PR Docker images
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PACKAGE_NAME: webauthn-server
         run: |
           echo "Cleaning up Docker images for PR #$PR_NUMBER"
@@ -68,7 +68,7 @@ jobs:
       - name: Delete PR Docker images
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
           PACKAGE_NAME: webauthn-test-credentials-service
         run: |
           echo "Cleaning up Docker images for PR #$PR_NUMBER"

@@ -512,7 +512,7 @@ jobs:
           REQUIRES_REVIEW: ${{ needs.consolidate-security-analysis.outputs.final-requires-security-review || 'true' }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
           TIER_USED: ${{ needs.consolidate-security-analysis.outputs.tier-used || 'None (Analysis Failed)' }}
-          PR_NUMBER: ${{ github.event.number || 'N/A' }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
@@ -575,7 +575,7 @@ jobs:
           TIER_USED: ${{ needs.consolidate-security-analysis.outputs.tier-used || 'none' }}
           HAS_AUTH_CHANGES: ${{ needs.detect-security-changes.outputs.has-auth-changes }}
           HAS_DEPENDENCY_CHANGES: ${{ needs.detect-security-changes.outputs.has-dependency-changes }}
-          PR_NUMBER: ${{ github.event.number || 'N/A' }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |

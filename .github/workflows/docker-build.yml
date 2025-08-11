@@ -359,10 +359,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
           SCAN_RESULTS_FILE: docker-security-scan-results.json
         run: |
-          echo "📝 Posting security scan results to PR #${{ github.event.number }}"
+          echo "📝 Posting security scan results to PR #${{ github.event.pull_request.number || 'N/A' }}"
           chmod +x scripts/ci/security-scan-pr-comment.cjs
           node scripts/ci/security-scan-pr-comment.cjs
 

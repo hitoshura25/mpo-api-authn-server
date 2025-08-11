@@ -1,7 +1,13 @@
-# E2E Tests Callable Workflow - Cross-Platform Integration
+# E2E Tests Orchestrator - Cross-Platform Integration
 #
-# This callable workflow runs comprehensive end-to-end tests using built Docker images
+# This workflow orchestrates comprehensive end-to-end tests using built Docker images
 # to ensure full system integration works correctly across all platforms.
+#
+# ARCHITECTURE:
+# - Orchestrates parallel execution of platform-specific E2E workflows
+# - Web E2E: Delegates to web-e2e-tests.yml (Playwright testing)
+# - Android E2E: Delegates to android-e2e-tests.yml (emulator testing)
+# - Results aggregation: Collects and reports results from both platforms
 #
 # TRIGGER CONDITIONS:
 # - Called by main orchestrator workflow (main-ci-cd.yml)
@@ -14,13 +20,13 @@
 # - Integration between all services
 # - Real Docker image validation
 #
-# ARCHITECTURE:
-# - Docker Compose: Located in webauthn-server/ directory
-# - Dependencies: PostgreSQL, Redis, Jaeger (from docker-compose.deps.yml)
-# - Services: WebAuthn Server (8080), Test Credentials Service (8081)
-# - Tests: Web tests (Playwright) and Android tests (connectedAndroidTest) run in parallel
+# BENEFITS:
+# - True parallel execution of platform tests
+# - Independent platform team ownership
+# - Selective test execution capabilities
+# - Improved maintainability and specialization
 
-name: E2E Tests - Cross-Platform Integration
+name: E2E Tests - Cross-Platform Orchestrator
 
 on:
   workflow_call:
@@ -86,460 +92,35 @@ jobs:
             echo "available=false" >> $GITHUB_OUTPUT
           fi
 
-  # Job 2: Run Web E2E tests (Playwright)
-  run-web-e2e-tests:
-    runs-on: ubuntu-latest
+  # Job 2: Call Web E2E tests workflow
+  call-web-e2e-tests:
+    uses: ./.github/workflows/web-e2e-tests.yml
     needs: validate-images
     if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    secrets: inherit
+    with:
+      webauthn-server-image: ${{ inputs.webauthn_server_image }}
+      test-credentials-image: ${{ inputs.test_credentials_image }}
+      pr-number: ${{ inputs.pr_number }}
+      java-version: ${{ env.JAVA_VERSION }}
 
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull Docker images
-        run: |
-          echo "🐳 Pulling Docker images for Web E2E tests"
-          docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
-          docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
-          echo "✅ All images pulled successfully"
-
-      - name: Set up JDK for client generation
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-
-      # E2E-specific Gradle caching for client generation
-      - name: Setup Gradle cache for E2E client generation
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-          key: gradle-e2e-web-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-e2e-web-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-e2e-web-${{ runner.os }}-main-
-            gradle-e2e-web-${{ runner.os }}-
-            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Generate client libraries
-        shell: bash
-        run: |
-          echo "📚 Generating client libraries for E2E tests"
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
-
-      - name: Setup Node.js for TypeScript client tests
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: web-test-client/package-lock.json
-
-      - name: Generate TypeScript client from OpenAPI spec
-        env:
-          CLIENT_VERSION: ${{ github.run_number }}
-        run: |
-          echo "🔨 Generating TypeScript client from OpenAPI specification..."
-          echo "Using version: $CLIENT_VERSION"
-          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="mpo-webauthn-client"
-
-          # Verify client generation
-          if [ -f "web-test-client/generated-client/src/index.ts" ]; then
-            echo "✅ TypeScript client generated successfully"
-          else
-            echo "❌ TypeScript client generation failed"
-            exit 1
-          fi
-
-      - name: Install TypeScript client dependencies (parallel)
-        working-directory: web-test-client
-        run: |
-          echo "📦 Installing TypeScript client dependencies"
-          # Install npm dependencies and Playwright in parallel
-          npm ci &
-          NPM_PID=$!
-
-          # Download Playwright browser in background
-          npx playwright install chromium --only-shell &
-          PLAYWRIGHT_PID=$!
-
-          # Wait for both to complete
-          wait $NPM_PID
-          wait $PLAYWRIGHT_PID
-
-          echo "✅ Dependencies installed in parallel"
-
-      - name: Build web-test-client TypeScript bundles
-        working-directory: web-test-client
-        run: |
-          echo "🔨 Building TypeScript web client bundles..."
-          npm run build
-          echo "✅ Web client bundles built successfully"
-
-      - name: Start Docker services for Web E2E tests (secure env + PR images)
-        shell: bash
-        working-directory: webauthn-server
-        env:
-          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
-          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
-        run: |
-          echo "🚀 Starting Docker services with PR-specific images"
-          echo "WebAuthn Server: $WEBAUTHN_SERVER_IMAGE"
-          echo "Test Credentials: $TEST_CREDENTIALS_IMAGE"
-
-          # Use setup-secure-env.sh to configure environment variables securely
-          echo "🔐 Setting up secure environment variables"
-          ./setup-secure-env.sh
-
-          # Create docker-compose override to use PR images instead of building
-          cat > docker-compose.override.yml <<EOF
-          services:
-            webauthn-server:
-              image: \$WEBAUTHN_SERVER_IMAGE
-              build: null
-            webauthn-test-credentials-service:
-              image: \$TEST_CREDENTIALS_IMAGE
-              build: null
-          EOF
-
-          # Export image environment variables for docker-compose
-          export WEBAUTHN_SERVER_IMAGE="$WEBAUTHN_SERVER_IMAGE"
-          export TEST_CREDENTIALS_IMAGE="$TEST_CREDENTIALS_IMAGE"
-
-          docker compose up -d
-
-          # Wait for all services to be ready
-          echo "⏳ Waiting for services to be ready..."
-
-          timeout 120 bash -c '
-            while ! docker compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
-              echo "⏳ Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-
-          timeout 120 bash -c '
-            while ! docker compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
-              echo "⏳ Waiting for Redis..."
-              sleep 2
-            done
-          '
-
-          timeout 120 bash -c '
-            while ! curl -s http://localhost:16686/ > /dev/null 2>&1; do
-              echo "⏳ Waiting for Jaeger..."
-              sleep 2
-            done
-          '
-
-          timeout 120 bash -c '
-            while ! curl -s http://localhost:8080/health > /dev/null 2>&1; do
-              echo "⏳ Waiting for WebAuthn server..."
-              sleep 2
-            done
-          '
-
-          timeout 120 bash -c '
-            while ! curl -s http://localhost:8081/health > /dev/null 2>&1; do
-              echo "⏳ Waiting for Test Credentials service..."
-              sleep 2
-            done
-          '
-
-          echo "✅ All services are ready"
-
-      - name: Run Web E2E tests
-        shell: bash
-        working-directory: web-test-client
-        run: |
-          set +e
-          npm test
-          TEST_EXIT_CODE=$?
-          set -e
-
-          # Store exit code for later use
-          echo "test-exit-code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
-
-          if [ $TEST_EXIT_CODE -ne 0 ]; then
-            echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
-            exit $TEST_EXIT_CODE
-          else
-            echo "✅ Tests passed successfully"
-          fi
-
-      - name: Upload Web E2E test reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: web-e2e-test-reports-pr-${{ env.PR_NUMBER }}
-          path: |
-            web-test-client/test-results/
-            web-test-client/playwright-report/
-          retention-days: 7
-
-      - name: Cleanup Web Docker containers
-        if: always()
-        working-directory: webauthn-server
-        run: |
-          echo "🧹 Cleaning up Web Docker containers"
-          docker compose down -v
-          rm -f docker-compose.override.yml
-          docker system prune -f
-
-  # Job 3: Run Android E2E tests (connectedAndroidTest)
-  run-android-e2e-tests:
-    runs-on: ubuntu-latest
+  # Job 3: Call Android E2E tests workflow
+  call-android-e2e-tests:
+    uses: ./.github/workflows/android-e2e-tests.yml
     needs: validate-images
     if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
-    permissions:
-      contents: read
-      packages: read
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-
-      # Branch-specific Gradle caching
-      - name: Setup branch-specific Gradle cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-            android-test-client/.gradle/configuration-cache
-          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-            gradle-${{ runner.os }}-
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Pull Docker images
-        run: |
-          echo "🐳 Pulling Docker images for Android E2E tests"
-          docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
-          docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
-          echo "✅ All images pulled successfully"
-
-      # E2E-specific Gradle caching for client generation (Android job)
-      - name: Setup Gradle cache for E2E client generation
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-            android-test-client/.gradle/configuration-cache
-          key: gradle-e2e-android-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-e2e-android-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-e2e-android-${{ runner.os }}-main-
-            gradle-e2e-android-${{ runner.os }}-
-            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Generate client libraries
-        shell: bash
-        run: |
-          echo "📚 Generating client libraries for E2E tests"
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
-
-      - name: Enable KVM group permissions for Android Emulator
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          ls -la /dev/kvm
-
-      # Cache AVD configuration and snapshots (much faster than system images)
-      - name: AVD cache
-        uses: actions/cache@v4
-        id: avd-cache
-        with:
-          path: |
-            ~/.android/avd/*
-            ~/.android/adb*
-          key: avd-${{ env.ANDROID_API_VERSION }}-v2
-
-      - name: create AVD and generate snapshot for caching
-        if: steps.avd-cache.outputs.cache-hit != 'true'
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ env.ANDROID_API_VERSION }}
-          target: google_apis
-          arch: x86_64
-          profile: Nexus 6
-          disable-animations: false
-          force-avd-creation: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
-          script: echo "Generated AVD snapshot for caching."
-
-      - name: Start Docker services for Android E2E tests (secure env + PR images)
-        shell: bash
-        working-directory: webauthn-server
-        env:
-          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
-          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
-        run: |
-          echo "🚀 Starting Docker services with PR-specific images"
-          echo "WebAuthn Server: $WEBAUTHN_SERVER_IMAGE"
-          echo "Test Credentials: $TEST_CREDENTIALS_IMAGE"
-
-          # Use setup-secure-env.sh to configure environment variables securely
-          echo "🔐 Setting up secure environment variables"
-          ./setup-secure-env.sh
-
-          # Create docker-compose override to use PR images instead of building
-          cat > docker-compose.override.yml <<EOF
-          services:
-            webauthn-server:
-              image: \$WEBAUTHN_SERVER_IMAGE
-              build: null
-            webauthn-test-credentials-service:
-              image: \$TEST_CREDENTIALS_IMAGE
-              build: null
-          EOF
-
-          # Export image environment variables for docker-compose
-          export WEBAUTHN_SERVER_IMAGE="$WEBAUTHN_SERVER_IMAGE"
-          export TEST_CREDENTIALS_IMAGE="$TEST_CREDENTIALS_IMAGE"
-
-          docker compose up -d
-
-          # Wait for all services to be ready
-          echo "⏳ Waiting for services to be ready..."
-
-          timeout 120 bash -c '
-            while ! docker compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
-              echo "⏳ Waiting for PostgreSQL..."
-              sleep 2
-            done
-          '
-
-          timeout 120 bash -c '
-            while ! docker compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
-              echo "⏳ Waiting for Redis..."
-              sleep 2
-            done
-          '
-
-          timeout 120 bash -c '
-            while ! curl -s http://localhost:16686/ > /dev/null 2>&1; do
-              echo "⏳ Waiting for Jaeger..."
-              sleep 2
-            done
-          '
-
-          timeout 120 bash -c '
-            while ! curl -s http://localhost:8080/health > /dev/null 2>&1; do
-              echo "⏳ Waiting for WebAuthn server..."
-              sleep 2
-            done
-          '
-
-          timeout 120 bash -c '
-            while ! curl -s http://localhost:8081/health > /dev/null 2>&1; do
-              echo "⏳ Waiting for Test Credentials service..."
-              sleep 2
-            done
-          '
-
-          echo "✅ All services are ready"
-
-      - name: Run Android E2E tests with emulator
-        id: android-tests
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: ${{ env.ANDROID_API_VERSION }}
-          target: google_apis
-          arch: x86_64
-          profile: Nexus 6
-          disable-animations: true
-          force-avd-creation: false
-          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
-          script: ./scripts/core/run-android-tests.sh
-
-      - name: Upload Android E2E test reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: android-e2e-test-reports-pr-${{ env.PR_NUMBER }}
-          path: |
-            android-test-client/app/build/reports/androidTests/connected/
-            android-test-client/app/build/outputs/androidTest-results/connected/
-          retention-days: 7
-
-      - name: Cleanup Android Docker containers
-        if: always()
-        working-directory: webauthn-server
-        run: |
-          echo "🧹 Cleaning up Android Docker containers"
-          docker compose down -v
-          rm -f docker-compose.override.yml
-          docker system prune -f
+    secrets: inherit
+    with:
+      webauthn-server-image: ${{ inputs.webauthn_server_image }}
+      test-credentials-image: ${{ inputs.test_credentials_image }}
+      pr-number: ${{ inputs.pr_number }}
+      java-version: ${{ env.JAVA_VERSION }}
+      android-api-version: ${{ env.ANDROID_API_VERSION }}
 
   # Job 4: Report E2E test results back to PR
   report-results:
     runs-on: ubuntu-latest
-    needs: [ validate-images, run-web-e2e-tests, run-android-e2e-tests ]
+    needs: [ validate-images, call-web-e2e-tests, call-android-e2e-tests ]
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -555,8 +136,12 @@ jobs:
           GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
           PR_NUMBER: ${{ env.PR_NUMBER }}
           VALIDATION_RESULT: ${{ needs.validate-images.result }}
-          WEB_E2E_RESULT: ${{ needs.run-web-e2e-tests.result }}
-          ANDROID_E2E_RESULT: ${{ needs.run-android-e2e-tests.result }}
+          WEB_E2E_RESULT: ${{ needs.call-web-e2e-tests.result }}
+          ANDROID_E2E_RESULT: ${{ needs.call-android-e2e-tests.result }}
+          WEB_TESTS_PASSED: ${{ needs.call-web-e2e-tests.outputs.tests-passed }}
+          ANDROID_TESTS_PASSED: ${{ needs.call-android-e2e-tests.outputs.tests-passed }}
+          WEB_ARTIFACT_NAME: ${{ needs.call-web-e2e-tests.outputs.artifact-name }}
+          ANDROID_ARTIFACT_NAME: ${{ needs.call-android-e2e-tests.outputs.artifact-name }}
           WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
           TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
         run: |

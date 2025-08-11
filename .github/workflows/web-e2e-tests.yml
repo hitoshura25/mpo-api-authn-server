@@ -1,0 +1,320 @@
+# Web E2E Tests Callable Workflow - Playwright Testing
+#
+# This callable workflow runs comprehensive web-based end-to-end tests using Playwright
+# to ensure WebAuthn functionality works correctly in web browsers.
+#
+# SCOPE:
+# - TypeScript client library generation from OpenAPI spec
+# - Playwright browser automation tests
+# - Docker service orchestration (PostgreSQL, Redis, Jaeger, WebAuthn services)
+# - Test report generation and artifact collection
+#
+# DEPENDENCIES:
+# - Pre-built Docker images (WebAuthn server and test credentials service)
+# - Node.js/npm for TypeScript client builds
+# - Playwright for browser automation
+# - Docker Compose for service orchestration
+
+name: Web E2E Tests - Playwright
+
+on:
+  workflow_call:
+    inputs:
+      webauthn-server-image:
+        description: 'WebAuthn server Docker image tag'
+        required: true
+        type: string
+      test-credentials-image:
+        description: 'Test credentials service Docker image tag'
+        required: true
+        type: string
+      pr-number:
+        description: 'PR number for artifact naming'
+        required: true
+        type: string
+      java-version:
+        description: 'Java version for client generation'
+        required: false
+        type: string
+        default: '21'
+    outputs:
+      tests-passed:
+        description: 'Boolean indicating if web tests passed'
+        value: ${{ jobs.run-web-tests.outputs.tests-passed }}
+      test-results:
+        description: 'Web test execution results'
+        value: ${{ jobs.run-web-tests.result }}
+      artifact-name:
+        description: 'Name of uploaded test artifacts'
+        value: web-e2e-test-reports-pr-${{ inputs.pr-number }}
+
+env:
+  DOCKER_REGISTRY: ghcr.io
+  WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn-server-image }}
+  TEST_CREDENTIALS_IMAGE: ${{ inputs.test-credentials-image }}
+
+jobs:
+  # Docker image validation for web testing
+  validate-web-images:
+    runs-on: ubuntu-latest
+    outputs:
+      webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
+      test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}
+    steps:
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check WebAuthn Server image availability
+        id: check-webauthn
+        run: |
+          echo "🔍 Checking WebAuthn Server image: ${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          if docker manifest inspect "${{ env.WEBAUTHN_SERVER_IMAGE }}" > /dev/null 2>&1; then
+            echo "✅ WebAuthn Server image is available"
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ WebAuthn Server image not found"
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Test Credentials Service image availability
+        id: check-test-credentials
+        run: |
+          echo "🔍 Checking Test Credentials Service image: ${{ env.TEST_CREDENTIALS_IMAGE }}"
+          if docker manifest inspect "${{ env.TEST_CREDENTIALS_IMAGE }}" > /dev/null 2>&1; then
+            echo "✅ Test Credentials Service image is available"
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Test Credentials Service image not found"
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Main web E2E testing job
+  run-web-tests:
+    runs-on: ubuntu-latest
+    needs: validate-web-images
+    if: needs.validate-web-images.outputs.webauthn-server-ready == 'true' && needs.validate-web-images.outputs.test-credentials-ready == 'true'
+    outputs:
+      tests-passed: ${{ steps.test-execution.outputs.tests-passed }}
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker images
+        run: |
+          echo "🐳 Pulling Docker images for Web E2E tests"
+          docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
+          echo "✅ All images pulled successfully"
+
+      - name: Set up JDK for client generation
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+
+      # E2E-specific Gradle caching for client generation
+      - name: Setup Gradle cache for E2E client generation
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: gradle-e2e-web-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-e2e-web-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-e2e-web-${{ runner.os }}-main-
+            gradle-e2e-web-${{ runner.os }}-
+            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
+
+      - name: Generate client libraries
+        shell: bash
+        run: |
+          echo "📚 Generating client libraries for E2E tests"
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+
+      - name: Setup Node.js for TypeScript client tests
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: web-test-client/package-lock.json
+
+      - name: Generate TypeScript client from OpenAPI spec
+        env:
+          CLIENT_VERSION: ${{ github.run_number }}
+        run: |
+          echo "🔨 Generating TypeScript client from OpenAPI specification..."
+          echo "Using version: $CLIENT_VERSION"
+          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="mpo-webauthn-client"
+
+          # Verify client generation
+          if [ -f "web-test-client/generated-client/src/index.ts" ]; then
+            echo "✅ TypeScript client generated successfully"
+          else
+            echo "❌ TypeScript client generation failed"
+            exit 1
+          fi
+
+      - name: Install TypeScript client dependencies (parallel)
+        working-directory: web-test-client
+        run: |
+          echo "📦 Installing TypeScript client dependencies"
+          # Install npm dependencies and Playwright in parallel
+          npm ci &
+          NPM_PID=$!
+
+          # Download Playwright browser in background
+          npx playwright install chromium --only-shell &
+          PLAYWRIGHT_PID=$!
+
+          # Wait for both to complete
+          wait $NPM_PID
+          wait $PLAYWRIGHT_PID
+
+          echo "✅ Dependencies installed in parallel"
+
+      - name: Build web-test-client TypeScript bundles
+        working-directory: web-test-client
+        run: |
+          echo "🔨 Building TypeScript web client bundles..."
+          npm run build
+          echo "✅ Web client bundles built successfully"
+
+      - name: Start Docker services for Web E2E tests (secure env + PR images)
+        shell: bash
+        working-directory: webauthn-server
+        env:
+          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
+          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
+        run: |
+          echo "🚀 Starting Docker services with PR-specific images"
+          echo "WebAuthn Server: $WEBAUTHN_SERVER_IMAGE"
+          echo "Test Credentials: $TEST_CREDENTIALS_IMAGE"
+
+          # Use setup-secure-env.sh to configure environment variables securely
+          echo "🔐 Setting up secure environment variables"
+          ./setup-secure-env.sh
+
+          # Create docker-compose override to use PR images instead of building
+          cat > docker-compose.override.yml <<EOF
+          services:
+            webauthn-server:
+              image: \$WEBAUTHN_SERVER_IMAGE
+              build: null
+            webauthn-test-credentials-service:
+              image: \$TEST_CREDENTIALS_IMAGE
+              build: null
+          EOF
+
+          # Export image environment variables for docker-compose
+          export WEBAUTHN_SERVER_IMAGE="$WEBAUTHN_SERVER_IMAGE"
+          export TEST_CREDENTIALS_IMAGE="$TEST_CREDENTIALS_IMAGE"
+
+          docker compose up -d
+
+          # Wait for all services to be ready
+          echo "⏳ Waiting for services to be ready..."
+
+          timeout 120 bash -c '
+            while ! docker compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
+              echo "⏳ Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! docker compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
+              echo "⏳ Waiting for Redis..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:16686/ > /dev/null 2>&1; do
+              echo "⏳ Waiting for Jaeger..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8080/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for WebAuthn server..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8081/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for Test Credentials service..."
+              sleep 2
+            done
+          '
+
+          echo "✅ All services are ready"
+
+      - name: Run Web E2E tests
+        id: test-execution
+        shell: bash
+        working-directory: web-test-client
+        run: |
+          set +e
+          npm test
+          TEST_EXIT_CODE=$?
+          set -e
+
+          # Store exit code for output
+          if [ $TEST_EXIT_CODE -eq 0 ]; then
+            echo "tests-passed=true" >> $GITHUB_OUTPUT
+            echo "✅ Tests passed successfully"
+          else
+            echo "tests-passed=false" >> $GITHUB_OUTPUT
+            echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
+            exit $TEST_EXIT_CODE
+          fi
+
+      - name: Upload Web E2E test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-e2e-test-reports-pr-${{ inputs.pr-number }}
+          path: |
+            web-test-client/test-results/
+            web-test-client/playwright-report/
+          retention-days: 7
+
+      - name: Cleanup Web Docker containers
+        if: always()
+        working-directory: webauthn-server
+        run: |
+          echo "🧹 Cleaning up Web Docker containers"
+          docker compose down -v
+          rm -f docker-compose.override.yml
+          docker system prune -f

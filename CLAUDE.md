@@ -205,6 +205,17 @@ docker-operations-job:
   ```
 - **✅ Reference job outputs in conditionals**: `needs.setup-job.outputs.tier-enabled == 'true'`
 
+#### **Event Context Property Rules:**
+- **❌ NEVER use `github.event.number` for PR numbers** - This property doesn't exist
+- **✅ ALWAYS use `github.event.pull_request.number`** for pull request events
+- **✅ Use conditional fallbacks** for workflows that handle multiple event types:
+  ```yaml
+  PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
+  PR_TITLE: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+  PR_BODY: ${{ github.event.pull_request.body || 'Main branch push' }}
+  ```
+- **✅ Test multi-event workflows** with both pull request and push events
+
 #### **Script Execution Patterns:**
 - **❌ NEVER use `actions/github-script` with external file requires** - Sandboxed environment restrictions
 - **✅ ALWAYS use direct Node.js execution**: `node scripts/security/script.cjs`

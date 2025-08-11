@@ -5,6 +5,9 @@
 ### Active Tasks
 - No active tasks at this time - all major features completed
 
+### Planned Major Refactors
+- **OpenAPI Client Library Architecture**: Comprehensive plan to refactor from file-copying to Docker-inspired staging→production workflow using GitHub Packages. See `docs/OPENAPI_CLIENT_REFACTOR_PLAN.md` for complete implementation plan (8-11 week timeline)
+
 ## Project Overview
 
 This is a KTor-based WebAuthn authentication server using the Yubico java-webauthn-server library for FIDO2/WebAuthn implementation.
@@ -506,6 +509,8 @@ env:
 ## Completed Work Summary
 
 ### Major Achievements ✅
+- **Enhanced Workflow Change Detection**: Implemented granular workflow change detection with component mapping, replacing unsafe "fast-path all workflow changes" with targeted validation levels (orchestration=full, unit-test=tests-only, docker=build-only, infrastructure=minimal)
+- **Docker Build Workflow Consolidation**: Consolidated redundant docker-build.yml from 3 separate jobs (build→scan→push with 3x image rebuilds) into single efficient job, eliminating 60-70% build redundancy while maintaining security-first approach and all functionality
 - **Callable Workflow Architecture Refactoring**: Refactored monolithic 777-line build-and-test.yml into modular callable workflows (54% size reduction) with unit-tests.yml and docker-build.yml modules, improving maintainability while preserving all conditional logic and job dependencies
 - **Docker Security Standardization**: Migrated webauthn-server from distroless (1 CRITICAL vulnerability) to eclipse-temurin:21.0.8_9-jre-noble (0 critical vulnerabilities), achieving consistent secure base images across both services
 - **Centralized npm Package Configuration**: Established workflow environment variables (`NPM_SCOPE`, `NPM_PACKAGE_NAME`) for single-point configuration management

@@ -92,6 +92,42 @@ Task: "[Detailed description of work to be done systematically]"
 
 **✅ Success Pattern**: Always ask "Could a subagent handle this more efficiently?" before starting complex work.
 
+### 🧹 CRITICAL: Dead Code Cleanup After Refactoring
+
+**ALWAYS perform comprehensive cleanup after removing or refactoring functionality to eliminate orphaned code.**
+
+#### **Mandatory Cleanup Checklist After Refactoring:**
+- [ ] **Scripts & Tools**: Search for and remove unused scripts, especially in `scripts/ci/`, `scripts/docker/`, `scripts/security/`
+- [ ] **Workflow References**: Update all workflow files that may reference removed jobs or scripts
+- [ ] **Documentation Updates**: Update README.md, CLAUDE.md, and docs/ files to reflect changes
+- [ ] **Environment Variables**: Remove unused env vars from workflow files and docker-compose
+- [ ] **Configuration Files**: Clean up orphaned config files and references
+- [ ] **Dependencies**: Remove unused npm/gradle dependencies introduced for removed features
+
+#### **Search Strategy for Dead Code Detection:**
+1. **Script Usage Search**: `grep -r "script-name" .` to find all references
+2. **Workflow Job References**: Search workflows for removed job names and outputs
+3. **Environment Variable Search**: Look for unused env vars in removed contexts
+4. **Import/Dependency Analysis**: Check for unused imports or dependencies
+5. **File Pattern Search**: Look for files matching removed feature patterns
+
+#### **Examples of Common Dead Code:**
+- **Removed Workflow Jobs**: AI security analysis scripts when jobs are consolidated
+- **Renamed Workflows**: Old workflow name references in documentation
+- **Refactored Features**: Scripts supporting removed functionality
+- **Consolidated Tools**: Duplicate utilities after consolidation
+- **Legacy Configurations**: Config files for removed services or features
+
+#### **Documentation Requirements:**
+- Update all relevant documentation to reflect architectural changes
+- Remove references to deleted scripts or workflows
+- Update workflow diagrams and process descriptions
+- Add notes about why functionality was removed/consolidated
+
+**Why This Matters**: Dead code creates maintenance burden, confusion, and potential security issues. Clean refactoring prevents technical debt accumulation.
+
+**✅ Recent Success Example**: Security workflow consolidation (pr-security-analysis.yml → security-analysis.yml) included removal of unused ai-docker-security-analyzer.cjs and updating all references.
+
 ### ⚠️ CRITICAL: Always Validate Generated Markdown
 
 **ALWAYS run `bash scripts/core/validate-markdown.sh` after generating or modifying any markdown files.**
@@ -195,12 +231,13 @@ Task: "[Detailed description of work to be done systematically]"
 2. **Real vs Mock Implementation**: User consistently pushed for actual implementations over mocks
 3. **Explicit Imports**: No wildcard imports - always use specific class imports
 4. **Security-First**: All WebAuthn vulnerabilities have test coverage (100% protection achieved)
-5. **Git History**: Always use `git mv` instead of `mv` for file moves to preserve history
-6. **Docker Image Validation**: ALWAYS verify Docker images exist before updating Dockerfiles
+5. **Dead Code Cleanup**: ALWAYS remove unused scripts, files, and references after refactoring (see detailed guidance above)
+6. **Git History**: Always use `git mv` instead of `mv` for file moves to preserve history
+7. **Docker Image Validation**: ALWAYS verify Docker images exist before updating Dockerfiles
    - Use `docker manifest inspect <image>` to validate image existence
    - Check available tags with registry APIs or Docker Hub before specifying versions
    - Example: `eclipse-temurin:21.0.8_9-jre-jammy` (verified) vs `21.0.6_3-jre-jammy` (non-existent)
-7. **GitHub Actions always() Conditional**: CRITICAL workflow dependency gotcha
+8. **GitHub Actions always() Conditional**: CRITICAL workflow dependency gotcha
    - Jobs are **automatically skipped** if ANY dependency in the **entire dependency chain** is skipped
    - This includes **indirect/transitive dependencies** - if A→B→C and A is skipped, C is also skipped
    - Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped

@@ -268,7 +268,7 @@ All scripts are specifically designed for WebAuthn authentication systems and fo
 
 ## Integration with CI/CD
 
-These scripts integrate with the **3-Tier AI Security Analysis** GitHub Actions workflow (`.github/workflows/pr-security-analysis.yml`):
+These scripts integrate with the **3-Tier AI Security Analysis** GitHub Actions workflow (`.github/workflows/security-analysis.yml`):
 
 ### Workflow Architecture
 ```yaml

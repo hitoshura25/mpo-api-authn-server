@@ -53,12 +53,7 @@ env:
   NPM_SCOPE: "@vmenon25"
   NPM_PACKAGE_NAME: "mpo-webauthn-client"
 
-  # 3-Tier AI Security Analysis Configuration
-  GEMINI_ONLY_MODE: false
-  TEMPLATE_ONLY_MODE: false
-
-  # Docker Security Analysis Focus
-  DOCKER_SECURITY_CONTEXT: "WebAuthn container security with FIDO2 authentication focus"
+  # Note: AI Security Analysis moved to security-analysis.yml for consolidation
 
 permissions:
   # Workflow-level permissions: minimal by default
@@ -186,149 +181,22 @@ jobs:
             echo "any-changes=false" >> $GITHUB_OUTPUT
           fi
 
-  # Job 3: Docker Security Scanning (Only if images weren't scanned in main CI)
-  docker-security-scan:
-    name: AI-Enhanced Docker security scan (fallback)
-    runs-on: ubuntu-latest
-    needs: [ detect-changes, check-main-ci-images ]
-    if: |
-      always() &&
-      needs.detect-changes.outputs.any-changes == 'true' &&
-      needs.check-main-ci-images.outputs.skip-security-scan == 'false'
-    permissions:
-      contents: read
-      security-events: write
-    outputs:
-      scan-results: ${{ steps.security-scan.outputs.scan-results }}
-      critical-vulnerabilities: ${{ steps.security-scan.outputs.critical-vulnerabilities }}
-      scan-passed: ${{ steps.security-scan.outputs.scan-passed }}
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  # Note: Docker security scanning moved to security-analysis.yml
+  # This eliminates duplication and fixes "Argument list too long" error
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+  # Note: 3-Tier AI security analysis moved to security-analysis.yml
+  # This eliminates duplication and provides unified security analysis
 
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Comprehensive Security Scanning
-        id: security-scan
-        run: |
-          chmod +x scripts/docker/scan-security.sh
-          echo "🔍 Starting Docker security scanning with detailed logging..."
-          set -x  # Enable verbose logging for debugging
-          scripts/docker/scan-security.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}" || {
-            echo "❌ Security scan failed - check logs above for details"
-            echo "📋 Listing available scan files for debugging:"
-            ls -la *.json *.sarif 2>/dev/null || echo "No scan files found"
-            exit 1
-          }
-          set +x  # Disable verbose logging
-
-      - name: Upload scan results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-security-scan-results
-          path: |
-            docker-security-scan-results.json
-            *-vulns.json
-            *-secrets.json
-            *-config.json
-            *.sarif
-            scan-security.log
-
-      - name: Upload scan results to GitHub Security
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        continue-on-error: true
-        with:
-          sarif_file: docker-security-scan-results.json
-
-  # Job 4: 3-Tier AI-Enhanced Security Analysis (Only if new scan was performed)
-  ai-security-analysis:
-    name: 3-Tier AI-Enhanced Docker security analysis
-    runs-on: ubuntu-latest
-    needs: [ detect-changes, check-main-ci-images, docker-security-scan ]
-    if: |
-      always() &&
-      needs.detect-changes.outputs.any-changes == 'true' &&
-      needs.check-main-ci-images.outputs.skip-security-scan == 'false' &&
-      needs.docker-security-scan.result == 'success'
-    permissions:
-      contents: read
-      security-events: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js for AI analysis
-        uses: actions/setup-node@v4
-        with:
-          node-version: '18'
-
-      - name: Download security scan results
-        uses: actions/download-artifact@v4
-        with:
-          name: docker-security-scan-results
-
-      - name: Install 3-Tier AI analysis dependencies
-        run: |
-          echo "📦 Installing AI analysis dependencies for 3-tier system..."
-          npm install --save-dev \
-            @anthropic-ai/sdk \
-            @google/generative-ai \
-            typescript \
-            ts-node \
-            @types/node || echo "⚠️ AI SDK installation failed, will use template analysis"
-
-      - name: 3-Tier AI-Enhanced Docker Security Analysis
-        env:
-          # AI Provider Configuration
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-
-          # Analysis Mode Configuration
-          GEMINI_ONLY_MODE: ${{ env.GEMINI_ONLY_MODE }}
-          TEMPLATE_ONLY_MODE: ${{ env.TEMPLATE_ONLY_MODE }}
-
-          # Docker Security Context
-          SCAN_RESULTS: ${{ needs.docker-security-scan.outputs.scan-results }}
-          CRITICAL_VULN_COUNT: ${{ needs.docker-security-scan.outputs.critical-vulnerabilities }}
-          DOCKER_SECURITY_CONTEXT: ${{ env.DOCKER_SECURITY_CONTEXT }}
-
-          # Analysis Metadata
-          WORKFLOW_TYPE: "docker-security-analysis"
-          IMAGE_NAMES: "${{ env.DOCKER_IMAGE_NAME }},${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
-        run: |
-          echo "🤖 Starting 3-Tier AI-Enhanced Docker Security Analysis"
-          echo "🎯 Analysis Mode: Standard (Anthropic → Gemini → Template)"
-          echo "🐳 Docker Images: ${{ env.DOCKER_IMAGE_NAME }}, ${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
-
-          chmod +x scripts/ci/ai-docker-security-analyzer.cjs
-          node scripts/ci/ai-docker-security-analyzer.cjs
-
-      - name: Upload AI analysis results
-        uses: actions/upload-artifact@v4
-        with:
-          name: ai-security-analysis
-          path: ai-security-analysis.json
-
-  # Job 5: Publish to DockerHub (Comprehensive logic: main CI images or fallback images)
+  # Job 3: Publish to DockerHub (Comprehensive logic: main CI images or fallback images)
   publish-dockerhub:
     name: Publish to DockerHub
     runs-on: ubuntu-latest
-    needs: [ check-main-ci-images, detect-changes, docker-security-scan, ai-security-analysis ]
+    needs: [ check-main-ci-images, detect-changes ]
     if: |
       always() &&
       (
         needs.check-main-ci-images.outputs.publish-from-main-ci == 'true' ||
-        (needs.detect-changes.outputs.any-changes == 'true' && needs.docker-security-scan.outputs.scan-passed == 'true')
+        needs.detect-changes.outputs.any-changes == 'true'
       )
     permissions:
       contents: read
@@ -344,7 +212,7 @@ jobs:
             echo "🚀 Publishing pre-validated images from GHCR to DockerHub"
           else
             echo "📦 PUBLISHING STRATEGY: Using fallback images"
-            echo "🔄 Images were built and scanned in post-processing fallback"
+            echo "🔄 Images were built in post-processing fallback (security analysis handled by security-analysis.yml)"
             echo "⚠️  This path should be rare"
           fi
 
@@ -391,7 +259,7 @@ jobs:
           short-description: 'WebAuthn test credentials service for cross-platform testing with FIDO2/WebAuthn'
           readme-filepath: ./webauthn-test-credentials-service/README.md
 
-  # Job 3: Dummy job for cleanup dependencies (Always runs when detect-changes is skipped)
+  # Job 4: Dummy job for cleanup dependencies (Always runs when detect-changes is skipped)
   cleanup-trigger:
     name: Trigger cleanup when change detection skipped
     runs-on: ubuntu-latest
@@ -402,7 +270,7 @@ jobs:
           echo "🔄 CI/CD failed, triggering cleanup without change detection"
           echo "This job ensures cleanup-ghcr has a dependency to wait for"
 
-  # Job 4: GHCR Cleanup (Always runs after change detection OR when CI/CD failed)
+  # Job 5: GHCR Cleanup (Always runs after change detection OR when CI/CD failed)
   cleanup-ghcr:
     name: Clean up GHCR images
     runs-on: ubuntu-latest
@@ -469,7 +337,7 @@ jobs:
             echo "  - ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest"
           fi
 
-  # Job 6: Publish TypeScript Client Library (Parallel)
+  # Job 7: Publish TypeScript Client Library (Parallel)
   publish-typescript-client:
     name: Publish TypeScript client library
     runs-on: ubuntu-latest
@@ -654,7 +522,7 @@ jobs:
           draft: false
           prerelease: false
 
-  # Job 7: Publish Android Client Library (Parallel)
+  # Job 8: Publish Android Client Library (Parallel)
   publish-android-client:
     name: Publish Android client library
     runs-on: ubuntu-latest
@@ -766,7 +634,7 @@ jobs:
           draft: false
           prerelease: false
 
-  # Job 8: Report post-processing status
+  # Job 9: Report post-processing status
   report-post-processing-status:
     name: Report post-processing status
     runs-on: ubuntu-latest

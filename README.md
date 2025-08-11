@@ -258,7 +258,7 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 
 ### 🔒 Security Automation Workflows
 
-**3-Tier Security Analysis**: `pr-security-analysis.yml`
+**3-Tier Security Analysis**: `security-analysis.yml`
 - Triggered on security-sensitive file changes
 - Intelligent tier selection with fallback strategy
 - Automated security gates and PR labeling

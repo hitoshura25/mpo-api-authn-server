@@ -1,6 +1,6 @@
 # Android E2E Tests Callable Workflow - Emulator Testing
 #
-# This callable workflow runs comprehensive Android-based end-to-end tests using 
+# This callable workflow runs comprehensive Android-based end-to-end tests using
 # Android emulator to ensure WebAuthn functionality works correctly on Android devices.
 #
 # SCOPE:
@@ -306,22 +306,7 @@ jobs:
           disable-animations: true
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
-          script: |
-            # Run Android tests and capture result
-            set +e
-            ./scripts/core/run-android-tests.sh
-            TEST_EXIT_CODE=$?
-            set -e
-
-            # Store result for output
-            if [ $TEST_EXIT_CODE -eq 0 ]; then
-              echo "tests-passed=true" >> $GITHUB_OUTPUT
-              echo "✅ Android tests passed successfully"
-            else
-              echo "tests-passed=false" >> $GITHUB_OUTPUT
-              echo "❌ Android tests failed with exit code $TEST_EXIT_CODE"
-              exit $TEST_EXIT_CODE
-            fi
+          script: ./scripts/core/run-android-tests.sh
 
       - name: Upload Android E2E test reports
         uses: actions/upload-artifact@v4

@@ -6,6 +6,7 @@
 - No active tasks at this time - all major features completed
 
 ### Planned Major Refactors
+- **FOSS Security Implementation**: Comprehensive plan to replace AI-dependent custom security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP, Checkov, GitLeaks). Eliminates AI API costs and maintenance overhead. See `docs/security/FOSS_SECURITY_IMPLEMENTATION_PLAN.md` for complete implementation plan (5-7 week timeline)
 - **OpenAPI Client Library Architecture**: Comprehensive plan to refactor from file-copying to Docker-inspired staging→production workflow using GitHub Packages. See `docs/OPENAPI_CLIENT_REFACTOR_PLAN.md` for complete implementation plan (8-11 week timeline)
 
 ## Project Overview

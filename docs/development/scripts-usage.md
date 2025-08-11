@@ -23,7 +23,6 @@ scripts/
 │   └── add-security-labels.cjs # Automated security labeling
 ├── ci/                       # CI/CD specific scripts
 │   ├── create-e2e-results-comment.cjs # E2E test result comments
-│   ├── ai-docker-security-analyzer.cjs # AI-powered Docker analysis
 │   └── add-vulnerability-pr-labels.cjs # Vulnerability PR labeling
 ├── monitoring/               # Monitoring and vulnerability scanning
 │   ├── enhanced-monitor.sh   # Enhanced vulnerability monitoring
@@ -147,9 +146,6 @@ TEMPLATE_ONLY_MODE=true ./scripts/security/generate-tests.sh
 ### create-e2e-results-comment.cjs
 **Purpose**: Creates GitHub PR comments with E2E test results and summaries.
 
-### ai-docker-security-analyzer.cjs
-**Purpose**: AI-powered analysis of Docker security scan results with intelligent insights.
-
 ### add-vulnerability-pr-labels.cjs
 **Purpose**: Automatically adds appropriate labels to PRs based on vulnerability scans.
 
@@ -200,8 +196,7 @@ TEMPLATE_ONLY_MODE=true ./scripts/security/generate-tests.sh
    - Uses `scripts/docker/scan-security.sh`
    - Uses `scripts/docker/publish-dockerhub.sh`
    - Uses `scripts/docker/cleanup-ghcr.sh`
-   - Uses `scripts/ci/ai-docker-security-analyzer.cjs`
-- **pr-security-analysis.yml**:
+- **security-analysis.yml**:
    - Uses `scripts/security/analyze-changes.sh`
    - Uses `scripts/security/analyze-pr.sh`
    - Uses `scripts/security/generate-tests.sh`

@@ -92,6 +92,91 @@ Task: "[Detailed description of work to be done systematically]"
 
 **✅ Success Pattern**: Always ask "Could a subagent handle this more efficiently?" before starting complex work.
 
+### 🧹 CRITICAL: Dead Code Cleanup After Refactoring
+
+**ALWAYS perform comprehensive cleanup after removing or refactoring functionality to eliminate orphaned code.**
+
+#### **Mandatory Cleanup Checklist After Refactoring:**
+- [ ] **Scripts & Tools**: Search for and remove unused scripts, especially in `scripts/ci/`, `scripts/docker/`, `scripts/security/`
+- [ ] **Workflow References**: Update all workflow files that may reference removed jobs or scripts
+- [ ] **Documentation Updates**: Update README.md, CLAUDE.md, and docs/ files to reflect changes
+- [ ] **Environment Variables**: Remove unused env vars from workflow files and docker-compose
+- [ ] **Configuration Files**: Clean up orphaned config files and references
+- [ ] **Dependencies**: Remove unused npm/gradle dependencies introduced for removed features
+
+#### **Search Strategy for Dead Code Detection:**
+1. **Script Usage Search**: `grep -r "script-name" .` to find all references
+2. **Workflow Job References**: Search workflows for removed job names and outputs
+3. **Environment Variable Search**: Look for unused env vars in removed contexts
+4. **Import/Dependency Analysis**: Check for unused imports or dependencies
+5. **File Pattern Search**: Look for files matching removed feature patterns
+
+#### **Examples of Common Dead Code:**
+- **Removed Workflow Jobs**: AI security analysis scripts when jobs are consolidated
+- **Renamed Workflows**: Old workflow name references in documentation
+- **Refactored Features**: Scripts supporting removed functionality
+- **Consolidated Tools**: Duplicate utilities after consolidation
+- **Legacy Configurations**: Config files for removed services or features
+
+#### **Documentation Requirements:**
+- Update all relevant documentation to reflect architectural changes
+- Remove references to deleted scripts or workflows
+- Update workflow diagrams and process descriptions
+- Add notes about why functionality was removed/consolidated
+
+**Why This Matters**: Dead code creates maintenance burden, confusion, and potential security issues. Clean refactoring prevents technical debt accumulation.
+
+**✅ Recent Success Example**: Security workflow consolidation (pr-security-analysis.yml → security-analysis.yml) included removal of unused ai-docker-security-analyzer.cjs and updating all references.
+
+### 🏗️ CRITICAL: Callable Workflow Architecture
+
+**The project now uses a modular callable workflow architecture for better maintainability and reusability:**
+
+#### **Architecture Overview:**
+- **Main Orchestrator**: `build-and-test.yml` (358 lines, down from 777 lines)
+- **Unit Testing Module**: `unit-tests.yml` - Callable workflow for test execution and coverage
+- **Docker Pipeline Module**: `docker-build.yml` - Callable workflow for build/scan/push operations
+
+#### **Workflow Structure:**
+1. **detect-changes**: Smart change detection and execution strategy (unchanged)
+2. **run-unit-tests**: Calls `unit-tests.yml` with proper inputs/outputs
+3. **docker-build-scan-push**: Calls `docker-build.yml` for complete Docker lifecycle
+4. **report-build-results**: Results aggregation and status reporting (updated)
+
+#### **Benefits Achieved:**
+- **54% Size Reduction**: Main workflow reduced from 777 to 358 lines
+- **Better Maintainability**: Logical separation of concerns
+- **Improved Reusability**: Callable workflows can be used by other workflows
+- **Preserved Functionality**: All conditional logic, job dependencies, and outputs maintained
+
+#### **Key Implementation Details:**
+- **Conditional Logic**: All `if:` conditions preserved exactly
+- **Job Dependencies**: `needs:` relationships maintained with callable workflow outputs
+- **Secret Passing**: Uses `secrets: inherit` for proper credential handling
+- **Output Mapping**: Workflow outputs properly map to callable workflow results
+- **Environment Variables**: Passed through to callable workflows correctly
+
+#### **Usage Pattern for New Workflows:**
+```yaml
+unit-testing-job:
+  uses: ./.github/workflows/unit-tests.yml
+  with:
+    changes-detected: true
+    test-scope: 'all'
+    java-version: '21'
+  secrets: inherit
+
+docker-operations-job:
+  uses: ./.github/workflows/docker-build.yml  
+  with:
+    docker-changes-detected: true
+    java-version: '21'
+    push-enabled: true
+  secrets: inherit
+```
+
+**Why This Matters**: Modular workflow architecture reduces complexity, improves maintainability, and enables better reuse across different CI/CD scenarios while preserving all existing functionality.
+
 ### ⚠️ CRITICAL: Always Validate Generated Markdown
 
 **ALWAYS run `bash scripts/core/validate-markdown.sh` after generating or modifying any markdown files.**
@@ -119,6 +204,17 @@ Task: "[Detailed description of work to be done systematically]"
           TIER_ENABLED: ${{ env.TIER_ENABLED }}
   ```
 - **✅ Reference job outputs in conditionals**: `needs.setup-job.outputs.tier-enabled == 'true'`
+
+#### **Event Context Property Rules:**
+- **❌ NEVER use `github.event.number` for PR numbers** - This property doesn't exist
+- **✅ ALWAYS use `github.event.pull_request.number`** for pull request events
+- **✅ Use conditional fallbacks** for workflows that handle multiple event types:
+  ```yaml
+  PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
+  PR_TITLE: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+  PR_BODY: ${{ github.event.pull_request.body || 'Main branch push' }}
+  ```
+- **✅ Test multi-event workflows** with both pull request and push events
 
 #### **Script Execution Patterns:**
 - **❌ NEVER use `actions/github-script` with external file requires** - Sandboxed environment restrictions
@@ -195,12 +291,13 @@ Task: "[Detailed description of work to be done systematically]"
 2. **Real vs Mock Implementation**: User consistently pushed for actual implementations over mocks
 3. **Explicit Imports**: No wildcard imports - always use specific class imports
 4. **Security-First**: All WebAuthn vulnerabilities have test coverage (100% protection achieved)
-5. **Git History**: Always use `git mv` instead of `mv` for file moves to preserve history
-6. **Docker Image Validation**: ALWAYS verify Docker images exist before updating Dockerfiles
+5. **Dead Code Cleanup**: ALWAYS remove unused scripts, files, and references after refactoring (see detailed guidance above)
+6. **Git History**: Always use `git mv` instead of `mv` for file moves to preserve history
+7. **Docker Image Validation**: ALWAYS verify Docker images exist before updating Dockerfiles
    - Use `docker manifest inspect <image>` to validate image existence
    - Check available tags with registry APIs or Docker Hub before specifying versions
    - Example: `eclipse-temurin:21.0.8_9-jre-jammy` (verified) vs `21.0.6_3-jre-jammy` (non-existent)
-7. **GitHub Actions always() Conditional**: CRITICAL workflow dependency gotcha
+8. **GitHub Actions always() Conditional**: CRITICAL workflow dependency gotcha
    - Jobs are **automatically skipped** if ANY dependency in the **entire dependency chain** is skipped
    - This includes **indirect/transitive dependencies** - if A→B→C and A is skipped, C is also skipped
    - Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped
@@ -409,6 +506,7 @@ env:
 ## Completed Work Summary
 
 ### Major Achievements ✅
+- **Callable Workflow Architecture Refactoring**: Refactored monolithic 777-line build-and-test.yml into modular callable workflows (54% size reduction) with unit-tests.yml and docker-build.yml modules, improving maintainability while preserving all conditional logic and job dependencies
 - **Docker Security Standardization**: Migrated webauthn-server from distroless (1 CRITICAL vulnerability) to eclipse-temurin:21.0.8_9-jre-noble (0 critical vulnerabilities), achieving consistent secure base images across both services
 - **Centralized npm Package Configuration**: Established workflow environment variables (`NPM_SCOPE`, `NPM_PACKAGE_NAME`) for single-point configuration management
 - **Enhanced Regex Validation**: Upgraded version validation from `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9]+(\\.[a-zA-Z0-9]+)*)?$` to `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*)?$` supporting hyphens in prerelease identifiers for full npm semver compliance\n- **Robust Version Validation**: All version formats now properly validated - rejects invalid 2-part, 4-part, and empty prerelease formats while supporting advanced prerelease identifiers like `1.0.0-alpha-beta.1`\n- **Unified 3-Part Versioning**: Standardized both Android and npm clients to use identical semantic versioning with enhanced validation ensuring 100% npm compatibility\n- **PR Publishing Support**: Added automatic snapshot publishing for pull requests with version format 1.0.0-pr.42.123 for testing client changes before merge

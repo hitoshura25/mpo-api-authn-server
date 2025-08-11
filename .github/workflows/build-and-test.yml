@@ -1,7 +1,8 @@
-# Smart PR Testing Workflow with Conditional Execution
+# Smart PR Testing Workflow with Conditional Execution and Callable Workflow Architecture
 #
 # This workflow implements intelligent change detection and conditional execution
-# to optimize CI/CD performance for pull requests.
+# to optimize CI/CD performance for pull requests. It uses callable workflows
+# for better maintainability and reusability.
 #
 # WORKFLOW DECISION MATRIX:
 # | Change Type        | Unit Tests | Docker Build | E2E Tests |
@@ -17,27 +18,43 @@
 # - Fast path: Documentation/workflow changes complete in ~30 seconds
 # - Standard path: Full CI pipeline takes ~8 minutes when needed
 # - Smart detection: Only run tests/builds for relevant changes
+# - Callable workflows: Reduced complexity and improved maintainability
+#
+# ARCHITECTURE:
+# - detect-changes: Smart change detection and execution strategy
+# - unit-tests.yml: Callable workflow for unit testing and coverage
+# - docker-build.yml: Callable workflow for Docker build/scan/push
+# - report-build-results: Results aggregation and status reporting
 
-name: Build and Test - Callable Workflow
+name: Build and Test - Orchestration Workflow
 
 on:
   workflow_call:
     outputs:
       docker_images_built:
         description: 'Whether Docker images were built and pushed'
-        value: ${{ jobs.push-docker-images.result == 'success' }}
+        value: ${{ jobs.docker-build-scan-push.outputs.images-pushed }}
       webauthn_server_image:
         description: 'WebAuthn server Docker image tag'
-        value: ${{ jobs.push-docker-images.outputs.webauthn-server-image }}
+        value: ${{ jobs.docker-build-scan-push.outputs.webauthn-server-image }}
       test_credentials_image:
         description: 'Test credentials service Docker image tag'
-        value: ${{ jobs.push-docker-images.outputs.test-credentials-image }}
+        value: ${{ jobs.docker-build-scan-push.outputs.test-credentials-image }}
       security_scan_passed:
         description: 'Whether Docker security scan passed'
-        value: ${{ jobs.security-scan-docker-images.outputs.scan-passed }}
+        value: ${{ jobs.docker-build-scan-push.outputs.security-scan-passed }}
       critical_vulnerabilities:
         description: 'Number of critical vulnerabilities found'
-        value: ${{ jobs.security-scan-docker-images.outputs.critical-vulnerabilities }}
+        value: ${{ jobs.docker-build-scan-push.outputs.critical-vulnerabilities }}
+      unit_tests_passed:
+        description: 'Whether unit tests passed successfully'
+        value: ${{ jobs.run-unit-tests.outputs.tests-passed }}
+      coverage_uploaded:
+        description: 'Whether coverage reports were uploaded'
+        value: ${{ jobs.run-unit-tests.outputs.coverage-uploaded }}
+      workflow_validation_level:
+        description: 'Workflow validation level applied (none, minimal, unit-tests, docker, e2e, full)'
+        value: ${{ jobs.detect-changes.outputs.workflow-validation-level }}
 
 env:
   ANDROID_API_VERSION: "29"
@@ -57,6 +74,7 @@ jobs:
       fast-path-eligible: ${{ steps.decision-matrix.outputs.fast-path-eligible }}          # Used by: reporting steps for status display
       source-code-changes: ${{ steps.decision-matrix.outputs.source-code-changes }}        # Used by: reporting step to show change type
       dockerfile-only-changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }} # Used by: reporting step to show change type
+      workflow-validation-level: ${{ steps.decision-matrix.outputs.workflow-validation-level }} # Used by: reporting step to show workflow validation level
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -70,8 +88,23 @@ jobs:
               - '**.md'
               - 'docs/**'
               - '!.github/workflows/**'
-            workflows-changed:
-              - '.github/workflows/**'
+            # Enhanced granular workflow detection for smart validation
+            orchestration-workflows:
+              - '.github/workflows/main-ci-cd.yml'
+              - '.github/workflows/build-and-test.yml'
+            unit-test-workflows:
+              - '.github/workflows/unit-tests.yml'
+            docker-workflows:
+              - '.github/workflows/docker-build.yml'
+            e2e-workflows:
+              - '.github/workflows/e2e-tests.yml'
+              - '.github/workflows/web-e2e-tests.yml'
+              - '.github/workflows/android-e2e-tests.yml'
+            infrastructure-workflows:
+              - '.github/workflows/security-analysis.yml'
+              - '.github/workflows/vulnerability-monitor.yml'
+              - '.github/workflows/pull-request-closed.yml'
+              - '.github/workflows/main-branch-post-processing.yml'
             webauthn-server-tests:
               - 'webauthn-server/src/**'
               - 'webauthn-server/build.gradle.kts'
@@ -109,7 +142,11 @@ jobs:
         run: |
           echo "🔍 Raw Change Detection Results:"
           echo "docs-changed: ${{ steps.changes.outputs.docs-changed }}"
-          echo "workflows-changed: ${{ steps.changes.outputs.workflows-changed }}"
+          echo "orchestration-workflows: ${{ steps.changes.outputs.orchestration-workflows }}"
+          echo "unit-test-workflows: ${{ steps.changes.outputs.unit-test-workflows }}"
+          echo "docker-workflows: ${{ steps.changes.outputs.docker-workflows }}"
+          echo "e2e-workflows: ${{ steps.changes.outputs.e2e-workflows }}"
+          echo "infrastructure-workflows: ${{ steps.changes.outputs.infrastructure-workflows }}"
           echo "webauthn-server-tests: ${{ steps.changes.outputs.webauthn-server-tests }}"
           echo "webauthn-server-docker: ${{ steps.changes.outputs.webauthn-server-docker }}"
           echo "test-credentials-tests: ${{ steps.changes.outputs.test-credentials-tests }}"
@@ -120,29 +157,50 @@ jobs:
         run: |
           # Store raw filter results in variables
           DOCS_CHANGED="${{ steps.changes.outputs.docs-changed }}"
-          WORKFLOWS_CHANGED="${{ steps.changes.outputs.workflows-changed }}"
+          ORCHESTRATION_WORKFLOWS="${{ steps.changes.outputs.orchestration-workflows }}"
+          UNIT_TEST_WORKFLOWS="${{ steps.changes.outputs.unit-test-workflows }}"
+          DOCKER_WORKFLOWS="${{ steps.changes.outputs.docker-workflows }}"
+          E2E_WORKFLOWS="${{ steps.changes.outputs.e2e-workflows }}"
+          INFRASTRUCTURE_WORKFLOWS="${{ steps.changes.outputs.infrastructure-workflows }}"
           WEBAUTHN_TESTS="${{ steps.changes.outputs.webauthn-server-tests }}"
           WEBAUTHN_DOCKER="${{ steps.changes.outputs.webauthn-server-docker }}"
           TEST_CREDS_TESTS="${{ steps.changes.outputs.test-credentials-tests }}"
           TEST_CREDS_DOCKER="${{ steps.changes.outputs.test-credentials-docker }}"
+          
+          # Calculate if any workflow changes exist for backward compatibility
+          WORKFLOWS_CHANGED="false"
+          if [[ "$ORCHESTRATION_WORKFLOWS" == "true" ]] || [[ "$UNIT_TEST_WORKFLOWS" == "true" ]] || \
+             [[ "$DOCKER_WORKFLOWS" == "true" ]] || [[ "$E2E_WORKFLOWS" == "true" ]] || \
+             [[ "$INFRASTRUCTURE_WORKFLOWS" == "true" ]]; then
+            WORKFLOWS_CHANGED="true"
+          fi
 
           echo "🧮 Applying Decision Matrix Logic..."
           echo ""
-          echo "📋 Reference Decision Matrix:"
-          echo "| Change Type        | Unit Tests | Docker Build | E2E Tests |"
-          echo "|--------------------|-----------|-------------|-----------|"
-          echo "| Documentation only |    ❌ Skip |     ❌ Skip |  ❌ Skip |"
-          echo "| Workflow changes   |    ❌ Skip |     ❌ Skip |  ❌ Skip |"
-          echo "| Source code        |     ✅ Run |      ✅ Build |   ✅ Run |"
-          echo "| Tests only         |     ✅ Run |     ❌ Skip |  ❌ Skip |"
-          echo "| Dockerfile only    |    ❌ Skip |      ✅ Build |   ✅ Run |"
-          echo "| Build config       |     ✅ Run |      ✅ Build |   ✅ Run |"
+          echo "📋 Enhanced Decision Matrix with Granular Workflow Validation:"
+          echo "| Change Type              | Unit Tests | Docker Build | E2E Tests | Validation Level |"
+          echo "|--------------------------|-----------|-------------|-----------|------------------|"
+          echo "| Documentation only       |    ❌ Skip |     ❌ Skip |  ❌ Skip | None            |"
+          echo "| Orchestration workflows  |     ✅ Run |      ✅ Build |   ✅ Run | Full            |"
+          echo "| Unit test workflows      |     ✅ Run |     ❌ Skip |  ❌ Skip | Unit tests      |"
+          echo "| Docker workflows         |    ❌ Skip |      ✅ Build |  ❌ Skip | Docker build    |"
+          echo "| E2E workflows            |     ✅ Run |      ✅ Build |   ✅ Run | E2E validation  |"
+          echo "| Infrastructure workflows |    ❌ Skip |     ❌ Skip |  ❌ Skip | Minimal         |"
+          echo "| Source code              |     ✅ Run |      ✅ Build |   ✅ Run | Full            |"
+          echo "| Tests only               |     ✅ Run |     ❌ Skip |  ❌ Skip | Unit tests      |"
+          echo "| Dockerfile only          |    ❌ Skip |      ✅ Build |   ✅ Run | Docker + E2E    |"
+          echo "| Build config             |     ✅ Run |      ✅ Build |   ✅ Run | Full            |"
           echo ""
           echo "🔍 Analyzing current changes (using PRIORITY ORDER):"
           echo "  1️⃣ Source code changes (highest priority): $([ "$WEBAUTHN_TESTS" = "true" ] || [ "$TEST_CREDS_TESTS" = "true" ] && echo "YES" || echo "no")"
           echo "  2️⃣ Dockerfile-only changes: $([ "$WEBAUTHN_DOCKER" = "true" ] || [ "$TEST_CREDS_DOCKER" = "true" ] && echo "YES" || echo "no") (only if no source code changes)"
           echo "  3️⃣ Documentation-only changes: $([ "$DOCS_CHANGED" = "true" ] && [ "$WORKFLOWS_CHANGED" = "false" ] && echo "YES" || echo "no") (only if no code/docker changes)"
-          echo "  4️⃣ Workflow-only changes: $([ "$WORKFLOWS_CHANGED" = "true" ] && [ "$DOCS_CHANGED" = "false" ] && echo "YES" || echo "no") (only if no code/docker changes)"
+          echo "  4️⃣ Workflow validation (overrides docs): $([ "$WORKFLOWS_CHANGED" = "true" ] && echo "YES" || echo "no")"
+          echo "      • Orchestration workflows: $([ "$ORCHESTRATION_WORKFLOWS" = "true" ] && echo "YES" || echo "no") (full validation required)"
+          echo "      • Unit test workflows: $([ "$UNIT_TEST_WORKFLOWS" = "true" ] && echo "YES" || echo "no") (unit tests only)"
+          echo "      • Docker workflows: $([ "$DOCKER_WORKFLOWS" = "true" ] && echo "YES" || echo "no") (docker build only)"
+          echo "      • E2E workflows: $([ "$E2E_WORKFLOWS" = "true" ] && echo "YES" || echo "no") (full E2E validation)"
+          echo "      • Infrastructure workflows: $([ "$INFRASTRUCTURE_WORKFLOWS" = "true" ] && echo "YES" || echo "no") (minimal validation)"
           echo ""
 
           # Calculate decision matrix categories based on PRIORITY ORDER
@@ -158,6 +216,7 @@ jobs:
             echo "build-config-changes=false" >> $GITHUB_OUTPUT
             echo "docs-only=false" >> $GITHUB_OUTPUT
             echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "workflow-validation-level=none" >> $GITHUB_OUTPUT
             echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
             DECISION="Source code changes detected"
           # Priority 2: Dockerfile only (docker changes but no test changes)
@@ -170,6 +229,7 @@ jobs:
             echo "build-config-changes=false" >> $GITHUB_OUTPUT
             echo "docs-only=false" >> $GITHUB_OUTPUT
             echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "workflow-validation-level=none" >> $GITHUB_OUTPUT
             echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
             DECISION="Dockerfile-only changes detected"
           # Priority 3: Documentation only (docs changed but nothing else)
@@ -182,32 +242,61 @@ jobs:
             echo "build-config-changes=false" >> $GITHUB_OUTPUT
             echo "docs-only=true" >> $GITHUB_OUTPUT
             echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "workflow-validation-level=none" >> $GITHUB_OUTPUT
             echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
             DECISION="Documentation-only changes detected"
-          # Priority 4: Workflow only (workflows changed but nothing else)
-          elif [[ "$WORKFLOWS_CHANGED" == "true" ]] && [[ "$DOCS_CHANGED" == "false" ]]; then
+          # Priority 4: Enhanced workflow changes with granular validation
+          elif [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
+            # Determine validation level based on which workflows changed
+            
+            if [[ "$ORCHESTRATION_WORKFLOWS" == "true" ]]; then
+              # Full validation for orchestration changes
+              echo "should-run-tests=true" >> $GITHUB_OUTPUT
+              echo "should-build-docker=true" >> $GITHUB_OUTPUT
+              echo "workflow-validation-level=full" >> $GITHUB_OUTPUT
+              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+              DECISION="Orchestration workflow changes - full validation required"
+              
+            elif [[ "$UNIT_TEST_WORKFLOWS" == "true" ]]; then
+              # Unit tests only
+              echo "should-run-tests=true" >> $GITHUB_OUTPUT
+              echo "should-build-docker=false" >> $GITHUB_OUTPUT
+              echo "workflow-validation-level=unit-tests" >> $GITHUB_OUTPUT
+              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+              DECISION="Unit test workflow changes - validating test execution"
+              
+            elif [[ "$DOCKER_WORKFLOWS" == "true" ]]; then
+              # Docker build validation
+              echo "should-run-tests=false" >> $GITHUB_OUTPUT
+              echo "should-build-docker=true" >> $GITHUB_OUTPUT
+              echo "workflow-validation-level=docker" >> $GITHUB_OUTPUT
+              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+              DECISION="Docker workflow changes - validating build process"
+              
+            elif [[ "$E2E_WORKFLOWS" == "true" ]]; then
+              # E2E validation (needs images)
+              echo "should-run-tests=true" >> $GITHUB_OUTPUT
+              echo "should-build-docker=true" >> $GITHUB_OUTPUT
+              echo "workflow-validation-level=e2e" >> $GITHUB_OUTPUT
+              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+              DECISION="E2E workflow changes - validating integration tests"
+              
+            else
+              # Infrastructure workflows - minimal validation
+              echo "should-run-tests=false" >> $GITHUB_OUTPUT
+              echo "should-build-docker=false" >> $GITHUB_OUTPUT
+              echo "workflow-validation-level=minimal" >> $GITHUB_OUTPUT
+              echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
+              DECISION="Infrastructure workflow changes - minimal validation"
+            fi
+            
+            # Set common workflow change outputs
             echo "source-code-changes=false" >> $GITHUB_OUTPUT
-            echo "should-run-tests=false" >> $GITHUB_OUTPUT
-            echo "should-build-docker=false" >> $GITHUB_OUTPUT
-            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
-            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
-            echo "build-config-changes=false" >> $GITHUB_OUTPUT
-            echo "docs-only=false" >> $GITHUB_OUTPUT
-            echo "workflows-only=true" >> $GITHUB_OUTPUT
-            echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
-            DECISION="Workflow-only changes detected"
-          # Priority 5: Mixed docs + workflow changes (fast path)
-          elif [[ "$DOCS_CHANGED" == "true" ]] && [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
-            echo "source-code-changes=false" >> $GITHUB_OUTPUT
-            echo "should-run-tests=false" >> $GITHUB_OUTPUT
-            echo "should-build-docker=false" >> $GITHUB_OUTPUT
             echo "tests-only-changes=false" >> $GITHUB_OUTPUT
             echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
             echo "build-config-changes=false" >> $GITHUB_OUTPUT
             echo "docs-only=false" >> $GITHUB_OUTPUT
             echo "workflows-only=false" >> $GITHUB_OUTPUT
-            echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
-            DECISION="Documentation + workflow changes (no code changes)"
           # Default: No significant changes
           else
             echo "source-code-changes=false" >> $GITHUB_OUTPUT
@@ -218,6 +307,7 @@ jobs:
             echo "build-config-changes=false" >> $GITHUB_OUTPUT
             echo "docs-only=false" >> $GITHUB_OUTPUT
             echo "workflows-only=false" >> $GITHUB_OUTPUT
+            echo "workflow-validation-level=none" >> $GITHUB_OUTPUT
             echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
             DECISION="No significant changes detected"
           fi
@@ -233,6 +323,7 @@ jobs:
           echo "  • Dockerfile-only changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }}"
           echo "  • Documentation-only: ${{ steps.decision-matrix.outputs.docs-only }}"
           echo "  • Workflow-only: ${{ steps.decision-matrix.outputs.workflows-only }}"
+          echo "  • Workflow validation level: ${{ steps.decision-matrix.outputs.workflow-validation-level }}"
           echo "  • Fast path eligible: ${{ steps.decision-matrix.outputs.fast-path-eligible }}"
           echo ""
           echo "⚙️  Pipeline Actions:"
@@ -255,11 +346,31 @@ jobs:
             echo "    🧪 Unit Tests: SKIPPED (no code changes)"
             echo "    🐳 Docker Build: SKIPPED (no code/Docker changes)"
             echo "    🎯 E2E Tests: SKIPPED (no images to test)"
-          elif [[ "${{ steps.decision-matrix.outputs.workflows-only }}" == "true" ]]; then
-            echo "⚡ Workflow-only changes - Fast path (no tests/builds needed)"
-            echo "    🧪 Unit Tests: SKIPPED (no code changes)"
-            echo "    🐳 Docker Build: SKIPPED (no code/Docker changes)"
-            echo "    🎯 E2E Tests: SKIPPED (no images to test)"
+          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "full" ]]; then
+            echo "🔧 Orchestration workflow changes - Running full validation"
+            echo "    🧪 Unit Tests: ENABLED (workflow could affect all components)"
+            echo "    🐳 Docker Build: ENABLED (workflow could affect builds)"
+            echo "    🎯 E2E Tests: ENABLED (full validation required)"
+          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "unit-tests" ]]; then
+            echo "🧪 Unit test workflow changes - Validating test execution only"
+            echo "    🧪 Unit Tests: ENABLED (testing workflow changes)"
+            echo "    🐳 Docker Build: SKIPPED (no build workflow changes)"
+            echo "    🎯 E2E Tests: SKIPPED (no E2E workflow changes)"
+          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "docker" ]]; then
+            echo "🐳 Docker workflow changes - Validating build process"
+            echo "    🧪 Unit Tests: SKIPPED (no test workflow changes)"
+            echo "    🐳 Docker Build: ENABLED (testing Docker workflow changes)"
+            echo "    🎯 E2E Tests: SKIPPED (no E2E workflow changes)"
+          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "e2e" ]]; then
+            echo "🎯 E2E workflow changes - Validating integration tests"
+            echo "    🧪 Unit Tests: ENABLED (E2E tests need unit test artifacts)"
+            echo "    🐳 Docker Build: ENABLED (E2E tests need Docker images)"
+            echo "    🎯 E2E Tests: ENABLED (testing E2E workflow changes)"
+          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "minimal" ]]; then
+            echo "⚡ Infrastructure workflow changes - Fast path (minimal validation)"
+            echo "    🧪 Unit Tests: SKIPPED (infrastructure workflows don't affect tests)"
+            echo "    🐳 Docker Build: SKIPPED (infrastructure workflows don't affect builds)"
+            echo "    🎯 E2E Tests: SKIPPED (infrastructure workflows don't affect E2E)"
           elif [[ "${{ steps.decision-matrix.outputs.fast-path-eligible }}" == "true" ]]; then
             echo "⚡ Fast path - No significant code changes detected"
             echo "    🧪 Unit Tests: SKIPPED (no significant changes)"
@@ -270,474 +381,56 @@ jobs:
             echo "    This should not happen - all cases should be covered"
           fi
 
-  # Job 2: Run unit tests when code changes detected
-  run-unit-tests:
+  # Job 2: Setup configuration for callable workflows (convert env vars to job outputs)
+  setup-config:
     runs-on: ubuntu-latest
-    needs: detect-changes
-    if: needs.detect-changes.outputs.should-run-tests == 'true'
-    permissions:
-      contents: read
+    outputs:
+      java-version: ${{ steps.config.outputs.java-version }}
+      docker-registry: ${{ steps.config.outputs.docker-registry }}
+      webauthn-image-name: ${{ steps.config.outputs.webauthn-image-name }}
+      test-credentials-image-name: ${{ steps.config.outputs.test-credentials-image-name }}
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Setup configuration outputs
+        id: config
+        run: |
+          echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
+          echo "docker-registry=${{ env.DOCKER_REGISTRY }}" >> $GITHUB_OUTPUT
+          echo "webauthn-image-name=${{ env.DOCKER_IMAGE_NAME }}" >> $GITHUB_OUTPUT
+          echo "test-credentials-image-name=${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}" >> $GITHUB_OUTPUT
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
+  # Job 3: Run unit tests using callable workflow
+  run-unit-tests:
+    uses: ./.github/workflows/unit-tests.yml
+    needs: [ detect-changes, setup-config ]
+    if: needs.detect-changes.outputs.should-run-tests == 'true'
+    with:
+      changes-detected: ${{ needs.detect-changes.outputs.should-run-tests == 'true' }}
+      test-scope: 'all'
+      java-version: ${{ needs.setup-config.outputs.java-version }}
+    secrets: inherit
 
-      # Job-specific Gradle caching for unit tests
-      - name: Setup Gradle cache for unit tests
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-          key: gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-unit-tests-${{ runner.os }}-main-
-            gradle-unit-tests-${{ runner.os }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Run code quality checks, tests, coverage, and build JARs
-        shell: bash
-        run: ./gradlew detekt :webauthn-server:koverXmlReport :webauthn-server:shadowJar :webauthn-test-credentials-service:koverXmlReport :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
-
-      - name: Upload test reports
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: webauthn-server-reports
-          path: |
-            webauthn-server/build/reports/
-          retention-days: 7
-
-      - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
-        with:
-          slug: hitoshura25/mpo-api-authn-server
-          files: ./webauthn-server/build/reports/kover/report.xml
-          flags: unit
-          name: codecov-unit
-          token: ${{ secrets.CODECOV_TOKEN }}
-          fail_ci_if_error: true
-
-  # Job 3: Build Docker images (but don't push yet - security scan first)
-  build-docker-images:
-    runs-on: ubuntu-latest
-    needs: [ detect-changes, run-unit-tests ]
+  # Job 4: Docker build, scan, and push using callable workflow
+  docker-build-scan-push:
+    uses: ./.github/workflows/docker-build.yml
+    needs: [ detect-changes, setup-config, run-unit-tests ]
     if: |
       always() &&
       needs.detect-changes.outputs.should-build-docker == 'true' &&
       (needs.run-unit-tests.result == 'success' ||
        needs.run-unit-tests.result == 'skipped' ||
        needs.detect-changes.outputs.should-run-tests == 'false')
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
-    outputs:
-      webauthn-server-image: ${{ steps.docker-meta.outputs.tags }}
-      webauthn-server-digest: ${{ steps.docker-build.outputs.digest }}
-      test-credentials-image: ${{ steps.docker-test-credentials-meta.outputs.tags }}
-      test-credentials-digest: ${{ steps.docker-test-credentials-build.outputs.digest }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    with:
+      docker-changes-detected: ${{ needs.detect-changes.outputs.should-build-docker == 'true' }}
+      java-version: ${{ needs.setup-config.outputs.java-version }}
+      registry-url: ${{ needs.setup-config.outputs.docker-registry }}
+      webauthn-image-name: ${{ needs.setup-config.outputs.webauthn-image-name }}
+      test-credentials-image-name: ${{ needs.setup-config.outputs.test-credentials-image-name }}
+    secrets: inherit
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-
-      # Job-specific Gradle caching for Docker builds
-      - name: Setup Gradle cache for Docker builds
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-          key: gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-docker-build-${{ runner.os }}-main-
-            gradle-docker-build-${{ runner.os }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Build JAR files for Docker images
-        shell: bash
-        run: ./gradlew :webauthn-server:shadowJar :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Docker meta
-        id: docker-meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=pr
-
-      - name: Build WebAuthn Server (no push yet)
-        id: docker-build
-        uses: docker/build-push-action@v6
-        with:
-          context: ./webauthn-server
-          push: false
-          load: true
-          tags: ${{ steps.docker-meta.outputs.tags }}
-          labels: ${{ steps.docker-meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Docker Test Credentials meta
-        id: docker-test-credentials-meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=pr
-
-      - name: Build Test Credentials Service (no push yet)
-        id: docker-test-credentials-build
-        uses: docker/build-push-action@v6
-        with:
-          context: ./webauthn-test-credentials-service
-          push: false
-          load: true
-          tags: ${{ steps.docker-test-credentials-meta.outputs.tags }}
-          labels: ${{ steps.docker-test-credentials-meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-  # Job 4: Security scan Docker images before allowing push
-  security-scan-docker-images:
-    runs-on: ubuntu-latest
-    needs: [ detect-changes, build-docker-images ]
-    if: |
-      always() &&
-      needs.detect-changes.outputs.should-build-docker == 'true' &&
-      needs.build-docker-images.result == 'success'
-    permissions:
-      contents: read
-      security-events: write
-      pull-requests: write
-      issues: write
-    outputs:
-      scan-passed: ${{ steps.security-scan.outputs.scan-passed }}
-      critical-vulnerabilities: ${{ steps.security-scan.outputs.critical-vulnerabilities }}
-      scan-results: ${{ steps.security-scan.outputs.scan-results }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up JDK for JAR builds
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-
-      # Job-specific Gradle caching for security scan builds
-      - name: Setup Gradle cache for security scan
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-          key: gradle-security-scan-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-security-scan-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-security-scan-${{ runner.os }}-main-
-            gradle-security-scan-${{ runner.os }}-
-            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Build JAR files and Docker images for scanning
-        run: |
-          echo "🔧 Rebuilding Docker images locally for security scanning..."
-          echo "Note: Images were built on different runner, rebuilding with cache for local scanning"
-
-          # Build JARs first
-          ./gradlew :webauthn-server:shadowJar :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
-
-          # Rebuild Docker images locally with same tags as build job
-          docker build -t "${{ needs.build-docker-images.outputs.webauthn-server-image }}" ./webauthn-server
-          docker build -t "${{ needs.build-docker-images.outputs.test-credentials-image }}" ./webauthn-test-credentials-service
-
-      - name: Verify rebuilt images are available
-        run: |
-          echo "🔍 Verifying rebuilt Docker images are available for scanning..."
-
-          # Check if webauthn-server image should be scanned
-          if [[ "${{ needs.detect-changes.outputs.source-code-changes }}" == "true" || "${{ needs.detect-changes.outputs.dockerfile-only-changes }}" == "true" ]]; then
-            echo "webauthn_changed=true" >> $GITHUB_ENV
-            # Verify the rebuilt image exists locally
-            if docker image inspect "${{ needs.build-docker-images.outputs.webauthn-server-image }}" >/dev/null 2>&1; then
-              echo "✅ WebAuthn server image rebuilt and ready: ${{ needs.build-docker-images.outputs.webauthn-server-image }}"
-            else
-              echo "❌ Failed to rebuild WebAuthn server image"
-              exit 1
-            fi
-          else
-            echo "webauthn_changed=false" >> $GITHUB_ENV
-            echo "⏭️  Skipping WebAuthn server image scan"
-          fi
-
-          # Test credentials image - always scan for now
-          echo "test_credentials_changed=true" >> $GITHUB_ENV
-          # Verify the rebuilt image exists locally
-          if docker image inspect "${{ needs.build-docker-images.outputs.test-credentials-image }}" >/dev/null 2>&1; then
-            echo "✅ Test credentials image rebuilt and ready: ${{ needs.build-docker-images.outputs.test-credentials-image }}"
-          else
-            echo "❌ Failed to rebuild test credentials image"
-            exit 1
-          fi
-
-      - name: Comprehensive Docker Security Scanning
-        id: security-scan
-        env:
-          WEBAUTHN_IMAGE_TAG: ${{ needs.build-docker-images.outputs.webauthn-server-image }}
-          TEST_CREDENTIALS_IMAGE_TAG: ${{ needs.build-docker-images.outputs.test-credentials-image }}
-        run: |
-          echo "🔍 Starting security scan of locally built Docker images..."
-          echo "WebAuthn image: $WEBAUTHN_IMAGE_TAG"
-          echo "Test credentials image: $TEST_CREDENTIALS_IMAGE_TAG"
-
-          # Make sure the script is executable
-          chmod +x scripts/docker/scan-security.sh
-
-          # Run security scanning on locally rebuilt images
-          # Pass the actual image tags from build job outputs
-          scripts/docker/scan-security.sh "${{ env.webauthn_changed }}" "${{ env.test_credentials_changed }}" "$WEBAUTHN_IMAGE_TAG" "$TEST_CREDENTIALS_IMAGE_TAG"
-
-      - name: Upload security scan results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-security-scan-results
-          path: |
-            docker-security-scan-results.json
-            docker-security-scan-results.sarif
-            *-vulns.json
-            *-secrets.json
-            *-config.json
-            *.sarif
-            scan-security.log
-          retention-days: 30
-
-      - name: Upload scan results to GitHub Security
-        if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        continue-on-error: true
-        with:
-          sarif_file: docker-security-scan-results.sarif
-
-      - name: Post security scan results to PR
-        if: always() && github.event_name == 'pull_request'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.number }}
-          SCAN_RESULTS_FILE: docker-security-scan-results.json
-        run: |
-          echo "📝 Posting security scan results to PR #${{ github.event.number }}"
-          chmod +x scripts/ci/security-scan-pr-comment.cjs
-          node scripts/ci/security-scan-pr-comment.cjs
-
-  # Job 5: Push Docker images to registry (only after security scan passes)
-  push-docker-images:
-    runs-on: ubuntu-latest
-    needs: [ detect-changes, build-docker-images, security-scan-docker-images ]
-    if: |
-      always() &&
-      needs.detect-changes.outputs.should-build-docker == 'true' &&
-      needs.security-scan-docker-images.outputs.scan-passed == 'true'
-    permissions:
-      contents: read
-      packages: write
-      attestations: write
-      id-token: write
-    outputs:
-      webauthn-server-image: ${{ needs.build-docker-images.outputs.webauthn-server-image }}
-      webauthn-server-digest: ${{ steps.docker-push.outputs.digest }}
-      test-credentials-image: ${{ needs.build-docker-images.outputs.test-credentials-image }}
-      test-credentials-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Set up JDK for JAR builds
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ env.JAVA_VERSION }}
-          distribution: 'temurin'
-
-      # Job-specific Gradle caching for push builds
-      - name: Setup Gradle cache for push job
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-          key: gradle-push-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-push-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-push-${{ runner.os }}-main-
-            gradle-push-${{ runner.os }}-
-            gradle-security-scan-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Build JAR files for Docker push
-        run: |
-          echo "🔧 Building JARs for Docker image push..."
-          ./gradlew :webauthn-server:shadowJar :webauthn-test-credentials-service:shadowJar --build-cache --parallel --configuration-cache
-
-      - name: Log in to the Container registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Push WebAuthn Server to registry
-        id: docker-push
-        uses: docker/build-push-action@v6
-        with:
-          context: ./webauthn-server
-          push: true
-          tags: ${{ needs.build-docker-images.outputs.webauthn-server-image }}
-          cache-from: type=gha
-          provenance: false
-
-      - name: Generate artifact attestation for WebAuthn Server
-        uses: actions/attest-build-provenance@v2
-        continue-on-error: true  # Don't fail build on GitHub attestation service issues
-        with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
-          subject-digest: ${{ steps.docker-push.outputs.digest }}
-          push-to-registry: true
-        env:
-          ACTIONS_STEP_DEBUG: true
-
-      - name: Push Test Credentials Service to registry
-        id: docker-test-credentials-push
-        uses: docker/build-push-action@v6
-        with:
-          context: ./webauthn-test-credentials-service
-          push: true
-          tags: ${{ needs.build-docker-images.outputs.test-credentials-image }}
-          cache-from: type=gha
-          provenance: false
-
-      - name: Generate artifact attestation for Test Credentials Service
-        uses: actions/attest-build-provenance@v2
-        continue-on-error: true  # Don't fail build on GitHub attestation service issues
-        with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
-          subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
-          push-to-registry: true
-        env:
-          ACTIONS_STEP_DEBUG: true
-
-      - name: Create Docker build manifest for post-processing
-        run: |
-          mkdir -p docker-build-info
-          echo "docker_images_built=true" > docker-build-info/build-manifest.txt
-          echo "build_timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> docker-build-info/build-manifest.txt
-          echo "webauthn_server_digest=${{ steps.docker-push.outputs.digest }}" >> docker-build-info/build-manifest.txt
-          echo "test_credentials_digest=${{ steps.docker-test-credentials-push.outputs.digest }}" >> docker-build-info/build-manifest.txt
-          echo "github_run_id=${{ github.run_id }}" >> docker-build-info/build-manifest.txt
-
-      - name: Upload Docker build manifest
-        uses: actions/upload-artifact@v4
-        with:
-          name: docker-build-manifest
-          path: docker-build-info/build-manifest.txt
-          retention-days: 1
-
-  # Job 6: Report build results (E2E triggering now handled by orchestrator)
+  # Job 5: Report build results (E2E triggering now handled by orchestrator)
   report-build-results:
     runs-on: ubuntu-latest
-    needs: [ detect-changes, run-unit-tests, build-docker-images, security-scan-docker-images, push-docker-images ]
+    needs: [ detect-changes, run-unit-tests, docker-build-scan-push ]
     if: always()
     steps:
       - name: Report build status
@@ -748,29 +441,31 @@ jobs:
           echo "Should build Docker: ${{ needs.detect-changes.outputs.should-build-docker }}"
           echo "Source code changes: ${{ needs.detect-changes.outputs.source-code-changes }}"
           echo "Dockerfile-only changes: ${{ needs.detect-changes.outputs.dockerfile-only-changes }}"
+          echo "Workflow validation level: ${{ needs.detect-changes.outputs.workflow-validation-level }}"
           echo "Unit tests: ${{ needs.run-unit-tests.result }}"
-          echo "Docker images built: ${{ needs.build-docker-images.result }}"
-          echo "Security scan: ${{ needs.security-scan-docker-images.result }}"
-          echo "Security scan passed: ${{ needs.security-scan-docker-images.outputs.scan-passed }}"
-          echo "Critical vulnerabilities: ${{ needs.security-scan-docker-images.outputs.critical-vulnerabilities }}"
-          echo "Docker images pushed: ${{ needs.push-docker-images.result }}"
+          echo "Unit tests passed: ${{ needs.run-unit-tests.outputs.tests-passed }}"
+          echo "Coverage uploaded: ${{ needs.run-unit-tests.outputs.coverage-uploaded }}"
+          echo "Docker images built: ${{ needs.docker-build-scan-push.outputs.images-built }}"
+          echo "Docker images pushed: ${{ needs.docker-build-scan-push.outputs.images-pushed }}"
+          echo "Security scan passed: ${{ needs.docker-build-scan-push.outputs.security-scan-passed }}"
+          echo "Critical vulnerabilities: ${{ needs.docker-build-scan-push.outputs.critical-vulnerabilities }}"
 
-          if [[ "${{ needs.push-docker-images.result }}" == "success" ]]; then
+          if [[ "${{ needs.docker-build-scan-push.outputs.images-pushed }}" == "true" ]]; then
             echo "✅ Docker images successfully built, scanned, and pushed:"
-            echo "  WebAuthn Server: ${{ needs.push-docker-images.outputs.webauthn-server-image }}"
-            echo "  Test Credentials: ${{ needs.push-docker-images.outputs.test-credentials-image }}"
-            echo "🔒 Security scan passed with ${{ needs.security-scan-docker-images.outputs.critical-vulnerabilities }} critical vulnerabilities"
+            echo "  WebAuthn Server: ${{ needs.docker-build-scan-push.outputs.webauthn-server-image }}"
+            echo "  Test Credentials: ${{ needs.docker-build-scan-push.outputs.test-credentials-image }}"
+            echo "🔒 Security scan passed with ${{ needs.docker-build-scan-push.outputs.critical-vulnerabilities }} critical vulnerabilities"
             echo "🚀 Ready for E2E tests"
-          elif [[ "${{ needs.security-scan-docker-images.outputs.scan-passed }}" == "false" ]]; then
+          elif [[ "${{ needs.docker-build-scan-push.outputs.security-scan-passed }}" == "false" ]]; then
             echo "🚨 SECURITY SCAN FAILED - Docker images built but NOT pushed"
-            echo "Critical vulnerabilities found: ${{ needs.security-scan-docker-images.outputs.critical-vulnerabilities }}"
+            echo "Critical vulnerabilities found: ${{ needs.docker-build-scan-push.outputs.critical-vulnerabilities }}"
             echo "❌ Images blocked from registry due to security issues"
-          elif [[ "${{ needs.build-docker-images.result }}" == "success" ]]; then
+          elif [[ "${{ needs.docker-build-scan-push.outputs.images-built }}" == "true" ]]; then
             echo "🔧 Docker images built successfully but push was skipped or failed"
-            echo "Security scan status: ${{ needs.security-scan-docker-images.result }}"
+            echo "Security scan status: ${{ needs.docker-build-scan-push.outputs.security-scan-passed }}"
           elif [[ "${{ needs.detect-changes.outputs.fast-path-eligible }}" == "true" ]]; then
             echo "⚡ Fast path completed - no builds needed (docs/workflow changes only)"
-          elif [[ "${{ needs.run-unit-tests.result }}" == "success" ]]; then
+          elif [[ "${{ needs.run-unit-tests.outputs.tests-passed }}" == "true" ]]; then
             echo "🔧 Unit tests passed, Docker build skipped (test-only changes)"
           else
             echo "📋 Build phase analysis completed"

@@ -35,8 +35,8 @@ log() {
 # Function to check if AI-enhanced monitoring is available
 check_ai_availability() {
     local ai_available=false
-    
-    if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ -f "scripts/ai-enhanced-vulnerability-monitor.js" ]; then
+
+    if [ -n "${ANTHROPIC_API_KEY:-}" ] && [ -f "scripts/monitoring/ai-enhanced-vulnerability-monitor.js" ]; then
         log "✅ AI enhancement available"
         ai_available=true
     else
@@ -44,19 +44,19 @@ check_ai_availability() {
         if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
             log "  - ANTHROPIC_API_KEY not set"
         fi
-        if [ ! -f "scripts/ai-enhanced-vulnerability-monitor.js" ]; then
+        if [ ! -f "scripts/monitoring/ai-enhanced-vulnerability-monitor.js" ]; then
             log "  - AI monitor script not found"
         fi
     fi
-    
+
     echo "$ai_available"
 }
 
 # Function to run AI-enhanced monitoring
 run_ai_enhanced_monitoring() {
     log "🤖 Running AI-enhanced vulnerability monitoring..."
-    
-    if node scripts/ai-enhanced-vulnerability-monitor.js 2>&1; then
+
+    if node scripts/monitoring/ai-enhanced-vulnerability-monitor.js 2>&1; then
         log "✅ AI-enhanced monitoring completed successfully"
         return 0
     else
@@ -68,8 +68,8 @@ run_ai_enhanced_monitoring() {
 # Function to run standard monitoring
 run_standard_monitoring() {
     log "⚠️ Running standard vulnerability monitoring..."
-    
-    if node scripts/vulnerability-monitor.js 2>&1; then
+
+    if node scripts/monitoring/vulnerability-monitor.js 2>&1; then
         log "✅ Standard monitoring completed successfully"
         return 0
     else
@@ -81,7 +81,7 @@ run_standard_monitoring() {
 # Function to check if files were modified
 check_for_changes() {
     log "🔍 Checking for file modifications..."
-    
+
     if git diff --quiet; then
         log "✅ No changes detected"
         if [ -n "${GITHUB_OUTPUT:-}" ]; then
@@ -103,7 +103,7 @@ check_for_changes() {
 # Function to run security tests if changes were made
 run_security_tests() {
     log "🧪 Running security tests to verify changes..."
-    
+
     if ./gradlew test --tests="*VulnerabilityProtectionTest*" 2>&1; then
         log "✅ Security tests passed"
         return 0
@@ -116,11 +116,11 @@ run_security_tests() {
 # Function to prepare monitoring environment
 prepare_environment() {
     log "📦 Preparing monitoring environment..."
-    
+
     # Initialize output file
     echo "WebAuthn Vulnerability Monitor - $(date)" > monitor-output.txt
     echo "=======================================" >> monitor-output.txt
-    
+
     # Check if npm dependencies are available
     if [ ! -d "node_modules" ]; then
         log "📦 Installing npm dependencies..."
@@ -131,13 +131,13 @@ prepare_environment() {
             return 1
         fi
     fi
-    
+
     # Check if required scripts exist
-    if [ ! -f "scripts/vulnerability-monitor.js" ]; then
-        log "❌ Required script not found: scripts/vulnerability-monitor.js"
+    if [ ! -f "scripts/monitoring/vulnerability-monitor.js" ]; then
+        log "❌ Required script not found: scripts/monitoring/vulnerability-monitor.js"
         return 1
     fi
-    
+
     log "✅ Environment prepared"
     return 0
 }
@@ -147,15 +147,15 @@ generate_summary() {
     local monitoring_success="$1"
     local changes_detected="$2"
     local tests_passed="$3"
-    
+
     log "📊 Vulnerability Monitoring Summary"
     log "=================================="
     log "Monitoring Status: $([ "$monitoring_success" = true ] && echo "✅ Success" || echo "❌ Failed")"
     log "Changes Detected: $([ "$changes_detected" = true ] && echo "🔄 Yes" || echo "✅ No")"
-    
+
     if [ "$changes_detected" = true ]; then
         log "Security Tests: $([ "$tests_passed" = true ] && echo "✅ Passed" || echo "❌ Failed")"
-        
+
         # List modified files
         log ""
         log "📝 Modified Files:"
@@ -163,7 +163,7 @@ generate_summary() {
             log "  - $file"
         done
     fi
-    
+
     log ""
     log "🕐 Monitoring completed at $(date)"
 }
@@ -172,17 +172,17 @@ generate_summary() {
 main() {
     log "🚀 Enhanced Vulnerability Monitoring Starting"
     log "============================================="
-    
+
     # Prepare environment
     if ! prepare_environment; then
         log "❌ Failed to prepare monitoring environment"
         exit 1
     fi
-    
+
     # Check AI availability
     local ai_available
     ai_available=$(check_ai_availability)
-    
+
     # Run monitoring (AI-enhanced or standard)
     local monitoring_success=false
     if [ "$ai_available" = true ]; then
@@ -199,13 +199,13 @@ main() {
             monitoring_success=true
         fi
     fi
-    
+
     # Check for changes
     local changes_detected=false
     if ! check_for_changes; then
         changes_detected=true
     fi
-    
+
     # Run security tests if changes were detected
     local tests_passed=false
     if [ "$changes_detected" = true ]; then
@@ -217,10 +217,10 @@ main() {
             log "⚠️ Skipping security tests due to monitoring failure"
         fi
     fi
-    
+
     # Generate summary
     generate_summary "$monitoring_success" "$changes_detected" "$tests_passed"
-    
+
     # Determine exit code
     if [ "$monitoring_success" = true ]; then
         if [ "$changes_detected" = false ] || [ "$tests_passed" = true ]; then

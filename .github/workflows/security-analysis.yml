@@ -41,10 +41,29 @@
 name: 3-Tier AI Security Analysis
 
 on:
+  # Run on pull requests for comprehensive security analysis with PR-specific features
   pull_request:
     types: [ opened, synchronize, reopened ]
     paths:
       # Security-sensitive file patterns
+      - 'webauthn-server/src/main/kotlin/**/*Authentication*'
+      - 'webauthn-server/src/main/kotlin/**/*WebAuthn*'
+      - 'webauthn-server/src/main/kotlin/**/*Security*'
+      - 'webauthn-server/src/main/kotlin/**/*Credential*'
+      - 'webauthn-server/src/main/kotlin/**/auth/**'
+      - 'webauthn-server/src/main/kotlin/**/security/**'
+      - 'webauthn-server/src/test/kotlin/**/*Security*'
+      - 'webauthn-server/src/test/kotlin/**/*Vulnerability*'
+      - 'build.gradle.kts'
+      - '*/build.gradle.kts'
+      - 'docker-compose.yml'
+      - '**/*Dockerfile*'
+      - '.github/workflows/**'
+  # Run on main branch pushes for security analysis without PR-specific actions
+  push:
+    branches: [ main ]
+    paths:
+      # Same security-sensitive file patterns as PR analysis
       - 'webauthn-server/src/main/kotlin/**/*Authentication*'
       - 'webauthn-server/src/main/kotlin/**/*WebAuthn*'
       - 'webauthn-server/src/main/kotlin/**/*Security*'
@@ -188,7 +207,7 @@ jobs:
         uses: anthropics/claude-code-security-review@main
         with:
           claude-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
-          comment-pr: true
+          comment-pr: ${{ github.event_name == 'pull_request' }}
           upload-results: true
           exclude-directories: 'docs,scripts/monitoring,android-test-client,web-test-client'
           claudecode-timeout: 15
@@ -278,9 +297,9 @@ jobs:
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_ONLY_MODE: "true"
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
+          PR_TITLE: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+          PR_BODY: ${{ github.event.pull_request.body || 'Main branch push' }}
           CHANGED_FILES: ${{ needs.detect-security-changes.outputs.changed-files-json }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
         run: |
@@ -342,9 +361,9 @@ jobs:
         id: template-analysis
         env:
           TEMPLATE_ONLY_MODE: "true"
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
+          PR_TITLE: ${{ github.event.pull_request.title || github.event.head_commit.message }}
+          PR_BODY: ${{ github.event.pull_request.body || 'Main branch push' }}
           CHANGED_FILES: ${{ needs.detect-security-changes.outputs.changed-files-json }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
         run: |
@@ -474,7 +493,7 @@ jobs:
     name: Create PR security review comment
     runs-on: ubuntu-latest
     needs: [ setup-tier-configuration, detect-security-changes, consolidate-security-analysis ]
-    if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
+    if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' && github.event_name == 'pull_request'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -493,7 +512,7 @@ jobs:
           REQUIRES_REVIEW: ${{ needs.consolidate-security-analysis.outputs.final-requires-security-review || 'true' }}
           RISK_LEVEL: ${{ needs.detect-security-changes.outputs.security-risk-level }}
           TIER_USED: ${{ needs.consolidate-security-analysis.outputs.tier-used || 'None (Analysis Failed)' }}
-          PR_NUMBER: ${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |
@@ -542,7 +561,7 @@ jobs:
     name: Add security labels to PR
     runs-on: ubuntu-latest
     needs: [ setup-tier-configuration, detect-security-changes, consolidate-security-analysis ]
-    if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL'
+    if: always() && needs.detect-security-changes.outputs.security-risk-level != 'MINIMAL' && github.event_name == 'pull_request'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -556,7 +575,7 @@ jobs:
           TIER_USED: ${{ needs.consolidate-security-analysis.outputs.tier-used || 'none' }}
           HAS_AUTH_CHANGES: ${{ needs.detect-security-changes.outputs.has-auth-changes }}
           HAS_DEPENDENCY_CHANGES: ${{ needs.detect-security-changes.outputs.has-dependency-changes }}
-          PR_NUMBER: ${{ github.event.number }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
           REPOSITORY_OWNER: ${{ github.repository_owner }}
           REPOSITORY_NAME: ${{ github.event.repository.name }}
         run: |

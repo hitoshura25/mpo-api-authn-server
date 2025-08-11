@@ -1,0 +1,328 @@
+# Android E2E Tests Callable Workflow - Emulator Testing
+#
+# This callable workflow runs comprehensive Android-based end-to-end tests using
+# Android emulator to ensure WebAuthn functionality works correctly on Android devices.
+#
+# SCOPE:
+# - Android client library generation from OpenAPI spec
+# - Android emulator setup with KVM acceleration
+# - Docker service orchestration (PostgreSQL, Redis, Jaeger, WebAuthn services)
+# - connectedAndroidTest execution
+# - Test report generation and artifact collection
+#
+# DEPENDENCIES:
+# - Pre-built Docker images (WebAuthn server and test credentials service)
+# - JDK for Android builds and client generation
+# - Android emulator with AVD caching
+# - Docker Compose for service orchestration
+
+name: Android E2E Tests - Emulator
+
+on:
+  workflow_call:
+    inputs:
+      webauthn-server-image:
+        description: 'WebAuthn server Docker image tag'
+        required: true
+        type: string
+      test-credentials-image:
+        description: 'Test credentials service Docker image tag'
+        required: true
+        type: string
+      pr-number:
+        description: 'PR number for artifact naming'
+        required: true
+        type: string
+      java-version:
+        description: 'Java version for builds'
+        required: false
+        type: string
+        default: '21'
+      android-api-version:
+        description: 'Android API level for emulator'
+        required: false
+        type: string
+        default: '29'
+    outputs:
+      tests-passed:
+        description: 'Boolean indicating if Android tests passed'
+        value: ${{ jobs.run-android-tests.outputs.tests-passed }}
+      test-results:
+        description: 'Android test execution results'
+        value: ${{ jobs.run-android-tests.result }}
+      artifact-name:
+        description: 'Name of uploaded test artifacts'
+        value: android-e2e-test-reports-pr-${{ inputs.pr-number }}
+
+env:
+  DOCKER_REGISTRY: ghcr.io
+  WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn-server-image }}
+  TEST_CREDENTIALS_IMAGE: ${{ inputs.test-credentials-image }}
+  ANDROID_API_VERSION: ${{ inputs.android-api-version }}
+
+jobs:
+  # Docker image validation for Android testing
+  validate-android-images:
+    runs-on: ubuntu-latest
+    outputs:
+      webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
+      test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}
+    steps:
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check WebAuthn Server image availability
+        id: check-webauthn
+        run: |
+          echo "🔍 Checking WebAuthn Server image: ${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          if docker manifest inspect "${{ env.WEBAUTHN_SERVER_IMAGE }}" > /dev/null 2>&1; then
+            echo "✅ WebAuthn Server image is available"
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ WebAuthn Server image not found"
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Check Test Credentials Service image availability
+        id: check-test-credentials
+        run: |
+          echo "🔍 Checking Test Credentials Service image: ${{ env.TEST_CREDENTIALS_IMAGE }}"
+          if docker manifest inspect "${{ env.TEST_CREDENTIALS_IMAGE }}" > /dev/null 2>&1; then
+            echo "✅ Test Credentials Service image is available"
+            echo "available=true" >> $GITHUB_OUTPUT
+          else
+            echo "❌ Test Credentials Service image not found"
+            echo "available=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Main Android E2E testing job
+  run-android-tests:
+    runs-on: ubuntu-latest
+    needs: validate-android-images
+    if: needs.validate-android-images.outputs.webauthn-server-ready == 'true' && needs.validate-android-images.outputs.test-credentials-ready == 'true'
+    outputs:
+      tests-passed: ${{ steps.android-test-execution.outputs.tests-passed }}
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: 'temurin'
+
+      # Branch-specific Gradle caching
+      - name: Setup branch-specific Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+            android-test-client/.gradle/configuration-cache
+          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+            gradle-${{ runner.os }}-
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker images
+        run: |
+          echo "🐳 Pulling Docker images for Android E2E tests"
+          docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
+          echo "✅ All images pulled successfully"
+
+      # E2E-specific Gradle caching for client generation (Android job)
+      - name: Setup Gradle cache for E2E client generation
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+            android-test-client/.gradle/configuration-cache
+          key: gradle-e2e-android-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-e2e-android-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-e2e-android-${{ runner.os }}-main-
+            gradle-e2e-android-${{ runner.os }}-
+            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
+
+      - name: Generate client libraries
+        shell: bash
+        run: |
+          echo "📚 Generating client libraries for E2E tests"
+          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+
+      - name: Enable KVM group permissions for Android Emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -la /dev/kvm
+
+      # Cache AVD configuration and snapshots (much faster than system images)
+      - name: AVD cache
+        uses: actions/cache@v4
+        id: avd-cache
+        with:
+          path: |
+            ~/.android/avd/*
+            ~/.android/adb*
+          key: avd-${{ env.ANDROID_API_VERSION }}-v2
+
+      - name: create AVD and generate snapshot for caching
+        if: steps.avd-cache.outputs.cache-hit != 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.ANDROID_API_VERSION }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: false
+          force-avd-creation: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: echo "Generated AVD snapshot for caching."
+
+      - name: Start Docker services for Android E2E tests (secure env + PR images)
+        shell: bash
+        working-directory: webauthn-server
+        env:
+          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
+          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
+        run: |
+          echo "🚀 Starting Docker services with PR-specific images"
+          echo "WebAuthn Server: $WEBAUTHN_SERVER_IMAGE"
+          echo "Test Credentials: $TEST_CREDENTIALS_IMAGE"
+
+          # Use setup-secure-env.sh to configure environment variables securely
+          echo "🔐 Setting up secure environment variables"
+          ./setup-secure-env.sh
+
+          # Create docker-compose override to use PR images instead of building
+          cat > docker-compose.override.yml <<EOF
+          services:
+            webauthn-server:
+              image: \$WEBAUTHN_SERVER_IMAGE
+              build: null
+            webauthn-test-credentials-service:
+              image: \$TEST_CREDENTIALS_IMAGE
+              build: null
+          EOF
+
+          # Export image environment variables for docker-compose
+          export WEBAUTHN_SERVER_IMAGE="$WEBAUTHN_SERVER_IMAGE"
+          export TEST_CREDENTIALS_IMAGE="$TEST_CREDENTIALS_IMAGE"
+
+          docker compose up -d
+
+          # Wait for all services to be ready
+          echo "⏳ Waiting for services to be ready..."
+
+          timeout 120 bash -c '
+            while ! docker compose exec -T postgres pg_isready -U webauthn_user -d webauthn_db > /dev/null 2>&1; do
+              echo "⏳ Waiting for PostgreSQL..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! docker compose exec -T redis redis-cli --raw incr ping > /dev/null 2>&1; do
+              echo "⏳ Waiting for Redis..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:16686/ > /dev/null 2>&1; do
+              echo "⏳ Waiting for Jaeger..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8080/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for WebAuthn server..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8081/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for Test Credentials service..."
+              sleep 2
+            done
+          '
+
+          echo "✅ All services are ready"
+
+      - name: Run Android E2E tests with emulator
+        id: android-test-execution
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: ${{ env.ANDROID_API_VERSION }}
+          target: google_apis
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          force-avd-creation: false
+          emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
+          script: ./scripts/core/run-android-tests.sh
+
+      - name: Upload Android E2E test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-e2e-test-reports-pr-${{ inputs.pr-number }}
+          path: |
+            android-test-client/app/build/reports/androidTests/connected/
+            android-test-client/app/build/outputs/androidTest-results/connected/
+          retention-days: 7
+
+      - name: Cleanup Android Docker containers
+        if: always()
+        working-directory: webauthn-server
+        run: |
+          echo "🧹 Cleaning up Android Docker containers"
+          docker compose down -v
+          rm -f docker-compose.override.yml
+          docker system prune -f

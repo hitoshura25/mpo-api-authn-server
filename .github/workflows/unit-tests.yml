@@ -1,0 +1,166 @@
+# Unit Tests Callable Workflow
+#
+# This callable workflow executes unit tests, code quality checks, and coverage reporting.
+# It's designed to be reused by the main build-and-test workflow and other workflows
+# that need unit testing capabilities.
+#
+# INPUTS:
+#   changes-detected: Whether source code changes were detected (boolean, default: true)
+#   test-scope: Specific test scope to run (string, optional)
+#   java-version: Java version to use for testing (string, default: "21")
+#
+# OUTPUTS:
+#   tests-passed: Whether all unit tests passed successfully
+#   coverage-uploaded: Whether coverage reports were uploaded
+#   test-results: Overall test execution status
+#
+# FEATURES:
+# - JUnit 5 and Kotlin Test execution
+# - Detekt code quality analysis
+# - Kover coverage reporting with Codecov integration
+# - Gradle caching optimization
+# - Parallel execution for performance
+# - Comprehensive test report artifacts
+
+name: Unit Tests
+
+on:
+  workflow_call:
+    inputs:
+      changes-detected:
+        description: 'Whether source code changes were detected'
+        required: false
+        type: boolean
+        default: true
+      test-scope:
+        description: 'Specific test scope to run (e.g., webauthn-server, test-credentials-service, or all)'
+        required: false
+        type: string
+        default: 'all'
+      java-version:
+        description: 'Java version to use for testing'
+        required: false
+        type: string
+        default: '21'
+    outputs:
+      tests-passed:
+        description: 'Whether all unit tests passed successfully'
+        value: ${{ jobs.run-unit-tests.result == 'success' }}
+      coverage-uploaded:
+        description: 'Whether coverage reports were uploaded to Codecov'
+        value: ${{ jobs.run-unit-tests.outputs.coverage-uploaded }}
+      test-results:
+        description: 'Overall test execution status (success, failure, skipped)'
+        value: ${{ jobs.run-unit-tests.result }}
+
+env:
+  JAVA_VERSION: ${{ inputs.java-version }}
+
+jobs:
+  run-unit-tests:
+    runs-on: ubuntu-latest
+    if: inputs.changes-detected == true
+    permissions:
+      contents: read
+    outputs:
+      coverage-uploaded: ${{ steps.codecov-upload.outcome == 'success' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      # Job-specific Gradle caching for unit tests
+      - name: Setup Gradle cache for unit tests
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-unit-tests-${{ runner.os }}-main-
+            gradle-unit-tests-${{ runner.os }}-
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually
+          cache-disabled: true
+
+      - name: Determine test scope and build tasks
+        id: test-scope
+        run: |
+          case "${{ inputs.test-scope }}" in
+            "webauthn-server")
+              echo "gradle-tasks=detekt :webauthn-server:test :webauthn-server:koverXmlReport :webauthn-server:shadowJar" >> $GITHUB_OUTPUT
+              echo "coverage-files=./webauthn-server/build/reports/kover/report.xml" >> $GITHUB_OUTPUT
+              echo "test-reports-path=webauthn-server/build/reports/" >> $GITHUB_OUTPUT
+              echo "artifact-name=webauthn-server-reports" >> $GITHUB_OUTPUT
+              ;;
+            "test-credentials-service")
+              echo "gradle-tasks=detekt :webauthn-test-credentials-service:test :webauthn-test-credentials-service:koverXmlReport :webauthn-test-credentials-service:shadowJar" >> $GITHUB_OUTPUT
+              echo "coverage-files=./webauthn-test-credentials-service/build/reports/kover/report.xml" >> $GITHUB_OUTPUT
+              echo "test-reports-path=webauthn-test-credentials-service/build/reports/" >> $GITHUB_OUTPUT
+              echo "artifact-name=test-credentials-service-reports" >> $GITHUB_OUTPUT
+              ;;
+            *)
+              echo "gradle-tasks=detekt :webauthn-server:koverXmlReport :webauthn-server:shadowJar :webauthn-test-credentials-service:koverXmlReport :webauthn-test-credentials-service:shadowJar" >> $GITHUB_OUTPUT
+              echo "coverage-files=./webauthn-server/build/reports/kover/report.xml,./webauthn-test-credentials-service/build/reports/kover/report.xml" >> $GITHUB_OUTPUT
+              echo "test-reports-path=webauthn-server/build/reports/,webauthn-test-credentials-service/build/reports/" >> $GITHUB_OUTPUT
+              echo "artifact-name=unit-test-reports" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Run code quality checks, tests, coverage, and build JARs
+        shell: bash
+        run: |
+          echo "🧪 Running unit tests with scope: ${{ inputs.test-scope }}"
+          echo "📋 Gradle tasks: ${{ steps.test-scope.outputs.gradle-tasks }}"
+          ./gradlew ${{ steps.test-scope.outputs.gradle-tasks }} --build-cache --parallel --configuration-cache
+
+      - name: Upload test reports
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ steps.test-scope.outputs.artifact-name }}
+          path: ${{ steps.test-scope.outputs.test-reports-path }}
+          retention-days: 7
+
+      - name: Upload coverage to Codecov
+        id: codecov-upload
+        uses: codecov/codecov-action@v5
+        with:
+          slug: hitoshura25/mpo-api-authn-server
+          files: ${{ steps.test-scope.outputs.coverage-files }}
+          flags: unit
+          name: codecov-unit
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: true
+
+      - name: Summary report
+        if: always()
+        run: |
+          echo "📊 Unit Tests Summary:"
+          echo "  🎯 Test scope: ${{ inputs.test-scope }}"
+          echo "  ☕ Java version: ${{ env.JAVA_VERSION }}"
+          echo "  📈 Coverage uploaded: ${{ steps.codecov-upload.outcome == 'success' }}"
+          echo "  ✅ Tests result: ${{ job.status }}"
+          
+          if [[ "${{ job.status }}" == "success" ]]; then
+            echo "🎉 All unit tests passed successfully!"
+          else
+            echo "❌ Unit tests failed - check logs above for details"
+          fi

@@ -128,6 +128,55 @@ Task: "[Detailed description of work to be done systematically]"
 
 **✅ Recent Success Example**: Security workflow consolidation (pr-security-analysis.yml → security-analysis.yml) included removal of unused ai-docker-security-analyzer.cjs and updating all references.
 
+### 🏗️ CRITICAL: Callable Workflow Architecture
+
+**The project now uses a modular callable workflow architecture for better maintainability and reusability:**
+
+#### **Architecture Overview:**
+- **Main Orchestrator**: `build-and-test.yml` (358 lines, down from 777 lines)
+- **Unit Testing Module**: `unit-tests.yml` - Callable workflow for test execution and coverage
+- **Docker Pipeline Module**: `docker-build.yml` - Callable workflow for build/scan/push operations
+
+#### **Workflow Structure:**
+1. **detect-changes**: Smart change detection and execution strategy (unchanged)
+2. **run-unit-tests**: Calls `unit-tests.yml` with proper inputs/outputs
+3. **docker-build-scan-push**: Calls `docker-build.yml` for complete Docker lifecycle
+4. **report-build-results**: Results aggregation and status reporting (updated)
+
+#### **Benefits Achieved:**
+- **54% Size Reduction**: Main workflow reduced from 777 to 358 lines
+- **Better Maintainability**: Logical separation of concerns
+- **Improved Reusability**: Callable workflows can be used by other workflows
+- **Preserved Functionality**: All conditional logic, job dependencies, and outputs maintained
+
+#### **Key Implementation Details:**
+- **Conditional Logic**: All `if:` conditions preserved exactly
+- **Job Dependencies**: `needs:` relationships maintained with callable workflow outputs
+- **Secret Passing**: Uses `secrets: inherit` for proper credential handling
+- **Output Mapping**: Workflow outputs properly map to callable workflow results
+- **Environment Variables**: Passed through to callable workflows correctly
+
+#### **Usage Pattern for New Workflows:**
+```yaml
+unit-testing-job:
+  uses: ./.github/workflows/unit-tests.yml
+  with:
+    changes-detected: true
+    test-scope: 'all'
+    java-version: '21'
+  secrets: inherit
+
+docker-operations-job:
+  uses: ./.github/workflows/docker-build.yml  
+  with:
+    docker-changes-detected: true
+    java-version: '21'
+    push-enabled: true
+  secrets: inherit
+```
+
+**Why This Matters**: Modular workflow architecture reduces complexity, improves maintainability, and enables better reuse across different CI/CD scenarios while preserving all existing functionality.
+
 ### ⚠️ CRITICAL: Always Validate Generated Markdown
 
 **ALWAYS run `bash scripts/core/validate-markdown.sh` after generating or modifying any markdown files.**
@@ -446,6 +495,7 @@ env:
 ## Completed Work Summary
 
 ### Major Achievements ✅
+- **Callable Workflow Architecture Refactoring**: Refactored monolithic 777-line build-and-test.yml into modular callable workflows (54% size reduction) with unit-tests.yml and docker-build.yml modules, improving maintainability while preserving all conditional logic and job dependencies
 - **Docker Security Standardization**: Migrated webauthn-server from distroless (1 CRITICAL vulnerability) to eclipse-temurin:21.0.8_9-jre-noble (0 critical vulnerabilities), achieving consistent secure base images across both services
 - **Centralized npm Package Configuration**: Established workflow environment variables (`NPM_SCOPE`, `NPM_PACKAGE_NAME`) for single-point configuration management
 - **Enhanced Regex Validation**: Upgraded version validation from `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9]+(\\.[a-zA-Z0-9]+)*)?$` to `^[0-9]+\\.[0-9]+\\.[0-9]+(-[a-zA-Z0-9-]+(\\.[a-zA-Z0-9-]+)*)?$` supporting hyphens in prerelease identifiers for full npm semver compliance\n- **Robust Version Validation**: All version formats now properly validated - rejects invalid 2-part, 4-part, and empty prerelease formats while supporting advanced prerelease identifiers like `1.0.0-alpha-beta.1`\n- **Unified 3-Part Versioning**: Standardized both Android and npm clients to use identical semantic versioning with enhanced validation ensuring 100% npm compatibility\n- **PR Publishing Support**: Added automatic snapshot publishing for pull requests with version format 1.0.0-pr.42.123 for testing client changes before merge

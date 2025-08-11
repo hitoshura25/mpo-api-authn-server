@@ -54,7 +54,20 @@ env:
   TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
 
 jobs:
-  # Job 1: Validate Docker images are available
+  # Job 1: Setup configuration for callable workflows (convert env vars to job outputs)
+  setup-config:
+    runs-on: ubuntu-latest
+    outputs:
+      java-version: ${{ steps.config.outputs.java-version }}
+      android-api-version: ${{ steps.config.outputs.android-api-version }}
+    steps:
+      - name: Setup configuration outputs
+        id: config
+        run: |
+          echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
+          echo "android-api-version=${{ env.ANDROID_API_VERSION }}" >> $GITHUB_OUTPUT
+
+  # Job 2: Validate Docker images are available
   validate-images:
     runs-on: ubuntu-latest
     outputs:
@@ -92,32 +105,32 @@ jobs:
             echo "available=false" >> $GITHUB_OUTPUT
           fi
 
-  # Job 2: Call Web E2E tests workflow
+  # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:
     uses: ./.github/workflows/web-e2e-tests.yml
-    needs: validate-images
+    needs: [ setup-config, validate-images ]
     if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
     secrets: inherit
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
       test-credentials-image: ${{ inputs.test_credentials_image }}
       pr-number: ${{ inputs.pr_number }}
-      java-version: ${{ env.JAVA_VERSION }}
+      java-version: ${{ needs.setup-config.outputs.java-version }}
 
-  # Job 3: Call Android E2E tests workflow
+  # Job 4: Call Android E2E tests workflow
   call-android-e2e-tests:
     uses: ./.github/workflows/android-e2e-tests.yml
-    needs: validate-images
+    needs: [ setup-config, validate-images ]
     if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
     secrets: inherit
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
       test-credentials-image: ${{ inputs.test_credentials_image }}
       pr-number: ${{ inputs.pr_number }}
-      java-version: ${{ env.JAVA_VERSION }}
-      android-api-version: ${{ env.ANDROID_API_VERSION }}
+      java-version: ${{ needs.setup-config.outputs.java-version }}
+      android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
 
-  # Job 4: Report E2E test results back to PR
+  # Job 5: Report E2E test results back to PR
   report-results:
     runs-on: ubuntu-latest
     needs: [ validate-images, call-web-e2e-tests, call-android-e2e-tests ]

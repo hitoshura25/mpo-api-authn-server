@@ -284,21 +284,38 @@ jobs:
             echo "    This should not happen - all cases should be covered"
           fi
 
-  # Job 2: Run unit tests using callable workflow
+  # Job 2: Setup configuration for callable workflows (convert env vars to job outputs)
+  setup-config:
+    runs-on: ubuntu-latest
+    outputs:
+      java-version: ${{ steps.config.outputs.java-version }}
+      docker-registry: ${{ steps.config.outputs.docker-registry }}
+      webauthn-image-name: ${{ steps.config.outputs.webauthn-image-name }}
+      test-credentials-image-name: ${{ steps.config.outputs.test-credentials-image-name }}
+    steps:
+      - name: Setup configuration outputs
+        id: config
+        run: |
+          echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
+          echo "docker-registry=${{ env.DOCKER_REGISTRY }}" >> $GITHUB_OUTPUT
+          echo "webauthn-image-name=${{ env.DOCKER_IMAGE_NAME }}" >> $GITHUB_OUTPUT
+          echo "test-credentials-image-name=${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}" >> $GITHUB_OUTPUT
+
+  # Job 3: Run unit tests using callable workflow
   run-unit-tests:
     uses: ./.github/workflows/unit-tests.yml
-    needs: detect-changes
+    needs: [ detect-changes, setup-config ]
     if: needs.detect-changes.outputs.should-run-tests == 'true'
     with:
       changes-detected: ${{ needs.detect-changes.outputs.should-run-tests == 'true' }}
       test-scope: 'all'
-      java-version: ${{ env.JAVA_VERSION }}
+      java-version: ${{ needs.setup-config.outputs.java-version }}
     secrets: inherit
 
-  # Job 3: Docker build, scan, and push using callable workflow
+  # Job 4: Docker build, scan, and push using callable workflow
   docker-build-scan-push:
     uses: ./.github/workflows/docker-build.yml
-    needs: [ detect-changes, run-unit-tests ]
+    needs: [ detect-changes, setup-config, run-unit-tests ]
     if: |
       always() &&
       needs.detect-changes.outputs.should-build-docker == 'true' &&
@@ -307,14 +324,14 @@ jobs:
        needs.detect-changes.outputs.should-run-tests == 'false')
     with:
       docker-changes-detected: ${{ needs.detect-changes.outputs.should-build-docker == 'true' }}
-      java-version: ${{ env.JAVA_VERSION }}
+      java-version: ${{ needs.setup-config.outputs.java-version }}
       push-enabled: true
-      registry-url: ${{ env.DOCKER_REGISTRY }}
-      webauthn-image-name: ${{ env.DOCKER_IMAGE_NAME }}
-      test-credentials-image-name: ${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
+      registry-url: ${{ needs.setup-config.outputs.docker-registry }}
+      webauthn-image-name: ${{ needs.setup-config.outputs.webauthn-image-name }}
+      test-credentials-image-name: ${{ needs.setup-config.outputs.test-credentials-image-name }}
     secrets: inherit
 
-  # Job 4: Report build results (E2E triggering now handled by orchestrator)
+  # Job 5: Report build results (E2E triggering now handled by orchestrator)
   report-build-results:
     runs-on: ubuntu-latest
     needs: [ detect-changes, run-unit-tests, docker-build-scan-push ]

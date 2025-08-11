@@ -53,7 +53,7 @@ on:
         description: 'Whether coverage reports were uploaded'
         value: ${{ jobs.run-unit-tests.outputs.coverage-uploaded }}
       workflow_validation_level:
-        description: 'Workflow validation level applied (none, minimal, unit-tests, docker, e2e, full, mixed)'
+        description: 'Workflow validation level applied (none, minimal, unit-tests, docker, e2e, full)'
         value: ${{ jobs.detect-changes.outputs.workflow-validation-level }}
 
 env:
@@ -195,7 +195,7 @@ jobs:
           echo "  1️⃣ Source code changes (highest priority): $([ "$WEBAUTHN_TESTS" = "true" ] || [ "$TEST_CREDS_TESTS" = "true" ] && echo "YES" || echo "no")"
           echo "  2️⃣ Dockerfile-only changes: $([ "$WEBAUTHN_DOCKER" = "true" ] || [ "$TEST_CREDS_DOCKER" = "true" ] && echo "YES" || echo "no") (only if no source code changes)"
           echo "  3️⃣ Documentation-only changes: $([ "$DOCS_CHANGED" = "true" ] && [ "$WORKFLOWS_CHANGED" = "false" ] && echo "YES" || echo "no") (only if no code/docker changes)"
-          echo "  4️⃣ Enhanced workflow validation:"
+          echo "  4️⃣ Workflow validation (overrides docs): $([ "$WORKFLOWS_CHANGED" = "true" ] && echo "YES" || echo "no")"
           echo "      • Orchestration workflows: $([ "$ORCHESTRATION_WORKFLOWS" = "true" ] && echo "YES" || echo "no") (full validation required)"
           echo "      • Unit test workflows: $([ "$UNIT_TEST_WORKFLOWS" = "true" ] && echo "YES" || echo "no") (unit tests only)"
           echo "      • Docker workflows: $([ "$DOCKER_WORKFLOWS" = "true" ] && echo "YES" || echo "no") (docker build only)"
@@ -246,7 +246,7 @@ jobs:
             echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
             DECISION="Documentation-only changes detected"
           # Priority 4: Enhanced workflow changes with granular validation
-          elif [[ "$WORKFLOWS_CHANGED" == "true" ]] && [[ "$DOCS_CHANGED" == "false" ]]; then
+          elif [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
             # Determine validation level based on which workflows changed
             
             if [[ "$ORCHESTRATION_WORKFLOWS" == "true" ]]; then
@@ -297,19 +297,6 @@ jobs:
             echo "build-config-changes=false" >> $GITHUB_OUTPUT
             echo "docs-only=false" >> $GITHUB_OUTPUT
             echo "workflows-only=false" >> $GITHUB_OUTPUT
-          # Priority 5: Mixed docs + workflow changes (fast path)
-          elif [[ "$DOCS_CHANGED" == "true" ]] && [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
-            echo "source-code-changes=false" >> $GITHUB_OUTPUT
-            echo "should-run-tests=false" >> $GITHUB_OUTPUT
-            echo "should-build-docker=false" >> $GITHUB_OUTPUT
-            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
-            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
-            echo "build-config-changes=false" >> $GITHUB_OUTPUT
-            echo "docs-only=false" >> $GITHUB_OUTPUT
-            echo "workflows-only=false" >> $GITHUB_OUTPUT
-            echo "workflow-validation-level=mixed" >> $GITHUB_OUTPUT
-            echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
-            DECISION="Documentation + workflow changes (no code changes)"
           # Default: No significant changes
           else
             echo "source-code-changes=false" >> $GITHUB_OUTPUT
@@ -384,11 +371,6 @@ jobs:
             echo "    🧪 Unit Tests: SKIPPED (infrastructure workflows don't affect tests)"
             echo "    🐳 Docker Build: SKIPPED (infrastructure workflows don't affect builds)"
             echo "    🎯 E2E Tests: SKIPPED (infrastructure workflows don't affect E2E)"
-          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "mixed" ]]; then
-            echo "⚡ Mixed documentation + workflow changes - Fast path"
-            echo "    🧪 Unit Tests: SKIPPED (no code changes)"
-            echo "    🐳 Docker Build: SKIPPED (no code/Docker changes)"
-            echo "    🎯 E2E Tests: SKIPPED (no images to test)"
           elif [[ "${{ steps.decision-matrix.outputs.fast-path-eligible }}" == "true" ]]; then
             echo "⚡ Fast path - No significant code changes detected"
             echo "    🧪 Unit Tests: SKIPPED (no significant changes)"

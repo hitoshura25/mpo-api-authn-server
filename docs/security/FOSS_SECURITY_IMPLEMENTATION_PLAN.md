@@ -524,23 +524,26 @@ function testOriginSpoofing(helper, msg) {
 }
 ```
 
-### OWASP ASVS Compliance Checklist
+### OWASP ASVS 5.0 Compliance Checklist
+
+*Reference: [OWASP ASVS v5.0.0](https://github.com/OWASP/ASVS/blob/v5.0.0/5.0/docs_en/OWASP_Application_Security_Verification_Standard_5.0.0_en.csv)*
 
 #### V6: Authentication Verification Requirements
-- [ ] **V6.2.1**: Verify that WebAuthn authenticators are configured with appropriate user verification
-- [ ] **V6.2.2**: Verify that credential IDs are unique and properly validated
-- [ ] **V6.2.3**: Verify that origin binding is properly implemented and enforced
-- [ ] **V6.2.4**: Verify that attestation statements are validated when required
+- [ ] **V6.3.3**: Verify that either a multi-factor authentication mechanism or a combination of single-factor authentication mechanisms... For L3, one of the factors must be a hardware-based authentication mechanism
+- [ ] **V6.3.2**: Verify that default user accounts... are not present in the application or are disabled
+- [ ] **V6.3.5**: Verify that users are notified of suspicious authentication attempts
+- [ ] **V6.4.3**: Verify that a secure process for resetting a forgotten password is implemented
+- [ ] **V6.5.7**: Verify that biometric authentication mechanisms are only used as secondary factors together with either something you have or something you know
 
 #### V11: Cryptography Verification Requirements
-- [ ] **V11.1.1**: Verify that WebAuthn uses approved cryptographic algorithms
-- [ ] **V11.1.2**: Verify that random challenges are cryptographically secure
-- [ ] **V11.1.3**: Verify that credential key pairs use appropriate key lengths
+- [ ] **V11.1.1**: Verify that there is a documented policy for management of cryptographic keys
+- [ ] **V11.2.3**: Verify that all cryptographic primitives utilize a minimum of 128-bits of security
+- [ ] **V11.4.2**: Verify that passwords are stored using an approved... key derivation function
 
-#### V12: Communication Security
-- [ ] **V12.1.1**: Verify that all WebAuthn communication uses TLS 1.2+
-- [ ] **V12.1.2**: Verify that HTTPS is enforced for all authentication flows
-- [ ] **V12.1.3**: Verify that secure cookie attributes are set appropriately
+#### V12: Communication Security Requirements
+- [ ] **V12.1.1**: Verify that only the latest recommended versions of the TLS protocol are enabled, such as TLS 1.2 and TLS 1.3
+- [ ] **V12.2.1**: Verify that TLS is used for all connectivity between a client and external facing, HTTP-based services
+- [ ] **V12.2.2**: Verify that external facing services use publicly trusted TLS certificates
 
 ## Cost-Benefit Analysis
 

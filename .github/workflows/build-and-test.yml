@@ -422,7 +422,6 @@ jobs:
     with:
       docker-changes-detected: ${{ needs.detect-changes.outputs.should-build-docker == 'true' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
-      push-enabled: true
       registry-url: ${{ needs.setup-config.outputs.docker-registry }}
       webauthn-image-name: ${{ needs.setup-config.outputs.webauthn-image-name }}
       test-credentials-image-name: ${{ needs.setup-config.outputs.test-credentials-image-name }}

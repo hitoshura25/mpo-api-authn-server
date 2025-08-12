@@ -113,6 +113,10 @@ jobs:
     uses: ./.github/workflows/client-publish.yml
     needs: [ setup-config, validate-images ]
     if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
+    permissions:
+      contents: read
+      packages: write  # Required for publishing to GitHub Packages
+      id-token: write  # Required for npm publishing
     with:
       publish-type: "staging"
       client-version: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
@@ -120,10 +124,6 @@ jobs:
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-    permissions:
-      contents: write  # Required for creating GitHub releases
-      packages: write  # Required for publishing to GitHub Packages
-      id-token: write  # Required for npm publishing
 
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:

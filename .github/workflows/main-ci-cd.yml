@@ -61,6 +61,7 @@ jobs:
       contents: read          # Read repository code
       packages: write          # Pull/Push Docker images from GHCR and client lib packages
       pull-requests: write    # Comment on PRs with test results
+      id-token: write
     with:
       pr_number: ${{ github.event.pull_request.number || github.run_number }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}

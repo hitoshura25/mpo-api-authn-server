@@ -6,6 +6,7 @@ plugins {
     id("org.openapi.generator") version "7.2.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.7"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
+    id("maven-publish")
 }
 
 // Detekt configuration
@@ -224,8 +225,10 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
         mapOf(
             "library" to "okhttp-gson",
             "groupId" to "com.vmenon.mpo.api.authn",
-            "artifactId" to "mpo-webauthn-android-client",
-            "artifactVersion" to (project.findProperty("clientVersion")?.toString() ?: project.version.toString()),
+            "artifactId" to (project.findProperty("androidArtifactId")?.toString()
+                ?: "mpo-webauthn-android-client"),
+            "artifactVersion" to (project.findProperty("clientVersion")?.toString()
+                ?: project.version.toString()),
             "invokerPackage" to "com.vmenon.mpo.api.authn.client",
             "apiPackage" to "com.vmenon.mpo.api.authn.client.api",
             "modelPackage" to "com.vmenon.mpo.api.authn.client.model",
@@ -240,20 +243,6 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
 
     inputs.file(staticOpenApiSpecFile)
     outputs.dir(layout.buildDirectory.dir("generated-clients/android"))
-}
-
-// Copy generated client code to library module
-tasks.register<Copy>("copyGeneratedClientToLibrary") {
-    group = "openapi"
-    description = "Copy generated Android client code to library module"
-
-    dependsOn("generateAndroidClient")
-
-    from(layout.buildDirectory.dir("generated-clients/android/src/main/java"))
-    into(file("../android-test-client/client-library/src/main/java"))
-
-    inputs.dir(layout.buildDirectory.dir("generated-clients/android/src/main/java"))
-    outputs.dir(file("../android-test-client/client-library/src/main/java"))
 }
 
 // TypeScript client generation for web usage
@@ -272,7 +261,8 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
     configOptions.set(
         mapOf(
             "npmName" to (project.findProperty("npmName")?.toString() ?: "mpo-webauthn-client"),
-            "npmVersion" to (project.findProperty("clientVersion")?.toString() ?: project.version.toString()),
+            "npmVersion" to (project.findProperty("clientVersion")?.toString()
+                ?: project.version.toString()),
             "npmDescription" to "TypeScript client library for MPO WebAuthn API",
             "npmAuthor" to "Vinayak Menon",
             "supportsES6" to "true",
@@ -286,16 +276,74 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("gen
     outputs.dir(layout.buildDirectory.dir("generated-clients/typescript"))
 }
 
-// Copy generated TypeScript client to web-test-client
-tasks.register<Copy>("copyGeneratedTsClientToWebTestClient") {
-    group = "openapi"
-    description = "Copy generated TypeScript client code to web-test-client"
+// Publishing configuration for Android client libraries
+configure<PublishingExtension> {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+            credentials {
+                username = project.findProperty("GitHubPackagesUsername") as String?
+                    ?: System.getenv("ANDROID_PUBLISH_USER")
+                password = project.findProperty("GitHubPackagesPassword") as String?
+                    ?: System.getenv("ANDROID_PUBLISH_TOKEN")
+            }
+        }
+    }
+}
+
+// Copy generated Android client to dedicated submodule
+tasks.register("copyAndroidClientToSubmodule", Copy::class) {
+    group = "publishing"
+    description = "Copy generated Android client to dedicated submodule for publishing"
+
+    dependsOn("generateAndroidClient")
+
+    from(layout.buildDirectory.dir("generated-clients/android"))
+    into(file("../client-libraries/android-client"))
+    exclude("build.gradle.kts") // Use our clean build.gradle.kts instead
+}
+
+// Android client publishing task
+tasks.register("publishAndroidClient") {
+    group = "publishing"
+    description = "Publish Android client library from dedicated submodule"
+
+    dependsOn("copyAndroidClientToSubmodule")
+
+    doLast {
+        val clientVersion = project.findProperty("clientVersion")?.toString()
+            ?: project.version.toString()
+        val androidArtifactId = project.findProperty("androidArtifactId")?.toString()
+            ?: "mpo-webauthn-android-client"
+
+        logger.info("Publishing Android client: ${androidArtifactId}:${clientVersion}")
+
+        // Publish from the dedicated submodule
+        exec {
+            workingDir = file("../client-libraries/android-client")
+            commandLine(
+                "../../gradlew",
+                ":client-libraries:android-client:publish",
+                "--build-cache",
+                "--info"
+            )
+            environment("CLIENT_VERSION", clientVersion)
+            environment("ANDROID_ARTIFACT_ID", androidArtifactId)
+            environment("ANDROID_PUBLISH_USER", System.getenv("ANDROID_PUBLISH_USER"))
+            environment("ANDROID_PUBLISH_TOKEN", System.getenv("ANDROID_PUBLISH_TOKEN"))
+        }
+    }
+}
+
+// Copy generated TypeScript client to dedicated submodule
+tasks.register("copyTsClientToSubmodule", Copy::class) {
+    group = "publishing"
+    description = "Copy generated TypeScript client to dedicated submodule for publishing"
 
     dependsOn("generateTsClient")
 
     from(layout.buildDirectory.dir("generated-clients/typescript"))
-    into(file("../web-test-client/generated-client"))
-
-    inputs.dir(layout.buildDirectory.dir("generated-clients/typescript"))
-    outputs.dir(file("../web-test-client/generated-client"))
+    into(file("../client-libraries/typescript-client"))
+    exclude("package.json") // Use our clean package.json instead
 }

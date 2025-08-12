@@ -1,0 +1,17 @@
+# Generated client content (except build configurations)
+*/src/
+*/dist/
+*/node_modules/
+*/generated-client/
+
+# Keep build configurations
+!*/build.gradle.kts
+!*/package.json
+
+# Allow specific directories but ignore their contents
+android-client/*
+!android-client/build.gradle.kts
+
+typescript-client/*
+!typescript-client/build.gradle.kts
+!typescript-client/package.json

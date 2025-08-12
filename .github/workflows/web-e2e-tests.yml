@@ -101,7 +101,7 @@ jobs:
       tests-passed: ${{ steps.test-execution.outputs.tests-passed }}
     permissions:
       contents: read
-      packages: read
+      packages: write  # Required for publishing staging packages (includes read)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -154,52 +154,73 @@ jobs:
           # Disable built-in cache since we're managing it manually
           cache-disabled: true
 
-      - name: Generate client libraries
-        shell: bash
-        run: |
-          echo "📚 Generating client libraries for E2E tests"
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+      # Phase 4 Integration: Replace legacy file copying with client-publish workflow call
+      # VERSION PATTERN: pr-{PR_NUMBER}.{RUN_NUMBER} for staging packages
+      # REGISTRY: GitHub Packages (staging registry for E2E testing)
+      # SCOPE: @vmenon25/*-staging packages for isolated testing
+      - name: Publish staging client packages for E2E testing
+        id: publish-staging-clients
+        uses: ./.github/workflows/client-publish.yml
+        with:
+          publish-type: "staging"
+          client-version: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+          pr-number: ${{ inputs.pr-number }}
+        secrets:
+          GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+      # Legacy approach (commented out - replaced by client-publish workflow)
+      # - name: Generate client libraries
+      #   shell: bash
+      #   run: |
+      #     echo "📚 Generating client libraries for E2E tests"
+      #     ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+      #
+      # - name: Generate TypeScript client from OpenAPI spec
+      #   env:
+      #     CLIENT_VERSION: ${{ github.run_number }}
+      #   run: |
+      #     echo "🔨 Generating TypeScript client from OpenAPI specification..."
+      #     echo "Using version: $CLIENT_VERSION"
+      #     ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="mpo-webauthn-client"
 
       - name: Setup Node.js for TypeScript client tests
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: web-test-client/package-lock.json
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@vmenon25'
 
-      - name: Generate TypeScript client from OpenAPI spec
+      - name: Update web client to use staging package
         env:
-          CLIENT_VERSION: ${{ github.run_number }}
+          STAGING_PACKAGE: ${{ steps.publish-staging-clients.outputs.typescript-package-name }}
+          STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🔨 Generating TypeScript client from OpenAPI specification..."
-          echo "Using version: $CLIENT_VERSION"
-          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="mpo-webauthn-client"
+          echo "🌐 Updating web client to use staging package: $STAGING_PACKAGE@$STAGING_VERSION"
+          cd web-test-client
+          
+          # Update package.json to use staging package instead of local generated client
+          npm pkg set dependencies."$STAGING_PACKAGE"="$STAGING_VERSION"
+          npm pkg delete dependencies."./generated-client"
+          
+          # Configure npm to use GitHub Packages for staging packages
+          echo "@vmenon25:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          
+          # Install staging package
+          npm install
+          
+          echo "✅ Web client updated to use staging package"
 
-          # Verify client generation
-          if [ -f "web-test-client/generated-client/src/index.ts" ]; then
-            echo "✅ TypeScript client generated successfully"
-          else
-            echo "❌ TypeScript client generation failed"
-            exit 1
-          fi
-
-      - name: Install TypeScript client dependencies (parallel)
+      - name: Install dependencies and Playwright
         working-directory: web-test-client
         run: |
-          echo "📦 Installing TypeScript client dependencies"
-          # Install npm dependencies and Playwright in parallel
-          npm ci &
-          NPM_PID=$!
-
-          # Download Playwright browser in background
-          npx playwright install chromium --only-shell &
-          PLAYWRIGHT_PID=$!
-
-          # Wait for both to complete
-          wait $NPM_PID
-          wait $PLAYWRIGHT_PID
-
-          echo "✅ Dependencies installed in parallel"
+          echo "📦 Installing dependencies and Playwright"
+          # Dependencies already installed in previous step via npm install
+          # Just need to install Playwright browsers
+          npx playwright install chromium
+          
+          echo "✅ Playwright browsers installed"
 
       - name: Build web-test-client TypeScript bundles
         working-directory: web-test-client
@@ -318,3 +339,16 @@ jobs:
           docker compose down -v
           rm -f docker-compose.override.yml
           docker system prune -f
+
+      # Phase 4 Integration: Cleanup staging packages after testing
+      - name: Cleanup staging packages
+        if: always()
+        continue-on-error: true
+        env:
+          STAGING_PACKAGE: ${{ steps.publish-staging-clients.outputs.typescript-package-name }}
+          STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+        run: |
+          echo "🧹 Cleaning up staging packages (best effort)"
+          echo "  TypeScript staging package: $STAGING_PACKAGE@$STAGING_VERSION"
+          echo "  Android staging package: ${{ steps.publish-staging-clients.outputs.android-package-name }}"
+          echo "Note: GitHub Packages cleanup handled by retention policies"

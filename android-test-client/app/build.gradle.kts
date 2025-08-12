@@ -85,8 +85,8 @@ dependencies {
     implementation("androidx.biometric:biometric:$biometricVersion")
     implementation("com.google.android.gms:play-services-fido:$playServicesFidoVersion")
 
-    // Local generated Android client library module (includes all necessary dependencies)
-    implementation(project(":client-library"))
+    // Published Android client library from GitHub Packages
+    implementation("com.vmenon.mpo.api.authn:mpo-webauthn-android-client:latest.release")
     
     // JSON Processing
     implementation("com.google.code.gson:gson:$gsonVersion")

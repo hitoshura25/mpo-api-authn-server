@@ -166,7 +166,7 @@ jobs:
           WEBAUTHN_DOCKER="${{ steps.changes.outputs.webauthn-server-docker }}"
           TEST_CREDS_TESTS="${{ steps.changes.outputs.test-credentials-tests }}"
           TEST_CREDS_DOCKER="${{ steps.changes.outputs.test-credentials-docker }}"
-          
+
           # Calculate if any workflow changes exist for backward compatibility
           WORKFLOWS_CHANGED="false"
           if [[ "$ORCHESTRATION_WORKFLOWS" == "true" ]] || [[ "$UNIT_TEST_WORKFLOWS" == "true" ]] || \
@@ -248,7 +248,7 @@ jobs:
           # Priority 4: Enhanced workflow changes with granular validation
           elif [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
             # Determine validation level based on which workflows changed
-            
+
             if [[ "$ORCHESTRATION_WORKFLOWS" == "true" ]]; then
               # Full validation for orchestration changes
               echo "should-run-tests=true" >> $GITHUB_OUTPUT
@@ -256,7 +256,7 @@ jobs:
               echo "workflow-validation-level=full" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
               DECISION="Orchestration workflow changes - full validation required"
-              
+
             elif [[ "$UNIT_TEST_WORKFLOWS" == "true" ]]; then
               # Unit tests only
               echo "should-run-tests=true" >> $GITHUB_OUTPUT
@@ -264,7 +264,7 @@ jobs:
               echo "workflow-validation-level=unit-tests" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
               DECISION="Unit test workflow changes - validating test execution"
-              
+
             elif [[ "$DOCKER_WORKFLOWS" == "true" ]]; then
               # Docker build validation
               echo "should-run-tests=false" >> $GITHUB_OUTPUT
@@ -272,7 +272,7 @@ jobs:
               echo "workflow-validation-level=docker" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
               DECISION="Docker workflow changes - validating build process"
-              
+
             elif [[ "$E2E_WORKFLOWS" == "true" ]]; then
               # E2E validation (needs images)
               echo "should-run-tests=true" >> $GITHUB_OUTPUT
@@ -280,7 +280,7 @@ jobs:
               echo "workflow-validation-level=e2e" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
               DECISION="E2E workflow changes - validating integration tests"
-              
+
             else
               # Infrastructure workflows - minimal validation
               echo "should-run-tests=false" >> $GITHUB_OUTPUT
@@ -289,7 +289,7 @@ jobs:
               echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
               DECISION="Infrastructure workflow changes - minimal validation"
             fi
-            
+
             # Set common workflow change outputs
             echo "source-code-changes=false" >> $GITHUB_OUTPUT
             echo "tests-only-changes=false" >> $GITHUB_OUTPUT

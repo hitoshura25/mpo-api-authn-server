@@ -108,7 +108,7 @@ jobs:
       tests-passed: ${{ steps.android-test-execution.outputs.tests-passed }}
     permissions:
       contents: read
-      packages: read
+      packages: write  # Required for publishing staging packages (includes read)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -187,11 +187,40 @@ jobs:
           # Disable built-in cache since we're managing it manually
           cache-disabled: true
 
-      - name: Generate client libraries
-        shell: bash
+      # Phase 4 Integration: Replace legacy file copying with client-publish workflow call
+      # VERSION PATTERN: pr-{PR_NUMBER}.{RUN_NUMBER} for staging packages
+      # REGISTRY: GitHub Packages (staging registry for E2E testing)
+      # SCOPE: @vmenon25/*-staging packages for isolated testing
+      - name: Publish staging client packages for E2E testing
+        id: publish-staging-clients
+        uses: ./.github/workflows/client-publish.yml
+        with:
+          publish-type: "staging"
+          client-version: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+          pr-number: ${{ inputs.pr-number }}
+
+      # Legacy approach (commented out - replaced by client-publish workflow)
+      # - name: Generate client libraries
+      #   shell: bash
+      #   run: |
+      #     echo "📚 Generating client libraries for E2E tests"
+      #     ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+
+      - name: Update Android client to use staging package
+        env:
+          STAGING_PACKAGE: ${{ steps.publish-staging-clients.outputs.android-package-name }}
+          STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
         run: |
-          echo "📚 Generating client libraries for E2E tests"
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+          echo "📱 Updating Android client to use staging package: $STAGING_PACKAGE:$STAGING_VERSION"
+          cd android-test-client
+
+          # Update build.gradle to use staging package instead of file dependency
+          sed -i.bak "s|implementation project(':client-library')|implementation '$STAGING_PACKAGE:$STAGING_VERSION'|g" app/build.gradle
+
+          # Remove client-library project from settings.gradle during E2E
+          sed -i.bak '/include.*client-library/d' settings.gradle
+
+          echo "✅ Android client updated to use staging package"
 
       - name: Enable KVM group permissions for Android Emulator
         run: |
@@ -326,3 +355,16 @@ jobs:
           docker compose down -v
           rm -f docker-compose.override.yml
           docker system prune -f
+
+      # Phase 4 Integration: Cleanup staging packages after testing
+      - name: Cleanup staging packages
+        if: always()
+        continue-on-error: true
+        env:
+          STAGING_PACKAGE: ${{ steps.publish-staging-clients.outputs.android-package-name }}
+          STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+        run: |
+          echo "🧹 Cleaning up staging packages (best effort)"
+          echo "  Android staging package: $STAGING_PACKAGE:$STAGING_VERSION"
+          echo "  TypeScript staging package: ${{ steps.publish-staging-clients.outputs.typescript-package-name }}"
+          echo "Note: GitHub Packages cleanup handled by retention policies"

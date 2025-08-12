@@ -20,13 +20,13 @@ export type {
     HealthResponse
 } from './types';
 
-// Re-export generated client types and classes for advanced usage
+// Re-export published client types and classes for advanced usage
 export {
     Configuration,
     RegistrationApi,
     AuthenticationApi,
     HealthApi
-} from '../generated-client/src';
+} from '@vmenon25/mpo-webauthn-client';
 
 // Default export for UMD compatibility
 import { WebAuthnClient, initializeWebAuthnClient } from './webauthn-client';

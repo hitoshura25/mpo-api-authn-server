@@ -62,6 +62,7 @@ npm test       # Run Playwright E2E tests
 ## 🔐 Security Features
 
 ### WebAuthn Security
+
 - **WebAuthn 2.0/FIDO2** compliance using Yubico library
 - **Username enumeration protection** - Authentication start doesn't reveal user existence
 - **Replay attack prevention** - Challenge/response validation
@@ -73,21 +74,25 @@ npm test       # Run Playwright E2E tests
 Automatic security analysis on all pull requests with intelligent fallback strategy:
 
 **Tier 1: Anthropic Official Security Action** (Primary)
+
 - Uses official `anthropics/claude-code-security-review@v1` action
 - Comprehensive security coverage maintained by Anthropic
 - Broad attack pattern detection and analysis
 
 **Tier 2: Gemini WebAuthn-Focused Analysis** (Fallback)
+
 - Custom WebAuthn-specific security analysis using Gemini AI
 - Focused on FIDO2/WebAuthn vulnerability patterns
 - PoisonSeed attacks, username enumeration, credential tampering detection
 
 **Tier 3: Template-Based Analysis** (Final Fallback)
+
 - Zero-cost security pattern analysis
 - Template-driven vulnerability detection
 - Ensures security coverage even when AI providers unavailable
 
 **Security Focus Areas**:
+
 - PoisonSeed attack patterns (CVE-2024-39912)
 - Username enumeration vulnerabilities
 - Cross-origin authentication abuse
@@ -95,6 +100,7 @@ Automatic security analysis on all pull requests with intelligent fallback strat
 - Information leakage in error responses
 
 **Automated Features**:
+
 - 🚨 **Critical vulnerability blocking** - PRs with high security scores cannot merge
 - 🏷️ **Automatic security labeling** - PRs tagged with analysis tier and risk level
 - 💬 **Detailed security comments** - AI-generated analysis and recommendations
@@ -105,6 +111,7 @@ Automatic security analysis on all pull requests with intelligent fallback strat
 Use the WebAuthn API in your applications with automatically published client libraries featuring **enhanced regex validation** and **unified 3-part versioning**:
 
 ### Android Library
+
 ```gradle
 dependencies {
     implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
@@ -114,6 +121,7 @@ dependencies {
 **Enhanced Version Validation**: All published versions use robust regex validation ensuring full npm semver compliance with support for advanced prerelease identifiers including hyphens.
 
 ### TypeScript/npm Library
+
 ```bash
 npm install @vmenon25/mpo-webauthn-client
 ```
@@ -167,6 +175,7 @@ Start the test service for external clients:
 ## 📊 Monitoring & Observability
 
 ### Application Monitoring
+
 - **OpenTelemetry** tracing with OTLP export
 - **Micrometer** metrics with Prometheus export
 - **Code coverage** reports with Kover
@@ -174,6 +183,7 @@ Start the test service for external clients:
 ### 🔍 AI-Enhanced Security Monitoring
 
 **Weekly Vulnerability Monitoring**:
+
 - Automated WebAuthn vulnerability database scanning
 - AI-enhanced risk assessment using Anthropic Claude
 - Automatic security test generation and PR creation
@@ -181,12 +191,14 @@ Start the test service for external clients:
 - Library correlation analysis with java-webauthn-server
 
 **Docker Security Scanning**:
+
 - Multi-layer vulnerability detection (OS, dependencies, secrets)
 - AI-powered vulnerability analysis and prioritization
 - GitHub Security integration with SARIF reporting
 - Automated security gate for DockerHub publishing
 
 **Continuous Security Validation**:
+
 - PR-triggered security analysis with 3-tier AI system
 - Environment variable pattern security validation
 - Automated security labeling and workflow management
@@ -229,11 +241,13 @@ Start the test service for external clients:
 The project uses a **smart CI/CD pipeline** with conditional execution and optimized resource usage:
 
 **Main Orchestrator**: `main-ci-cd.yml`
+
 - Orchestrates entire CI/CD pipeline using callable workflows
 - Eliminates workflow dispatch complexity and 404 errors
 - Conditional E2E test execution only when Docker images built
 
 **Smart Change Detection**: `build-and-test.yml`
+
 ```
 | Change Type        | Unit Tests | Docker Build | E2E Tests |
 |--------------------|-----------|-------------|----------|
@@ -246,11 +260,13 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 ```
 
 **Performance Benefits**:
+
 - ⚡ **Fast path**: Documentation/workflow changes complete in ~30 seconds
 - 🏃‍♂️ **Standard path**: Full CI pipeline ~8 minutes when needed
 - 🎯 **Smart detection**: Only run tests/builds for relevant changes
 
 **Cross-Platform E2E Testing**: `e2e-tests.yml`
+
 - Docker Compose with real service dependencies
 - Parallel Web (Playwright) and Android (connectedAndroidTest) testing
 - Uses exact Docker images built for the PR
@@ -259,18 +275,21 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 ### 🔒 Security Automation Workflows
 
 **3-Tier Security Analysis**: `security-analysis.yml`
+
 - Triggered on security-sensitive file changes
 - Intelligent tier selection with fallback strategy
 - Automated security gates and PR labeling
 - Complete security analysis consolidation
 
 **Docker Security & Publishing**: `main-branch-post-processing.yml`
+
 - AI-enhanced Docker vulnerability scanning
 - Change detection to prevent unnecessary publishing
 - Automated DockerHub publishing with security gates
 - GHCR cleanup and git tagging on successful publish
 
 **Vulnerability Monitoring**: `vulnerability-monitor.yml`
+
 - Weekly WebAuthn vulnerability database scans
 - AI-enhanced analysis and test generation
 - Automated PR creation with complete test implementations
@@ -279,6 +298,7 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 ### 🏗️ Environment Variable Management
 
 **Centralized Configuration**:
+
 ```yaml
 env:
   # Security Analysis Configuration
@@ -286,11 +306,11 @@ env:
   ANTHROPIC_TIER_ENABLED: true
   GEMINI_TIER_ENABLED: true
   TEMPLATE_TIER_ENABLED: true
-  
+
   # Docker Registry Configuration  
   DOCKER_REGISTRY: ghcr.io
   BASE_VERSION: "1.0"
-  
+
   # Service Ports
   WEBAUTHN_SERVER_PORT: 8080
   TEST_CREDENTIALS_PORT: 8081
@@ -298,6 +318,7 @@ env:
 ```
 
 **Security Best Practices**:
+
 - Secure environment variable handling in all workflows
 - Minimal required permissions per job
 - Branch-specific caching strategies
@@ -356,7 +377,7 @@ docker-compose down
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ```
-Copyright 2024 Vinayak Menon
+Copyright 2025 Vinayak Menon
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

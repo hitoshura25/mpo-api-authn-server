@@ -1,0 +1,275 @@
+# Client Library Publishing Callable Workflow
+#
+# This callable workflow implements the Docker-inspired staging → production pattern
+# for client library publishing. It can publish to either staging (GitHub Packages)
+# or production (npm + Maven Central) registries based on the publish-type input.
+#
+# DESIGN PATTERN:
+# 1. Build → Generate client libraries from OpenAPI spec
+# 2. Stage → Publish to GitHub Packages with staging names (for PR testing)
+# 3. Test → E2E tests use staged packages
+# 4. Promote → Publish to production registries if tests pass
+# 5. Cleanup → Remove staging artifacts
+#
+# INPUTS:
+#   publish-type: 'staging' or 'production'
+#   client-version: Version for client libraries (e.g., 'pr-123.456' or '1.0.32')
+#   pr-number: PR number (required for staging, ignored for production)
+#
+# OUTPUTS:
+#   typescript-package-name: Full package name published (staging or production)
+#   android-package-name: Full Maven coordinates published (staging or production)
+#   staging-published: Whether staging packages were published
+#   production-published: Whether production packages were published
+#
+# REQUIRED SECRETS:
+#   GITHUB_TOKEN: Automatically provided for GitHub Packages publishing
+#   NPM_TOKEN: Required for production npm publishing (not needed for staging)
+#   GRADLE_ENCRYPTION_KEY: Required for Gradle build cache encryption
+#
+# PERMISSIONS REQUIRED:
+#   contents: read - For checkout
+#   packages: write - For publishing to GitHub Packages
+#   id-token: write - For npm provenance (production only)
+
+name: Client Library Publishing
+
+on:
+  workflow_call:
+    inputs:
+      publish-type:
+        description: 'Publishing type (staging/production)'
+        required: true
+        type: string
+      client-version:
+        description: 'Version for client libraries'
+        required: true
+        type: string
+      pr-number:
+        description: 'PR number (for staging only)'
+        required: false
+        type: string
+    outputs:
+      typescript-package-name:
+        description: 'TypeScript package name published'
+        value: ${{ jobs.publish-client-libraries.outputs.typescript-package-name }}
+      android-package-name:
+        description: 'Android Maven coordinates published'
+        value: ${{ jobs.publish-client-libraries.outputs.android-package-name }}
+      staging-published:
+        description: 'Whether staging packages were published'
+        value: ${{ jobs.publish-client-libraries.outputs.staging-published }}
+      production-published:
+        description: 'Whether production packages were published'
+        value: ${{ jobs.publish-client-libraries.outputs.production-published }}
+
+env:
+  # Centralized package configuration (from main-branch-post-processing.yml)
+  NPM_SCOPE: "@vmenon25"
+  NPM_PACKAGE_NAME: "mpo-webauthn-client"
+  ANDROID_GROUP_ID: "com.vmenon.mpo.api.authn"
+  ANDROID_ARTIFACT_ID: "mpo-webauthn-android-client"
+
+jobs:
+  publish-client-libraries:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    outputs:
+      typescript-package-name: ${{ steps.set-package-names.outputs.typescript-package-name }}
+      android-package-name: ${{ steps.set-package-names.outputs.android-package-name }}
+      staging-published: ${{ steps.publish-status.outputs.staging-published }}
+      production-published: ${{ steps.publish-status.outputs.production-published }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+
+      - name: Validate inputs
+        run: |
+          echo "🔍 Validating workflow inputs..."
+          echo "  Publish type: ${{ inputs.publish-type }}"
+          echo "  Client version: ${{ inputs.client-version }}"
+          echo "  PR number: ${{ inputs.pr-number }}"
+
+          if [[ "${{ inputs.publish-type }}" != "staging" && "${{ inputs.publish-type }}" != "production" ]]; then
+            echo "❌ Invalid publish-type: ${{ inputs.publish-type }}"
+            echo "   Must be 'staging' or 'production'"
+            exit 1
+          fi
+
+          if [[ "${{ inputs.publish-type }}" == "staging" && -z "${{ inputs.pr-number }}" ]]; then
+            echo "❌ PR number is required for staging publishes"
+            exit 1
+          fi
+
+          echo "✅ Input validation passed"
+
+      - name: Set package names and configuration
+        id: set-package-names
+        run: |
+          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
+            # Staging package names
+            TS_PACKAGE_NAME="${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}-staging"
+            ANDROID_ARTIFACT_ID="${{ env.ANDROID_ARTIFACT_ID }}-staging"
+            NPM_REGISTRY="https://npm.pkg.github.com"
+            echo "📦 STAGING packages:"
+          else
+            # Production package names
+            TS_PACKAGE_NAME="${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}"
+            ANDROID_ARTIFACT_ID="${{ env.ANDROID_ARTIFACT_ID }}"
+            NPM_REGISTRY="https://registry.npmjs.org"
+            echo "🚀 PRODUCTION packages:"
+          fi
+
+          ANDROID_PACKAGE_NAME="${{ env.ANDROID_GROUP_ID }}:${ANDROID_ARTIFACT_ID}"
+
+          echo "  TypeScript: ${TS_PACKAGE_NAME}@${{ inputs.client-version }}"
+          echo "  Android: ${ANDROID_PACKAGE_NAME}:${{ inputs.client-version }}"
+          echo "  npm registry: ${NPM_REGISTRY}"
+
+          # Set outputs
+          echo "typescript-package-name=${TS_PACKAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "android-package-name=${ANDROID_PACKAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "typescript-full-name=${TS_PACKAGE_NAME}@${{ inputs.client-version }}" >> $GITHUB_OUTPUT
+          echo "android-full-name=${ANDROID_PACKAGE_NAME}:${{ inputs.client-version }}" >> $GITHUB_OUTPUT
+          echo "npm-registry=${NPM_REGISTRY}" >> $GITHUB_OUTPUT
+          echo "android-artifact-id=${ANDROID_ARTIFACT_ID}" >> $GITHUB_OUTPUT
+
+      - name: Generate client libraries
+        env:
+          CLIENT_VERSION: ${{ inputs.client-version }}
+          NPM_NAME: ${{ steps.set-package-names.outputs.typescript-package-name }}
+          ANDROID_ARTIFACT_ID: ${{ steps.set-package-names.outputs.android-artifact-id }}
+        run: |
+          echo "🔧 Generating client libraries..."
+          echo "  Client version: ${CLIENT_VERSION}"
+          echo "  npm package name: ${NPM_NAME}"
+          echo "  Android artifact ID: ${ANDROID_ARTIFACT_ID}"
+
+          # Generate both TypeScript and Android clients and copy to submodules
+          ./gradlew generateTsClient generateAndroidClient copyTsClientToSubmodule copyAndroidClientToSubmodule \
+            -PclientVersion="${CLIENT_VERSION}" \
+            -PnpmName="${NPM_NAME}" \
+            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
+            --build-cache --parallel --configuration-cache
+
+          echo "✅ Client libraries generated and copied to submodules successfully"
+
+      - name: Set up Node.js for npm publishing
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: ${{ steps.set-package-names.outputs.npm-registry }}
+          scope: ${{ env.NPM_SCOPE }}
+
+      - name: Publish TypeScript client to GitHub Packages
+        if: inputs.publish-type == 'staging'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_REGISTRY: ${{ steps.set-package-names.outputs.npm-registry }}
+        run: |
+          echo "📦 Publishing TypeScript client to GitHub Packages (staging)..."
+
+          cd client-libraries/typescript-client
+
+          # Update package.json for GitHub Packages
+          npm pkg set name="${{ steps.set-package-names.outputs.typescript-package-name }}"
+          npm pkg set version="${{ inputs.client-version }}"
+          npm pkg set "publishConfig.registry"="${{ steps.set-package-names.outputs.npm-registry }}"
+          npm pkg set "publishConfig.@vmenon25:registry"="${{ steps.set-package-names.outputs.npm-registry }}"
+
+          echo "📋 Updated package.json:"
+          cat package.json | jq '.name, .version, .publishConfig'
+
+          # Verify npm authentication
+          echo "🔍 Verifying npm authentication..."
+          npm whoami --registry="${{ steps.set-package-names.outputs.npm-registry }}"
+
+          # Publish to GitHub Packages
+          npm publish --registry="${{ steps.set-package-names.outputs.npm-registry }}"
+
+          echo "✅ TypeScript client published to GitHub Packages"
+
+      - name: Publish TypeScript client to npm
+        if: inputs.publish-type == 'production'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_REGISTRY: ${{ steps.set-package-names.outputs.npm-registry }}
+        run: |
+          echo "🚀 Publishing TypeScript client to npm (production)..."
+
+          cd client-libraries/typescript-client
+
+          # Update package.json for npm registry
+          npm pkg set name="${{ steps.set-package-names.outputs.typescript-package-name }}"
+          npm pkg set version="${{ inputs.client-version }}"
+          npm pkg delete publishConfig  # Remove GitHub Packages config
+
+          echo "📋 Updated package.json:"
+          cat package.json | jq '.name, .version, .publishConfig // "none"'
+
+          # Verify npm authentication
+          echo "🔍 Verifying npm authentication..."
+          npm whoami
+
+          # Publish to npm
+          npm publish
+
+          echo "✅ TypeScript client published to npm"
+
+      - name: Publish Android client to GitHub Packages
+        env:
+          CLIENT_VERSION: ${{ inputs.client-version }}
+          ANDROID_PUBLISH_USER: ${{ github.actor }}
+          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANDROID_ARTIFACT_ID: ${{ steps.set-package-names.outputs.android-artifact-id }}
+        run: |
+          echo "📱 Publishing Android client to GitHub Packages..."
+          echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
+          echo "  Version: ${CLIENT_VERSION}"
+
+          # Build and publish Android client library
+          ./gradlew :webauthn-server:publishAndroidClient \
+            -PclientVersion="${CLIENT_VERSION}" \
+            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
+            -PGitHubPackagesUsername="${ANDROID_PUBLISH_USER}" \
+            -PGitHubPackagesPassword="${ANDROID_PUBLISH_TOKEN}" \
+            --build-cache --parallel --configuration-cache --info
+
+          echo "✅ Android client published to GitHub Packages"
+
+      - name: Set publish status
+        id: publish-status
+        run: |
+          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
+            echo "staging-published=true" >> $GITHUB_OUTPUT
+            echo "production-published=false" >> $GITHUB_OUTPUT
+          else
+            echo "staging-published=false" >> $GITHUB_OUTPUT
+            echo "production-published=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Summary
+        run: |
+          echo "🎯 Client Library Publishing Summary:"
+          echo "  Publish type: ${{ inputs.publish-type }}"
+          echo "  TypeScript: ${{ steps.set-package-names.outputs.typescript-full-name }}"
+          echo "  Android: ${{ steps.set-package-names.outputs.android-full-name }}"
+          echo "  Staging published: ${{ steps.publish-status.outputs.staging-published }}"
+          echo "  Production published: ${{ steps.publish-status.outputs.production-published }}"

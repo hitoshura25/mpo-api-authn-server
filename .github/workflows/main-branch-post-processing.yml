@@ -337,30 +337,39 @@ jobs:
             echo "  - ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest"
           fi
 
-  # Job 7: Publish TypeScript Client Library (Parallel)
-  publish-typescript-client:
-    name: Publish TypeScript client library
-    runs-on: ubuntu-latest
+  # Job 7: Publish Client Libraries using centralized workflow (Phase 4 Integration)
+  # VERSION PATTERN: Semantic versioning (1.0.X) for production packages
+  # REGISTRY: npm (production registry) + GitHub Packages (backup)
+  # SCOPE: @vmenon25/* packages (production scoped packages)
+  publish-client-libraries:
+    name: Publish production client libraries
+    needs: generate-production-version
     if: github.event.workflow_run.conclusion == 'success'
+    uses: ./.github/workflows/client-publish.yml
+    with:
+      publish-type: "production"
+      client-version: "${{ needs.generate-production-version.outputs.version }}"
+    secrets:
+      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     permissions:
       contents: write  # Required for creating GitHub releases
-      packages: write
+      packages: write  # Required for publishing to GitHub Packages
+      id-token: write  # Required for npm publishing
+
+  # Job 7a: Generate production version for client libraries
+  generate-production-version:
+    name: Generate production version
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      version: ${{ steps.generate-version.outputs.version }}
+      is-prerelease: ${{ steps.generate-version.outputs.is-prerelease }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0  # Fetch all history and tags for version continuity
-
-      - name: Set up JDK for OpenAPI generation
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-disabled: true
 
       - name: Generate library version
         id: generate-version
@@ -370,119 +379,32 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          echo "🎯 Generating TypeScript client version with centralized version manager"
+          echo "🎯 Generating production client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
-      - name: Generate TypeScript client from OpenAPI spec
-        env:
-          CLIENT_VERSION: ${{ steps.generate-version.outputs.version }}
-        run: |
-          echo "🔨 Generating TypeScript client from OpenAPI specification..."
-          echo "Using version: $CLIENT_VERSION"
-          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="${{ env.NPM_PACKAGE_NAME }}"
-
-          # Verify client generation
-          if [ -f "web-test-client/generated-client/src/index.ts" ]; then
-            echo "✅ TypeScript client generated successfully"
-          else
-            echo "❌ TypeScript client generation failed"
-            exit 1
-          fi
-
-      - name: Set up Node.js for npm publishing
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          registry-url: 'https://registry.npmjs.org'
-          scope: ${{ env.NPM_SCOPE }}
-
-      - name: Update client version and build
-        env:
-          CLIENT_VERSION: ${{ steps.generate-version.outputs.version }}
-        run: |
-          echo "🔧 Updating TypeScript client version to: $CLIENT_VERSION"
-          cd web-test-client/generated-client
-
-          # Generate package.json with proper npm metadata - using heredoc approach from working reference
-          PACKAGE_NAME="${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}"
-          cat > package.json << EOF
-          {
-          "name": "$PACKAGE_NAME",
-          "version": "$CLIENT_VERSION",
-          "description": "TypeScript/JavaScript client for MPO WebAuthn API",
-          "author": "MPO WebAuthn Server Team",
-          "repository": {
-           "type": "git",
-           "url": "https://github.com/${{ github.repository }}.git"
-          },
-          "homepage": "https://github.com/${{ github.repository }}#readme",
-          "bugs": {
-           "url": "https://github.com/${{ github.repository }}/issues"
-          },
-          "keywords": [
-           "webauthn",
-           "passkey",
-           "fido2",
-           "authentication",
-           "api-client",
-           "typescript",
-           "javascript"
-          ],
-          "license": "MIT",
-          "main": "./dist/index.js",
-          "typings": "./dist/index.d.ts",
-          "module": "./dist/esm/index.js",
-          "sideEffects": false,
-          "files": [
-           "dist/",
-           "README.md"
-          ],
-          "scripts": {
-           "build": "tsc && tsc -p tsconfig.esm.json",
-           "prepare": "npm run build",
-           "prepublishOnly": "npm run build"
-          },
-          "devDependencies": {
-           "typescript": "^4.0"
-          },
-          "publishConfig": {
-           "access": "public"
-          }
-          }
-          EOF
-
-          echo "Generated package.json for: $PACKAGE_NAME"
-
-          # Install dependencies and build
-          npm install
-          npm run build
-
-          echo "✅ TypeScript client built successfully"
-
-      - name: Publish to npm registry
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
-        run: |
-          echo "📦 Publishing TypeScript client to npm registry..."
-          cd web-test-client/generated-client
-
-          # Verify npm authentication
-          echo "🔍 Verifying npm authentication..."
-          npm whoami
-
-          # Publish to public npm registry
-          npm publish
-
-          echo "✅ TypeScript client published successfully to npm registry"
+  # Job 7b: Create GitHub releases for client libraries (after successful publishing)
+  create-client-releases:
+    name: Create GitHub releases for client libraries
+    runs-on: ubuntu-latest
+    needs: [ generate-production-version, publish-client-libraries ]
+    if: |
+      always() &&
+      needs.publish-client-libraries.result == 'success' &&
+      needs.generate-production-version.outputs.is-prerelease == 'false' &&
+      github.event_name != 'pull_request'
+    permissions:
+      contents: write  # Required for creating GitHub releases
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Create GitHub Release for TypeScript Library
-        if: steps.generate-version.outputs.is-prerelease == 'false' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: "npm-client-v${{ steps.generate-version.outputs.version }}"
-          name: "npm Client v${{ steps.generate-version.outputs.version }}"
+          tag_name: "npm-client-v${{ needs.generate-production-version.outputs.version }}"
+          name: "npm Client v${{ needs.generate-production-version.outputs.version }}"
           body: |
-            ## npm Client Library v${{ steps.generate-version.outputs.version }}
+            ## npm Client Library v${{ needs.generate-production-version.outputs.version }}
 
             Generated TypeScript/JavaScript client library for MPO WebAuthn API.
 
@@ -519,87 +441,20 @@ jobs:
             ### Documentation
             - [API Documentation](https://github.com/${{ github.repository }}/blob/main/docs/setup/client-generation.md)
             - [Integration Examples](https://github.com/${{ github.repository }}/blob/main/web-test-client/README.md)
+
+            ### Published Packages
+            - **npm**: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}@${{ needs.generate-production-version.outputs.version }}
+            - **Android**: ${{ needs.publish-client-libraries.outputs.android-package-name }}:${{ needs.generate-production-version.outputs.version }}
           draft: false
           prerelease: false
 
-  # Job 8: Publish Android Client Library (Parallel)
-  publish-android-client:
-    name: Publish Android client library
-    runs-on: ubuntu-latest
-    if: github.event.workflow_run.conclusion == 'success'
-    permissions:
-      contents: write  # Required for creating GitHub releases
-      packages: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Fetch all history and tags for version continuity
-
-      - name: Set up JDK for Android client generation
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Gradle with caching
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-disabled: true
-
-      - name: Generate library version
-        id: generate-version
-        env:
-          BASE_VERSION: ${{ env.BASE_VERSION }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_RUN_NUMBER: ${{ github.run_number }}
-        run: |
-          echo "🎯 Generating Android client version with centralized version manager"
-          ./scripts/core/version-manager.sh generate
-
-      - name: Generate Android client from OpenAPI spec
-        env:
-          CLIENT_VERSION: ${{ steps.generate-version.outputs.version }}
-        run: |
-          echo "🔨 Generating Android client from OpenAPI specification..."
-          echo "Using version: $CLIENT_VERSION"
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary -PclientVersion="$CLIENT_VERSION"
-
-          # Verify client generation
-          if [ -f "android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/api/RegistrationApi.java" ]; then
-            echo "✅ Android client generated successfully"
-          else
-            echo "❌ Android client generation failed"
-            exit 1
-          fi
-
-      - name: Build and publish Android client library
-        env:
-          ANDROID_PUBLISH_USER: ${{ github.actor }}
-          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CLIENT_VERSION: ${{ steps.generate-version.outputs.version }}
-        run: |
-          echo "🔨 Building and publishing Android client library..."
-          cd android-test-client
-
-          # Build and publish the library module with explicit Gradle properties
-          ./gradlew client-library:assembleRelease client-library:publish \
-            -PGitHubPackagesUsername="${ANDROID_PUBLISH_USER}" \
-            -PGitHubPackagesPassword="${ANDROID_PUBLISH_TOKEN}" \
-            -PclientVersion="${CLIENT_VERSION}" \
-            --build-cache --parallel --configuration-cache --no-daemon --info
-
-          echo "✅ Android client published successfully"
-
       - name: Create GitHub Release for Android Client Library
-        if: steps.generate-version.outputs.is-prerelease == 'false' && github.event_name != 'pull_request'
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: "android-client-v${{ steps.generate-version.outputs.version }}"
-          name: "Android Client v${{ steps.generate-version.outputs.version }}"
+          tag_name: "android-client-v${{ needs.generate-production-version.outputs.version }}"
+          name: "Android Client v${{ needs.generate-production-version.outputs.version }}"
           body: |
-            ## Android Client Library v${{ steps.generate-version.outputs.version }}
+            ## Android Client Library v${{ needs.generate-production-version.outputs.version }}
 
             Generated Android client library for MPO WebAuthn API.
 
@@ -619,7 +474,7 @@ jobs:
             }
 
             dependencies {
-                implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:${{ steps.generate-version.outputs.version }}'
+                implementation '${{ needs.publish-client-libraries.outputs.android-package-name }}:${{ needs.generate-production-version.outputs.version }}'
             }
             ```
 
@@ -631,14 +486,18 @@ jobs:
             ### Documentation
             - [API Documentation](https://github.com/${{ github.repository }}/blob/main/docs/setup/client-generation.md)
             - [Android Integration Guide](https://github.com/${{ github.repository }}/blob/main/android-test-client/README.md)
+
+            ### Published Packages
+            - **Android**: ${{ needs.publish-client-libraries.outputs.android-package-name }}:${{ needs.generate-production-version.outputs.version }}
+            - **npm**: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}@${{ needs.generate-production-version.outputs.version }}
           draft: false
           prerelease: false
 
-  # Job 9: Report post-processing status
+  # Job 9: Report post-processing status (Updated for Phase 4)
   report-post-processing-status:
     name: Report post-processing status
     runs-on: ubuntu-latest
-    needs: [ cleanup-ghcr, detect-changes, publish-dockerhub, tag-repository, publish-typescript-client, publish-android-client ]
+    needs: [ cleanup-ghcr, detect-changes, publish-dockerhub, tag-repository, publish-client-libraries, create-client-releases ]
     if: always()
     steps:
       - name: Report overall post-processing status
@@ -649,8 +508,8 @@ jobs:
           echo "Change detection: ${{ needs.detect-changes.result }}"
           echo "DockerHub publishing: ${{ needs.publish-dockerhub.result }}"
           echo "Git tagging: ${{ needs.tag-repository.result }}"
-          echo "TypeScript client publishing: ${{ needs.publish-typescript-client.result }}"
-          echo "Android client publishing: ${{ needs.publish-android-client.result }}"
+          echo "Client libraries publishing: ${{ needs.publish-client-libraries.result }}"
+          echo "Client releases creation: ${{ needs.create-client-releases.result }}"
 
           echo ""
           echo "🧹 GHCR Cleanup: Always executed to prevent registry bloat"
@@ -659,21 +518,24 @@ jobs:
           if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
             echo "✅ Original CI/CD pipeline succeeded"
 
-            # Check client library publishing results
-            if [[ "${{ needs.publish-typescript-client.result }}" == "success" ]]; then
-              echo "📦 TypeScript client library published successfully"
-            elif [[ "${{ needs.publish-typescript-client.result }}" == "failure" ]]; then
-              echo "❌ TypeScript client library publishing failed"
-            else
-              echo "⏭️ TypeScript client library publishing skipped/cancelled"
-            fi
+            # Check client library publishing results (Phase 4 Integration)
+            if [[ "${{ needs.publish-client-libraries.result }}" == "success" ]]; then
+              echo "📦 Client libraries published successfully via centralized workflow"
+              echo "  TypeScript: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}"
+              echo "  Android: ${{ needs.publish-client-libraries.outputs.android-package-name }}"
 
-            if [[ "${{ needs.publish-android-client.result }}" == "success" ]]; then
-              echo "📱 Android client library published successfully"
-            elif [[ "${{ needs.publish-android-client.result }}" == "failure" ]]; then
-              echo "❌ Android client library publishing failed"
+              # Check GitHub releases creation
+              if [[ "${{ needs.create-client-releases.result }}" == "success" ]]; then
+                echo "🏷️ GitHub releases created successfully"
+              elif [[ "${{ needs.create-client-releases.result }}" == "failure" ]]; then
+                echo "⚠️ GitHub releases creation failed (packages still published)"
+              else
+                echo "⏭️ GitHub releases creation skipped (prerelease or PR)"
+              fi
+            elif [[ "${{ needs.publish-client-libraries.result }}" == "failure" ]]; then
+              echo "❌ Client libraries publishing failed"
             else
-              echo "⏭️ Android client library publishing skipped/cancelled"
+              echo "⏭️ Client libraries publishing skipped/cancelled"
             fi
 
             if [[ "${{ needs.detect-changes.outputs.any-changes }}" == "true" ]]; then
@@ -691,12 +553,9 @@ jobs:
               echo "✅ No Docker changes detected - DockerHub images already up to date"
             fi
 
-            # Overall success check
+            # Overall success check (Phase 4 Integration)
             FAILED_JOBS=0
-            if [[ "${{ needs.publish-typescript-client.result }}" == "failure" ]]; then
-              FAILED_JOBS=$((FAILED_JOBS + 1))
-            fi
-            if [[ "${{ needs.publish-android-client.result }}" == "failure" ]]; then
+            if [[ "${{ needs.publish-client-libraries.result }}" == "failure" ]]; then
               FAILED_JOBS=$((FAILED_JOBS + 1))
             fi
             if [[ "${{ needs.publish-dockerhub.result }}" == "failure" && "${{ needs.detect-changes.outputs.any-changes }}" == "true" ]]; then

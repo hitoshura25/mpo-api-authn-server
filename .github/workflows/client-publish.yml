@@ -129,13 +129,13 @@ jobs:
         run: |
           if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
             # Staging package names
-            TS_PACKAGE_NAME="${{ inputs.npm_scope }}/${{ env.NPM_PACKAGE_NAME }}-staging"
+            TS_PACKAGE_NAME="${{ inputs.npm-scope }}/${{ env.NPM_PACKAGE_NAME }}-staging"
             ANDROID_ARTIFACT_ID="${{ env.ANDROID_ARTIFACT_ID }}-staging"
             NPM_REGISTRY="https://npm.pkg.github.com"
             echo "📦 STAGING packages:"
           else
             # Production package names
-            TS_PACKAGE_NAME="${{ inputs.npm_scope }}/${{ env.NPM_PACKAGE_NAME }}"
+            TS_PACKAGE_NAME="${{ inputs.npm-scope }}/${{ env.NPM_PACKAGE_NAME }}"
             ANDROID_ARTIFACT_ID="${{ env.ANDROID_ARTIFACT_ID }}"
             NPM_REGISTRY="https://registry.npmjs.org"
             echo "🚀 PRODUCTION packages:"
@@ -180,7 +180,7 @@ jobs:
         with:
           node-version: '20'
           registry-url: ${{ steps.set-package-names.outputs.npm-registry }}
-          scope: ${{ inputs.npm_scope }}
+          scope: ${{ inputs.npm-scope }}
 
       - name: Publish TypeScript client to GitHub Packages
         if: inputs.publish-type == 'staging'

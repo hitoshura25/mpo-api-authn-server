@@ -144,7 +144,7 @@ jobs:
   # Job 4: Call Android E2E tests workflow
   call-android-e2e-tests:
     uses: ./.github/workflows/android-e2e-tests.yml
-    needs: [ setup-config, validate-images, public-client-libraries ]
+    needs: [ setup-config, validate-images, publish-client-libraries ]
     if: |
       needs.validate-images.outputs.webauthn-server-ready == 'true' &&
       needs.validate-images.outputs.test-credentials-ready == 'true' &&

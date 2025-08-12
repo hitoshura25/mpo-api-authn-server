@@ -253,13 +253,13 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
 
     inputs.file(staticOpenApiSpecFile)
     outputs.dir(layout.buildDirectory.dir("generated-clients/android"))
-    
+
     // Clean up conflicting build files after generation
     doLast {
-        val outputPath = layout.buildDirectory.dir("generated-clients/android").get().asFile
+        val outputPath = project.layout.buildDirectory.dir("generated-clients/android").get().asFile
         listOf(
             "build.gradle",
-            "build.sbt", 
+            "build.sbt",
             "pom.xml",
             "settings.gradle",
             "gradle.properties",

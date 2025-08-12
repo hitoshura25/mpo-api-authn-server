@@ -27,7 +27,7 @@ version = clientVersion
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            groupId = "com.vmenon.mpo.api.authn"
+            groupId = "io.github.hitoshura25"
             artifactId = androidArtifactId
             version = clientVersion
 

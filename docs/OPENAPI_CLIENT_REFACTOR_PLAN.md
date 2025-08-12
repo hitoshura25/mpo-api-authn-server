@@ -352,8 +352,8 @@ jobs:
 
 **Tasks**:
 
-- [ ] Remove `copyGeneratedClientToLibrary` Gradle tasks
-- [ ] Remove `copyGeneratedTsClientToWebTestClient` Gradle tasks
+- [x] Remove `copyGeneratedClientToLibrary` Gradle tasks ✅ COMPLETED
+- [x] Remove `copyGeneratedTsClientToWebTestClient` Gradle tasks ✅ COMPLETED
 - [ ] Delete `/web-test-client/generated-client/` directory
 - [ ] Delete `/android-test-client/client-library/src/main/java/` generated code
 - [ ] Update `.gitignore` to remove generated client exclusions

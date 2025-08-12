@@ -224,14 +224,15 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
     configOptions.set(
         mapOf(
             "library" to "okhttp-gson",
-            "groupId" to "com.vmenon.mpo.api.authn",
+            "groupId" to (project.findProperty("androidGroupId")?.toString()
+                ?: "io.github.hitoshura25"),
             "artifactId" to (project.findProperty("androidArtifactId")?.toString()
                 ?: "mpo-webauthn-android-client"),
             "artifactVersion" to (project.findProperty("clientVersion")?.toString()
                 ?: project.version.toString()),
-            "invokerPackage" to "com.vmenon.mpo.api.authn.client",
-            "apiPackage" to "com.vmenon.mpo.api.authn.client.api",
-            "modelPackage" to "com.vmenon.mpo.api.authn.client.model",
+            "invokerPackage" to "io.github.hitoshura25.webauthn.client",
+            "apiPackage" to "io.github.hitoshura25.webauthn.client.api",
+            "modelPackage" to "io.github.hitoshura25.webauthn.client.model",
             "android" to "true",
             "dateLibrary" to "java8",
             "withXml" to "false",
@@ -320,7 +321,7 @@ tasks.register("publishAndroidClient") {
         logger.info("Publishing Android client: ${androidArtifactId}:${clientVersion}")
 
         // Publish from the dedicated submodule
-        exec {
+        project.exec {
             workingDir = file("../client-libraries/android-client")
             commandLine(
                 "../../gradlew",

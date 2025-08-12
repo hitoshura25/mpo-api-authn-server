@@ -71,7 +71,7 @@ on:
 env:
   # Centralized package configuration (from main-branch-post-processing.yml)
   NPM_PACKAGE_NAME: "mpo-webauthn-client"
-  ANDROID_GROUP_ID: "com.vmenon.mpo.api.authn"
+  ANDROID_GROUP_ID: "io.github.hitoshura25"
   ANDROID_ARTIFACT_ID: "mpo-webauthn-android-client"
 
 jobs:
@@ -128,13 +128,13 @@ jobs:
         id: set-package-names
         run: |
           if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
-            # Staging package names
+            # Staging package names (GitHub Packages)
             TS_PACKAGE_NAME="${{ inputs.npm-scope }}/${{ env.NPM_PACKAGE_NAME }}-staging"
             ANDROID_ARTIFACT_ID="${{ env.ANDROID_ARTIFACT_ID }}-staging"
             NPM_REGISTRY="https://npm.pkg.github.com"
             echo "📦 STAGING packages:"
           else
-            # Production package names
+            # Production package names (npm + Maven Central)
             TS_PACKAGE_NAME="${{ inputs.npm-scope }}/${{ env.NPM_PACKAGE_NAME }}"
             ANDROID_ARTIFACT_ID="${{ env.ANDROID_ARTIFACT_ID }}"
             NPM_REGISTRY="https://registry.npmjs.org"
@@ -171,6 +171,7 @@ jobs:
             -PclientVersion="${CLIENT_VERSION}" \
             -PnpmName="${NPM_NAME}" \
             -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
+            -PandroidGroupId="${{ env.ANDROID_GROUP_ID }}" \
             --build-cache --parallel --configuration-cache
 
           echo "✅ Client libraries generated and copied to submodules successfully"
@@ -252,6 +253,7 @@ jobs:
           ./gradlew :webauthn-server:publishAndroidClient \
             -PclientVersion="${CLIENT_VERSION}" \
             -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
+            -PandroidGroupId="${{ env.ANDROID_GROUP_ID }}" \
             -PGitHubPackagesUsername="${ANDROID_PUBLISH_USER}" \
             -PGitHubPackagesPassword="${ANDROID_PUBLISH_TOKEN}" \
             --build-cache --parallel --configuration-cache --info

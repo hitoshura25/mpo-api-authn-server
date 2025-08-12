@@ -34,13 +34,13 @@ Registry: https://registry.npmjs.org
 ### Android Packages
 ```yaml
 # Staging (GitHub Packages)
-GroupId: com.vmenon.mpo.api.authn
+GroupId: io.github.hitoshura25
 ArtifactId: mpo-webauthn-android-client-staging
 Version: pr-123.456
 Repository: https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server
 
 # Production (GitHub Packages)
-GroupId: com.vmenon.mpo.api.authn
+GroupId: io.github.hitoshura25
 ArtifactId: mpo-webauthn-android-client
 Version: 1.0.32
 Repository: https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server

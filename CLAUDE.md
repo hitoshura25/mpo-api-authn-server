@@ -473,7 +473,7 @@ This project emphasizes security testing and vulnerability protection:
 
 - **Source of Truth**: Server implementation takes precedence over specification
 - **When Modifying Responses**: Update server → Update OpenAPI spec → Regenerate clients → Verify tests
-- **Verification**: `./gradlew :webauthn-server:copyGeneratedClientToLibrary && cd android-test-client && ./gradlew connectedAndroidTest`
+- **Verification**: Client libraries are now automatically published via GitHub Actions workflows. For local testing: `cd android-test-client && ./gradlew connectedAndroidTest`
 
 ## Port Assignments
 

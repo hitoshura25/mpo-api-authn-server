@@ -128,18 +128,18 @@ npm install @vmenon25/mpo-webauthn-client
 
 ### Manual Client Generation
 
-Generate client libraries locally for development:
+Client libraries are automatically published via GitHub Actions workflows:
 
-```bash
-# Generate Android client
-./gradlew :webauthn-server:copyGeneratedClientToLibrary
-
-# Generate TypeScript web client
-./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient
-
-# Generate all clients
-./gradlew :webauthn-server:generateAllClients
-```
+- **Production**: Published to npm and GitHub Packages on main branch merges
+- **Staging**: Published to GitHub Packages for PR testing (pr-{PR_NUMBER}.{RUN_NUMBER} versions)
+- **Local Development**: Use published packages or generate locally with:
+  ```bash
+  # Generate TypeScript client (for local development only)
+  ./gradlew :webauthn-server:generateTsClient
+  
+  # Generate Android client (for local development only)  
+  ./gradlew :webauthn-server:generateAndroidClient
+  ```
 
 ## 🧪 Testing Architecture
 

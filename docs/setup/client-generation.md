@@ -13,38 +13,53 @@ The server uses OpenAPI 3.0 specifications to automatically generate client libr
 
 ## Quick Start
 
-### 1. Generate Android Client (Currently Available)
+### 1. Use Published Client Libraries (Recommended)
 
+Client libraries are automatically published via GitHub Actions workflows:
+
+**Production Packages** (main branch):
 ```bash
-# Make sure your server is running on localhost:8080
-./gradlew :webauthn-server:run
+# npm/TypeScript client
+npm install @vmenon25/mpo-webauthn-client
 
-# In another terminal, generate Android client
-./gradlew :webauthn-server:copyGeneratedClientToLibrary
+# Android/Maven client
+dependencies {
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.X'
+}
 ```
 
-### 2. Generate Other Clients (Future Implementation)
+**Staging Packages** (PRs):
+```bash
+# For testing PR changes - published with version format: pr-{PR_NUMBER}.{RUN_NUMBER}
+npm install @hitoshura25/mpo-webauthn-client-staging@pr-123.456
+
+# Android staging packages
+dependencies {
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client-staging:pr-123.456'
+}
+```
+
+### 2. Local Generation (Development Only)
+
+For local development and testing:
 
 ```bash
-# TypeScript client (when implemented)
+# Generate TypeScript client locally
 ./gradlew :webauthn-server:generateTsClient
 
-# Java client (when implemented)
-./gradlew :webauthn-server:generateJavaClient
-
-# Python client (when implemented)
-./gradlew :webauthn-server:generatePythonClient
-
-# C# client (when implemented)
-./gradlew :webauthn-server:generateCsharpClient
+# Generate Android client locally
+./gradlew :webauthn-server:generateAndroidClient
 ```
 
-### 3. Package for Distribution (Future Implementation)
+### 3. Other Client Types (Future Implementation)
 
-```bash
-# Generate and package all clients (when implemented)
-./gradlew :webauthn-server:generateAllClients
-```
+The following client types are planned for future implementation:
+
+- **Java** - For Spring Boot services
+- **Python** - For Django/Flask applications  
+- **C#** - For .NET applications
+
+These will be added to the automated publishing workflow as needed.
 
 ## Generated Client Locations
 

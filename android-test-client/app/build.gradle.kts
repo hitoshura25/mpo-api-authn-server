@@ -86,7 +86,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-fido:$playServicesFidoVersion")
 
     // Published Android client library from GitHub Packages
-    implementation("com.vmenon.mpo.api.authn:mpo-webauthn-android-client:latest.release")
+    implementation("io.github.hitoshura25:mpo-webauthn-android-client:latest.release")
     
     // JSON Processing
     implementation("com.google.code.gson:gson:$gsonVersion")

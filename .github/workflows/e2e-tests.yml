@@ -130,7 +130,7 @@ jobs:
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
       test-credentials-image: ${{ inputs.test_credentials_image }}
-      pr-number: ${{ env.PR_NUMBER }}
+      pr-number: ${{ github.event.pull_request.number }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
 
@@ -146,7 +146,7 @@ jobs:
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
       test-credentials-image: ${{ inputs.test_credentials_image }}
-      pr-number: ${{ env.PR_NUMBER }}
+      pr-number: ${{ github.event.pull_request.number }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
       android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}

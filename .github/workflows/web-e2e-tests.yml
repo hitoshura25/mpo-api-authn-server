@@ -37,6 +37,10 @@ on:
         required: false
         type: string
         default: '21'
+      typescript-package-name:
+        description: 'TypeScript package name published'
+        required: true
+        type: string
     outputs:
       tests-passed:
         description: 'Boolean indicating if web tests passed'
@@ -154,18 +158,6 @@ jobs:
           # Disable built-in cache since we're managing it manually
           cache-disabled: true
 
-      # Phase 4 Integration: Replace legacy file copying with client-publish workflow call
-      # VERSION PATTERN: pr-{PR_NUMBER}.{RUN_NUMBER} for staging packages
-      # REGISTRY: GitHub Packages (staging registry for E2E testing)
-      # SCOPE: @vmenon25/*-staging packages for isolated testing
-      - name: Publish staging client packages for E2E testing
-        id: publish-staging-clients
-        uses: ./.github/workflows/client-publish.yml
-        with:
-          publish-type: "staging"
-          client-version: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
-          pr-number: ${{ inputs.pr-number }}
-
       - name: Setup Node.js for TypeScript client tests
         uses: actions/setup-node@v4
         with:
@@ -175,7 +167,7 @@ jobs:
 
       - name: Update web client to use staging package
         env:
-          STAGING_PACKAGE: ${{ steps.publish-staging-clients.outputs.typescript-package-name }}
+          STAGING_PACKAGE: ${{ inputs.typescript-package-name }}
           STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -328,10 +320,9 @@ jobs:
         if: always()
         continue-on-error: true
         env:
-          STAGING_PACKAGE: ${{ steps.publish-staging-clients.outputs.typescript-package-name }}
+          STAGING_PACKAGE: ${{ inputs.typescript-package-name }}
           STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
         run: |
           echo "🧹 Cleaning up staging packages (best effort)"
           echo "  TypeScript staging package: $STAGING_PACKAGE@$STAGING_VERSION"
-          echo "  Android staging package: ${{ steps.publish-staging-clients.outputs.android-package-name }}"
           echo "Note: GitHub Packages cleanup handled by retention policies"

@@ -121,9 +121,6 @@ jobs:
       publish-type: "staging"
       client-version: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
       pr-number: ${{ inputs.pr-number }}
-    secrets:
-      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:

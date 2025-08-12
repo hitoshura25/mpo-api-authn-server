@@ -73,11 +73,12 @@ generate_version() {
             fi
             ;;
         "pull_request")
-            # PR: prerelease version with PR and build identifiers (npm-safe)
-            pr_number="${GITHUB_PR_NUMBER:-${actual_build_number}}"
-            version="${BASE_VERSION}.0-pr.${pr_number}.${actual_build_number}"
+            # PR: prerelease version with PR and run identifiers (npm-safe)
+            # Use GITHUB_RUN_NUMBER directly for PRs to ensure uniqueness
+            pr_number="${GITHUB_PR_NUMBER:-unknown}"
+            version="${BASE_VERSION}.0-pr.${pr_number}.${BUILD_NUMBER}"
             is_prerelease="true"
-            echo "🔄 PR snapshot release: $version" >&2
+            echo "🔄 PR snapshot release: $version (PR #${pr_number}, run ${BUILD_NUMBER})" >&2
             ;;
         "workflow_dispatch")
             # Manual dispatch: use base version with continuity

@@ -183,8 +183,26 @@ jobs:
           registry-url: ${{ steps.set-package-names.outputs.npm-registry }}
           scope: ${{ inputs.npm-scope }}
 
-      - name: Publish TypeScript client to GitHub Packages
+      - name: Check if TypeScript package version already exists
         if: inputs.publish-type == 'staging'
+        id: check-npm-version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_REGISTRY: ${{ steps.set-package-names.outputs.npm-registry }}
+        run: |
+          echo "🔍 Checking if version already exists: ${{ steps.set-package-names.outputs.typescript-package-name }}@${{ inputs.client-version }}"
+          
+          # Check if version exists
+          if npm view "${{ steps.set-package-names.outputs.typescript-package-name }}@${{ inputs.client-version }}" --registry="${{ steps.set-package-names.outputs.npm-registry }}" > /dev/null 2>&1; then
+            echo "⚠️ Version ${{ inputs.client-version }} already exists for ${{ steps.set-package-names.outputs.typescript-package-name }}"
+            echo "skip-publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Version ${{ inputs.client-version }} does not exist, proceeding with publish"
+            echo "skip-publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish TypeScript client to GitHub Packages
+        if: inputs.publish-type == 'staging' && steps.check-npm-version.outputs.skip-publish == 'false'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_REGISTRY: ${{ steps.set-package-names.outputs.npm-registry }}
@@ -210,6 +228,11 @@ jobs:
           npm publish --registry="${{ steps.set-package-names.outputs.npm-registry }}"
 
           echo "✅ TypeScript client published to GitHub Packages"
+
+      - name: Skip TypeScript publishing (version exists)
+        if: inputs.publish-type == 'staging' && steps.check-npm-version.outputs.skip-publish == 'true'
+        run: |
+          echo "⏭️ Skipping TypeScript client publishing - version ${{ inputs.client-version }} already exists"
 
       - name: Publish TypeScript client to npm
         if: inputs.publish-type == 'production'
@@ -238,7 +261,25 @@ jobs:
 
           echo "✅ TypeScript client published to npm"
 
+      - name: Check if Android package version already exists
+        id: check-android-version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANDROID_ARTIFACT_ID: ${{ steps.set-package-names.outputs.android-artifact-id }}
+        run: |
+          echo "🔍 Checking if Android version already exists: ${{ env.ANDROID_GROUP_ID }}:${ANDROID_ARTIFACT_ID}:${{ inputs.client-version }}"
+          
+          # Check if version exists in GitHub Packages
+          if gh api "/user/packages/maven/${{ env.ANDROID_GROUP_ID }}/${ANDROID_ARTIFACT_ID}/versions" --jq ".[].name" | grep -q "^${{ inputs.client-version }}$"; then
+            echo "⚠️ Version ${{ inputs.client-version }} already exists for ${ANDROID_ARTIFACT_ID}"
+            echo "skip-publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Version ${{ inputs.client-version }} does not exist, proceeding with publish"
+            echo "skip-publish=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publish Android client to GitHub Packages
+        if: steps.check-android-version.outputs.skip-publish == 'false'
         env:
           CLIENT_VERSION: ${{ inputs.client-version }}
           ANDROID_PUBLISH_USER: ${{ github.actor }}
@@ -259,6 +300,11 @@ jobs:
             --build-cache --parallel --configuration-cache --info
 
           echo "✅ Android client published to GitHub Packages"
+
+      - name: Skip Android publishing (version exists)
+        if: steps.check-android-version.outputs.skip-publish == 'true'
+        run: |
+          echo "⏭️ Skipping Android client publishing - version ${{ inputs.client-version }} already exists"
 
       - name: Set publish status
         id: publish-status

@@ -209,7 +209,7 @@ jobs:
         run: |
           echo "📦 Publishing TypeScript client to GitHub Packages (staging)..."
 
-          cd client-libraries/typescript-client
+          cd typescript-client-library
 
           # Update package.json for GitHub Packages
           npm pkg set name="${{ steps.set-package-names.outputs.typescript-package-name }}"
@@ -242,7 +242,7 @@ jobs:
         run: |
           echo "🚀 Publishing TypeScript client to npm (production)..."
 
-          cd client-libraries/typescript-client
+          cd typescript-client-library
 
           # Update package.json for npm registry
           npm pkg set name="${{ steps.set-package-names.outputs.typescript-package-name }}"
@@ -290,13 +290,11 @@ jobs:
           echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
           echo "  Version: ${CLIENT_VERSION}"
 
-          # Build and publish Android client library
-          ./gradlew :webauthn-server:publishAndroidClient \
+          # Build and publish Android client library directly
+          ./gradlew :android-client-library:publish \
             -PclientVersion="${CLIENT_VERSION}" \
             -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
             -PandroidGroupId="${{ env.ANDROID_GROUP_ID }}" \
-            -PGitHubPackagesUsername="${ANDROID_PUBLISH_USER}" \
-            -PGitHubPackagesPassword="${ANDROID_PUBLISH_TOKEN}" \
             --build-cache --parallel --configuration-cache --info
 
           echo "✅ Android client published to GitHub Packages"

@@ -221,6 +221,15 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
     inputSpec.set(staticOpenApiSpecFile.absolutePath)
     outputDir.set(layout.buildDirectory.dir("generated-clients/android").get().asFile.absolutePath)
 
+    // Generate only essential files - exclude build files that conflict with our setup
+    globalProperties.set(
+        mapOf(
+            "apis" to "",
+            "models" to "",
+            "supportingFiles" to "ApiClient.java,ApiException.java,ApiResponse.java,Configuration.java,JSON.java,Pair.java,StringUtil.java,auth/ApiKeyAuth.java,auth/Authentication.java,auth/HttpBasicAuth.java,auth/HttpBearerAuth.java,model/AbstractOpenApiSchema.java,ServerConfiguration.java,ServerVariable.java,ApiCallback.java,ProgressRequestBody.java,ProgressResponseBody.java,GzipRequestInterceptor.java"
+        )
+    )
+
     configOptions.set(
         mapOf(
             "library" to "okhttp-gson",
@@ -244,6 +253,35 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
 
     inputs.file(staticOpenApiSpecFile)
     outputs.dir(layout.buildDirectory.dir("generated-clients/android"))
+    
+    // Clean up conflicting build files after generation
+    doLast {
+        val outputPath = layout.buildDirectory.dir("generated-clients/android").get().asFile
+        listOf(
+            "build.gradle",
+            "build.sbt", 
+            "pom.xml",
+            "settings.gradle",
+            "gradle.properties",
+            "git_push.sh",
+            ".travis.yml",
+            "gradle",
+            "gradlew",
+            "gradlew.bat",
+            ".github",
+            "api"
+        ).forEach { fileName ->
+            val fileToDelete = File(outputPath, fileName)
+            if (fileToDelete.exists()) {
+                if (fileToDelete.isDirectory) {
+                    fileToDelete.deleteRecursively()
+                } else {
+                    fileToDelete.delete()
+                }
+                println("🗑️  Removed conflicting file: $fileName")
+            }
+        }
+    }
 }
 
 // TypeScript client generation for web usage
@@ -301,41 +339,10 @@ tasks.register("copyAndroidClientToSubmodule", Copy::class) {
     dependsOn("generateAndroidClient")
 
     from(layout.buildDirectory.dir("generated-clients/android"))
-    into(file("../client-libraries/android-client"))
+    into(file("../android-client-library"))
     exclude("build.gradle.kts") // Use our clean build.gradle.kts instead
 }
 
-// Android client publishing task
-tasks.register("publishAndroidClient") {
-    group = "publishing"
-    description = "Publish Android client library from dedicated submodule"
-
-    dependsOn("copyAndroidClientToSubmodule")
-
-    doLast {
-        val clientVersion = project.findProperty("clientVersion")?.toString()
-            ?: project.version.toString()
-        val androidArtifactId = project.findProperty("androidArtifactId")?.toString()
-            ?: "mpo-webauthn-android-client"
-
-        logger.info("Publishing Android client: ${androidArtifactId}:${clientVersion}")
-
-        // Publish from the dedicated submodule
-        project.exec {
-            workingDir = file("../client-libraries/android-client")
-            commandLine(
-                "../../gradlew",
-                ":client-libraries:android-client:publish",
-                "--build-cache",
-                "--info"
-            )
-            environment("CLIENT_VERSION", clientVersion)
-            environment("ANDROID_ARTIFACT_ID", androidArtifactId)
-            environment("ANDROID_PUBLISH_USER", System.getenv("ANDROID_PUBLISH_USER"))
-            environment("ANDROID_PUBLISH_TOKEN", System.getenv("ANDROID_PUBLISH_TOKEN"))
-        }
-    }
-}
 
 // Copy generated TypeScript client to dedicated submodule
 tasks.register("copyTsClientToSubmodule", Copy::class) {
@@ -345,6 +352,6 @@ tasks.register("copyTsClientToSubmodule", Copy::class) {
     dependsOn("generateTsClient")
 
     from(layout.buildDirectory.dir("generated-clients/typescript"))
-    into(file("../client-libraries/typescript-client"))
+    into(file("../typescript-client-library"))
     exclude("package.json") // Use our clean package.json instead
 }

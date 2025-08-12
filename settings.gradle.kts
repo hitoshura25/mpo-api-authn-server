@@ -11,5 +11,5 @@ include(
     ":webauthn-server",
     ":webauthn-test-credentials-service",
     ":webauthn-test-lib",
-    ":client-libraries:android-client"
+    ":android-client-library"
 )

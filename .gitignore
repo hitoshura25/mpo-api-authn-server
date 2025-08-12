@@ -27,7 +27,26 @@ ide.env
 node_modules/
 
 # Generated Android client library code (regenerated from OpenAPI spec)
-android-test-client/client-library/src/
+android-client-library/src/
+android-client-library/docs/
 
 # Generated TypeScript client library code (regenerated from OpenAPI spec)
-web-test-client/generated-client/
+typescript-client-library/src/
+
+# Generated OpenAPI client files that conflict with our publishing setup
+# (These are cleaned up during generation, but ignore any existing ones)
+android-client-library/git_push.sh
+android-client-library/.github/
+android-client-library/.travis.yml
+android-client-library/build.gradle
+android-client-library/build.sbt
+android-client-library/pom.xml
+android-client-library/settings.gradle
+android-client-library/gradle.properties
+android-client-library/api/openapi.yaml
+android-client-library/gradle/
+android-client-library/gradlew
+android-client-library/gradlew.bat
+
+# Generated test files (we don't use generated tests)
+android-client-library/src/test/

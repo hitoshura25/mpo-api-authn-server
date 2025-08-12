@@ -2,7 +2,7 @@
 
 ## Overview
 
-The generated Android client library uses a clear, hierarchical package structure under the `io.github.hitoshura25.webauthn` namespace.
+The generated Android client library uses a clear, hierarchical package structure under the `io.github.hitoshura25.webauthn` namespace. The library is built as a separate Gradle submodule (`android-client-library`) for clean separation and direct publishing.
 
 ## Package Structure
 

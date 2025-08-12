@@ -22,12 +22,19 @@ val androidArtifactId = if (project.hasProperty("androidArtifactId")) {
     System.getenv("ANDROID_ARTIFACT_ID") ?: "mpo-webauthn-android-client"
 }
 
+// Configure group ID from parent project or environment
+val androidGroupId = if (project.hasProperty("androidGroupId")) {
+    project.property("androidGroupId") as String
+} else {
+    System.getenv("ANDROID_GROUP_ID") ?: "io.github.hitoshura25"
+}
+
 version = clientVersion
 
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            groupId = "io.github.hitoshura25"
+            groupId = androidGroupId
             artifactId = androidArtifactId
             version = clientVersion
 

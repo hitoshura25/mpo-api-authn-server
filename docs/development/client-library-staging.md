@@ -5,14 +5,16 @@ This document describes the staging → production pattern for client library pu
 ## Version Patterns
 
 ### Staging Versions (PR Testing)
-- **Pattern**: `pr-{PR_NUMBER}.{RUN_NUMBER}`
-- **Example**: `pr-123.456` (PR #123, GitHub run #456)
+- **Pattern**: `{NEXT_VERSION}-pr.{PR_NUMBER}.{RUN_NUMBER}`
+- **Example**: `1.0.36-pr.123.456` (next version would be 1.0.36, PR #123, GitHub run #456)
+- **Logic**: Based on latest release tag + 1, then adds PR suffix
 - **Usage**: E2E testing of client libraries before main merge
 - **Registry**: GitHub Packages only
 
 ### Production Versions (Main Branch)
 - **Pattern**: `{MAJOR}.{MINOR}.{PATCH}` (semantic versioning)
-- **Example**: `1.0.32`
+- **Example**: `1.0.36` (follows the next build number sequence)
+- **Logic**: Based on latest release tag + 1 for continuous versioning
 - **Usage**: Published after successful E2E tests
 - **Registry**: npm (TypeScript) + GitHub Packages (Android)
 
@@ -21,13 +23,13 @@ This document describes the staging → production pattern for client library pu
 ### TypeScript Packages
 ```yaml
 # Staging (GitHub Packages)
-Package: @vmenon25/mpo-webauthn-client-staging
-Version: pr-123.456
+Package: @hitoshura25/mpo-webauthn-client-staging
+Version: 1.0.36-pr.123.456
 Registry: https://npm.pkg.github.com
 
 # Production (npm)
 Package: @vmenon25/mpo-webauthn-client
-Version: 1.0.32
+Version: 1.0.36
 Registry: https://registry.npmjs.org
 ```
 
@@ -36,13 +38,13 @@ Registry: https://registry.npmjs.org
 # Staging (GitHub Packages)
 GroupId: io.github.hitoshura25
 ArtifactId: mpo-webauthn-android-client-staging
-Version: pr-123.456
+Version: 1.0.36-pr.123.456
 Repository: https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server
 
 # Production (GitHub Packages)
 GroupId: io.github.hitoshura25
 ArtifactId: mpo-webauthn-android-client
-Version: 1.0.32
+Version: 1.0.36
 Repository: https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server
 ```
 

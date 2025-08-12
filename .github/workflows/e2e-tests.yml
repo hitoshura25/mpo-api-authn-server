@@ -145,6 +145,7 @@ jobs:
       publish-type: "staging"
       client-version: ${{ needs.generate-version.outputs.version }}
       pr-number: ${{ github.event.pull_request.number }}
+      npm-scope: "@hitoshura25"
 
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:

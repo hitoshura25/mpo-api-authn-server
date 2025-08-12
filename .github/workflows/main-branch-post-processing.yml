@@ -349,6 +349,7 @@ jobs:
     with:
       publish-type: "production"
       client-version: "${{ needs.generate-production-version.outputs.version }}"
+      npm-scope: "@vmenon25"
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

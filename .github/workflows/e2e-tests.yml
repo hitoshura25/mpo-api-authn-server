@@ -39,6 +39,10 @@ on:
         description: 'Test credentials service Docker image tag'
         required: true
         type: string
+      pr-number:
+        description: 'PR number'
+        required: false
+        type: string
 
 env:
   ANDROID_API_VERSION: "29"

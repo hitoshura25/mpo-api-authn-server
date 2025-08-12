@@ -115,8 +115,8 @@ jobs:
       id-token: write  # Required for npm publishing
     with:
       publish-type: "staging"
-      client-version: "pr-${{ env.PR_NUMBER }}.${{ github.run_number }}"
-      pr-number: ${{ env.PR_NUMBER }}
+      client-version: "pr-${{ github.event.pull_request.number }}.${{ github.run_number }}"
+      pr-number: ${{ github.event.pull_request.number }}
 
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:

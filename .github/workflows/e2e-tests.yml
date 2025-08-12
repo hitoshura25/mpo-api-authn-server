@@ -31,10 +31,6 @@ name: E2E Tests - Cross-Platform Orchestrator
 on:
   workflow_call:
     inputs:
-      pr_number:
-        description: 'PR number triggering these tests'
-        required: true
-        type: string
       webauthn_server_image:
         description: 'WebAuthn server Docker image tag'
         required: true
@@ -49,7 +45,7 @@ env:
   JAVA_VERSION: "21"
   DOCKER_REGISTRY: ghcr.io
   # Use workflow inputs directly
-  PR_NUMBER: ${{ inputs.pr_number }}
+  PR_NUMBER: ${{ github.event.pull_request.number }}
   WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image }}
   TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
 
@@ -119,8 +115,8 @@ jobs:
       id-token: write  # Required for npm publishing
     with:
       publish-type: "staging"
-      client-version: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
-      pr-number: ${{ inputs.pr-number }}
+      client-version: "pr-${{ env.PR_NUMBER }}.${{ github.run_number }}"
+      pr-number: ${{ env.PR_NUMBER }}
 
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:
@@ -134,7 +130,7 @@ jobs:
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
       test-credentials-image: ${{ inputs.test_credentials_image }}
-      pr-number: ${{ inputs.pr_number }}
+      pr-number: ${{ env.PR_NUMBER }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
 
@@ -150,7 +146,7 @@ jobs:
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
       test-credentials-image: ${{ inputs.test_credentials_image }}
-      pr-number: ${{ inputs.pr_number }}
+      pr-number: ${{ env.PR_NUMBER }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
       android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}

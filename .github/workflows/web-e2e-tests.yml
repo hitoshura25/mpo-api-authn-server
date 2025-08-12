@@ -165,23 +165,6 @@ jobs:
           publish-type: "staging"
           client-version: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
           pr-number: ${{ inputs.pr-number }}
-        secrets:
-          GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-
-      # Legacy approach (commented out - replaced by client-publish workflow)
-      # - name: Generate client libraries
-      #   shell: bash
-      #   run: |
-      #     echo "📚 Generating client libraries for E2E tests"
-      #     ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
-      #
-      # - name: Generate TypeScript client from OpenAPI spec
-      #   env:
-      #     CLIENT_VERSION: ${{ github.run_number }}
-      #   run: |
-      #     echo "🔨 Generating TypeScript client from OpenAPI specification..."
-      #     echo "Using version: $CLIENT_VERSION"
-      #     ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="mpo-webauthn-client"
 
       - name: Setup Node.js for TypeScript client tests
         uses: actions/setup-node@v4
@@ -198,18 +181,18 @@ jobs:
         run: |
           echo "🌐 Updating web client to use staging package: $STAGING_PACKAGE@$STAGING_VERSION"
           cd web-test-client
-          
+
           # Update package.json to use staging package instead of local generated client
           npm pkg set dependencies."$STAGING_PACKAGE"="$STAGING_VERSION"
           npm pkg delete dependencies."./generated-client"
-          
+
           # Configure npm to use GitHub Packages for staging packages
           echo "@vmenon25:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
-          
+
           # Install staging package
           npm install
-          
+
           echo "✅ Web client updated to use staging package"
 
       - name: Install dependencies and Playwright
@@ -219,7 +202,7 @@ jobs:
           # Dependencies already installed in previous step via npm install
           # Just need to install Playwright browsers
           npx playwright install chromium
-          
+
           echo "✅ Playwright browsers installed"
 
       - name: Build web-test-client TypeScript bundles

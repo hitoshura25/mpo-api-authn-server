@@ -101,7 +101,7 @@ jobs:
       tests-passed: ${{ steps.test-execution.outputs.tests-passed }}
     permissions:
       contents: read
-      packages: write  # Required for publishing staging packages (includes read)
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

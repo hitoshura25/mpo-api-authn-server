@@ -59,7 +59,7 @@ jobs:
     uses: ./.github/workflows/e2e-tests.yml
     permissions:
       contents: read          # Read repository code
-      packages: read          # Pull Docker images from GHCR
+      packages: write          # Pull/Push Docker images from GHCR and client lib packages
       pull-requests: write    # Comment on PRs with test results
     with:
       pr_number: ${{ github.event.pull_request.number || github.run_number }}

@@ -255,6 +255,10 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
         // Extract dependencies from generated build.gradle with inline conversion
         val extractedDependencies = if (generatedBuildGradle.exists()) {
             val content = generatedBuildGradle.readText()
+            
+            // For debugging: Save original content if needed
+            // val debugFile = File(outputPath, "build.gradle.debug")
+            // debugFile.writeText(content)
 
             // Find dependencies block (look for the last one, as there may be multiple)
             val dependenciesStart = content.lastIndexOf("dependencies {")
@@ -305,6 +309,14 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
 
                             trimmedLine.matches(Regex("^(implementation|testImplementation|testRuntimeOnly|compileOnly|api|runtimeOnly)\\s+.*")) -> {
                                 val converted = when {
+                                    trimmedLine.contains("group:") -> {
+                                        // Fixed regex to handle the actual format: "implementation group: 'name', name: 'name', version: 'version'"
+                                        trimmedLine.replace(Regex("^(\\w+)\\s+group:\\s+['\"]([^'\"]+)['\"]\\s*,\\s*name:\\s+['\"]([^'\"]+)['\"]\\s*,\\s*version:\\s+['\"]([^'\"]+)['\"](.*)$")) { matchResult ->
+                                            val (scope, group, name, version, rest) = matchResult.destructured
+                                            "$scope(\"$group:$name:$version\")$rest"
+                                        }
+                                    }
+
                                     trimmedLine.contains("'") -> {
                                         trimmedLine.replace(Regex("^(\\w+)\\s+'([^']+)'(.*)$")) { matchResult ->
                                             val (scope, dependency, rest) = matchResult.destructured
@@ -330,13 +342,6 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
                                                     )
                                                 } else dependency
                                             "$scope(\"$finalDep\")$rest"
-                                        }
-                                    }
-
-                                    trimmedLine.contains("group:") -> {
-                                        trimmedLine.replace(Regex("^(\\w+)\\s+group:\\s*['\"]([^'\"]+)['\"]\\s*,\\s*name:\\s*['\"]([^'\"]+)['\"]\\s*,\\s*version:\\s*['\"]([^'\"]+)['\"](.*)$")) { matchResult ->
-                                            val (scope, group, name, version, rest) = matchResult.destructured
-                                            "$scope(\"$group:$name:$version\")$rest"
                                         }
                                     }
 
@@ -466,19 +471,23 @@ tasks.register("copyAndroidClientToSubmodule", Copy::class) {
     dependsOn("generateAndroidClient")
 
     from(layout.buildDirectory.dir("generated-clients/android"))
-    into(file("../android-client-library"))
+    into(layout.projectDirectory.dir("../android-client-library"))
     exclude("build.gradle.kts") // Use our custom build.gradle.kts instead
 
+    // Configuration cache compatible approach - configure directories as properties
+    val oldPackageDir = layout.projectDirectory.dir("../android-client-library/src/main/java/com")
+    val oldTestPackageDir = layout.projectDirectory.dir("../android-client-library/src/test/java/com")
+
     doFirst {
-        // Clean up old package structure before copying new files
-        val oldPackageDir = file("../android-client-library/src/main/java/com")
-        val oldTestPackageDir = file("../android-client-library/src/test/java/com")
-        if (oldPackageDir.exists()) {
-            oldPackageDir.deleteRecursively()
+        // Clean up old package structure before copying new files using Directory objects
+        val oldPackageDirFile = oldPackageDir.asFile
+        val oldTestPackageDirFile = oldTestPackageDir.asFile
+        if (oldPackageDirFile.exists()) {
+            oldPackageDirFile.deleteRecursively()
             println("🗑️  Removed old package structure: com/vmenon/mpo/api/authn/client")
         }
-        if (oldTestPackageDir.exists()) {
-            oldTestPackageDir.deleteRecursively()
+        if (oldTestPackageDirFile.exists()) {
+            oldTestPackageDirFile.deleteRecursively()
             println("🗑️  Removed old test package structure: com/vmenon/mpo/api/authn/client")
         }
     }

@@ -50,3 +50,8 @@ android-client-library/gradlew.bat
 
 # Generated test files (we don't use generated tests)
 android-client-library/src/test/
+
+# Generated Android client build file (assembled from template + extracted dependencies)
+android-client-library/build.gradle.kts
+
+android-client-library/local.properties

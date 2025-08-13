@@ -221,14 +221,7 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
     inputSpec.set(staticOpenApiSpecFile.absolutePath)
     outputDir.set(layout.buildDirectory.dir("generated-clients/android").get().asFile.absolutePath)
 
-    // Generate only essential files - exclude build files that conflict with our setup
-    globalProperties.set(
-        mapOf(
-            "apis" to "",
-            "models" to "",
-            "supportingFiles" to "ApiClient.java,ApiException.java,ApiResponse.java,Configuration.java,JSON.java,Pair.java,StringUtil.java,auth/ApiKeyAuth.java,auth/Authentication.java,auth/HttpBasicAuth.java,auth/HttpBearerAuth.java,model/AbstractOpenApiSchema.java,ServerConfiguration.java,ServerVariable.java,ApiCallback.java,ProgressRequestBody.java,ProgressResponseBody.java,GzipRequestInterceptor.java"
-        )
-    )
+    // Generate all Java source files to ensure complete package structure
 
     configOptions.set(
         mapOf(
@@ -254,9 +247,142 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
     inputs.file(staticOpenApiSpecFile)
     outputs.dir(layout.buildDirectory.dir("generated-clients/android"))
 
-    // Clean up conflicting build files after generation
+    // Extract dependencies from generated build.gradle and create final build.gradle.kts
     doLast {
         val outputPath = project.layout.buildDirectory.dir("generated-clients/android").get().asFile
+        val generatedBuildGradle = File(outputPath, "build.gradle")
+
+        // Extract dependencies from generated build.gradle with inline conversion
+        val extractedDependencies = if (generatedBuildGradle.exists()) {
+            val content = generatedBuildGradle.readText()
+
+            // Find dependencies block (look for the last one, as there may be multiple)
+            val dependenciesStart = content.lastIndexOf("dependencies {")
+            if (dependenciesStart != -1) {
+                var braceCount = 0
+                var dependenciesEnd = -1
+                for (i in (dependenciesStart + "dependencies {".length) until content.length) {
+                    when (content[i]) {
+                        '{' -> braceCount++
+                        '}' -> {
+                            braceCount--
+                            if (braceCount < 0) {
+                                dependenciesEnd = i
+                                break
+                            }
+                        }
+                    }
+                }
+
+                if (dependenciesEnd != -1) {
+                    val dependenciesContent = content.substring(
+                        dependenciesStart + "dependencies {".length,
+                        dependenciesEnd
+                    ).trim()
+
+                    // Convert each dependency line from Groovy to Kotlin DSL
+                    val lines = dependenciesContent.lines()
+                    val convertedLines = mutableListOf<String>()
+
+                    lines.forEach { line ->
+                        val trimmedLine = line.trim()
+                        when {
+                            trimmedLine.isEmpty() || trimmedLine.startsWith("//") -> {
+                                convertedLines.add("    $trimmedLine")
+                            }
+
+                            trimmedLine.startsWith("provided ") -> {
+                                val withoutProvided =
+                                    trimmedLine.replace("provided ", "compileOnly ")
+                                val converted =
+                                    withoutProvided.replace(Regex("'([^']+)'")) { "\"${it.groupValues[1]}\"" }
+                                        .replace(Regex("^(\\w+)\\s+\"([^\"]+)\"(.*)$")) { matchResult ->
+                                            val (scope, dependency, rest) = matchResult.destructured
+                                            "$scope(\"$dependency\")$rest"
+                                        }
+                                convertedLines.add("    $converted")
+                            }
+
+                            trimmedLine.matches(Regex("^(implementation|testImplementation|testRuntimeOnly|compileOnly|api|runtimeOnly)\\s+.*")) -> {
+                                val converted = when {
+                                    trimmedLine.contains("'") -> {
+                                        trimmedLine.replace(Regex("^(\\w+)\\s+'([^']+)'(.*)$")) { matchResult ->
+                                            val (scope, dependency, rest) = matchResult.destructured
+                                            val finalDep =
+                                                if (dependency.contains("\$jakarta_annotation_version")) {
+                                                    dependency.replace(
+                                                        "\$jakarta_annotation_version",
+                                                        "\$jakartaAnnotationVersion"
+                                                    )
+                                                } else dependency
+                                            "$scope(\"$finalDep\")$rest"
+                                        }
+                                    }
+
+                                    trimmedLine.contains("\"") -> {
+                                        trimmedLine.replace(Regex("^(\\w+)\\s+\"([^\"]+)\"(.*)$")) { matchResult ->
+                                            val (scope, dependency, rest) = matchResult.destructured
+                                            val finalDep =
+                                                if (dependency.contains("\$jakarta_annotation_version")) {
+                                                    dependency.replace(
+                                                        "\$jakarta_annotation_version",
+                                                        "\$jakartaAnnotationVersion"
+                                                    )
+                                                } else dependency
+                                            "$scope(\"$finalDep\")$rest"
+                                        }
+                                    }
+
+                                    trimmedLine.contains("group:") -> {
+                                        trimmedLine.replace(Regex("^(\\w+)\\s+group:\\s*['\"]([^'\"]+)['\"]\\s*,\\s*name:\\s*['\"]([^'\"]+)['\"]\\s*,\\s*version:\\s*['\"]([^'\"]+)['\"](.*)$")) { matchResult ->
+                                            val (scope, group, name, version, rest) = matchResult.destructured
+                                            "$scope(\"$group:$name:$version\")$rest"
+                                        }
+                                    }
+
+                                    else -> "// Could not convert: $trimmedLine"
+                                }
+                                convertedLines.add("    $converted")
+                            }
+
+                            else -> {
+                                convertedLines.add("    // $trimmedLine")
+                            }
+                        }
+                    }
+
+                    convertedLines.joinToString("\n")
+                } else {
+                    "    // No dependencies block end found"
+                }
+            } else {
+                "    // No dependencies block found"
+            }
+        } else {
+            "    // No build.gradle file found"
+        }
+
+        // Read the template file
+        val templateFile = File(project.rootDir, "android-client-library/build.gradle.kts.template")
+        if (!templateFile.exists()) {
+            throw GradleException("Template file not found: ${templateFile.absolutePath}")
+        }
+
+        val templateContent = templateFile.readText()
+
+        // Replace placeholder with extracted dependencies
+        val finalContent = templateContent.replace(
+            "    // GENERATED_DEPENDENCIES_PLACEHOLDER",
+            extractedDependencies
+        )
+
+        // Write the final build.gradle.kts to android-client-library
+        val finalBuildFile = File(project.rootDir, "android-client-library/build.gradle.kts")
+        finalBuildFile.writeText(finalContent)
+
+        println("✅ Generated android-client-library/build.gradle.kts from template with extracted dependencies")
+
+        // Clean up conflicting build files after dependency extraction
         listOf(
             "build.gradle",
             "build.sbt",
@@ -331,6 +457,7 @@ configure<PublishingExtension> {
     }
 }
 
+
 // Copy generated Android client to dedicated submodule
 tasks.register("copyAndroidClientToSubmodule", Copy::class) {
     group = "publishing"
@@ -340,7 +467,26 @@ tasks.register("copyAndroidClientToSubmodule", Copy::class) {
 
     from(layout.buildDirectory.dir("generated-clients/android"))
     into(file("../android-client-library"))
-    exclude("build.gradle.kts") // Use our clean build.gradle.kts instead
+    exclude("build.gradle.kts") // Use our custom build.gradle.kts instead
+
+    doFirst {
+        // Clean up old package structure before copying new files
+        val oldPackageDir = file("../android-client-library/src/main/java/com")
+        val oldTestPackageDir = file("../android-client-library/src/test/java/com")
+        if (oldPackageDir.exists()) {
+            oldPackageDir.deleteRecursively()
+            println("🗑️  Removed old package structure: com/vmenon/mpo/api/authn/client")
+        }
+        if (oldTestPackageDir.exists()) {
+            oldTestPackageDir.deleteRecursively()
+            println("🗑️  Removed old test package structure: com/vmenon/mpo/api/authn/client")
+        }
+    }
+
+    doLast {
+        println("📁 Copied generated Android client with correct package structure to android-client-library")
+        println("🔧 Package structure: io.github.hitoshura25.webauthn.client")
+    }
 }
 
 

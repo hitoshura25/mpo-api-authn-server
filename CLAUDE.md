@@ -277,6 +277,18 @@ docker-operations-job:
 - **✅ ALWAYS pass actual published version**: Use `${{ needs.generate-version.outputs.version }}` for perfect sync
 - **Why**: E2E tests must consume the exact same version that was published, not a reconstructed approximation
 
+**TypeScript Import Scope Resolution (August 2025):**
+- **❌ NEVER leave hardcoded production package imports in source files during staging builds**
+- **✅ ALWAYS update both package.json AND TypeScript imports to use staging packages**
+- **Root cause**: Web E2E tests failed because TypeScript source still imported from `@vmenon25/mpo-webauthn-client` while package.json used staging package
+- **Solution**: Use sed to update import statements in TypeScript source files during staging build
+- **Critical commands**:
+  ```bash
+  sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/index.ts
+  sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/webauthn-client.ts
+  ```
+- **Pattern**: When using staging packages for E2E tests, update imports in BOTH package.json and source files
+
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 
 **AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**

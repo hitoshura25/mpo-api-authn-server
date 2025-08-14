@@ -182,6 +182,18 @@ jobs:
           npm pkg set dependencies."$STAGING_PACKAGE"="$STAGING_VERSION"
           npm pkg delete dependencies."@vmenon25/mpo-webauthn-client"
 
+          # Update TypeScript source files to use staging package imports
+          echo "📝 Updating TypeScript imports to use staging package..."
+          sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/index.ts
+          sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/webauthn-client.ts
+
+          # Show the changes made
+          echo "📋 Updated imports in src/index.ts:"
+          grep "from '$STAGING_PACKAGE'" src/index.ts || echo "No imports found in src/index.ts"
+          
+          echo "📋 Updated imports in src/webauthn-client.ts:"
+          grep "from '$STAGING_PACKAGE'" src/webauthn-client.ts || echo "No imports found in src/webauthn-client.ts"
+
           # Configure npm to use GitHub Packages for staging packages
           echo "@hitoshura25:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
@@ -189,7 +201,7 @@ jobs:
           # Install staging package
           npm install
 
-          echo "✅ Web client updated to use staging package"
+          echo "✅ Web client updated to use staging package (package.json + TypeScript imports)"
 
       - name: Install dependencies and Playwright
         working-directory: web-test-client

@@ -237,8 +237,8 @@ jobs:
                   maven {
                       url = uri("https://maven.pkg.github.com/${GITHUB_REPOSITORY}")
                       credentials {
-                          username = project.findProperty("GitHubPackagesUsername") as String? ?: System.getenv("ANDROID_PUBLISH_USER")
-                          password = project.findProperty("GitHubPackagesPassword") as String? ?: System.getenv("ANDROID_PUBLISH_TOKEN")
+                          username = System.getenv("ANDROID_PUBLISH_USER") ?: project.findProperty("GitHubPackagesUsername") as String?
+                          password = System.getenv("ANDROID_PUBLISH_TOKEN") ?: project.findProperty("GitHubPackagesPassword") as String?
                       }
                   }
               }
@@ -251,6 +251,8 @@ jobs:
 
           echo "📋 Updated settings.gradle with GitHub Packages repository"
           echo "✅ Android client updated to use staging package with proper repository configuration"
+          # TODO: REMOVE THIS LATER
+          cat settings.gradle
 
       - name: Enable KVM group permissions for Android Emulator
         run: |

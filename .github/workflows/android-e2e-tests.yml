@@ -199,8 +199,8 @@ jobs:
         env:
           STAGING_PACKAGE: ${{ inputs.android-package-name }}
           STAGING_VERSION: ${{ inputs.client-version }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
+          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANDROID_PUBLISH_USER: ${{ github.actor }}
           GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           echo "📱 Updating Android client to use staging package: $STAGING_PACKAGE:$STAGING_VERSION"
@@ -237,8 +237,8 @@ jobs:
                   maven {
                       url = uri("https://maven.pkg.github.com/${GITHUB_REPOSITORY}")
                       credentials {
-                          username = System.getenv("GITHUB_ACTOR") ?: "${GITHUB_ACTOR}"
-                          password = System.getenv("GITHUB_TOKEN") ?: "${GITHUB_TOKEN}"
+                          username = project.findProperty("GitHubPackagesUsername") as String? ?: System.getenv("ANDROID_PUBLISH_USER")
+                          password = project.findProperty("GitHubPackagesPassword") as String? ?: System.getenv("ANDROID_PUBLISH_TOKEN")
                       }
                   }
               }

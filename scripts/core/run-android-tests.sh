@@ -13,10 +13,14 @@ fi
 # Run instrumentation tests (GitHub Action handles timeout)
 echo "🧪 Running WebAuthnFlowTest instrumentation tests..."
 cd android-test-client
-./gradlew connectedAndroidTest --build-cache --parallel --configuration-cache --no-daemon
+./gradlew connectedAndroidTest \
+  -PGitHubPackagesUsername="$ANDROID_PUBLISH_USER" \
+  -PGitHubPackagesPassword="$ANDROID_PUBLISH_TOKEN" \
+  --build-cache --parallel --configuration-cache --no-daemon
+
 TEST_EXIT_CODE=$?
 
-echo "android-test-exit-code=$TEST_EXIT_CODE" >> $GITHUB_OUTPUT
+echo "android-test-exit-code=$TEST_EXIT_CODE" >> "$GITHUB_OUTPUT"
 
 if [ $TEST_EXIT_CODE -ne 0 ]; then
   echo "❌ Android instrumentation tests failed with exit code $TEST_EXIT_CODE"

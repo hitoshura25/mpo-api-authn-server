@@ -3,7 +3,7 @@ plugins {
     id("application")
     id("com.github.johnrengelman.shadow") version "8.1.1"
     id("org.jetbrains.kotlinx.kover") version "0.9.1"
-    id("org.openapi.generator") version "7.2.0"
+    id("org.openapi.generator") version "7.14.0"
     id("io.gitlab.arturbosch.detekt") version "1.23.7"
     id("org.jlleitschuh.gradle.ktlint") version "12.1.1"
     id("maven-publish")
@@ -255,7 +255,7 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
         // Extract dependencies from generated build.gradle with inline conversion
         val extractedDependencies = if (generatedBuildGradle.exists()) {
             val content = generatedBuildGradle.readText()
-            
+
             // For debugging: Save original content if needed
             // val debugFile = File(outputPath, "build.gradle.debug")
             // debugFile.writeText(content)
@@ -476,7 +476,8 @@ tasks.register("copyAndroidClientToSubmodule", Copy::class) {
 
     // Configuration cache compatible approach - configure directories as properties
     val oldPackageDir = layout.projectDirectory.dir("../android-client-library/src/main/java/com")
-    val oldTestPackageDir = layout.projectDirectory.dir("../android-client-library/src/test/java/com")
+    val oldTestPackageDir =
+        layout.projectDirectory.dir("../android-client-library/src/test/java/com")
 
     doFirst {
         // Clean up old package structure before copying new files using Directory objects

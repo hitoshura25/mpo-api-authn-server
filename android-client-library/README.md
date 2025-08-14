@@ -2,6 +2,7 @@
 
 MPO WebAuthn Authentication Server API
 - API version: 1.0.0
+  - Generator version: 7.14.0
 
 WebAuthn authentication server supporting passkey credentials with quantum-safe cryptography.
 
@@ -101,7 +102,7 @@ Please follow the [installation](#installation) instruction and execute the foll
 import io.github.hitoshura25.webauthn.client.ApiClient;
 import io.github.hitoshura25.webauthn.client.ApiException;
 import io.github.hitoshura25.webauthn.client.Configuration;
-import io.github.hitoshura25.webauthn.client.models.*;
+import io.github.hitoshura25.webauthn.client.model.*;
 import io.github.hitoshura25.webauthn.client.api.AuthenticationApi;
 
 public class Example {

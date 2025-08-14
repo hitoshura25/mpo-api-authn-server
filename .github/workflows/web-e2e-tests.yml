@@ -190,11 +190,12 @@ jobs:
           # Show the changes made
           echo "📋 Updated imports in src/index.ts:"
           grep "from '$STAGING_PACKAGE'" src/index.ts || echo "No imports found in src/index.ts"
-          
+
           echo "📋 Updated imports in src/webauthn-client.ts:"
           grep "from '$STAGING_PACKAGE'" src/webauthn-client.ts || echo "No imports found in src/webauthn-client.ts"
 
           # Configure npm to use GitHub Packages for staging packages
+          echo -e "\n" >> .npmrc
           echo "@hitoshura25:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
@@ -219,7 +220,7 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🔨 Building TypeScript web client bundles..."
-          
+
           # Ensure npm registry configuration is available for build
           echo "🔧 Verifying npm registry configuration for build..."
           if [[ ! -f .npmrc ]]; then
@@ -227,14 +228,14 @@ jobs:
             echo "@hitoshura25:registry=https://npm.pkg.github.com" >> .npmrc
             echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
           fi
-          
+
           echo "📋 Current .npmrc configuration:"
           cat .npmrc
-          
+
           # Verify package installation before build
           echo "🔍 Verifying staging package availability..."
           npm list | grep "@hitoshura25" || echo "Staging package not found in node_modules"
-          
+
           npm run build
           echo "✅ Web client bundles built successfully"
 

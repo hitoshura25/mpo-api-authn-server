@@ -199,60 +199,12 @@ jobs:
         env:
           STAGING_PACKAGE: ${{ inputs.android-package-name }}
           STAGING_VERSION: ${{ inputs.client-version }}
-          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANDROID_PUBLISH_USER: ${{ github.actor }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           echo "📱 Updating Android client to use staging package: $STAGING_PACKAGE:$STAGING_VERSION"
           cd android-test-client
 
           # Update build.gradle.kts to use staging package instead of latest.release
           sed -i.bak "s|implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")|implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")|g" app/build.gradle.kts
-
-          # Add GitHub Packages repository to settings.gradle.kts for staging package resolution
-          echo "🔧 Adding GitHub Packages repository for staging package resolution..."
-
-          # Backup original settings.gradle.kts
-          cp settings.gradle.kts settings.gradle.kts.bak
-
-          # Add GitHub Packages repository with authentication
-          cat > settings.gradle.kts <<EOF
-          import org.gradle.api.initialization.resolve.RepositoriesMode
-
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-                  mavenLocal() // For locally published generated clients
-
-                  // GitHub Packages for staging client library
-                  maven {
-                      url = uri("https://maven.pkg.github.com/${GITHUB_REPOSITORY}")
-                      credentials {
-                          username = System.getenv("ANDROID_PUBLISH_USER") ?: project.findProperty("GitHubPackagesUsername") as String?
-                          password = System.getenv("ANDROID_PUBLISH_TOKEN") ?: project.findProperty("GitHubPackagesPassword") as String?
-                      }
-                  }
-              }
-          }
-
-          rootProject.name = "WebAuthn Test Client"
-          include ':app'
-          // Removed ':client-library' - now using published packages from GitHub Packages
-          EOF
-
-          echo "📋 Updated settings.gradle.kts with GitHub Packages repository"
-          echo "✅ Android client updated to use staging package with proper repository configuration"
-          # TODO: REMOVE THIS LATER
-          cat settings.gradle.kts
 
       - name: Enable KVM group permissions for Android Emulator
         run: |
@@ -359,6 +311,9 @@ jobs:
       - name: Run Android E2E tests with emulator
         id: android-test-execution
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GITHUB_PACKAGES_USERNAME: ${{ github.actor }}
+          GITHUB_PACKAGES_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           api-level: ${{ env.ANDROID_API_VERSION }}
           target: google_apis
@@ -387,25 +342,6 @@ jobs:
           docker compose down -v
           rm -f docker-compose.override.yml
           docker system prune -f
-
-      - name: Restore Android project files
-        if: always()
-        continue-on-error: true
-        run: |
-          echo "🧹 Restoring original Android project files"
-          cd android-test-client
-
-          # Restore original settings.gradle.kts if backup exists
-          if [[ -f settings.gradle.kts.bak ]]; then
-            mv settings.gradle.kts.bak settings.gradle.kts
-            echo "✅ Restored original settings.gradle.kts"
-          fi
-
-          # Restore original build.gradle.kts if backup exists
-          if [[ -f app/build.gradle.kts.bak ]]; then
-            mv app/build.gradle.kts.bak app/build.gradle.kts
-            echo "✅ Restored original app/build.gradle.kts"
-          fi
 
       # Phase 4 Integration: Cleanup staging packages after testing
       - name: Cleanup staging packages

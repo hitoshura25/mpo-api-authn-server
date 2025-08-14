@@ -1,5 +1,3 @@
-import org.gradle.api.initialization.resolve.RepositoriesMode
-
 pluginManagement {
     repositories {
         google()
@@ -8,7 +6,6 @@ pluginManagement {
     }
 }
 dependencyResolutionManagement {
-    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()
         mavenCentral()
@@ -17,5 +14,5 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "WebAuthn Test Client"
-include ':app'
+include(":app")
 // Removed ':client-library' - now using published packages from GitHub Packages

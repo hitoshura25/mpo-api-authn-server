@@ -14,8 +14,8 @@ fi
 echo "🧪 Running WebAuthnFlowTest instrumentation tests..."
 cd android-test-client
 ./gradlew connectedAndroidTest \
-  -PGitHubPackagesUsername="$ANDROID_PUBLISH_USER" \
-  -PGitHubPackagesPassword="$ANDROID_PUBLISH_TOKEN" \
+  -PGitHubPackagesUsername="$GITHUB_PACKAGES_USERNAME" \
+  -PGitHubPackagesPassword="$GITHUB_PACKAGES_PASSWORD" \
   --build-cache --parallel --configuration-cache --no-daemon
 
 TEST_EXIT_CODE=$?

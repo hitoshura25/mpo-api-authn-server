@@ -62,12 +62,14 @@ jobs:
     outputs:
       java-version: ${{ steps.config.outputs.java-version }}
       android-api-version: ${{ steps.config.outputs.android-api-version }}
+      npm-scope: ${{ steps.config.outputs.npm-scope }}
     steps:
       - name: Setup configuration outputs
         id: config
         run: |
           echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
           echo "android-api-version=${{ env.ANDROID_API_VERSION }}" >> $GITHUB_OUTPUT
+          echo "npm-scope=${{ env.NPM_SCOPE }}" >> $GITHUB_OUTPUT
 
   # Job 2: Validate Docker images are available
   validate-images:
@@ -147,7 +149,7 @@ jobs:
       publish-type: "staging"
       client-version: ${{ needs.generate-version.outputs.version }}
       pr-number: ${{ github.event.pull_request.number }}
-      npm-scope: ${{ env.NPM_SCOPE }}
+      npm-scope: ${{ needs.setup-config.outputs.npm-scope }}
 
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:

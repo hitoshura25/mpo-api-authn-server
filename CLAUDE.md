@@ -272,6 +272,29 @@ docker-operations-job:
 - **Pattern**: When adding `needs.job-name.outputs.X`, immediately verify `job-name` is in the `needs` array
 - **Validation**: GitHub Actions will error at workflow start if dependency chain is broken
 
+**Callable Workflow Environment Variable Limitation (August 2025):**
+- **❌ NEVER pass environment variables directly to callable workflows via `with` parameters**: Environment variables are not accessible in callable workflow contexts
+- **✅ ALWAYS convert environment variables to job outputs before passing to callable workflows**:
+  ```yaml
+  # WRONG - env vars not accessible in callable workflow context
+  with:
+    npm-scope: ${{ env.NPM_SCOPE }}
+  
+  # CORRECT - convert to job output first
+  setup-config:
+    outputs:
+      npm-scope: ${{ steps.config.outputs.npm-scope }}
+    steps:
+      - id: config
+        run: echo "npm-scope=${{ env.NPM_SCOPE }}" >> $GITHUB_OUTPUT
+  
+  # Then use job output in callable workflow
+  with:
+    npm-scope: ${{ needs.setup-config.outputs.npm-scope }}
+  ```
+- **Root cause**: GitHub Actions callable workflows execute in isolated contexts where calling workflow's environment variables are not available
+- **Pattern**: Use setup-config jobs to convert env vars to outputs for callable workflow consumption
+
 **E2E Test Client Version Synchronization:**
 - **❌ NEVER construct version strings in E2E workflows**: `pr-${{ inputs.pr-number }}.${{ github.run_number }}` creates version mismatches
 - **✅ ALWAYS pass actual published version**: Use `${{ needs.generate-version.outputs.version }}` for perfect sync

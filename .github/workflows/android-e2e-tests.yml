@@ -199,11 +199,8 @@ jobs:
           echo "📱 Updating Android client to use staging package: $STAGING_PACKAGE:$STAGING_VERSION"
           cd android-test-client
 
-          # Update build.gradle to use staging package instead of file dependency
-          sed -i.bak "s|implementation project(':client-library')|implementation '$STAGING_PACKAGE:$STAGING_VERSION'|g" app/build.gradle
-
-          # Remove client-library project from settings.gradle during E2E
-          sed -i.bak '/include.*client-library/d' settings.gradle
+          # Update build.gradle.kts to use staging package instead of latest.release
+          sed -i.bak "s|implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")|implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")|g" app/build.gradle.kts
 
           echo "✅ Android client updated to use staging package"
 

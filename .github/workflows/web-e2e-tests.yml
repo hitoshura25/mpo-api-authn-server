@@ -163,7 +163,7 @@ jobs:
         with:
           node-version: '20'
           registry-url: 'https://npm.pkg.github.com'
-          scope: '@vmenon25'
+          scope: '@hitoshura25'
 
       - name: Update web client to use staging package
         env:
@@ -174,12 +174,12 @@ jobs:
           echo "🌐 Updating web client to use staging package: $STAGING_PACKAGE@$STAGING_VERSION"
           cd web-test-client
 
-          # Update package.json to use staging package instead of local generated client
+          # Update package.json to use staging package instead of production package
           npm pkg set dependencies."$STAGING_PACKAGE"="$STAGING_VERSION"
-          npm pkg delete dependencies."./generated-client"
+          npm pkg delete dependencies."@vmenon25/mpo-webauthn-client"
 
           # Configure npm to use GitHub Packages for staging packages
-          echo "@vmenon25:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "@hitoshura25:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
           # Install staging package

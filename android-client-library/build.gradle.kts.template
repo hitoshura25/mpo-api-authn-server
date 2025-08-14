@@ -90,8 +90,10 @@ publishing {
             name = "GitHubPackages"
             url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
             credentials {
-                username = System.getenv("ANDROID_PUBLISH_USER")
-                password = System.getenv("ANDROID_PUBLISH_TOKEN")
+                username = project.findProperty("GitHubPackagesUsername") as String?
+                    ?: System.getenv("ANDROID_PUBLISH_USER")
+                password = project.findProperty("GitHubPackagesPassword") as String?
+                    ?: System.getenv("ANDROID_PUBLISH_TOKEN")
             }
         }
     }

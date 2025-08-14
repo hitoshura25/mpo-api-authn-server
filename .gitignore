@@ -54,4 +54,7 @@ android-client-library/src/test/
 # Generated Android client build file (assembled from template + extracted dependencies)
 android-client-library/build.gradle.kts
 
+# OpenAPI Generator metadata (updated on each generation)
+android-client-library/.openapi-generator/
+
 android-client-library/local.properties

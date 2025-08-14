@@ -214,24 +214,38 @@ jobs:
           # Update package.json for GitHub Packages
           npm pkg set name="${{ steps.set-package-names.outputs.typescript-package-name }}"
           npm pkg set version="${{ inputs.client-version }}"
-          npm pkg set "publishConfig.registry"="${{ steps.set-package-names.outputs.npm-registry }}"
           npm pkg set "publishConfig.${{ inputs.npm-scope }}:registry"="${{ steps.set-package-names.outputs.npm-registry }}"
 
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig'
 
-          # Install TypeScript compiler
-          echo "🔧 Installing TypeScript compiler..."
-          npm install --save-dev typescript
-          
           # Build TypeScript client (CommonJS + ESM + type declarations)
           echo "🔨 Building TypeScript client..."
           npx tsc --project tsconfig.json
           npx tsc --project tsconfig.esm.json
           
-          # Verify build outputs exist
+          # Verify build outputs exist and are valid
           echo "📁 Verifying build outputs:"
           ls -la dist/
+          
+          # Validate required entry points exist
+          echo "🔍 Validating package entry points..."
+          if [ ! -f "dist/index.js" ]; then
+            echo "❌ ERROR: Main entry point dist/index.js not found"
+            exit 1
+          fi
+          
+          if [ ! -f "dist/index.d.ts" ]; then
+            echo "❌ ERROR: TypeScript declarations dist/index.d.ts not found"
+            exit 1
+          fi
+          
+          if [ ! -f "dist/esm/index.js" ]; then
+            echo "❌ ERROR: ESM entry point dist/esm/index.js not found"
+            exit 1
+          fi
+          
+          echo "✅ All required entry points exist"
           
           # Verify npm authentication
           echo "🔍 Verifying npm authentication..."
@@ -265,18 +279,33 @@ jobs:
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig // "none"'
 
-          # Install TypeScript compiler
-          echo "🔧 Installing TypeScript compiler..."
-          npm install --save-dev typescript
-          
           # Build TypeScript client (CommonJS + ESM + type declarations)
           echo "🔨 Building TypeScript client..."
           npx tsc --project tsconfig.json
           npx tsc --project tsconfig.esm.json
           
-          # Verify build outputs exist
+          # Verify build outputs exist and are valid
           echo "📁 Verifying build outputs:"
           ls -la dist/
+          
+          # Validate required entry points exist
+          echo "🔍 Validating package entry points..."
+          if [ ! -f "dist/index.js" ]; then
+            echo "❌ ERROR: Main entry point dist/index.js not found"
+            exit 1
+          fi
+          
+          if [ ! -f "dist/index.d.ts" ]; then
+            echo "❌ ERROR: TypeScript declarations dist/index.d.ts not found"
+            exit 1
+          fi
+          
+          if [ ! -f "dist/esm/index.js" ]; then
+            echo "❌ ERROR: ESM entry point dist/esm/index.js not found"
+            exit 1
+          fi
+          
+          echo "✅ All required entry points exist"
           
           # Verify npm authentication
           echo "🔍 Verifying npm authentication..."

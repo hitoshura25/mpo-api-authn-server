@@ -180,8 +180,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          registry-url: ${{ steps.set-package-names.outputs.npm-registry }}
-          scope: ${{ inputs.npm-scope }}
+          # Remove global registry configuration to allow installing from default npm registry
+          # Publishing will use explicit --registry flags instead
 
       - name: Check if TypeScript package version already exists
         if: inputs.publish-type == 'staging'
@@ -215,6 +215,10 @@ jobs:
           npm pkg set name="${{ steps.set-package-names.outputs.typescript-package-name }}"
           npm pkg set version="${{ inputs.client-version }}"
           npm pkg set "publishConfig.${{ inputs.npm-scope }}:registry"="${{ steps.set-package-names.outputs.npm-registry }}"
+
+          # Configure authentication for GitHub Packages
+          echo "${{ inputs.npm-scope }}:registry=${{ steps.set-package-names.outputs.npm-registry }}" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig'
@@ -275,6 +279,9 @@ jobs:
           npm pkg set name="${{ steps.set-package-names.outputs.typescript-package-name }}"
           npm pkg set version="${{ inputs.client-version }}"
           npm pkg delete publishConfig  # Remove GitHub Packages config
+
+          # Configure authentication for npm registry
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig // "none"'

@@ -41,6 +41,10 @@ on:
         description: 'TypeScript package name published'
         required: true
         type: string
+      client-version:
+        description: 'Client library version published'
+        required: true
+        type: string
     outputs:
       tests-passed:
         description: 'Boolean indicating if web tests passed'
@@ -168,7 +172,7 @@ jobs:
       - name: Update web client to use staging package
         env:
           STAGING_PACKAGE: ${{ inputs.typescript-package-name }}
-          STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+          STAGING_VERSION: ${{ inputs.client-version }}
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🌐 Updating web client to use staging package: $STAGING_PACKAGE@$STAGING_VERSION"
@@ -321,7 +325,7 @@ jobs:
         continue-on-error: true
         env:
           STAGING_PACKAGE: ${{ inputs.typescript-package-name }}
-          STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+          STAGING_VERSION: ${{ inputs.client-version }}
         run: |
           echo "🧹 Cleaning up staging packages (best effort)"
           echo "  TypeScript staging package: $STAGING_PACKAGE@$STAGING_VERSION"

@@ -163,6 +163,7 @@ jobs:
       pr-number: ${{ github.event.pull_request.number }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
+      client-version: ${{ needs.generate-version.outputs.version }}
 
   # Job 4: Call Android E2E tests workflow
   call-android-e2e-tests:
@@ -180,6 +181,7 @@ jobs:
       java-version: ${{ needs.setup-config.outputs.java-version }}
       android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
       android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}
+      client-version: ${{ needs.generate-version.outputs.version }}
 
   # Job 5: Report E2E test results back to PR
   report-results:

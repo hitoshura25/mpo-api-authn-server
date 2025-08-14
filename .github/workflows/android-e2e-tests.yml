@@ -47,6 +47,10 @@ on:
         description: 'Android Maven coordinates published'
         required: true
         type: string
+      client-version:
+        description: 'Client library version published'
+        required: true
+        type: string
     outputs:
       tests-passed:
         description: 'Boolean indicating if Android tests passed'
@@ -194,7 +198,7 @@ jobs:
       - name: Update Android client to use staging package
         env:
           STAGING_PACKAGE: ${{ inputs.android-package-name }}
-          STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+          STAGING_VERSION: ${{ inputs.client-version }}
         run: |
           echo "📱 Updating Android client to use staging package: $STAGING_PACKAGE:$STAGING_VERSION"
           cd android-test-client
@@ -344,7 +348,7 @@ jobs:
         continue-on-error: true
         env:
           STAGING_PACKAGE: ${{ inputs.android-package-name }}
-          STAGING_VERSION: "pr-${{ inputs.pr-number }}.${{ github.run_number }}"
+          STAGING_VERSION: ${{ inputs.client-version }}
         run: |
           echo "🧹 Cleaning up staging packages (best effort)"
           echo "  Android staging package: $STAGING_PACKAGE:$STAGING_VERSION"

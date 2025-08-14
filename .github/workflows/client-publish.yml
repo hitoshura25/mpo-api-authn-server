@@ -220,6 +220,15 @@ jobs:
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig'
 
+          # Build TypeScript client (CommonJS + ESM + type declarations)
+          echo "🔨 Building TypeScript client..."
+          npx tsc --project tsconfig.json
+          npx tsc --project tsconfig.esm.json
+          
+          # Verify build outputs exist
+          echo "📁 Verifying build outputs:"
+          ls -la dist/
+          
           # Verify npm authentication
           echo "🔍 Verifying npm authentication..."
           npm whoami --registry="${{ steps.set-package-names.outputs.npm-registry }}"
@@ -252,6 +261,15 @@ jobs:
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig // "none"'
 
+          # Build TypeScript client (CommonJS + ESM + type declarations)
+          echo "🔨 Building TypeScript client..."
+          npx tsc --project tsconfig.json
+          npx tsc --project tsconfig.esm.json
+          
+          # Verify build outputs exist
+          echo "📁 Verifying build outputs:"
+          ls -la dist/
+          
           # Verify npm authentication
           echo "🔍 Verifying npm authentication..."
           npm whoami

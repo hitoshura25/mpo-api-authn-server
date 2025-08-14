@@ -421,6 +421,11 @@ docker-operations-job:
    - **File Separation**: Use `.sarif` extension for GitHub Security, `.json` for PR comments with custom fields
    - **PR Comment Format**: PR script must handle consolidated scan results format, not direct Trivy format
    - **Common failures**: Assuming `load: true` images available across runners, SARIF category collisions, wrong data format for PR comments
+10. **Latest Dependencies**: ALWAYS use latest versions of dependencies and plugins to avoid version conflicts
+   - **Root cause**: OpenAPI generator plugin version conflicts caused OkHttp 4.12.0 vs 4.10.0 constraint errors
+   - **Solution**: Upgrade OpenAPI generator plugin to latest version which uses matching OkHttp client version
+   - **Rule**: When facing version constraint conflicts, upgrade the root dependency (plugin/library) rather than downgrade individual dependencies
+   - **Benefits**: Latest versions include security fixes, performance improvements, and compatibility updates
 
 ### 🔍 CRITICAL: Script Integration & Testing Patterns
 

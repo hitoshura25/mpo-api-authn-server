@@ -18,6 +18,8 @@ val gitHubPackagesUsername = System.getenv("GITHUB_PACKAGES_USERNAME")
 val githubPackagesPassword = System.getenv("GITHUB_PACKAGES_PASSWORD")
     ?: project.findProperty("GitHubPackagesPassword") as String?
 
+println("githubPackagesUsername=$gitHubPackagesUsername")
+
 repositories {
     if (githubPackagesPassword?.isNotBlank() == true && githubPackagesPassword?.isNotBlank() == true) {
         // GitHub Packages for staging client library

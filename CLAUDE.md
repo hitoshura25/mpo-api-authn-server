@@ -289,6 +289,24 @@ docker-operations-job:
   ```
 - **Pattern**: When using staging packages for E2E tests, update imports in BOTH package.json and source files
 
+**Android GitHub Packages Repository Configuration (August 2025):**
+- **❌ NEVER forget to add GitHub Packages repository when using staging packages in Android E2E tests**
+- **✅ ALWAYS add GitHub Packages maven repository with authentication to settings.gradle**
+- **Root cause**: Android E2E tests failed with "Could not find package" because staging packages are published to GitHub Packages but Android project only had google/mavenCentral repositories
+- **Solution**: Dynamically update settings.gradle during E2E tests to include GitHub Packages repository with authentication
+- **Critical repository configuration**:
+  ```gradle
+  maven {
+      url = uri("https://maven.pkg.github.com/${GITHUB_REPOSITORY}")
+      credentials {
+          username = System.getenv("GITHUB_ACTOR")
+          password = System.getenv("GITHUB_TOKEN")
+      }
+  }
+  ```
+- **Important**: Use `${{ github.repository }}` (not hardcoded username) to make workflows repository-agnostic
+- **Pattern**: When using staging Android packages, update BOTH app/build.gradle.kts dependency AND settings.gradle repositories
+
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 
 **AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**

@@ -199,6 +199,9 @@ jobs:
         env:
           STAGING_PACKAGE: ${{ inputs.android-package-name }}
           STAGING_VERSION: ${{ inputs.client-version }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
         run: |
           echo "📱 Updating Android client to use staging package: $STAGING_PACKAGE:$STAGING_VERSION"
           cd android-test-client
@@ -206,7 +209,48 @@ jobs:
           # Update build.gradle.kts to use staging package instead of latest.release
           sed -i.bak "s|implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")|implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")|g" app/build.gradle.kts
 
-          echo "✅ Android client updated to use staging package"
+          # Add GitHub Packages repository to settings.gradle for staging package resolution
+          echo "🔧 Adding GitHub Packages repository for staging package resolution..."
+
+          # Backup original settings.gradle
+          cp settings.gradle settings.gradle.bak
+
+          # Add GitHub Packages repository with authentication
+          cat > settings.gradle <<EOF
+          import org.gradle.api.initialization.resolve.RepositoriesMode
+
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+                  mavenLocal() // For locally published generated clients
+
+                  // GitHub Packages for staging client library
+                  maven {
+                      url = uri("https://maven.pkg.github.com/${GITHUB_REPOSITORY}")
+                      credentials {
+                          username = System.getenv("GITHUB_ACTOR") ?: "${GITHUB_ACTOR}"
+                          password = System.getenv("GITHUB_TOKEN") ?: "${GITHUB_TOKEN}"
+                      }
+                  }
+              }
+          }
+
+          rootProject.name = "WebAuthn Test Client"
+          include ':app'
+          // Removed ':client-library' - now using published packages from GitHub Packages
+          EOF
+
+          echo "📋 Updated settings.gradle with GitHub Packages repository"
+          echo "✅ Android client updated to use staging package with proper repository configuration"
 
       - name: Enable KVM group permissions for Android Emulator
         run: |
@@ -341,6 +385,25 @@ jobs:
           docker compose down -v
           rm -f docker-compose.override.yml
           docker system prune -f
+
+      - name: Restore Android project files
+        if: always()
+        continue-on-error: true
+        run: |
+          echo "🧹 Restoring original Android project files"
+          cd android-test-client
+
+          # Restore original settings.gradle if backup exists
+          if [[ -f settings.gradle.bak ]]; then
+            mv settings.gradle.bak settings.gradle
+            echo "✅ Restored original settings.gradle"
+          fi
+
+          # Restore original build.gradle.kts if backup exists
+          if [[ -f app/build.gradle.kts.bak ]]; then
+            mv app/build.gradle.kts.bak app/build.gradle.kts
+            echo "✅ Restored original app/build.gradle.kts"
+          fi
 
       # Phase 4 Integration: Cleanup staging packages after testing
       - name: Cleanup staging packages

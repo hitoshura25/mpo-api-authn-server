@@ -213,10 +213,10 @@ jobs:
           echo "🔧 Adding GitHub Packages repository for staging package resolution..."
 
           # Backup original settings.gradle
-          cp settings.gradle settings.gradle.bak
+          cp settings.gradle.kts settings.gradle.kts.bak
 
           # Add GitHub Packages repository with authentication
-          cat > settings.gradle <<EOF
+          cat > settings.gradle.kts <<EOF
           import org.gradle.api.initialization.resolve.RepositoriesMode
 
           pluginManagement {
@@ -252,7 +252,7 @@ jobs:
           echo "📋 Updated settings.gradle with GitHub Packages repository"
           echo "✅ Android client updated to use staging package with proper repository configuration"
           # TODO: REMOVE THIS LATER
-          cat settings.gradle
+          cat settings.gradle.kts
 
       - name: Enable KVM group permissions for Android Emulator
         run: |

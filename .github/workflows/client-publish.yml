@@ -220,6 +220,10 @@ jobs:
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig'
 
+          # Install TypeScript compiler
+          echo "🔧 Installing TypeScript compiler..."
+          npm install --save-dev typescript
+          
           # Build TypeScript client (CommonJS + ESM + type declarations)
           echo "🔨 Building TypeScript client..."
           npx tsc --project tsconfig.json
@@ -261,6 +265,10 @@ jobs:
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig // "none"'
 
+          # Install TypeScript compiler
+          echo "🔧 Installing TypeScript compiler..."
+          npm install --save-dev typescript
+          
           # Build TypeScript client (CommonJS + ESM + type declarations)
           echo "🔨 Building TypeScript client..."
           npx tsc --project tsconfig.json

@@ -215,8 +215,26 @@ jobs:
 
       - name: Build web-test-client TypeScript bundles
         working-directory: web-test-client
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🔨 Building TypeScript web client bundles..."
+          
+          # Ensure npm registry configuration is available for build
+          echo "🔧 Verifying npm registry configuration for build..."
+          if [[ ! -f .npmrc ]]; then
+            echo "⚠️ .npmrc not found, recreating GitHub Packages configuration..."
+            echo "@hitoshura25:registry=https://npm.pkg.github.com" >> .npmrc
+            echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          fi
+          
+          echo "📋 Current .npmrc configuration:"
+          cat .npmrc
+          
+          # Verify package installation before build
+          echo "🔍 Verifying staging package availability..."
+          npm list | grep "@hitoshura25" || echo "Staging package not found in node_modules"
+          
           npm run build
           echo "✅ Web client bundles built successfully"
 

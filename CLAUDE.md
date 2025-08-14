@@ -311,6 +311,7 @@ docker-operations-job:
   sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/webauthn-client.ts
   ```
 - **Pattern**: When using staging packages for E2E tests, update imports in BOTH package.json and source files
+- **Build Step Requirements**: Ensure npm registry configuration (`.npmrc`) and authentication tokens persist across workflow steps
 
 **Android GitHub Packages Repository Configuration (August 2025):**
 - **❌ NEVER forget to add GitHub Packages repository when using staging packages in Android E2E tests**

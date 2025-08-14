@@ -238,6 +238,45 @@ docker-operations-job:
 2. **generate-tests.sh Syntax Error**: `Elif` used instead of `elif` on line 39 - case sensitivity issue
 3. **claude-code-security-review Action**: Used `@v1` but only `@main` exists - verify action versions before use
 
+#### **CRITICAL Client Publishing & E2E Workflow Learnings:**
+
+**GitHub Packages Credential Resolution (August 2025):**
+- **❌ NEVER rely solely on fallback patterns for CI credentials**: Environment variables may not resolve as expected in GitHub Actions
+- **✅ ALWAYS provide explicit Gradle properties for reliable publishing**:
+  ```yaml
+  ./gradlew :android-client-library:publish \
+    -PGitHubPackagesUsername="${ANDROID_PUBLISH_USER}" \
+    -PGitHubPackagesPassword="${ANDROID_PUBLISH_TOKEN}" \
+    -PclientVersion="${CLIENT_VERSION}" \
+    # ... other properties
+  ```
+- **Why**: Fallback patterns like `project.findProperty("GitHubPackagesUsername") ?: System.getenv("ANDROID_PUBLISH_USER")` may fail in CI environments even when environment variables are set
+- **Test Strategy**: Always test both local development (properties) AND CI environments (explicit property passing)
+
+**GitHub Actions Job Dependencies (August 2025):**
+- **❌ NEVER reference job outputs without including the job in `needs`**: `${{ needs.generate-version.outputs.version }}` will fail if `generate-version` not in dependency chain
+- **✅ ALWAYS update `needs` array when adding output references**:
+  ```
+  # WRONG - will fail
+  job-name:
+    needs: [ other-job ]
+    with:
+      param: ${{ needs.missing-job.outputs.value }}
+
+  # CORRECT - fixed by adding missing-job to needs
+  job-name:
+    needs: [ other-job, missing-job ]
+    with:
+      param: ${{ needs.missing-job.outputs.value }}
+  ```
+- **Pattern**: When adding `needs.job-name.outputs.X`, immediately verify `job-name` is in the `needs` array
+- **Validation**: GitHub Actions will error at workflow start if dependency chain is broken
+
+**E2E Test Client Version Synchronization:**
+- **❌ NEVER construct version strings in E2E workflows**: `pr-${{ inputs.pr-number }}.${{ github.run_number }}` creates version mismatches
+- **✅ ALWAYS pass actual published version**: Use `${{ needs.generate-version.outputs.version }}` for perfect sync
+- **Why**: E2E tests must consume the exact same version that was published, not a reconstructed approximation
+
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 
 **AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**

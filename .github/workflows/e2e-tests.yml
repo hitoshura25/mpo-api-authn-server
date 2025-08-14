@@ -53,6 +53,7 @@ env:
   WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image }}
   TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
   BASE_VERSION: "1.0"
+  NPM_SCOPE: "@hitoshura25"
 
 jobs:
   # Job 1: Setup configuration for callable workflows (convert env vars to job outputs)
@@ -146,7 +147,7 @@ jobs:
       publish-type: "staging"
       client-version: ${{ needs.generate-version.outputs.version }}
       pr-number: ${{ github.event.pull_request.number }}
-      npm-scope: "@hitoshura25"
+      npm-scope: ${{ env.NPM_SCOPE }}
 
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:

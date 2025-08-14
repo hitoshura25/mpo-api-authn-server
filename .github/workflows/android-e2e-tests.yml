@@ -209,10 +209,10 @@ jobs:
           # Update build.gradle.kts to use staging package instead of latest.release
           sed -i.bak "s|implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")|implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")|g" app/build.gradle.kts
 
-          # Add GitHub Packages repository to settings.gradle for staging package resolution
+          # Add GitHub Packages repository to settings.gradle.kts for staging package resolution
           echo "🔧 Adding GitHub Packages repository for staging package resolution..."
 
-          # Backup original settings.gradle
+          # Backup original settings.gradle.kts
           cp settings.gradle.kts settings.gradle.kts.bak
 
           # Add GitHub Packages repository with authentication
@@ -249,7 +249,7 @@ jobs:
           // Removed ':client-library' - now using published packages from GitHub Packages
           EOF
 
-          echo "📋 Updated settings.gradle with GitHub Packages repository"
+          echo "📋 Updated settings.gradle.kts with GitHub Packages repository"
           echo "✅ Android client updated to use staging package with proper repository configuration"
           # TODO: REMOVE THIS LATER
           cat settings.gradle.kts
@@ -395,10 +395,10 @@ jobs:
           echo "🧹 Restoring original Android project files"
           cd android-test-client
 
-          # Restore original settings.gradle if backup exists
-          if [[ -f settings.gradle.bak ]]; then
-            mv settings.gradle.bak settings.gradle
-            echo "✅ Restored original settings.gradle"
+          # Restore original settings.gradle.kts if backup exists
+          if [[ -f settings.gradle.kts.bak ]]; then
+            mv settings.gradle.kts.bak settings.gradle.kts
+            echo "✅ Restored original settings.gradle.kts"
           fi
 
           # Restore original build.gradle.kts if backup exists

@@ -180,8 +180,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          # Remove global registry configuration to allow installing from default npm registry
-          # Publishing will use explicit --registry flags instead
+          registry-url: ${{ steps.set-package-names.outputs.npm-registry }}
+          scope: ${{ inputs.npm-scope }}
 
       - name: Check if TypeScript package version already exists
         if: inputs.publish-type == 'staging'
@@ -225,32 +225,31 @@ jobs:
 
           # Build TypeScript client (CommonJS + ESM + type declarations)
           echo "🔨 Building TypeScript client..."
-          npx tsc --project tsconfig.json
-          npx tsc --project tsconfig.esm.json
-          
+          npm run build
+
           # Verify build outputs exist and are valid
           echo "📁 Verifying build outputs:"
           ls -la dist/
-          
+
           # Validate required entry points exist
           echo "🔍 Validating package entry points..."
           if [ ! -f "dist/index.js" ]; then
             echo "❌ ERROR: Main entry point dist/index.js not found"
             exit 1
           fi
-          
+
           if [ ! -f "dist/index.d.ts" ]; then
             echo "❌ ERROR: TypeScript declarations dist/index.d.ts not found"
             exit 1
           fi
-          
+
           if [ ! -f "dist/esm/index.js" ]; then
             echo "❌ ERROR: ESM entry point dist/esm/index.js not found"
             exit 1
           fi
-          
+
           echo "✅ All required entry points exist"
-          
+
           # Verify npm authentication
           echo "🔍 Verifying npm authentication..."
           npm whoami --registry="${{ steps.set-package-names.outputs.npm-registry }}"
@@ -290,30 +289,30 @@ jobs:
           echo "🔨 Building TypeScript client..."
           npx tsc --project tsconfig.json
           npx tsc --project tsconfig.esm.json
-          
+
           # Verify build outputs exist and are valid
           echo "📁 Verifying build outputs:"
           ls -la dist/
-          
+
           # Validate required entry points exist
           echo "🔍 Validating package entry points..."
           if [ ! -f "dist/index.js" ]; then
             echo "❌ ERROR: Main entry point dist/index.js not found"
             exit 1
           fi
-          
+
           if [ ! -f "dist/index.d.ts" ]; then
             echo "❌ ERROR: TypeScript declarations dist/index.d.ts not found"
             exit 1
           fi
-          
+
           if [ ! -f "dist/esm/index.js" ]; then
             echo "❌ ERROR: ESM entry point dist/esm/index.js not found"
             exit 1
           fi
-          
+
           echo "✅ All required entry points exist"
-          
+
           # Verify npm authentication
           echo "🔍 Verifying npm authentication..."
           npm whoami

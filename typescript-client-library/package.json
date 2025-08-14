@@ -6,7 +6,7 @@
   "module": "dist/index.esm.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "echo 'Build handled by parent project'",
+    "build": "tsc && tsc -p tsconfig.json && tsc -p tsconfig.esm.json",
     "prepublishOnly": "echo 'Publishing client library'"
   },
   "keywords": [
@@ -24,8 +24,5 @@
   "bugs": {
     "url": "https://github.com/hitoshura25/mpo-api-authn-server/issues"
   },
-  "homepage": "https://github.com/hitoshura25/mpo-api-authn-server#readme",
-  "publishConfig": {
-    "registry": "https://registry.npmjs.org"
-  }
+  "homepage": "https://github.com/hitoshura25/mpo-api-authn-server#readme"
 }

@@ -19,10 +19,14 @@ val githubPackagesPassword = System.getenv("GITHUB_PACKAGES_PASSWORD")
     ?: project.findProperty("GitHubPackagesPassword") as String?
 
 println("githubPackagesUsername=$gitHubPackagesUsername")
+println("githubPackagesPassword=${if (githubPackagesPassword?.isNotBlank() == true) "***SET***" else "NOT_SET"}")
 
 repositories {
-    if (githubPackagesPassword?.isNotBlank() == true && githubPackagesPassword?.isNotBlank() == true) {
+    if (gitHubPackagesUsername?.isNotBlank() == true && githubPackagesPassword?.isNotBlank() == true) {
         // GitHub Packages for staging client library
+        println("✅ Adding GitHub Packages repository with credentials")
+        println("   URL: https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+        println("   Username: $gitHubPackagesUsername")
         maven {
             url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
             credentials {
@@ -30,5 +34,9 @@ repositories {
                 password = githubPackagesPassword
             }
         }
+    } else {
+        println("❌ GitHub Packages repository NOT added - missing credentials:")
+        println("   Username: ${gitHubPackagesUsername ?: "NOT_SET"}")
+        println("   Password: ${if (githubPackagesPassword?.isNotBlank() == true) "SET" else "NOT_SET"}")
     }
 }

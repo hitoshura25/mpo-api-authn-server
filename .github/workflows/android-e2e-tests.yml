@@ -204,7 +204,14 @@ jobs:
           cd android-test-client
 
           # Update build.gradle.kts to use staging package instead of latest.release
+          echo "📝 Updating Android dependency:"
+          echo "  FROM: implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")"
+          echo "  TO:   implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")"
+          
           sed -i.bak "s|implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")|implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")|g" app/build.gradle.kts
+          
+          echo "📋 Dependency update result:"
+          grep "implementation.*mpo-webauthn-android-client" app/build.gradle.kts || echo "❌ No Android client dependency found!"
 
       - name: Enable KVM group permissions for Android Emulator
         run: |

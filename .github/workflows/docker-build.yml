@@ -107,7 +107,7 @@ jobs:
   build-scan-push-docker-images:
     runs-on: ubuntu-latest
     if: inputs.webauthn-docker-changes-detected == true ||
-      test-credentials-docker-changes-detected == true
+      inputs.test-credentials-docker-changes-detected == true
     permissions:
       contents: read
       packages: write

@@ -52,12 +52,8 @@ configurations.all {
 dependencies {
     // GENERATED_DEPENDENCIES_PLACEHOLDER
     
-    // Add annotation support for generated code
-    // JSR-305 provides @Nullable, @Nonnull annotations 
-    implementation("com.google.code.findbugs:jsr305:3.0.2")
-    
-    // javax.annotation-api provides @Generated annotation
-    // This is the pre-Jakarta version that matches the generated code
+    // Generated code uses @javax.annotation.Generated, so we need javax version
+    // Jakarta version is excluded during dependency extraction to prevent conflicts
     implementation("javax.annotation:javax.annotation-api:1.3.2")
 }
 

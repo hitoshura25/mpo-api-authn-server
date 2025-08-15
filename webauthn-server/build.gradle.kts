@@ -290,6 +290,16 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
 
                     lines.forEach { line ->
                         val trimmedLine = line.trim()
+                        
+                        // Skip problematic dependencies that cause Android conflicts
+                        val shouldSkip = trimmedLine.contains("jakarta.ws.rs:jakarta.ws.rs-api") ||
+                                       trimmedLine.contains("jakarta.annotation:jakarta.annotation-api")
+                        
+                        if (shouldSkip) {
+                            convertedLines.add("    // Excluded: $trimmedLine")
+                            return@forEach
+                        }
+                        
                         when {
                             trimmedLine.isEmpty() || trimmedLine.startsWith("//") -> {
                                 convertedLines.add("    $trimmedLine")

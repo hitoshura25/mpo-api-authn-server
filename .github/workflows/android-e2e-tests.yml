@@ -207,9 +207,9 @@ jobs:
           echo "📝 Updating Android dependency:"
           echo "  FROM: implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")"
           echo "  TO:   implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")"
-          
+
           sed -i.bak "s|implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")|implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")|g" app/build.gradle.kts
-          
+
           echo "📋 Dependency update result:"
           grep "implementation.*mpo-webauthn-android-client" app/build.gradle.kts || echo "❌ No Android client dependency found!"
 
@@ -232,6 +232,7 @@ jobs:
 
       - name: create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ env.ANDROID_API_VERSION }}

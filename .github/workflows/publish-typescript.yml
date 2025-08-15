@@ -161,7 +161,8 @@ jobs:
           echo "  Client version: ${CLIENT_VERSION}"
           echo "  npm package name: ${NPM_NAME}"
 
-          # Write properties to gradle.properties to avoid invalidating the configuration cache
+          # Write properties to gradle.properties, ensuring a newline first
+          echo "" >> gradle.properties
           echo "clientVersion=${CLIENT_VERSION}" >> gradle.properties
           echo "npmName=${NPM_NAME}" >> gradle.properties
 

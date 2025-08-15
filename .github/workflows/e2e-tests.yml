@@ -89,17 +89,21 @@ jobs:
       - name: Generate E2E cache keys
         id: cache-keys
         run: |
-          # Extract image digests from full image tags for cache key
-          WEBAUTHN_DIGEST="${{ inputs.webauthn_server_image }}"
-          TEST_CREDS_DIGEST="${{ inputs.test_credentials_image }}"
+          # Extract image tags for cache key (use full tag, not digest)
+          WEBAUTHN_IMAGE_TAG="${{ inputs.webauthn_server_image }}"
+          TEST_CREDS_IMAGE_TAG="${{ inputs.test_credentials_image }}"
+          
+          # Create hash-friendly versions of image tags (replace problematic characters)
+          WEBAUTHN_TAG_HASH=$(echo "$WEBAUTHN_IMAGE_TAG" | sed 's|[:/]|-|g')
+          TEST_CREDS_TAG_HASH=$(echo "$TEST_CREDS_IMAGE_TAG" | sed 's|[:/]|-|g')
           
           # Generate hash of E2E test files and configurations
           WEB_FILES_HASH=$(find web-test-client .github/workflows/web-e2e-tests.yml -type f -exec sha256sum {} \; 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-files")
           ANDROID_FILES_HASH=$(find android-test-client .github/workflows/android-e2e-tests.yml -type f -exec sha256sum {} \; 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-files")
           
           # Create platform-specific cache keys
-          WEB_CACHE_KEY="web-e2e-results-${WEBAUTHN_DIGEST##*:}-${TEST_CREDS_DIGEST##*:}-${WEB_FILES_HASH}"
-          ANDROID_CACHE_KEY="android-e2e-results-${WEBAUTHN_DIGEST##*:}-${TEST_CREDS_DIGEST##*:}-${ANDROID_FILES_HASH}"
+          WEB_CACHE_KEY="web-e2e-results-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}-${WEB_FILES_HASH}"
+          ANDROID_CACHE_KEY="android-e2e-results-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}-${ANDROID_FILES_HASH}"
           
           echo "web-key=${WEB_CACHE_KEY}" >> $GITHUB_OUTPUT
           echo "android-key=${ANDROID_CACHE_KEY}" >> $GITHUB_OUTPUT
@@ -107,6 +111,9 @@ jobs:
           echo "🔑 Cache Keys Generated:"
           echo "  Web E2E: ${WEB_CACHE_KEY}"
           echo "  Android E2E: ${ANDROID_CACHE_KEY}"
+          echo "🏷️  Image Tags:"
+          echo "  WebAuthn: ${WEBAUTHN_IMAGE_TAG} → ${WEBAUTHN_TAG_HASH}"
+          echo "  Test Creds: ${TEST_CREDS_IMAGE_TAG} → ${TEST_CREDS_TAG_HASH}"
 
       - name: Check Web E2E cache
         id: web-cache

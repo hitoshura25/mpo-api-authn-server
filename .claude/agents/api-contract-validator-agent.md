@@ -1,3 +1,9 @@
+---
+name: api-contract-validator-agent
+description: Specialized agent for validating that server implementations perfectly match OpenAPI contracts, ensuring API consistency and preventing client integration issues. Use for contract compliance analysis, endpoint coverage assessment, and automated validation workflows.
+model: inherit
+---
+
 # API Contract Validator Agent
 
 ## Purpose

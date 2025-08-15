@@ -1,6 +1,7 @@
 ---
 name: client-generation-agent
-description: Specialized agent for regenerating API clients across platforms and updating dependent code after OpenAPI specification changes. Use for multi-platform client generation, generated code analysis, and dependent code updates.
+description: Specialized agent for regenerating API clients across platforms and updating dependent code after OpenAPI specification changes. Use for multi-platform client generation, generated code analysis, dependency management, and coordinated client library publishing.
+model: inherit
 ---
 
 # Client Generation Agent

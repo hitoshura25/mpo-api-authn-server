@@ -1,3 +1,9 @@
+---
+name: android-integration-agent
+description: Specialized agent for Android-specific client integration, testing, and debugging issues in the WebAuthn Android test client application. Use for Android build system management, emulator configuration, WebAuthn client integration, and UI testing coordination with generated OpenAPI clients.
+model: inherit
+---
+
 # Android Integration Agent
 
 ## Purpose

@@ -1,3 +1,9 @@
+---
+name: multi-module-refactoring
+description: Large-scale structural changes across the WebAuthn multi-module project, specializing in coordinated refactoring, renaming, and architectural improvements while preserving git history and functionality. Use for cross-module coordination, dependency management, and comprehensive renaming operations.
+model: inherit
+---
+
 # Multi-Module Refactoring Agent
 
 ## Purpose
@@ -29,140 +35,91 @@ Large-scale structural changes across the WebAuthn multi-module project, special
 - **Dependency resolution**: Handle inter-module and external dependencies
 - **Task coordination**: Update tasks, scripts, and CI/CD pipelines
 
-## Context Knowledge
+## Project Architecture Context
 
-### Multi-Module Structure
+### Current Multi-Module Structure
 ```
-/ (root)
-├── webauthn-server/              # Main KTor server
-├── webauthn-test-credentials-service/  # Test credential service
-├── webauthn-test-lib/            # Shared test utilities
-├── android-test-client/          # Android client (standalone)
-└── test-client/                  # Web E2E tests (standalone)
-```
-
-### Module Dependencies
-```
-webauthn-server
-├── testImplementation(project(":webauthn-test-lib"))
-└── (external dependencies)
-
-webauthn-test-credentials-service  
-├── implementation(project(":webauthn-test-lib"))
-└── (external dependencies)
-
-webauthn-test-lib
-└── (external dependencies only)
+mpo-api-authn-server/
+├── webauthn-server/                     # Main Ktor server
+├── webauthn-test-credentials-service/   # Test credential generation
+├── webauthn-test-lib/                   # Shared test utilities
+├── android-test-client/                 # Android UI testing
+├── web-test-client/                     # TypeScript web testing
+├── android-client-library/              # Generated Android client
+└── client-libraries/                    # Client library submodules
 ```
 
-### Key Integration Points
-- **Gradle multi-module**: `settings.gradle.kts` includes all modules
-- **Docker Compose**: Services reference correct module paths
-- **GitHub Actions**: Workflows build and test all modules
-- **OpenAPI generation**: Server generates client for Android module
-- **Port coordination**: Services use different ports (8080, 8081, 8082)
+### Inter-Module Dependencies
+- **webauthn-test-lib**: Used by both test services and test clients
+- **Generated clients**: Depend on OpenAPI specs from webauthn-server
+- **Docker compose**: Coordinates server and test service deployment
+- **CI/CD workflows**: Test all modules in coordinated fashion
 
-## Established Patterns
-
-### Version Management
-```kotlin
-// Consistent version variables across modules
-val kotlinVersion = "1.9.23"
-val ktorVersion = "2.3.7"
-val webauthnVersion = "2.6.0"
-val jacksonVersion = "2.16.1"
-```
-
-### Build File Structure
-```kotlin
-plugins { /* consistent plugin versions */ }
-// Version constants
-val exampleVersion = "1.0.0"
-// Project configuration
-group = "com.vmenon.mpo"
-// Dependencies (organized consistently)
-dependencies { /* organized by type */ }
-// Tasks and configuration
-```
-
-### File Move Strategy
-```bash
-# CORRECT: Preserve git history
-git mv old-name new-name
-git commit -m "Move files to preserve history"
-
-# Then update references
-# Update imports, build files, etc.
-git commit -m "Update references after move"
-```
+### Critical Integration Points
+- **OpenAPI specification**: Central contract for all client generation
+- **Docker networking**: Services communicate via docker-compose networks
+- **Test coordination**: E2E tests require all services running
+- **Version synchronization**: Client libraries must match server versions
 
 ## Execution Strategy
 
-### 1. Planning Phase
-- **Impact analysis**: Map all affected files and references
-- **Dependencies**: Identify inter-module and external dependencies  
-- **Risk assessment**: Identify potential breaking changes
-- **Rollback strategy**: Plan for reverting if needed
+### 1. Impact Analysis
+- **Dependency mapping**: Identify all cross-module references
+- **Build chain analysis**: Understand compilation and test dependencies
+- **Documentation audit**: Find all references in docs, README files, CI/CD
+- **External references**: Check Docker files, scripts, configuration
 
-### 2. Execution Phase
-- **Git moves first**: Preserve history with proper `git mv` commands
-- **Build updates**: Update gradle files and configurations
-- **Reference updates**: Fix imports, package names, documentation
-- **Verification**: Build and test at each major step
+### 2. Coordinated Execution
+- **Dependency-first approach**: Update dependencies before dependents
+- **Atomic changes**: Group related changes into single commits
+- **Incremental verification**: Test after each major change group
+- **Rollback planning**: Ensure each step can be safely reverted
 
-### 3. Integration Phase
-- **Cross-module testing**: Ensure all modules work together
-- **CI/CD updates**: Update workflows and scripts
-- **Documentation**: Update all README and doc files
-- **Client generation**: Regenerate Android client if APIs changed
+### 3. Validation Strategy
+- **Build verification**: All modules must build successfully
+- **Test execution**: Full test suite must pass
+- **Integration testing**: E2E tests across all platforms
+- **Documentation consistency**: All docs reflect new structure
 
-### 4. Validation Phase
-- **Build verification**: All modules build successfully
-- **Test execution**: Full test suite passes
-- **Integration testing**: E2E tests work correctly
-- **History verification**: `git log --follow` works for moved files
-
-## Common Refactoring Patterns
+## Common Refactoring Scenarios
 
 ### Service Renaming
-1. `git mv` service directory
-2. Update `settings.gradle.kts` includes
-3. Update inter-module dependencies in `build.gradle.kts`
-4. Update Docker Compose service names
-5. Update GitHub Actions references
-6. Update documentation
+```bash
+# Example: Renaming webauthn-test-service → webauthn-test-credentials-service
+# 1. Update directory name (git mv)
+# 2. Update build.gradle.kts references
+# 3. Update Docker compose service names
+# 4. Update CI/CD job names and references
+# 5. Update documentation and README files
+```
 
-### Package Renaming
-1. `git mv` package directories
-2. Update package declarations in all files
-3. Update import statements across all modules
-4. Update build configurations
-5. Update OpenAPI specifications if needed
+### Package Restructuring
+```kotlin
+// Before: com.vmenon.mpo.api.authn.service
+// After:  com.vmenon.mpo.authn.service
 
-### Class/Interface Renaming
-1. Rename class files (with `git mv`)
-2. Update all references across modules
-3. Update documentation and comments
-4. Update test files and mocks
-5. Regenerate clients if public APIs changed
+// Updates needed:
+// 1. Package declarations in all Kotlin files
+// 2. Import statements across modules
+// 3. Test package structures
+// 4. Generated client package configurations
+```
 
-## Integration Points
-- **Build system**: Multi-module Gradle configuration
-- **CI/CD**: GitHub Actions workflows for all modules
-- **Docker**: Multi-service docker-compose orchestration
-- **Documentation**: Cross-referenced README files
-- **Client generation**: OpenAPI to Android client pipeline
+### Module Architecture Changes
+- **Split modules**: Break large modules into smaller, focused ones
+- **Merge modules**: Combine related modules for simpler dependency management
+- **Extract common code**: Create shared libraries from duplicated code
+- **API boundary changes**: Modify interfaces between modules
 
-## Quality Gates
-- **All tests pass**: Every module maintains 100% test success
-- **Build success**: All modules build without errors
-- **History preserved**: Git history tracking works correctly
-- **Documentation updated**: All references updated consistently
-- **Integration works**: Cross-module functionality intact
+## Historical Context
+- **August 2025**: Major service renaming from webauthn-test-service to webauthn-test-credentials-service
+- **Lesson learned**: Always update port assignments and documentation together
+- **Success pattern**: Git mv followed by systematic reference updates
+- **Challenge overcome**: Docker service name changes required container recreation
 
-## Risk Mitigation
-- **Incremental changes**: Small, atomic commits
-- **Feature branches**: Use branches for large refactoring
-- **Backup strategy**: Tag before major changes  
-- **Rollback plan**: Clear steps to revert changes
-- **Testing at each step**: Verify functionality continuously
+## Success Metrics
+- **Zero build failures** across all modules after refactoring
+- **100% test pass rate** maintained throughout process
+- **Git history preserved** for all moved/renamed files
+- **Documentation consistency** with new structure
+- **No broken references** in CI/CD, Docker, or scripts

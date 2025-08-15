@@ -186,6 +186,7 @@ jobs:
           echo "📝 Updating TypeScript imports to use staging package..."
           sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/index.ts
           sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/webauthn-client.ts
+          sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/types.ts
 
           # Show the changes made
           echo "📋 Updated imports in src/index.ts:"
@@ -194,8 +195,10 @@ jobs:
           echo "📋 Updated imports in src/webauthn-client.ts:"
           grep "from '$STAGING_PACKAGE'" src/webauthn-client.ts || echo "No imports found in src/webauthn-client.ts"
 
+          echo "📋 Updated imports in src/webauthn-client.ts:"
+          grep "from '$STAGING_PACKAGE'" src/types.ts || echo "No imports found in src/types.ts"
+
           # Configure npm to use GitHub Packages for staging packages
-          echo -e "\n" >> .npmrc
           echo "@hitoshura25:registry=https://npm.pkg.github.com" >> .npmrc
           echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
@@ -220,15 +223,6 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🔨 Building TypeScript web client bundles..."
-
-          # Ensure npm registry configuration is available for build
-          echo "🔧 Verifying npm registry configuration for build..."
-          if [[ ! -f .npmrc ]]; then
-            echo "⚠️ .npmrc not found, recreating GitHub Packages configuration..."
-            echo "@hitoshura25:registry=https://npm.pkg.github.com" >> .npmrc
-            echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
-          fi
-
           echo "📋 Current .npmrc configuration:"
           cat .npmrc
 

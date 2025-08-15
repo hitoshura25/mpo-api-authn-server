@@ -422,8 +422,8 @@ jobs:
        needs.run-unit-tests.result == 'skipped' ||
        needs.detect-changes.outputs.should-run-tests == 'false')
     with:
-      webauthn-docker-changes-detected: ${{ needs.detect-changes.outputs.webauthn-docker-changes-detected }}
-      test-credentials-docker-changes-detected: ${{ needs.detect-changes.outputs.test-credentials-docker-changes-detected }}
+      webauthn-docker-changes-detected: ${{ needs.detect-changes.outputs.webauthn-docker-changes-detected == 'true' }}
+      test-credentials-docker-changes-detected: ${{ needs.detect-changes.outputs.test-credentials-docker-changes-detected == 'true' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       registry-url: ${{ needs.setup-config.outputs.docker-registry }}
       webauthn-image-name: ${{ needs.setup-config.outputs.webauthn-image-name }}

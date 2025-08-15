@@ -156,7 +156,7 @@ Task: "[Detailed description of work to be done systematically]"
 #### **Key Implementation Details:**
 - **Conditional Logic**: All `if:` conditions preserved exactly
 - **Job Dependencies**: `needs:` relationships maintained with callable workflow outputs
-- **Secret Passing**: Uses `secrets: inherit` for proper credential handling
+- **Secret Passing**: When secrets are explicitly defined in callable workflows, they MUST be explicitly passed (see critical pattern below)
 - **Output Mapping**: Workflow outputs properly map to callable workflow results
 - **Environment Variables**: Passed through to callable workflows correctly
 
@@ -214,8 +214,8 @@ callable-job:
     # package-name: ${{ env.PACKAGE_NAME }}  # ❌ WILL FAIL
 ```
 
-#### **🚨 CRITICAL: Callable Workflow Secrets Pattern**
-Callable workflows MUST explicitly define secrets they use:
+#### **🚨 CRITICAL: Callable Workflow Secrets Pattern (FIXED BUG!)**
+**IMPORTANT**: When secrets are explicitly defined in callable workflows, they MUST be explicitly passed:
 ```yaml
 # In callable workflow (e.g., publish-typescript.yml)
 on:
@@ -235,11 +235,13 @@ on:
 # In calling workflow (e.g., client-publish.yml)
 job-name:
   uses: ./.github/workflows/publish-typescript.yml
-  secrets: inherit  # ✅ PREFERRED: Use inherit for consistency
-  # OR explicit (avoid unless necessary):
-  # secrets:
-  #   GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+  secrets:  # ✅ REQUIRED: Explicit secrets when defined in callable workflow
+    GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+    NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+  # ❌ WILL FAIL: secrets: inherit (doesn't work with explicitly defined secrets)
 ```
+
+**BUG PATTERN**: `secrets: inherit` doesn't work when the callable workflow has explicit secrets definitions. The secrets MUST be explicitly passed even if they exist in the calling workflow context.
 
 #### **Environment Variable Usage Rules:**
 - **❌ NEVER use `env.VARIABLE` in `if:` conditionals** - GitHub Actions security restrictions prevent this

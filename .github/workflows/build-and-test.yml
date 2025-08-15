@@ -75,6 +75,8 @@ jobs:
       source-code-changes: ${{ steps.decision-matrix.outputs.source-code-changes }}        # Used by: reporting step to show change type
       dockerfile-only-changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }} # Used by: reporting step to show change type
       workflow-validation-level: ${{ steps.decision-matrix.outputs.workflow-validation-level }} # Used by: reporting step to show workflow validation level
+      webauthn-docker-changes-detected: ${{ steps.changes.outputs.webauthn-server-docker }} # Used to further optimize docker build workflow
+      test-credentials-docker-changes-detected: ${{ steps.changes.outputs.test-credentials-docker }} # Used to further optimize docker build workflow
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -420,6 +422,8 @@ jobs:
        needs.run-unit-tests.result == 'skipped' ||
        needs.detect-changes.outputs.should-run-tests == 'false')
     with:
+      webauthn-docker-changes-detected: ${{ needs.detect-changes.outputs.webauthn-docker-changes-detected }}
+      test-credentials-docker-changes-detected: ${{ needs.detect-changes.outputs.test-credentials-docker-changes-detected }}
       docker-changes-detected: ${{ needs.detect-changes.outputs.should-build-docker == 'true' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       registry-url: ${{ needs.setup-config.outputs.docker-registry }}

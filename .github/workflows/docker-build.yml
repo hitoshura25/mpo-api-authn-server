@@ -19,7 +19,8 @@
 # - Maintains all security and reliability features
 #
 # INPUTS:
-#   docker-changes-detected: Whether Docker-related changes were detected
+#   webauthn-docker-changes-detected: Whether Webauthn Server Docker-related changes were detected
+#   test-credentials-docker-changes-detected: Whether Test Credentials Docker-related changes were detected
 #   image-tag-base: Base tag for Docker images (e.g., 'pr-123', 'latest')
 #   registry-config: Docker registry configuration
 #   java-version: Java version for JAR builds
@@ -36,8 +37,12 @@ name: Docker Build, Scan, and Push
 on:
   workflow_call:
     inputs:
-      docker-changes-detected:
-        description: 'Whether Docker-related changes were detected'
+      webauthn-docker-changes-detected:
+        description: 'Whether Webauthn Server Docker-related changes were detected'
+        required: true
+        type: boolean
+      test-credentials-docker-changes-detected:
+        description: 'Whether Test Credentials Docker-related changes were detected'
         required: true
         type: boolean
       image-tag-base:
@@ -101,7 +106,8 @@ jobs:
   # Single consolidated job: Build, scan, and push Docker images
   build-scan-push-docker-images:
     runs-on: ubuntu-latest
-    if: inputs.docker-changes-detected == true
+    if: inputs.webauthn-docker-changes-detected == true ||
+      test-credentials-docker-changes-detected == true
     permissions:
       contents: read
       packages: write
@@ -197,13 +203,13 @@ jobs:
       - name: Build Docker images locally
         run: |
           echo "🐳 Building Docker images locally for security scanning..."
-          
+
           # Build WebAuthn Server image
           docker build -t "${{ steps.docker-meta.outputs.tags }}" ./webauthn-server
-          
+
           # Build Test Credentials Service image
           docker build -t "${{ steps.docker-test-credentials-meta.outputs.tags }}" ./webauthn-test-credentials-service
-          
+
           echo "✅ Docker images built successfully"
 
       - name: Set build status

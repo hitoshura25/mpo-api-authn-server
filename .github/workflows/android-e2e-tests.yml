@@ -341,15 +341,3 @@ jobs:
           docker compose down -v
           rm -f docker-compose.override.yml
           docker system prune -f
-
-      # Phase 4 Integration: Cleanup staging packages after testing
-      - name: Cleanup staging packages
-        if: always()
-        continue-on-error: true
-        env:
-          STAGING_PACKAGE: ${{ inputs.android-package-name }}
-          STAGING_VERSION: ${{ inputs.client-version }}
-        run: |
-          echo "🧹 Cleaning up staging packages (best effort)"
-          echo "  Android staging package: $STAGING_PACKAGE:$STAGING_VERSION"
-          echo "Note: GitHub Packages cleanup handled by retention policies"

@@ -290,7 +290,7 @@ jobs:
           if [ $TEST_EXIT_CODE -eq 0 ]; then
             echo "tests-passed=true" >> $GITHUB_OUTPUT
             echo "✅ Tests passed successfully"
-            
+
             # Create test results for caching
             mkdir -p ../web-e2e-cache
             echo '{
@@ -303,7 +303,7 @@ jobs:
               },
               "client_package": "${{ inputs.typescript-package-name }}@${{ inputs.client-version }}"
             }' > ../web-e2e-results.json
-            
+
             echo "📝 Created test results file for caching"
           else
             echo "tests-passed=false" >> $GITHUB_OUTPUT
@@ -338,15 +338,3 @@ jobs:
           docker compose down -v
           rm -f docker-compose.override.yml
           docker system prune -f
-
-      # Phase 4 Integration: Cleanup staging packages after testing
-      - name: Cleanup staging packages
-        if: always()
-        continue-on-error: true
-        env:
-          STAGING_PACKAGE: ${{ inputs.typescript-package-name }}
-          STAGING_VERSION: ${{ inputs.client-version }}
-        run: |
-          echo "🧹 Cleaning up staging packages (best effort)"
-          echo "  TypeScript staging package: $STAGING_PACKAGE@$STAGING_VERSION"
-          echo "Note: GitHub Packages cleanup handled by retention policies"

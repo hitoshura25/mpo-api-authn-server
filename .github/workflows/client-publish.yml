@@ -118,10 +118,27 @@ jobs:
           echo "✅ Input validation passed"
           echo "validated=true" >> $GITHUB_OUTPUT
 
-  # Job 2: TypeScript client generation and publishing (parallel)
+  # Job 2: Convert environment variables to job outputs (required for callable workflows)
+  setup-config:
+    runs-on: ubuntu-latest
+    outputs:
+      npm-package-name: ${{ steps.config.outputs.npm-package-name }}
+      android-group-id: ${{ steps.config.outputs.android-group-id }}
+      android-artifact-base-id: ${{ steps.config.outputs.android-artifact-base-id }}
+    steps:
+      - name: Setup configuration outputs
+        id: config
+        run: |
+          echo "🔧 Converting environment variables to job outputs for callable workflows..."
+          echo "npm-package-name=${{ env.NPM_PACKAGE_NAME }}" >> $GITHUB_OUTPUT
+          echo "android-group-id=${{ env.ANDROID_GROUP_ID }}" >> $GITHUB_OUTPUT
+          echo "android-artifact-base-id=${{ env.ANDROID_ARTIFACT_BASE_ID }}" >> $GITHUB_OUTPUT
+          echo "✅ Configuration outputs set"
+
+  # Job 3: TypeScript client generation and publishing (parallel)
   publish-typescript:
     uses: ./.github/workflows/publish-typescript.yml
-    needs: validate-inputs
+    needs: [validate-inputs, setup-config]
     if: needs.validate-inputs.outputs.validated == 'true'
     permissions:
       contents: read
@@ -131,16 +148,16 @@ jobs:
       publish-type: ${{ inputs.publish-type }}
       client-version: ${{ inputs.client-version }}
       npm-scope: ${{ inputs.npm-scope }}
-      npm-package-name: ${{ env.NPM_PACKAGE_NAME }}
-      android-group-id: ${{ env.ANDROID_GROUP_ID }}  # Needed for Gradle generation
+      npm-package-name: ${{ needs.setup-config.outputs.npm-package-name }}
+      android-group-id: ${{ needs.setup-config.outputs.android-group-id }}  # Needed for Gradle generation
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-  # Job 3: Android client generation and publishing (parallel)
+  # Job 4: Android client generation and publishing (parallel)
   publish-android:
     uses: ./.github/workflows/publish-android.yml
-    needs: validate-inputs
+    needs: [validate-inputs, setup-config]
     if: needs.validate-inputs.outputs.validated == 'true'
     permissions:
       contents: read
@@ -148,14 +165,14 @@ jobs:
     with:
       publish-type: ${{ inputs.publish-type }}
       client-version: ${{ inputs.client-version }}
-      android-group-id: ${{ env.ANDROID_GROUP_ID }}
-      android-artifact-base-id: ${{ env.ANDROID_ARTIFACT_BASE_ID }}
+      android-group-id: ${{ needs.setup-config.outputs.android-group-id }}
+      android-artifact-base-id: ${{ needs.setup-config.outputs.android-artifact-base-id }}
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-  # Job 4: Aggregate results and provide backward-compatible outputs
+  # Job 5: Aggregate results and provide backward-compatible outputs
   aggregate-results:
-    needs: [validate-inputs, publish-typescript, publish-android]
+    needs: [validate-inputs, setup-config, publish-typescript, publish-android]
     runs-on: ubuntu-latest
     # Always run to provide outputs, even if publishing jobs failed
     if: always() && needs.validate-inputs.outputs.validated == 'true'

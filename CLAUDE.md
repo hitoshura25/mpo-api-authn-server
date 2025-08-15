@@ -194,6 +194,26 @@ docker-operations-job:
 
 **ALWAYS follow GitHub Actions best practices to prevent workflow failures:**
 
+#### **🚨 CRITICAL: Callable Workflow Env Var Pattern (NEVER FORGET!)**
+When creating workflows with callable workflows:
+```yaml
+# MANDATORY: Add setup-config job to convert env vars to outputs
+setup-config:
+  outputs:
+    package-name: ${{ steps.config.outputs.package-name }}
+  steps:
+    - id: config
+      run: echo "package-name=${{ env.PACKAGE_NAME }}" >> $GITHUB_OUTPUT
+
+# Then use job outputs in callable workflows
+callable-job:
+  uses: ./.github/workflows/some-workflow.yml
+  needs: setup-config
+  with:
+    package-name: ${{ needs.setup-config.outputs.package-name }}  # ✅ CORRECT
+    # package-name: ${{ env.PACKAGE_NAME }}  # ❌ WILL FAIL
+```
+
 #### **Environment Variable Usage Rules:**
 - **❌ NEVER use `env.VARIABLE` in `if:` conditionals** - GitHub Actions security restrictions prevent this
 - **✅ ALWAYS use job outputs for conditionals** - Create setup jobs that convert env vars to outputs:
@@ -272,9 +292,10 @@ docker-operations-job:
 - **Pattern**: When adding `needs.job-name.outputs.X`, immediately verify `job-name` is in the `needs` array
 - **Validation**: GitHub Actions will error at workflow start if dependency chain is broken
 
-**Callable Workflow Environment Variable Limitation (August 2025):**
+**⚠️ CRITICAL: Callable Workflow Environment Variable Limitation (August 2025):**
 - **❌ NEVER pass environment variables directly to callable workflows via `with` parameters**: Environment variables are not accessible in callable workflow contexts
 - **✅ ALWAYS convert environment variables to job outputs before passing to callable workflows**:
+- **🚨 MANDATORY PATTERN**: Every workflow using callable workflows MUST include a setup-config job
   ```yaml
   # WRONG - env vars not accessible in callable workflow context
   with:

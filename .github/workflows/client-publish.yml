@@ -150,9 +150,7 @@ jobs:
       npm-scope: ${{ inputs.npm-scope }}
       npm-package-name: ${{ needs.setup-config.outputs.npm-package-name }}
       android-group-id: ${{ needs.setup-config.outputs.android-group-id }}  # Needed for Gradle generation
-    secrets:
-      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    secrets: inherit
 
   # Job 4: Android client generation and publishing (parallel)
   publish-android:
@@ -167,8 +165,7 @@ jobs:
       client-version: ${{ inputs.client-version }}
       android-group-id: ${{ needs.setup-config.outputs.android-group-id }}
       android-artifact-base-id: ${{ needs.setup-config.outputs.android-artifact-base-id }}
-    secrets:
-      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+    secrets: inherit
 
   # Job 5: Aggregate results and provide backward-compatible outputs
   aggregate-results:

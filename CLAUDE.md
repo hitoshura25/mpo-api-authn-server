@@ -214,6 +214,33 @@ callable-job:
     # package-name: ${{ env.PACKAGE_NAME }}  # ❌ WILL FAIL
 ```
 
+#### **🚨 CRITICAL: Callable Workflow Secrets Pattern**
+Callable workflows MUST explicitly define secrets they use:
+```yaml
+# In callable workflow (e.g., publish-typescript.yml)
+on:
+  workflow_call:
+    inputs:
+      # ... inputs here
+    secrets:  # ✅ MANDATORY: Define all secrets used
+      GRADLE_ENCRYPTION_KEY:
+        description: 'Gradle build cache encryption key'
+        required: true
+      NPM_TOKEN:
+        description: 'npm publishing token'
+        required: false  # Optional for staging-only workflows
+    outputs:
+      # ... outputs here
+
+# In calling workflow (e.g., client-publish.yml)
+job-name:
+  uses: ./.github/workflows/publish-typescript.yml
+  secrets: inherit  # ✅ PREFERRED: Use inherit for consistency
+  # OR explicit (avoid unless necessary):
+  # secrets:
+  #   GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+```
+
 #### **Environment Variable Usage Rules:**
 - **❌ NEVER use `env.VARIABLE` in `if:` conditionals** - GitHub Actions security restrictions prevent this
 - **✅ ALWAYS use job outputs for conditionals** - Create setup jobs that convert env vars to outputs:

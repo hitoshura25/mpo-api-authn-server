@@ -46,6 +46,10 @@ on:
         description: 'Publishing type (staging/production)'
         required: true
         type: string
+    secrets:
+      GRADLE_ENCRYPTION_KEY:
+        description: 'Gradle build cache encryption key'
+        required: true
     outputs:
       published:
         description: 'Whether package was successfully published'

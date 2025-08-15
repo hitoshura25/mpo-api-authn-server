@@ -105,24 +105,6 @@ jobs:
           echo "  Full coordinates: ${PACKAGE_FULL_NAME}"
           echo "  Publish type: ${{ inputs.publish-type }}"
 
-      - name: Generate Android client
-        env:
-          CLIENT_VERSION: ${{ inputs.client-version }}
-          ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
-        run: |
-          echo "🔧 Generating Android client..."
-          echo "  Client version: ${CLIENT_VERSION}"
-          echo "  Android artifact ID: ${ANDROID_ARTIFACT_ID}"
-
-          # Generate only Android client and copy to submodule
-          ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
-            -PclientVersion="${CLIENT_VERSION}" \
-            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
-            -PandroidGroupId="${{ inputs.android-group-id }}" \
-            --build-cache --parallel --configuration-cache
-
-          echo "✅ Android client generated successfully"
-
       - name: Set up JDK
         uses: actions/setup-java@v4
         with:
@@ -156,6 +138,24 @@ jobs:
           build-scan-terms-of-use-agree: "yes"
           # Disable built-in cache since we're managing it manually for optimal cross-workflow sharing
           cache-disabled: true
+
+      - name: Generate Android client
+        env:
+          CLIENT_VERSION: ${{ inputs.client-version }}
+          ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
+        run: |
+          echo "🔧 Generating Android client..."
+          echo "  Client version: ${CLIENT_VERSION}"
+          echo "  Android artifact ID: ${ANDROID_ARTIFACT_ID}"
+
+          # Generate only Android client and copy to submodule
+          ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
+            -PclientVersion="${CLIENT_VERSION}" \
+            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
+            -PandroidGroupId="${{ inputs.android-group-id }}" \
+            --build-cache --parallel --configuration-cache
+
+          echo "✅ Android client generated successfully"
 
       - name: Check if Android package version already exists
         id: check-android-version

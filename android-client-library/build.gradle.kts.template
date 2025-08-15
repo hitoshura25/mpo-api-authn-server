@@ -38,6 +38,9 @@ repositories {
     mavenCentral()
 }
 
+// Define versions to match generated client
+val jakartaAnnotationVersion = "1.3.5"
+
 // OpenAPI generator may include server-side dependencies that cause Android conflicts.
 // These exclusions ensure the client library works correctly in Android projects.
 configurations.all {

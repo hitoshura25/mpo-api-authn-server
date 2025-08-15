@@ -69,6 +69,17 @@ android {
             pickFirsts += "**/libc++_shared.so"
             pickFirsts += "**/libjsc.so"
         }
+        resources {
+            // Handle duplicate META-INF files from Jakarta dependencies
+            pickFirsts += "**/META-INF/NOTICE.md"
+            pickFirsts += "**/META-INF/LICENSE.md"
+            pickFirsts += "**/META-INF/NOTICE"
+            pickFirsts += "**/META-INF/LICENSE"
+            pickFirsts += "**/META-INF/NOTICE.txt"
+            pickFirsts += "**/META-INF/LICENSE.txt"
+            pickFirsts += "**/META-INF/ASL2.0"
+            pickFirsts += "**/META-INF/LGPL2.1"
+        }
     }
 }
 

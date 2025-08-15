@@ -424,7 +424,6 @@ jobs:
     with:
       webauthn-docker-changes-detected: ${{ needs.detect-changes.outputs.webauthn-docker-changes-detected }}
       test-credentials-docker-changes-detected: ${{ needs.detect-changes.outputs.test-credentials-docker-changes-detected }}
-      docker-changes-detected: ${{ needs.detect-changes.outputs.should-build-docker == 'true' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       registry-url: ${{ needs.setup-config.outputs.docker-registry }}
       webauthn-image-name: ${{ needs.setup-config.outputs.webauthn-image-name }}

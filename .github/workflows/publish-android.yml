@@ -1,0 +1,199 @@
+# Android Client Generation & Publishing - Platform-Specific Workflow
+#
+# This callable workflow handles complete Android client lifecycle:
+# generation from OpenAPI spec + Maven publishing to GitHub Packages.
+#
+# DESIGN PATTERN:
+# - Self-contained platform workflow (generation + publishing)
+# - No external artifact dependencies
+# - GitHub Packages Maven publishing
+# - Version conflict detection and handling
+#
+# INPUTS:
+#   client-version: Version for Android library
+#   android-group-id: Android group ID
+#   android-artifact-base-id: Base Android artifact ID (e.g., mpo-webauthn-android-client)
+#   publish-type: 'staging' or 'production' (affects artifact naming)
+#
+# OUTPUTS:
+#   published: Whether package was successfully published (not skipped)
+#   skipped: Whether publishing was skipped (version exists)
+#   package-name: Full Maven coordinates (for backward compatibility)
+#   package-full-name: Complete Maven coordinates with version
+#
+# SECURITY:
+#   - GitHub Packages: Uses GITHUB_TOKEN (automatic)
+#   - Minimal permissions: contents:read, packages:write
+
+name: Android Client Publishing
+
+on:
+  workflow_call:
+    inputs:
+      client-version:
+        description: 'Version for Android library'
+        required: true
+        type: string
+      android-group-id:
+        description: 'Android group ID'
+        required: true
+        type: string
+      android-artifact-base-id:
+        description: 'Base Android artifact ID (e.g., mpo-webauthn-android-client)'
+        required: true
+        type: string
+      publish-type:
+        description: 'Publishing type (staging/production)'
+        required: true
+        type: string
+    outputs:
+      published:
+        description: 'Whether package was successfully published'
+        value: ${{ jobs.publish-android.outputs.published }}
+      skipped:
+        description: 'Whether publishing was skipped (version exists)'
+        value: ${{ jobs.publish-android.outputs.skipped }}
+      package-name:
+        description: 'Full Maven coordinates (for backward compatibility)'
+        value: ${{ jobs.publish-android.outputs.package-name }}
+      package-full-name:
+        description: 'Complete Maven coordinates with version'
+        value: ${{ jobs.publish-android.outputs.package-full-name }}
+
+jobs:
+  publish-android:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write   # Required for GitHub Packages publishing
+    outputs:
+      published: ${{ steps.publish-result.outputs.published }}
+      skipped: ${{ steps.publish-result.outputs.skipped }}
+      package-name: ${{ steps.package-info.outputs.package-name }}
+      package-full-name: ${{ steps.package-info.outputs.package-full-name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set package information
+        id: package-info
+        run: |
+          # Determine artifact ID based on publish type
+          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
+            ANDROID_ARTIFACT_ID="${{ inputs.android-artifact-base-id }}-staging"
+            echo "📦 STAGING Android package"
+          else
+            ANDROID_ARTIFACT_ID="${{ inputs.android-artifact-base-id }}"
+            echo "🚀 PRODUCTION Android package"
+          fi
+
+          PACKAGE_NAME="${{ inputs.android-group-id }}:${ANDROID_ARTIFACT_ID}"
+          PACKAGE_FULL_NAME="${PACKAGE_NAME}:${{ inputs.client-version }}"
+          
+          echo "android-artifact-id=${ANDROID_ARTIFACT_ID}" >> $GITHUB_OUTPUT
+          echo "package-name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "package-full-name=${PACKAGE_FULL_NAME}" >> $GITHUB_OUTPUT
+          
+          echo "📱 Android Package Information:"
+          echo "  Group ID: ${{ inputs.android-group-id }}"
+          echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
+          echo "  Version: ${{ inputs.client-version }}"
+          echo "  Full coordinates: ${PACKAGE_FULL_NAME}"
+          echo "  Publish type: ${{ inputs.publish-type }}"
+
+      - name: Generate Android client
+        env:
+          CLIENT_VERSION: ${{ inputs.client-version }}
+          ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
+        run: |
+          echo "🔧 Generating Android client..."
+          echo "  Client version: ${CLIENT_VERSION}"
+          echo "  Android artifact ID: ${ANDROID_ARTIFACT_ID}"
+
+          # Generate only Android client and copy to submodule
+          ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
+            -PclientVersion="${CLIENT_VERSION}" \
+            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
+            -PandroidGroupId="${{ inputs.android-group-id }}" \
+            --build-cache --parallel --configuration-cache
+
+          echo "✅ Android client generated successfully"
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+
+      - name: Check if Android package version already exists
+        id: check-android-version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ANDROID_ARTIFACT_ID="${{ steps.package-info.outputs.android-artifact-id }}"
+          echo "🔍 Checking if Android version already exists: ${{ inputs.android-group-id }}:${ANDROID_ARTIFACT_ID}:${{ inputs.client-version }}"
+
+          # Check if version exists in GitHub Packages
+          if gh api "/user/packages/maven/${{ inputs.android-group-id }}/${ANDROID_ARTIFACT_ID}/versions" --jq ".[].name" | grep -q "^${{ inputs.client-version }}$"; then
+            echo "⚠️ Version ${{ inputs.client-version }} already exists for ${ANDROID_ARTIFACT_ID}"
+            echo "skip-publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Version ${{ inputs.client-version }} does not exist, proceeding with publish"
+            echo "skip-publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish Android client to GitHub Packages
+        if: steps.check-android-version.outputs.skip-publish == 'false'
+        env:
+          CLIENT_VERSION: ${{ inputs.client-version }}
+          ANDROID_PUBLISH_USER: ${{ github.actor }}
+          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
+          ANDROID_GROUP_ID: ${{ inputs.android-group-id }}
+        run: |
+          echo "📱 Publishing Android client to GitHub Packages..."
+          echo "  Group ID: ${ANDROID_GROUP_ID}"
+          echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
+          echo "  Version: ${CLIENT_VERSION}"
+
+          # Build and publish Android client library directly
+          ./gradlew :android-client-library:publish \
+            -PGitHubPackagesUsername="${ANDROID_PUBLISH_USER}" \
+            -PGitHubPackagesPassword="${ANDROID_PUBLISH_TOKEN}" \
+            -PclientVersion="${CLIENT_VERSION}" \
+            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
+            -PandroidGroupId="${ANDROID_GROUP_ID}" \
+            --build-cache --parallel --configuration-cache --info
+
+          echo "✅ Android client published to GitHub Packages successfully"
+
+      - name: Skip Android publishing (version exists)
+        if: steps.check-android-version.outputs.skip-publish == 'true'
+        run: |
+          echo "⏭️ Skipping Android client publishing - version ${{ inputs.client-version }} already exists"
+
+      - name: Set publish result
+        id: publish-result
+        run: |
+          if [[ "${{ steps.check-android-version.outputs.skip-publish }}" == "true" ]]; then
+            echo "published=false" >> $GITHUB_OUTPUT
+            echo "skipped=true" >> $GITHUB_OUTPUT
+          else
+            echo "published=true" >> $GITHUB_OUTPUT
+            echo "skipped=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Android publishing summary
+        run: |
+          echo "🎯 Android Client Publishing Results:"
+          echo "  Package: ${{ steps.package-info.outputs.package-full-name }}"
+          echo "  Published: ${{ steps.publish-result.outputs.published }}"
+          echo "  Skipped: ${{ steps.publish-result.outputs.skipped }}"

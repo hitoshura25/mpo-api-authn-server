@@ -1,0 +1,315 @@
+# TypeScript Client Generation & Publishing - Platform-Specific Workflow
+#
+# This callable workflow handles complete TypeScript client lifecycle:
+# generation from OpenAPI spec + npm publishing to appropriate registries.
+#
+# DESIGN PATTERN:
+# - Self-contained platform workflow (generation + publishing)
+# - No external artifact dependencies
+# - Registry-aware publishing (staging vs production)
+# - Version conflict detection and handling
+#
+# INPUTS:
+#   publish-type: 'staging' or 'production'
+#   client-version: Version for TypeScript library
+#   npm-scope: npm package scope (e.g., @vmenon25)
+#   npm-package-name: Base package name (e.g., mpo-webauthn-client)
+#   android-group-id: Android group ID (for Gradle generation parameters)
+#
+# OUTPUTS:
+#   published: Whether package was successfully published (not skipped)
+#   skipped: Whether publishing was skipped (version exists)
+#   package-name: Full npm package name (for backward compatibility)
+#   package-full-name: Complete package name with version
+#
+# SECURITY:
+#   - GitHub Packages: Uses GITHUB_TOKEN (automatic)
+#   - npm production: Uses NPM_TOKEN (secret)
+#   - Minimal permissions: contents:read, packages:write, id-token:write
+
+name: TypeScript Client Publishing
+
+on:
+  workflow_call:
+    inputs:
+      publish-type:
+        description: 'Publishing type (staging/production)'
+        required: true
+        type: string
+      client-version:
+        description: 'Version for TypeScript library'
+        required: true
+        type: string
+      npm-scope:
+        description: 'npm package scope (e.g., @vmenon25)'
+        required: true
+        type: string
+      npm-package-name:
+        description: 'Base npm package name (e.g., mpo-webauthn-client)'
+        required: true
+        type: string
+      android-group-id:
+        description: 'Android group ID (for Gradle generation parameters)'
+        required: true
+        type: string
+    outputs:
+      published:
+        description: 'Whether package was successfully published'
+        value: ${{ jobs.publish-typescript.outputs.published }}
+      skipped:
+        description: 'Whether publishing was skipped (version exists)'
+        value: ${{ jobs.publish-typescript.outputs.skipped }}
+      package-name:
+        description: 'Full npm package name (for backward compatibility)'
+        value: ${{ jobs.publish-typescript.outputs.package-name }}
+      package-full-name:
+        description: 'Complete package name with version'
+        value: ${{ jobs.publish-typescript.outputs.package-full-name }}
+
+jobs:
+  publish-typescript:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write    # Required for GitHub Packages publishing
+      id-token: write   # Required for npm provenance in production
+    outputs:
+      published: ${{ steps.publish-result.outputs.published }}
+      skipped: ${{ steps.publish-result.outputs.skipped }}
+      package-name: ${{ steps.package-info.outputs.package-name }}
+      package-full-name: ${{ steps.package-info.outputs.package-full-name }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set package information
+        id: package-info
+        run: |
+          # Determine package names based on publish type
+          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
+            # Staging package names (GitHub Packages)
+            PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}-staging"
+            NPM_REGISTRY="https://npm.pkg.github.com"
+            echo "📦 STAGING TypeScript package"
+          else
+            # Production package names (npm)
+            PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}"
+            NPM_REGISTRY="https://registry.npmjs.org"
+            echo "🚀 PRODUCTION TypeScript package"
+          fi
+
+          PACKAGE_FULL_NAME="${PACKAGE_NAME}@${{ inputs.client-version }}"
+          
+          echo "package-name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
+          echo "package-full-name=${PACKAGE_FULL_NAME}" >> $GITHUB_OUTPUT
+          echo "npm-registry=${NPM_REGISTRY}" >> $GITHUB_OUTPUT
+          
+          echo "📦 TypeScript Package Information:"
+          echo "  Package name: ${PACKAGE_NAME}"
+          echo "  Version: ${{ inputs.client-version }}"
+          echo "  Full name: ${PACKAGE_FULL_NAME}"
+          echo "  Registry: ${NPM_REGISTRY}"
+          echo "  Publish type: ${{ inputs.publish-type }}"
+
+      - name: Set up JDK for client generation
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Setup Gradle for client generation
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+          build-scan-publish: true
+          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
+          build-scan-terms-of-use-agree: "yes"
+
+      - name: Generate TypeScript client
+        env:
+          CLIENT_VERSION: ${{ inputs.client-version }}
+          NPM_NAME: ${{ steps.package-info.outputs.package-name }}
+        run: |
+          echo "🔧 Generating TypeScript client..."
+          echo "  Client version: ${CLIENT_VERSION}"
+          echo "  npm package name: ${NPM_NAME}"
+
+          # Generate only TypeScript client and copy to submodule
+          ./gradlew generateTsClient copyTsClientToSubmodule \
+            -PclientVersion="${CLIENT_VERSION}" \
+            -PnpmName="${NPM_NAME}" \
+            --build-cache --parallel --configuration-cache
+
+          echo "✅ TypeScript client generated successfully"
+
+      - name: Set up Node.js for npm publishing
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          registry-url: ${{ steps.package-info.outputs.npm-registry }}
+          scope: ${{ inputs.npm-scope }}
+
+      - name: Check if TypeScript package version already exists
+        if: inputs.publish-type == 'staging'
+        id: check-npm-version
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_REGISTRY: ${{ steps.package-info.outputs.npm-registry }}
+        run: |
+          echo "🔍 Checking if version already exists: ${{ steps.package-info.outputs.package-name }}@${{ inputs.client-version }}"
+
+          # Check if version exists
+          if npm view "${{ steps.package-info.outputs.package-name }}@${{ inputs.client-version }}" --registry="${{ steps.package-info.outputs.npm-registry }}" > /dev/null 2>&1; then
+            echo "⚠️ Version ${{ inputs.client-version }} already exists for ${{ steps.package-info.outputs.package-name }}"
+            echo "skip-publish=true" >> $GITHUB_OUTPUT
+          else
+            echo "✅ Version ${{ inputs.client-version }} does not exist, proceeding with publish"
+            echo "skip-publish=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Publish TypeScript client to GitHub Packages (staging)
+        if: inputs.publish-type == 'staging' && steps.check-npm-version.outputs.skip-publish == 'false'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_REGISTRY: ${{ steps.package-info.outputs.npm-registry }}
+        run: |
+          echo "📦 Publishing TypeScript client to GitHub Packages (staging)..."
+
+          cd typescript-client-library
+
+          # Update package.json for GitHub Packages
+          npm pkg set name="${{ steps.package-info.outputs.package-name }}"
+          npm pkg set version="${{ inputs.client-version }}"
+          npm pkg set "publishConfig.${{ inputs.npm-scope }}:registry"="${{ steps.package-info.outputs.npm-registry }}"
+
+          # Configure authentication for GitHub Packages
+          echo "${{ inputs.npm-scope }}:registry=${{ steps.package-info.outputs.npm-registry }}" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+
+          echo "📋 Updated package.json:"
+          cat package.json | jq '.name, .version, .publishConfig'
+
+          # Build TypeScript client (CommonJS + ESM + type declarations)
+          echo "🔨 Building TypeScript client..."
+          npm run build
+
+          # Verify build outputs exist and are valid
+          echo "📁 Verifying build outputs:"
+          ls -la dist/
+
+          # Validate required entry points exist
+          echo "🔍 Validating package entry points..."
+          if [ ! -f "dist/index.js" ]; then
+            echo "❌ ERROR: Main entry point dist/index.js not found"
+            exit 1
+          fi
+
+          if [ ! -f "dist/index.d.ts" ]; then
+            echo "❌ ERROR: TypeScript declarations dist/index.d.ts not found"
+            exit 1
+          fi
+
+          if [ ! -f "dist/esm/index.js" ]; then
+            echo "❌ ERROR: ESM entry point dist/esm/index.js not found"
+            exit 1
+          fi
+
+          echo "✅ All required entry points exist"
+
+          # Verify npm authentication
+          echo "🔍 Verifying npm authentication..."
+          npm whoami --registry="${{ steps.package-info.outputs.npm-registry }}"
+
+          # Publish to GitHub Packages
+          npm publish --registry="${{ steps.package-info.outputs.npm-registry }}"
+
+          echo "✅ TypeScript client published to GitHub Packages successfully"
+
+      - name: Skip TypeScript publishing (version exists)
+        if: inputs.publish-type == 'staging' && steps.check-npm-version.outputs.skip-publish == 'true'
+        run: |
+          echo "⏭️ Skipping TypeScript client publishing - version ${{ inputs.client-version }} already exists"
+
+      - name: Publish TypeScript client to npm (production)
+        if: inputs.publish-type == 'production'
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_REGISTRY: ${{ steps.package-info.outputs.npm-registry }}
+        run: |
+          echo "🚀 Publishing TypeScript client to npm (production)..."
+
+          cd typescript-client-library
+
+          # Update package.json for npm registry
+          npm pkg set name="${{ steps.package-info.outputs.package-name }}"
+          npm pkg set version="${{ inputs.client-version }}"
+          npm pkg delete publishConfig  # Remove GitHub Packages config
+
+          # Configure authentication for npm registry
+          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+
+          echo "📋 Updated package.json:"
+          cat package.json | jq '.name, .version, .publishConfig // "none"'
+
+          # Build TypeScript client (CommonJS + ESM + type declarations)
+          echo "🔨 Building TypeScript client..."
+          npx tsc --project tsconfig.json
+          npx tsc --project tsconfig.esm.json
+
+          # Verify build outputs exist and are valid
+          echo "📁 Verifying build outputs:"
+          ls -la dist/
+
+          # Validate required entry points exist
+          echo "🔍 Validating package entry points..."
+          if [ ! -f "dist/index.js" ]; then
+            echo "❌ ERROR: Main entry point dist/index.js not found"
+            exit 1
+          fi
+
+          if [ ! -f "dist/index.d.ts" ]; then
+            echo "❌ ERROR: TypeScript declarations dist/index.d.ts not found"
+            exit 1
+          fi
+
+          if [ ! -f "dist/esm/index.js" ]; then
+            echo "❌ ERROR: ESM entry point dist/esm/index.js not found"
+            exit 1
+          fi
+
+          echo "✅ All required entry points exist"
+
+          # Verify npm authentication
+          echo "🔍 Verifying npm authentication..."
+          npm whoami
+
+          # Publish to npm
+          npm publish
+
+          echo "✅ TypeScript client published to npm successfully"
+
+      - name: Set publish result
+        id: publish-result
+        run: |
+          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
+            if [[ "${{ steps.check-npm-version.outputs.skip-publish }}" == "true" ]]; then
+              echo "published=false" >> $GITHUB_OUTPUT
+              echo "skipped=true" >> $GITHUB_OUTPUT
+            else
+              echo "published=true" >> $GITHUB_OUTPUT
+              echo "skipped=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # Production publishing doesn't check for existing versions
+            echo "published=true" >> $GITHUB_OUTPUT
+            echo "skipped=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: TypeScript publishing summary
+        run: |
+          echo "🎯 TypeScript Client Publishing Results:"
+          echo "  Package: ${{ steps.package-info.outputs.package-full-name }}"
+          echo "  Registry: ${{ steps.package-info.outputs.npm-registry }}"
+          echo "  Published: ${{ steps.publish-result.outputs.published }}"
+          echo "  Skipped: ${{ steps.publish-result.outputs.skipped }}"
+          echo "  Publish type: ${{ inputs.publish-type }}"

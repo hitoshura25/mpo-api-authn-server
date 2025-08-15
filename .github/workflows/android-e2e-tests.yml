@@ -51,6 +51,10 @@ on:
         description: 'Client library version published'
         required: true
         type: string
+      cache-key:
+        description: 'Cache key for test results (from orchestrator)'
+        required: false
+        type: string
     outputs:
       tests-passed:
         description: 'Boolean indicating if Android tests passed'
@@ -296,6 +300,10 @@ jobs:
         env:
           GITHUB_PACKAGES_USERNAME: ${{ github.actor }}
           GITHUB_PACKAGES_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
+          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
+          ANDROID_PACKAGE_NAME: ${{ inputs.android-package-name }}
+          CLIENT_VERSION: ${{ inputs.client-version }}
         with:
           api-level: ${{ env.ANDROID_API_VERSION }}
           target: google_apis
@@ -305,6 +313,15 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
           script: ./scripts/core/run-android-tests.sh
+
+      - name: Save test results to cache
+        if: steps.android-test-execution.outputs.tests-passed == 'true' && inputs.cache-key != ''
+        uses: actions/cache@v4
+        with:
+          key: ${{ inputs.cache-key }}
+          path: |
+            android-e2e-cache/
+            android-e2e-results.json
 
       - name: Upload Android E2E test reports
         uses: actions/upload-artifact@v4

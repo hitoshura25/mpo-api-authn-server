@@ -71,9 +71,75 @@ jobs:
           echo "android-api-version=${{ env.ANDROID_API_VERSION }}" >> $GITHUB_OUTPUT
           echo "npm-scope=${{ env.NPM_SCOPE }}" >> $GITHUB_OUTPUT
 
-  # Job 2: Validate Docker images are available
+  # Job 2: Check E2E test cache to avoid redundant runs
+  check-e2e-cache:
+    runs-on: ubuntu-latest
+    needs: setup-config
+    outputs:
+      web-cache-hit: ${{ steps.web-cache.outputs.cache-hit }}
+      android-cache-hit: ${{ steps.android-cache.outputs.cache-hit }}
+      cache-key-web: ${{ steps.cache-keys.outputs.web-key }}
+      cache-key-android: ${{ steps.cache-keys.outputs.android-key }}
+      skip-web-e2e: ${{ steps.web-cache.outputs.cache-hit == 'true' }}
+      skip-android-e2e: ${{ steps.android-cache.outputs.cache-hit == 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate E2E cache keys
+        id: cache-keys
+        run: |
+          # Extract image digests from full image tags for cache key
+          WEBAUTHN_DIGEST="${{ inputs.webauthn_server_image }}"
+          TEST_CREDS_DIGEST="${{ inputs.test_credentials_image }}"
+          
+          # Generate hash of E2E test files and configurations
+          WEB_FILES_HASH=$(find web-test-client .github/workflows/web-e2e-tests.yml -type f -exec sha256sum {} \; 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-files")
+          ANDROID_FILES_HASH=$(find android-test-client .github/workflows/android-e2e-tests.yml -type f -exec sha256sum {} \; 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-files")
+          
+          # Create platform-specific cache keys
+          WEB_CACHE_KEY="web-e2e-results-${WEBAUTHN_DIGEST##*:}-${TEST_CREDS_DIGEST##*:}-${WEB_FILES_HASH}"
+          ANDROID_CACHE_KEY="android-e2e-results-${WEBAUTHN_DIGEST##*:}-${TEST_CREDS_DIGEST##*:}-${ANDROID_FILES_HASH}"
+          
+          echo "web-key=${WEB_CACHE_KEY}" >> $GITHUB_OUTPUT
+          echo "android-key=${ANDROID_CACHE_KEY}" >> $GITHUB_OUTPUT
+          
+          echo "🔑 Cache Keys Generated:"
+          echo "  Web E2E: ${WEB_CACHE_KEY}"
+          echo "  Android E2E: ${ANDROID_CACHE_KEY}"
+
+      - name: Check Web E2E cache
+        id: web-cache
+        uses: actions/cache@v4
+        with:
+          key: ${{ steps.cache-keys.outputs.web-key }}
+          path: |
+            web-e2e-cache/
+            web-e2e-results.json
+          lookup-only: true
+
+      - name: Check Android E2E cache
+        id: android-cache  
+        uses: actions/cache@v4
+        with:
+          key: ${{ steps.cache-keys.outputs.android-key }}
+          path: |
+            android-e2e-cache/
+            android-e2e-results.json
+          lookup-only: true
+
+      - name: Cache check summary
+        run: |
+          echo "📊 E2E Cache Check Results:"
+          echo "  Web E2E cache hit: ${{ steps.web-cache.outputs.cache-hit }}"
+          echo "  Android E2E cache hit: ${{ steps.android-cache.outputs.cache-hit }}"
+          echo "  Web E2E will be: ${{ steps.web-cache.outputs.cache-hit == 'true' && 'SKIPPED (cached)' || 'RUN' }}"
+          echo "  Android E2E will be: ${{ steps.android-cache.outputs.cache-hit == 'true' && 'SKIPPED (cached)' || 'RUN' }}"
+
+  # Job 3: Validate Docker images are available
   validate-images:
     runs-on: ubuntu-latest
+    needs: check-e2e-cache
     outputs:
       webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
       test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}
@@ -154,11 +220,12 @@ jobs:
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:
     uses: ./.github/workflows/web-e2e-tests.yml
-    needs: [ setup-config, validate-images, generate-version, publish-client-libraries ]
+    needs: [ setup-config, validate-images, generate-version, publish-client-libraries, check-e2e-cache ]
     if: |
       needs.validate-images.outputs.webauthn-server-ready == 'true' &&
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
-      needs.publish-client-libraries.result == 'success'
+      needs.publish-client-libraries.result == 'success' &&
+      needs.check-e2e-cache.outputs.skip-web-e2e != 'true'
     secrets: inherit
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
@@ -167,15 +234,17 @@ jobs:
       java-version: ${{ needs.setup-config.outputs.java-version }}
       typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
       client-version: ${{ needs.generate-version.outputs.version }}
+      cache-key: ${{ needs.check-e2e-cache.outputs.cache-key-web }}
 
   # Job 4: Call Android E2E tests workflow
   call-android-e2e-tests:
     uses: ./.github/workflows/android-e2e-tests.yml
-    needs: [ setup-config, validate-images, generate-version, publish-client-libraries ]
+    needs: [ setup-config, validate-images, generate-version, publish-client-libraries, check-e2e-cache ]
     if: |
       needs.validate-images.outputs.webauthn-server-ready == 'true' &&
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
-      needs.publish-client-libraries.result == 'success'
+      needs.publish-client-libraries.result == 'success' &&
+      needs.check-e2e-cache.outputs.skip-android-e2e != 'true'
     secrets: inherit
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
@@ -185,11 +254,68 @@ jobs:
       android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
       android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}
       client-version: ${{ needs.generate-version.outputs.version }}
+      cache-key: ${{ needs.check-e2e-cache.outputs.cache-key-android }}
 
-  # Job 5: Report E2E test results back to PR
+  # Job 5: Handle cached Web E2E results
+  web-e2e-cached:
+    runs-on: ubuntu-latest
+    needs: [ check-e2e-cache ]
+    if: needs.check-e2e-cache.outputs.skip-web-e2e == 'true'
+    outputs:
+      tests-passed: "true"
+      artifact-name: "web-e2e-cached-results"
+    steps:
+      - name: Restore cached Web E2E results
+        uses: actions/cache@v4
+        with:
+          key: ${{ needs.check-e2e-cache.outputs.cache-key-web }}
+          path: |
+            web-e2e-cache/
+            web-e2e-results.json
+          fail-on-cache-miss: true
+
+      - name: Report cached results
+        run: |
+          echo "✅ Web E2E tests skipped - using cached results"
+          echo "Cache key: ${{ needs.check-e2e-cache.outputs.cache-key-web }}"
+          echo "Previous test run was successful for identical conditions"
+          if [ -f web-e2e-results.json ]; then
+            echo "📊 Cached test results available"
+            cat web-e2e-results.json || echo "{\"status\": \"cached\", \"tests_passed\": true}"
+          fi
+
+  # Job 6: Handle cached Android E2E results
+  android-e2e-cached:
+    runs-on: ubuntu-latest
+    needs: [ check-e2e-cache ]
+    if: needs.check-e2e-cache.outputs.skip-android-e2e == 'true'
+    outputs:
+      tests-passed: "true"
+      artifact-name: "android-e2e-cached-results"
+    steps:
+      - name: Restore cached Android E2E results
+        uses: actions/cache@v4
+        with:
+          key: ${{ needs.check-e2e-cache.outputs.cache-key-android }}
+          path: |
+            android-e2e-cache/
+            android-e2e-results.json
+          fail-on-cache-miss: true
+
+      - name: Report cached results
+        run: |
+          echo "✅ Android E2E tests skipped - using cached results"
+          echo "Cache key: ${{ needs.check-e2e-cache.outputs.cache-key-android }}"
+          echo "Previous test run was successful for identical conditions"
+          if [ -f android-e2e-results.json ]; then
+            echo "📊 Cached test results available"
+            cat android-e2e-results.json || echo "{\"status\": \"cached\", \"tests_passed\": true}"
+          fi
+
+  # Job 7: Report E2E test results back to PR
   report-results:
     runs-on: ubuntu-latest
-    needs: [ validate-images, call-web-e2e-tests, call-android-e2e-tests ]
+    needs: [ validate-images, call-web-e2e-tests, call-android-e2e-tests, web-e2e-cached, android-e2e-cached ]
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read

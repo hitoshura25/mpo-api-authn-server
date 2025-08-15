@@ -45,6 +45,10 @@ on:
         description: 'Client library version published'
         required: true
         type: string
+      cache-key:
+        description: 'Cache key for test results (from orchestrator)'
+        required: false
+        type: string
     outputs:
       tests-passed:
         description: 'Boolean indicating if web tests passed'
@@ -286,11 +290,35 @@ jobs:
           if [ $TEST_EXIT_CODE -eq 0 ]; then
             echo "tests-passed=true" >> $GITHUB_OUTPUT
             echo "✅ Tests passed successfully"
+            
+            # Create test results for caching
+            mkdir -p ../web-e2e-cache
+            echo '{
+              "status": "success",
+              "tests_passed": true,
+              "timestamp": "'$(date -Iseconds)'",
+              "images": {
+                "webauthn_server": "${{ env.WEBAUTHN_SERVER_IMAGE }}",
+                "test_credentials": "${{ env.TEST_CREDENTIALS_IMAGE }}"
+              },
+              "client_package": "${{ inputs.typescript-package-name }}@${{ inputs.client-version }}"
+            }' > ../web-e2e-results.json
+            
+            echo "📝 Created test results file for caching"
           else
             echo "tests-passed=false" >> $GITHUB_OUTPUT
             echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
             exit $TEST_EXIT_CODE
           fi
+
+      - name: Save test results to cache
+        if: steps.test-execution.outputs.tests-passed == 'true' && inputs.cache-key != ''
+        uses: actions/cache@v4
+        with:
+          key: ${{ inputs.cache-key }}
+          path: |
+            web-e2e-cache/
+            web-e2e-results.json
 
       - name: Upload Web E2E test reports
         uses: actions/upload-artifact@v4

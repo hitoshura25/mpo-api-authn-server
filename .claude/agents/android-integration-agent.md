@@ -272,13 +272,13 @@ adb logcat | grep -E "(WebAuthn|HTTP|Network)"
 ### Generated Client Issue Diagnosis
 ```bash
 # 1. Verify client generation worked
-ls -la android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/model/
+ls -la android-client-library/src/main/java/io/github/hitoshura25/webauthn/client/model/
 
 # 2. Check for compilation errors
 cd android-test-client && ./gradlew client-library:compileDebugJavaWithJavac
 
 # 3. Analyze generated model structure
-cat android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/model/RegistrationCompleteResponse.java
+cat android-client-library/src/main/java/io/github/hitoshura25/webauthn/client/model/RegistrationCompleteResponse.java
 
 # 4. Verify dependencies are correct
 cd android-test-client && ./gradlew client-library:dependencies

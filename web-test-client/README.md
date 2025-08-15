@@ -1,13 +1,13 @@
 # WebAuthn Web Test Client
 
-A TypeScript-based WebAuthn test client with automated OpenAPI client generation, webpack bundling, and comprehensive E2E testing using Playwright.
+A TypeScript-based WebAuthn E2E test client that consumes published npm packages, with webpack bundling and comprehensive E2E testing using Playwright.
 
 ## 🏗️ Architecture Overview
 
 This client demonstrates modern TypeScript development practices with:
 
 - **TypeScript 5.3+** with strict type checking
-- **Automated OpenAPI client generation** from server specification
+- **Published npm package consumption** for client library integration
 - **Webpack bundling** with UMD/CommonJS support for browser compatibility
 - **Playwright E2E testing** with real WebAuthn credential testing
 - **Express development server** for local testing
@@ -38,16 +38,18 @@ npm run dev
 npm test
 ```
 
-### Generated OpenAPI Client
+### Published TypeScript Client
 
-The project automatically integrates a generated TypeScript client from the server's OpenAPI specification:
+The project consumes the published TypeScript client library from npm:
 
 ```bash
-# Generated client is located in:
-./generated-client/
+# Published client is installed as npm dependency:
+@vmenon25/mpo-webauthn-client
 
-# The client is automatically included in builds
-# No manual regeneration needed - handled by CI/CD
+# For E2E testing, staging packages are used:
+@vmenon25/mpo-webauthn-client-staging
+
+# No manual generation needed - uses published packages
 ```
 
 ## 📁 Project Structure
@@ -59,10 +61,6 @@ web-test-client/
 │   ├── server.ts                 # Express development server
 │   ├── types.ts                  # Shared TypeScript types
 │   └── webauthn-client.ts        # WebAuthn client implementation
-├── generated-client/             # Auto-generated OpenAPI client
-│   ├── src/apis/                 # Generated API endpoints
-│   ├── src/models/               # Generated data models
-│   └── index.ts                  # Generated client exports
 ├── public/                       # Static assets
 │   └── index.html                # Test page template
 ├── tests/                        # Playwright E2E tests
@@ -75,7 +73,17 @@ web-test-client/
 ├── webpack.config.js             # Webpack build configuration
 ├── tsconfig.json                 # TypeScript base configuration
 ├── tsconfig.build.json           # Build-specific TypeScript config
-└── playwright.config.js          # Playwright test configuration
+├── playwright.config.js          # Playwright test configuration
+└── package.json                  # Dependencies with published client library
+```
+
+**Published Client Library Structure**:
+```
+../typescript-client-library/             # Dedicated client library submodule
+├── src/                          # Generated TypeScript client source
+├── dist/                         # Built CommonJS + ESM outputs
+├── package.json                  # Publishing configuration
+└── README.md                     # Client library documentation
 ```
 
 ## 🔧 Build System
@@ -173,9 +181,9 @@ The test suite validates complete WebAuthn flows:
 }
 ```
 
-## 🔗 OpenAPI Client Integration
+## 🔗 Published Client Integration
 
-The generated TypeScript client provides type-safe API access:
+The published TypeScript client provides type-safe API access:
 
 ### Usage Example
 
@@ -184,7 +192,7 @@ import {
   AuthenticationApi, 
   RegistrationApi,
   Configuration 
-} from './generated-client';
+} from '@vmenon25/mpo-webauthn-client';
 
 // Configure API client
 const configuration = new Configuration({
@@ -205,13 +213,14 @@ const publicKeyOptions = JSON.parse(
 ).publicKey;
 ```
 
-### Generated Client Features
+### Published Client Features
 
 - **Full type safety** with TypeScript interfaces
 - **Automatic serialization** of request/response data
 - **Error handling** with typed exception models
 - **Browser and Node.js compatibility**
-- **Axios-based HTTP client** with interceptor support
+- **Staging→Production workflow** for E2E validation
+- **Automated publishing** via GitHub Actions workflows
 
 ## 🌐 UMD Bundle Usage
 
@@ -321,10 +330,10 @@ The client is ready for npm publishing:
 The client integrates seamlessly with the project's **3-tier AI-powered CI/CD pipeline**:
 
 **Smart Workflow Integration**:
-- **Client regeneration**: Automatic OpenAPI client updates via `main-ci-cd.yml`
-- **Build verification**: TypeScript compilation and webpack bundling with change detection
+- **Staging package consumption**: E2E tests use staging packages for validation
+- **Build verification**: TypeScript compilation and webpack bundling with published packages
 - **Conditional execution**: Only builds when TypeScript/web client files change
-- **Cross-platform testing**: Parallel execution with Android E2E tests
+- **Cross-platform testing**: Parallel execution with Android E2E tests using published packages
 
 **E2E Testing Pipeline** (`e2e-tests.yml`):
 - **Docker image validation**: Uses exact PR-specific Docker images
@@ -423,7 +432,7 @@ externals: {
 
 1. **TypeScript Standards**: Follow strict mode requirements and type safety
 2. **Test Coverage**: Update tests for API changes and new functionality
-3. **OpenAPI Sync**: Client regeneration handled automatically by CI/CD
+3. **Package Publishing**: Client library publishing handled automatically by CI/CD
 4. **Build Validation**: Webpack builds tested for both development and production
 5. **Security Review**: Changes undergo 3-tier AI security analysis
 
@@ -465,7 +474,7 @@ externals: {
 - **[CI/CD Pipeline Documentation](../docs/development/workflows/)** - Detailed workflow architecture
 - **[Security Analysis Guide](../docs/security/webauthn-analysis.md)** - WebAuthn security testing details
 - **[Scripts Usage](../docs/development/scripts-usage.md)** - Development and workflow scripts
-- **[Library Usage Guide](../docs/setup/library-usage.md)** - Published client library integration
+- **[Client Library Publishing](../docs/development/client-library-publishing.md)** - Published client library workflows
 
 ## 📄 License
 

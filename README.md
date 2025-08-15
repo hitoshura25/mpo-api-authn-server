@@ -11,8 +11,10 @@ This project follows a multi-module architecture for clear separation of concern
 - **webauthn-server/** - Main WebAuthn KTor server with production features
 - **webauthn-test-credentials-service/** - HTTP service for cross-platform testing credentials
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
-- **android-test-client/** - Android client with generated API library
-- **web-test-client/** - TypeScript web client with automated OpenAPI client generation and webpack bundling
+- **android-test-client/** - Android E2E test client consuming published Android library
+- **web-test-client/** - TypeScript E2E test client consuming published npm library
+- **android-client-library/** - Dedicated Android client library submodule
+- **typescript-client-library/** - Dedicated TypeScript client library submodule
 
 ## 🚀 Quick Start
 
@@ -40,14 +42,18 @@ cd webauthn-server
 # Server tests
 ./gradlew :webauthn-server:test
 
-# Android client tests  
+# Android client tests (uses published library)
 cd android-test-client && ./gradlew test
 
-# Web TypeScript client tests (requires server running)
+# Web TypeScript client tests (uses published library)
 cd web-test-client
 npm install
-npm run build  # Build TypeScript client
+npm run build
 npm test       # Run Playwright E2E tests
+
+# Client library tests (submodules)
+cd android-client-library && ./gradlew test
+cd typescript-client-library && npm test
 ```
 
 ## 🌐 Port Assignments
@@ -108,17 +114,25 @@ Automatic security analysis on all pull requests with intelligent fallback strat
 
 ## 📱 Published Client Libraries
 
-Use the WebAuthn API in your applications with automatically published client libraries featuring **enhanced regex validation** and **unified 3-part versioning**:
+Use the WebAuthn API in your applications with automatically published client libraries featuring **Docker-inspired staging→production workflow**:
 
 ### Android Library
 
 ```gradle
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+        credentials {
+            username = "YOUR_GITHUB_USERNAME"
+            password = "YOUR_GITHUB_TOKEN"
+        }
+    }
+}
+
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.26'
 }
 ```
-
-**Enhanced Version Validation**: All published versions use robust regex validation ensuring full npm semver compliance with support for advanced prerelease identifiers including hyphens.
 
 ### TypeScript/npm Library
 
@@ -126,19 +140,22 @@ dependencies {
 npm install @vmenon25/mpo-webauthn-client
 ```
 
-### Manual Client Generation
+### Client Library Architecture (Implemented)
 
-Client libraries are automatically published via GitHub Actions workflows:
+**Staging→Production Workflow** (similar to Docker workflow):
+1. **PR Testing**: Staging packages published to GitHub Packages (e.g., `pr-123.456`)
+2. **E2E Validation**: Test clients consume staging packages for validation
+3. **Production Publishing**: Successful main branch merges publish to npm + GitHub Packages
+4. **GitHub Releases**: Automated release creation with usage examples
 
 - **Production**: Published to npm and GitHub Packages on main branch merges
-- **Staging**: Published to GitHub Packages for PR testing (pr-{PR_NUMBER}.{RUN_NUMBER} versions)
-- **Local Development**: Use published packages or generate locally with:
+- **Staging**: Published to GitHub Packages for PR testing
+- **Client Submodules**: Dedicated `android-client-library/` and `typescript-client-library/` submodules
+- **Local Development**: Use published packages or generate with:
   ```bash
-  # Generate TypeScript client (for local development only)
-  ./gradlew :webauthn-server:generateTsClient
-  
-  # Generate Android client (for local development only)  
-  ./gradlew :webauthn-server:generateAndroidClient
+  # Generate and build clients in submodules
+  ./gradlew generateAndroidClient copyAndroidClientToSubmodule
+  ./gradlew generateTsClient copyTsClientToSubmodule
   ```
 
 ## 🧪 Testing Architecture
@@ -151,12 +168,10 @@ The project uses a **layered testing approach** with different access patterns:
 2. **webauthn-test-credentials-service** - HTTP API wrapper (port 8081)
 3. **Integration tests** - Use shared library directly for performance
 
-### Cross-Platform Testing
-
-Start the test service for external clients:
+### Cross-Platform Testing Architecture
 
 ```bash
-# Start test service
+# Start test service for E2E testing
 ./gradlew :webauthn-test-credentials-service:run
 
 # Test endpoints available at http://localhost:8081
@@ -166,11 +181,13 @@ Start the test service for external clients:
 # - GET /test/sessions
 ```
 
-**Architecture Decisions**:
+**Testing Architecture Layers**:
 
-- **webauthn-server integration tests**: Use shared library directly for performance and reliability
-- **Android client tests**: Use HTTP API calls to webauthn-test-credentials-service for realistic cross-platform testing
-- **TypeScript web client**: Uses generated OpenAPI client with automated build process and UMD bundling for browser compatibility
+- **Unit Tests**: Use shared `webauthn-test-lib` directly for performance
+- **Integration Tests**: Server tests use in-memory test storage
+- **E2E Tests**: Android and web clients consume published staging packages
+- **Client Library Tests**: Independent testing of Android and TypeScript submodules
+- **Production Validation**: Published packages undergo comprehensive E2E validation
 
 ## 📊 Monitoring & Observability
 
@@ -341,12 +358,16 @@ env:
 # Shared test library
 ./gradlew :webauthn-test-lib:build
 
-# Android client
-cd android-test-client && ./gradlew test
-cd android-test-client && ./gradlew client-library:publish
+# Android client library (submodule)
+cd android-client-library && ./gradlew test
+cd android-client-library && ./gradlew publish
 
-# TypeScript web client
-cd web-test-client && npm run build
+# TypeScript client library (submodule)
+cd typescript-client-library && npm run build
+cd typescript-client-library && npm test
+
+# E2E test clients (consume published libraries)
+cd android-test-client && ./gradlew connectedAndroidTest
 cd web-test-client && npm test
 ```
 

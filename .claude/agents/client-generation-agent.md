@@ -1,277 +1,270 @@
 ---
 name: client-generation-agent
-description: Specialized agent for regenerating API clients across platforms and updating dependent code after OpenAPI specification changes. Use for multi-platform client generation, generated code analysis, dependency management, and coordinated client library publishing.
+description: Specialized agent for managing client library publishing workflows and staging→production package management. Use for client library submodule management, publishing workflow coordination, and package distribution automation.
 model: inherit
 ---
 
-# Client Generation Agent
+# Client Library Publishing Agent
 
 ## Purpose
 
-Specialized agent for regenerating API clients across platforms and updating dependent code after OpenAPI specification changes.
+Specialized agent for managing the staging→production client library publishing workflow and coordinating package distribution across npm and Maven repositories.
 
 ## Specialized Capabilities
 
-### 1. Multi-Platform Client Generation
+### 1. Client Library Submodule Management
 
-- **Android client generation**: Generate Java client library from OpenAPI spec
-- **Client library management**: Handle generated client code in `android-test-client/client-library/`
-- **Dependency management**: Ensure proper annotation libraries (JSR305, javax.annotation-api)
-- **Build integration**: Coordinate with Gradle build system for seamless generation
+- **Android client library**: Manage `android-client-library/` submodule with Gradle publishing
+- **TypeScript client library**: Manage `typescript-client-library/` submodule with npm publishing
+- **Submodule coordination**: Synchronize generation and publishing across both platforms
+- **Build integration**: Coordinate with Gradle/npm build systems for seamless publishing
 
-### 2. Generated Code Analysis
+### 2. Publishing Workflow Orchestration
 
-- **Model inspection**: Analyze generated model classes for correctness
-- **API interface validation**: Verify generated API classes match expected methods
-- **Annotation handling**: Ensure proper Gson/Jackson annotations for Android
-- **Type safety verification**: Check that generated types match OpenAPI schemas
+- **Staging packages**: Publish to GitHub Packages for PR validation (e.g., `pr-123.456`)
+- **Production packages**: Publish to npm and GitHub Packages for main branch
+- **Workflow coordination**: Manage `client-publish.yml`, `publish-android.yml`, `publish-typescript.yml`
+- **Version management**: Handle semantic versioning and PR-based staging versions
 
-### 3. Dependent Code Updates
+### 3. E2E Integration Validation
 
-- **Test file updates**: Modify test files using generated models
-- **Application code fixes**: Update main application code referencing generated classes
-- **Import resolution**: Fix import statements after model changes
-- **Compilation verification**: Ensure all dependent code compiles successfully
+- **Staging package consumption**: Update test clients to use staging packages
+- **Cross-platform testing**: Coordinate Android and web E2E tests with published packages
+- **Package validation**: Ensure published packages work correctly before production
+- **Production promotion**: Only publish to production after successful E2E validation
 
 ## Context Knowledge
 
-### Client Generation Architecture
+### Client Library Architecture (Implemented)
 
 ```
-webauthn-server/
-├── src/main/resources/openapi/documentation.yaml  # Source specification
-├── build/generated-clients/android/              # Temporary generation location
-└── build.gradle.kts                              # Generation task configuration
-
-android-test-client/
-├── client-library/                               # Final generated client location
-│   ├── src/main/java/com/vmenon/mpo/api/authn/client/
-│   │   ├── model/                                # Generated model classes
-│   │   ├── api/                                  # Generated API interfaces
-│   │   └── *.java                               # Client infrastructure
-│   └── build.gradle.kts                         # Client library build config
-└── app/src/                                      # Application using generated client
-    ├── main/java/.../WebAuthnViewModel.kt       # Main app code
-    └── androidTest/java/.../WebAuthnFlowTest.kt  # UI tests
+mpo-api-authn-server/
+├── android-client-library/                  # Dedicated Android client submodule
+│   ├── src/main/java/io/github/hitoshura25/webauthn/client/
+│   │   ├── model/                           # Generated model classes
+│   │   ├── api/                             # Generated API interfaces
+│   │   └── *.java                          # Client infrastructure
+│   ├── build.gradle.kts                     # Publishing configuration
+│   └── README.md                            # Client documentation
+├── typescript-client-library/               # Dedicated TypeScript client submodule
+│   ├── src/                                 # Generated TypeScript source
+│   ├── dist/                                # Built outputs (CommonJS + ESM)
+│   ├── package.json                         # npm publishing configuration
+│   └── README.md                            # Client documentation
+├── android-test-client/                     # E2E test client (consumes published Android)
+├── web-test-client/                         # E2E test client (consumes published npm)
+└── .github/workflows/
+    ├── client-publish.yml                   # Publishing orchestrator
+    ├── publish-android.yml                  # Android-specific publishing
+    └── publish-typescript.yml               # TypeScript-specific publishing
 ```
 
 ### Key Technologies
 
-- **OpenAPI Generator 7.2.0** - Generates Android client from OpenAPI 3.0.3 spec
-- **Gradle OpenAPI Plugin** - Integrates generation into build process
-- **Gson** - JSON serialization for Android client
-- **JSR305 Annotations** - Null safety annotations for generated code
+- **OpenAPI Generator 7.2.0** - Generates clients from OpenAPI 3.0.3 spec
+- **GitHub Actions** - Automated publishing workflows
+- **GitHub Packages** - Maven and npm package hosting for staging
+- **npm Registry** - Production TypeScript package distribution
+- **Maven/Gradle** - Android library build and publishing
 
-### Generation Commands
+### Publishing Commands
 
 ```bash
-# Full generation pipeline
-./gradlew :webauthn-server:copyGeneratedClientToLibrary
+# Local client library development
+cd android-client-library && ./gradlew build test publishToMavenLocal
+cd typescript-client-library && npm run build && npm test
 
-# Individual steps (for debugging)
-./gradlew :webauthn-server:copyOpenApiSpec              # Copy spec to build location
-./gradlew :webauthn-server:generateAndroidClient        # Generate client code
-./gradlew :webauthn-server:copyGeneratedClientToLibrary # Copy to final location
+# Generate clients and copy to submodules
+./gradlew generateAndroidClient copyAndroidClientToSubmodule
+./gradlew generateTsClient copyTsClientToSubmodule
 
-# Verify generation worked
-cd android-test-client && ./gradlew client-library:build
+# Manual publishing (normally handled by workflows)
+cd android-client-library && ./gradlew publish
+cd typescript-client-library && npm publish
 ```
 
-### Common Generation Issues
+### Published Packages
 
-#### Missing Dependencies
+#### Android Library
 
+**Production**:
 ```gradle
-// Generated code requires these annotations
-implementation 'com.google.code.findbugs:jsr305:3.0.2'
-implementation 'javax.annotation:javax.annotation-api:1.3.2'
-```
-
-#### Import Conflicts
-
-```text
-// Before: May have wildcard imports
-import com.vmenon.mpo.api.authn.client.model.*
-
-// After: Must use explicit imports
-import com.vmenon.mpo.api.authn.client.model.RegistrationCompleteResponse
-import com.vmenon.mpo.api.authn.client.model.RegistrationRequest
-```
-
-#### Model Usage Changes
-
-```kotlin
-// Old generated model (before spec change)
-response.credentialId  // Field existed
-
-// New generated model (after spec change)
-response.message      // Field replaced
-// response.credentialId - No longer exists, causes compilation error
-```
-
-### Established Patterns
-
-#### Generation Task Configuration
-
-```kotlin
-// In webauthn-server/build.gradle.kts
-openApiGenerate {
-    generatorName = "java"
-    inputSpec = "$projectDir/src/main/resources/openapi/documentation.yaml"
-    outputDir = "$buildDir/generated-clients/android"
-
-    configOptions = mapOf(
-        "library" to "okhttp-gson",
-        "packageName" to "com.vmenon.mpo.api.authn.client",
-        "modelPackage" to "com.vmenon.mpo.api.authn.client.model",
-        "apiPackage" to "com.vmenon.mpo.api.authn.client.api"
-    )
-}
-```
-
-#### Client Usage Pattern
-
-```kotlin
-// Initialize API client
-private lateinit var apiClient: ApiClient
-private lateinit var registrationApi: RegistrationApi
-
-fun setup() {
-    apiClient = ApiClient().apply {
-        basePath = "http://10.0.2.2:8080"
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+        credentials {
+            username = "YOUR_GITHUB_USERNAME"
+            password = "YOUR_GITHUB_TOKEN"
+        }
     }
-    registrationApi = RegistrationApi(apiClient)
 }
 
-// Use generated models
-val request = RegistrationRequest().apply {
-    username = "test-user"
-    displayName = "Test User"
+dependencies {
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.X'
 }
-val response = registrationApi.startRegistration(request)
 ```
 
-### Client Library Build Configuration
-
+**Staging**:
 ```gradle
-// android-test-client/client-library/build.gradle.kts
 dependencies {
-    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
-    implementation 'com.google.code.gson:gson:2.10.1'
-    implementation 'com.google.code.findbugs:jsr305:3.0.2'
-    implementation 'javax.annotation:javax.annotation-api:1.3.2'
-
-    // For API client infrastructure
-    implementation 'io.swagger:swagger-annotations:1.6.8'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client-staging:pr-123.456'
 }
+```
+
+#### TypeScript Library
+
+**Production**:
+```bash
+npm install @vmenon25/mpo-webauthn-client
+```
+
+**Staging**:
+```bash
+npm install @vmenon25/mpo-webauthn-client-staging@pr-123.456
 ```
 
 ## Execution Strategy
 
-### 1. Specification Validation Phase
+### 1. Client Generation Phase
 
-- **OpenAPI syntax check**: Validate YAML syntax and OpenAPI 3.0.3 compliance
-- **Schema consistency**: Ensure all schemas are properly defined with examples
-- **Required field verification**: Check that required fields are consistently marked
-- **Type definition validation**: Verify all data types are correctly specified
+- **OpenAPI validation**: Ensure specification is valid and up-to-date
+- **Generate Android client**: Run generation task for Android client
+- **Generate TypeScript client**: Run generation task for TypeScript client
+- **Copy to submodules**: Move generated code to dedicated submodules
+- **Verify generation**: Check that all expected files were created correctly
 
-### 2. Generation Phase
+### 2. Staging Publishing Phase
 
-- **Clean previous generation**: Remove old generated files to avoid conflicts
-- **Execute generation pipeline**: Run full generation command sequence
-- **Verify generation success**: Check that all expected files were created
-- **Inspect generated models**: Validate that generated classes match expectations
+- **Version calculation**: Generate PR-based staging version (e.g., `pr-123.456`)
+- **Android staging**: Publish to GitHub Packages Maven with staging artifact ID
+- **TypeScript staging**: Publish to GitHub Packages npm with staging package name
+- **E2E preparation**: Update test clients to consume staging packages
+- **Validation**: Verify staging packages are accessible and functional
 
-### 3. Integration Phase
+### 3. E2E Validation Phase
 
-- **Update dependent imports**: Fix import statements in consuming code
-- **Resolve compilation errors**: Fix any breaking changes in model usage
-- **Update test assertions**: Modify tests to work with new generated models
-- **Verify API usage**: Ensure generated API methods are called correctly
+- **Package consumption**: Ensure test clients can install and use staging packages
+- **Cross-platform testing**: Run Android and web E2E tests with staging packages
+- **Functionality validation**: Verify all WebAuthn flows work with published packages
+- **Integration testing**: Test complete registration and authentication flows
 
-### 4. Validation Phase
+### 4. Production Publishing Phase
 
-- **Compile all modules**: Verify that client library and app compile successfully
-- **Run unit tests**: Execute tests that use generated models
-- **Run integration tests**: Verify end-to-end functionality with generated client
-- **Test API calls**: Confirm generated client can communicate with server
+- **Version finalization**: Generate production semantic version (e.g., `1.0.26`)
+- **Android production**: Publish to GitHub Packages with production coordinates
+- **TypeScript production**: Publish to npm registry and GitHub Packages
+- **GitHub releases**: Create automated releases with usage examples
+- **Documentation updates**: Update READMEs and documentation with new versions
 
 ## Success Metrics
 
-- **Zero compilation errors** in client library and consuming applications
-- **All generated models present** and correctly structured
-- **100% test pass rate** for tests using generated client
-- **Successful API communication** between generated client and server
+- **Zero publishing failures** across both Android and TypeScript workflows
+- **100% E2E test pass rate** with staging packages before production publishing
+- **Successful package installation** from all target registries
+- **Complete GitHub releases** with accurate documentation and examples
 
 ## Integration Points
 
-- **OpenAPI Sync Agent**: Receives updated specifications and coordinates regeneration
-- **Cross-Platform Testing Agent**: Coordinates testing after client regeneration
-- **Android Integration Agent**: Handles Android-specific compilation and testing issues
+- **OpenAPI Sync Agent**: Coordinates with specification updates for regeneration
+- **Cross-Platform Testing Agent**: Manages E2E testing with published packages
+- **Android Integration Agent**: Handles Android-specific publishing and testing issues
 
-## Common Update Scenarios
+## Common Publishing Scenarios
 
-### Field Removal from Model
+### New Feature Addition
 
-1. **Update spec**: Remove field from OpenAPI schema
-2. **Regenerate client**: Generated model no longer has field
-3. **Fix compilation errors**: Remove references to deleted field in consuming code
-4. **Update tests**: Modify assertions that checked deleted field
+1. **Update OpenAPI spec**: Add new endpoints or models
+2. **Generate clients**: Create updated client code in submodules
+3. **Staging publish**: Release staging packages for validation
+4. **E2E testing**: Validate new features work with published packages
+5. **Production publish**: Release to production registries after validation
 
-### Field Addition to Model
+### Breaking Change Management
 
-1. **Update spec**: Add field to OpenAPI schema with proper annotations
-2. **Regenerate client**: Generated model includes new field
-3. **Update usage code**: Optionally use new field in application logic
-4. **Update tests**: Add assertions for new field if needed
+1. **Version planning**: Coordinate major version bump for breaking changes
+2. **Migration guide**: Document changes needed for consumers
+3. **Staging validation**: Extra testing with staging packages
+4. **Phased rollout**: Consider preview releases before final production
 
-### Type Changes
+### Package Registry Issues
 
-1. **Update spec**: Change field type in OpenAPI schema
-2. **Regenerate client**: Generated model uses new type
-3. **Fix type mismatches**: Update code that assumes old type
-4. **Update serialization**: Ensure JSON serialization works with new type
+1. **Authentication failures**: Verify GitHub tokens and npm credentials
+2. **Version conflicts**: Handle cases where versions already exist
+3. **Registry outages**: Implement retry logic and fallback strategies
+4. **Package size issues**: Optimize builds to meet registry requirements
 
-## Generation Troubleshooting
+## Publishing Troubleshooting
 
-### Build Failures
-
-```bash
-# Check OpenAPI spec syntax
-./gradlew :webauthn-server:openApiValidate
-
-# Clean and regenerate
-./gradlew clean
-./gradlew :webauthn-server:copyGeneratedClientToLibrary
-
-# Check client library compilation
-cd android-test-client && ./gradlew client-library:compileDebugJavaWithJavac
-```
-
-### Model Issues
+### Workflow Failures
 
 ```bash
-# Check generated model structure
-cat android-test-client/client-library/src/main/java/com/vmenon/mpo/api/authn/client/model/RegistrationCompleteResponse.java
+# Check workflow logs
+gh run list --workflow=client-publish.yml
+gh run view <run-id> --log
+
+# Test local publishing
+cd android-client-library && ./gradlew publish --info
+cd typescript-client-library && npm publish --dry-run
 ```
 
-```java
-// Verify required fields are properly annotated
-@SerializedName("fieldName")
-@javax.annotation.Nonnull
-private String fieldName;
+### Package Issues
+
+```bash
+# Verify package availability
+npm view @vmenon25/mpo-webauthn-client
+gh api user/packages
+
+# Test package installation
+npm install @vmenon25/mpo-webauthn-client-staging@pr-123.456
+```
+
+### Submodule Synchronization
+
+```bash
+# Regenerate and sync submodules
+./gradlew generateAndroidClient copyAndroidClientToSubmodule
+./gradlew generateTsClient copyTsClientToSubmodule
+
+# Verify submodule state
+cd android-client-library && git status
+cd typescript-client-library && git status
 ```
 
 ## Historical Context
 
-- **August 2025**: Resolved major client generation issue where spec drift caused Android compilation failures
-- **Root cause**: Generated models didn't match actual server responses
-- **Solution**: Synchronized OpenAPI spec with server implementation before regeneration
-- **Lesson learned**: Always validate server response format before regenerating clients
+- **August 2025**: Successfully implemented staging→production workflow replacing file-copying approach
+- **Architecture change**: Moved from `android-test-client/client-library/` to dedicated `android-client-library/` submodule
+- **Publishing evolution**: Implemented parallel Android and TypeScript publishing with proper staging validation
+- **E2E integration**: Established pattern of staging package consumption for validation before production
 
 ## Documentation Standards
 
-- **Track generation changes**: Document what models were affected by each regeneration
-- **Version compatibility**: Note any breaking changes that affect existing client code
-- **Integration guidance**: Provide clear steps for updating consuming applications
-- **Testing requirements**: Specify which tests must pass after client regeneration
+- **Track publishing changes**: Document version releases and breaking changes
+- **Package compatibility**: Note any dependency requirements or compatibility issues
+- **Integration guidance**: Provide clear examples for consuming published packages
+- **Workflow maintenance**: Keep publishing workflow documentation current with implementation
+
+## Configuration Management
+
+### Centralized Package Configuration
+
+```yaml
+# .github/workflows/client-publish.yml
+env:
+  NPM_PACKAGE_NAME: "mpo-webauthn-client"
+  ANDROID_GROUP_ID: "io.github.hitoshura25"
+  ANDROID_ARTIFACT_BASE_ID: "mpo-webauthn-android-client"
+```
+
+### Version Management
+
+- **Script**: `scripts/core/version-manager.sh`
+- **PR versions**: `pr-{PR_NUMBER}.{RUN_NUMBER}`
+- **Production versions**: `{MAJOR}.{MINOR}.{PATCH}`
+- **Validation**: Enhanced regex for npm semver compliance
+
+### Registry Configuration
+
+- **GitHub Packages**: Used for staging packages and Android production
+- **npm Registry**: Used for TypeScript production packages
+- **Authentication**: GITHUB_TOKEN for GitHub Packages, NPM_TOKEN for npm

@@ -5,9 +5,11 @@
 ### Active Tasks
 - No active tasks at this time - all major features completed
 
+### Completed Major Refactors
+- **OpenAPI Client Library Architecture**: ✅ **COMPLETED** - Successfully refactored from file-copying to Docker-inspired staging→production workflow using GitHub Packages. Implemented dedicated client library submodules (`android-client-library/`, `typescript-client-library/`) with automated publishing workflows.
+
 ### Planned Major Refactors
 - **FOSS Security Implementation**: Comprehensive plan to replace AI-dependent custom security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP, Checkov, GitLeaks). Eliminates AI API costs and maintenance overhead. See `docs/security/FOSS_SECURITY_IMPLEMENTATION_PLAN.md` for complete implementation plan (5-7 week timeline)
-- **OpenAPI Client Library Architecture**: Comprehensive plan to refactor from file-copying to Docker-inspired staging→production workflow using GitHub Packages. See `docs/OPENAPI_CLIENT_REFACTOR_PLAN.md` for complete implementation plan (8-11 week timeline)
 
 ## Project Overview
 
@@ -26,8 +28,10 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 - **webauthn-server/** - Main WebAuthn KTor server
 - **webauthn-test-credentials-service/** - HTTP service for cross-platform testing  
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
-- **android-test-client/** - Android client with generated API library
-- **web-test-client/** - TypeScript web client with automated OpenAPI client generation and webpack bundling
+- **android-test-client/** - Android E2E test client consuming published Android library
+- **web-test-client/** - TypeScript E2E test client consuming published npm library
+- **android-client-library/** - Dedicated Android client library submodule with publishing configuration
+- **typescript-client-library/** - Dedicated TypeScript client library submodule with npm publishing
 
 ## Development Commands
 
@@ -785,7 +789,7 @@ env:
 ## Completed Work Summary
 
 ### Major Achievements ✅
-- **Client Library Publishing Architecture Refactoring**: Refactored complex temporary file generation approach to clean dedicated submodule architecture with `client-libraries/android-client-library/` and `client-libraries/typescript-client-library/` submodules, eliminating 80+ lines of complex build.gradle.kts scripting in favor of standard Gradle/npm publishing configurations
+- **OpenAPI Client Library Architecture Refactoring (COMPLETED)**: Successfully implemented Docker-inspired staging→production workflow replacing file-copying approach. Created dedicated submodules (`android-client-library/`, `typescript-client-library/`) with callable publishing workflows (`client-publish.yml`, `publish-android.yml`, `publish-typescript.yml`). E2E tests now consume staging packages for validation before production publishing. Eliminated complex file copying in favor of standard package management.
 - **Enhanced Workflow Change Detection**: Implemented granular workflow change detection with component mapping, replacing unsafe "fast-path all workflow changes" with targeted validation levels (orchestration=full, unit-test=tests-only, docker=build-only, infrastructure=minimal)
 - **Docker Build Workflow Consolidation**: Consolidated redundant docker-build.yml from 3 separate jobs (build→scan→push with 3x image rebuilds) into single efficient job, eliminating 60-70% build redundancy while maintaining security-first approach and all functionality
 - **Callable Workflow Architecture Refactoring**: Refactored monolithic 777-line build-and-test.yml into modular callable workflows (54% size reduction) with unit-tests.yml and docker-build.yml modules, improving maintainability while preserving all conditional logic and job dependencies

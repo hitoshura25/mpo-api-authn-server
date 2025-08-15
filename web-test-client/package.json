@@ -14,7 +14,7 @@
     "start": "node dist/src/server.js",
     "dev": "npm run build:dev && npm run start",
     "dev:server": "nodemon --exec ts-node src/server.ts",
-    "dev:js": "npm run build && nodemon dist/server.js",
+    "dev:js": "npm run build && nodemon dist/src/server.js",
     "postinstall": "echo 'Dependencies installed. Run npm run build after generating client.'",
     "test": "playwright test",
     "test:ui": "playwright test --ui",

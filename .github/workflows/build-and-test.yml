@@ -40,12 +40,6 @@ on:
       test_credentials_image:
         description: 'Test credentials service Docker image tag'
         value: ${{ jobs.docker-build-scan-push.outputs.test-credentials-image }}
-      security_scan_passed:
-        description: 'Whether Docker security scan passed'
-        value: ${{ jobs.docker-build-scan-push.outputs.security-scan-passed }}
-      critical_vulnerabilities:
-        description: 'Number of critical vulnerabilities found'
-        value: ${{ jobs.docker-build-scan-push.outputs.critical-vulnerabilities }}
       unit_tests_passed:
         description: 'Whether unit tests passed successfully'
         value: ${{ jobs.run-unit-tests.outputs.tests-passed }}
@@ -411,7 +405,7 @@ jobs:
       java-version: ${{ needs.setup-config.outputs.java-version }}
     secrets: inherit
 
-  # Job 4: Docker build, scan, and push using callable workflow
+  # Job 4: Docker build and push using callable workflow
   docker-build-scan-push:
     uses: ./.github/workflows/docker-build.yml
     needs: [ detect-changes, setup-config, run-unit-tests ]
@@ -450,22 +444,14 @@ jobs:
           echo "Coverage uploaded: ${{ needs.run-unit-tests.outputs.coverage-uploaded }}"
           echo "Docker images built: ${{ needs.docker-build-scan-push.outputs.images-built }}"
           echo "Docker images pushed: ${{ needs.docker-build-scan-push.outputs.images-pushed }}"
-          echo "Security scan passed: ${{ needs.docker-build-scan-push.outputs.security-scan-passed }}"
-          echo "Critical vulnerabilities: ${{ needs.docker-build-scan-push.outputs.critical-vulnerabilities }}"
 
           if [[ "${{ needs.docker-build-scan-push.outputs.images-pushed }}" == "true" ]]; then
-            echo "✅ Docker images successfully built, scanned, and pushed:"
+            echo "✅ Docker images successfully built and pushed:"
             echo "  WebAuthn Server: ${{ needs.docker-build-scan-push.outputs.webauthn-server-image }}"
             echo "  Test Credentials: ${{ needs.docker-build-scan-push.outputs.test-credentials-image }}"
-            echo "🔒 Security scan passed with ${{ needs.docker-build-scan-push.outputs.critical-vulnerabilities }} critical vulnerabilities"
-            echo "🚀 Ready for E2E tests"
-          elif [[ "${{ needs.docker-build-scan-push.outputs.security-scan-passed }}" == "false" ]]; then
-            echo "🚨 SECURITY SCAN FAILED - Docker images built but NOT pushed"
-            echo "Critical vulnerabilities found: ${{ needs.docker-build-scan-push.outputs.critical-vulnerabilities }}"
-            echo "❌ Images blocked from registry due to security issues"
+            echo "🚀 Ready for parallel E2E tests and security scanning"
           elif [[ "${{ needs.docker-build-scan-push.outputs.images-built }}" == "true" ]]; then
-            echo "🔧 Docker images built successfully but push was skipped or failed"
-            echo "Security scan status: ${{ needs.docker-build-scan-push.outputs.security-scan-passed }}"
+            echo "🔧 Docker images built successfully but push failed"
           elif [[ "${{ needs.detect-changes.outputs.fast-path-eligible }}" == "true" ]]; then
             echo "⚡ Fast path completed - no builds needed (docs/workflow changes only)"
           elif [[ "${{ needs.run-unit-tests.outputs.tests-passed }}" == "true" ]]; then

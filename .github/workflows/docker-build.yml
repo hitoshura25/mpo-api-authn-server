@@ -143,15 +143,11 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             .gradle/configuration-cache
-          key: gradle-docker-consolidated-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-docker-consolidated-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-docker-consolidated-${{ runner.os }}-main-
-            gradle-docker-consolidated-${{ runner.os }}-
             gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
+            gradle-docker-build-${{ runner.os }}-main-
+            gradle-docker-build-${{ runner.os }}-
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

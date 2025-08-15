@@ -87,8 +87,6 @@ jobs:
             gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
             gradle-unit-tests-${{ runner.os }}-main-
             gradle-unit-tests-${{ runner.os }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4

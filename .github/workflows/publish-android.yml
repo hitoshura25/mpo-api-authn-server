@@ -111,30 +111,30 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # Optimized Gradle setup with configuration cache support
-      - name: Setup Gradle with optimized caching
+      # Standardized Gradle caching for Android client publishing
+      - name: Setup Gradle cache for Android client publishing
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: gradle-android-publish-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-android-publish-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-android-publish-${{ runner.os }}-main-
+            gradle-android-publish-${{ runner.os }}-
+
+      # Optimized Gradle setup with standardized caching
+      - name: Setup Gradle for Android publishing
         uses: gradle/actions/setup-gradle@v4
         with:
           cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
           build-scan-publish: true
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
-          # Enable configuration cache optimization
-          gradle-home-cache-includes: |
-            caches
-            notifications
-            wrapper
-            configuration-cache
-          gradle-home-cache-excludes: |
-            caches/*/scripts
-            caches/*/scripts-remapped
-            caches/*/fileHashes
-            caches/*/fileContent
-            caches/*/metadata-*/artifact-*.bin
-            caches/journal-1/file-access.bin
-          # Avoid init script conflicts with configuration cache
-          cache-read-only: false
-          cache-write-only: false
+          # Disable built-in cache since we're managing it manually for cross-workflow sharing
+          cache-disabled: true
 
       - name: Generate Android client
         env:

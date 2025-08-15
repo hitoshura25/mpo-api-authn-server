@@ -132,15 +132,11 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             .gradle/configuration-cache
-          key: gradle-typescript-client-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-typescript-publish-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-typescript-client-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-typescript-client-${{ runner.os }}-main-
-            gradle-typescript-client-${{ runner.os }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-docker-consolidated-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
+            gradle-typescript-publish-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-typescript-publish-${{ runner.os }}-main-
+            gradle-typescript-publish-${{ runner.os }}-
 
       - name: Setup Gradle for client generation
         uses: gradle/actions/setup-gradle@v4

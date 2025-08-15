@@ -430,6 +430,55 @@ job-name:
 
 **Why This Matters**: Large CLAUDE.md files (64KB+) significantly impact session performance and context window usage. This strategy maintains productivity while preserving all essential development context.
 
+### 🚀 CRITICAL: Optimized Gradle Caching Strategy
+
+**MANDATORY**: All workflows using Gradle MUST implement optimized caching for PR + main branch builds.
+
+#### **⚡ Cache Performance Strategy**
+- **PR Builds**: Inherit cache from main branch → 80% faster initial builds
+- **Main Builds**: Seed cache for all PR branches → Consistent performance
+- **Cross-Workflow**: unit-tests cache shared with docker-build, client-publishing
+- **Result**: ~3-5x faster Gradle builds, especially for client publishing workflows
+
+#### **🔑 Required Cache Configuration**
+```yaml
+# ✅ CORRECT: Manual cache management with cross-workflow + branch fallbacks
+- name: Setup Gradle cache for {workflow-purpose}
+  uses: actions/cache@v4
+  with:
+    path: |
+      ~/.gradle/caches
+      ~/.gradle/wrapper
+      .gradle/configuration-cache
+    key: gradle-{workflow-type}-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+    restore-keys: |
+      gradle-{workflow-type}-${{ runner.os }}-${{ github.ref_name }}-     # Same workflow, same branch
+      gradle-{workflow-type}-${{ runner.os }}-main-                       # Same workflow, main fallback ✅
+      gradle-{workflow-type}-${{ runner.os }}-                            # Same workflow, any branch
+      gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-          # Cross-workflow fallback ✅
+      gradle-docker-consolidated-${{ runner.os }}-${{ github.ref_name }}- # Cross-workflow fallback ✅
+      gradle-${{ runner.os }}-${{ github.ref_name }}-                     # Any workflow, same branch
+      gradle-${{ runner.os }}-main-                                       # Any workflow, main fallback ✅
+
+- name: Setup Gradle
+  uses: gradle/actions/setup-gradle@v4
+  with:
+    cache-disabled: true  # ✅ MANDATORY: Disable built-in cache, use manual cache
+    cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+```
+
+#### **📋 Cache Strategy by Workflow Type**
+- **unit-tests**: `gradle-unit-tests-{os}-{branch}-{hash}` (base cache for most workflows)
+- **docker-consolidated**: `gradle-docker-consolidated-{os}-{branch}-{hash}` (Docker builds)
+- **typescript-client**: `gradle-typescript-client-{os}-{branch}-{hash}` (TS client publishing)
+- **android-client**: `gradle-android-client-{os}-{branch}-{hash}` (Android client publishing)
+
+#### **⚠️ Common Caching Mistakes to Avoid**
+- **❌ Using gradle/actions/setup-gradle without `cache-disabled: true`**: Conflicts with manual caching
+- **❌ Missing main branch fallback**: PR builds can't benefit from main branch cache
+- **❌ No cross-workflow fallbacks**: Client publishing workflows rebuild everything from scratch
+- **❌ Inconsistent cache naming**: Prevents cache sharing between related workflows
+
 ### Key Development Principles
 
 1. **Testing Philosophy**: ALWAYS run tests immediately after ANY refactoring before claiming completion

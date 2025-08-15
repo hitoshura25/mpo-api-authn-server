@@ -129,6 +129,24 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # Optimized Gradle caching with cross-workflow fallbacks
+      - name: Setup Gradle cache for Android client publishing
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: gradle-android-client-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-android-client-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-android-client-${{ runner.os }}-main-
+            gradle-android-client-${{ runner.os }}-
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-docker-consolidated-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -136,6 +154,8 @@ jobs:
           build-scan-publish: true
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually for optimal cross-workflow sharing
+          cache-disabled: true
 
       - name: Check if Android package version already exists
         id: check-android-version

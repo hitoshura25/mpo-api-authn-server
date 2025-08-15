@@ -124,6 +124,24 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
+      # Optimized Gradle caching with cross-workflow fallbacks
+      - name: Setup Gradle cache for TypeScript client publishing
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            .gradle/configuration-cache
+          key: gradle-typescript-client-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-typescript-client-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-typescript-client-${{ runner.os }}-main-
+            gradle-typescript-client-${{ runner.os }}-
+            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-docker-consolidated-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-${{ runner.os }}-main-
+
       - name: Setup Gradle for client generation
         uses: gradle/actions/setup-gradle@v4
         with:
@@ -131,6 +149,8 @@ jobs:
           build-scan-publish: true
           build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
           build-scan-terms-of-use-agree: "yes"
+          # Disable built-in cache since we're managing it manually for optimal cross-workflow sharing
+          cache-disabled: true
 
       - name: Generate TypeScript client
         env:

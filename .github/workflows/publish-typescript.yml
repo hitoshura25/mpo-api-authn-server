@@ -106,11 +106,11 @@ jobs:
           fi
 
           PACKAGE_FULL_NAME="${PACKAGE_NAME}@${{ inputs.client-version }}"
-          
+
           echo "package-name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
           echo "package-full-name=${PACKAGE_FULL_NAME}" >> $GITHUB_OUTPUT
           echo "npm-registry=${NPM_REGISTRY}" >> $GITHUB_OUTPUT
-          
+
           echo "📦 TypeScript Package Information:"
           echo "  Package name: ${PACKAGE_NAME}"
           echo "  Version: ${{ inputs.client-version }}"
@@ -161,10 +161,12 @@ jobs:
           echo "  Client version: ${CLIENT_VERSION}"
           echo "  npm package name: ${NPM_NAME}"
 
+          # Write properties to gradle.properties to avoid invalidating the configuration cache
+          echo "clientVersion=${CLIENT_VERSION}" >> gradle.properties
+          echo "npmName=${NPM_NAME}" >> gradle.properties
+
           # Generate only TypeScript client and copy to submodule
           ./gradlew generateTsClient copyTsClientToSubmodule \
-            -PclientVersion="${CLIENT_VERSION}" \
-            -PnpmName="${NPM_NAME}" \
             --build-cache --parallel --configuration-cache
 
           echo "✅ TypeScript client generated successfully"

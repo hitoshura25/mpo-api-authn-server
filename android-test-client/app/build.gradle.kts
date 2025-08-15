@@ -45,7 +45,10 @@ android {
         }
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             buildConfigField("String", "SERVER_URL", "\"https://your-production-server.com\"")
         }
     }
@@ -69,17 +72,6 @@ android {
             pickFirsts += "**/libc++_shared.so"
             pickFirsts += "**/libjsc.so"
         }
-        resources {
-            // Handle duplicate META-INF files from Jakarta dependencies
-            pickFirsts += "**/META-INF/NOTICE.md"
-            pickFirsts += "**/META-INF/LICENSE.md"
-            pickFirsts += "**/META-INF/NOTICE"
-            pickFirsts += "**/META-INF/LICENSE"
-            pickFirsts += "**/META-INF/NOTICE.txt"
-            pickFirsts += "**/META-INF/LICENSE.txt"
-            pickFirsts += "**/META-INF/ASL2.0"
-            pickFirsts += "**/META-INF/LGPL2.1"
-        }
     }
 }
 
@@ -98,7 +90,7 @@ dependencies {
 
     // Published Android client library from GitHub Packages
     implementation("io.github.hitoshura25:mpo-webauthn-android-client:latest.release")
-    
+
     // JSON Processing
     implementation("com.google.code.gson:gson:$gsonVersion")
 

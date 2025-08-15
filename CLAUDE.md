@@ -9,7 +9,7 @@
 - **OpenAPI Client Library Architecture**: ✅ **COMPLETED** - Successfully refactored from file-copying to Docker-inspired staging→production workflow using GitHub Packages. Implemented dedicated client library submodules (`android-client-library/`, `typescript-client-library/`) with automated publishing workflows.
 
 ### Planned Major Refactors
-- **FOSS Security Implementation**: Comprehensive plan to replace AI-dependent custom security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP, Checkov, GitLeaks). Eliminates AI API costs and maintenance overhead. See `docs/security/FOSS_SECURITY_IMPLEMENTATION_PLAN.md` for complete implementation plan (5-7 week timeline)
+- **FOSS Security Implementation**: Comprehensive plan to replace AI-dependent custom security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP, Checkov, GitLeaks). Eliminates AI API costs and maintenance overhead. See `docs/improvements/planned/foss-security-implementation.md` for complete implementation plan (5-7 week timeline)
 
 ## Project Overview
 

@@ -1,6 +1,6 @@
 # Client Library Staging Configuration
 
-This document describes the staging → production pattern for client library publishing, following the Docker-inspired approach outlined in `OPENAPI_CLIENT_REFACTOR_PLAN.md`.
+This document describes the staging → production pattern for client library publishing, following the Docker-inspired approach outlined in `docs/improvements/completed/openapi-client-refactor.md`.
 
 ## Version Patterns
 

@@ -324,4 +324,4 @@ For issues related to client libraries:
 - [Android Test Client](../../android-test-client/README.md) - E2E testing with Android
 - [Web Test Client](../../web-test-client/README.md) - E2E testing with TypeScript
 - [Client Library Publishing](../development/client-library-publishing.md) - Workflow details
-- [OpenAPI Refactor Plan](../OPENAPI_CLIENT_REFACTOR_PLAN.md) - Historical implementation plan
+- [OpenAPI Refactor Plan](../improvements/completed/openapi-client-refactor.md) - Completed implementation with learnings

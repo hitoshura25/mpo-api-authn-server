@@ -1,4 +1,9 @@
-# Free & Open Source Security Implementation Plan
+# FOSS Security Implementation Plan
+
+**Status**: ⚪ **PLANNED** 📋  
+**Timeline**: TBD (estimated 5-7 weeks)  
+**Implementation Effort**: ~4-6 weeks development + 1 week validation  
+**Priority**: Medium (after current stability improvements)  
 
 ## Executive Summary
 
@@ -2188,7 +2193,74 @@ echo "4. Document response and timeline"
 
 ---
 
+## Future Extensions: Client Library Security Integration
+
+*This section documents potential enhancements after completion of the OpenAPI Client Refactor (see `OPENAPI_CLIENT_REFACTOR_PLAN.md`).*
+
+### Client Library Security Monitoring
+
+Once the OpenAPI client refactoring is complete and client libraries are published to GitHub Packages, the security implementation can be extended to include:
+
+#### Generated Client Security Scanning
+```yaml
+# Addition to osv-vulnerability-scan.yml
+- name: Scan Generated Client Libraries
+  uses: google/osv-scanner-action@v1
+  with:
+    scan-args: "--recursive ./build/generated-clients/"
+    
+- name: Upload Client Library Security Results
+  uses: github/codeql-action/upload-sarif@v3
+  with:
+    sarif_file: 'client-libraries-security.sarif'
+    category: 'generated-client-libraries'
+```
+
+#### Published Package Monitoring
+```yaml
+# Integration with existing vulnerability-monitor.js
+class ClientLibrarySecurityMonitor extends VulnerabilityMonitor {
+    async monitorPublishedClientLibraries() {
+        // Monitor published npm and Maven packages for vulnerabilities
+        // @vmenon25/mpo-webauthn-client
+        // com.vmenon.mpo.api.authn:mpo-webauthn-client
+    }
+}
+```
+
+#### Supply Chain Security
+- **Package Attestation**: Add provenance attestation for published client libraries
+- **Dependency Vulnerability Tracking**: Monitor client library dependencies for security issues
+- **Automated Security Updates**: Generate PRs for client library security updates
+
+#### AI-Enhanced Client Analysis
+- **Breaking Change Detection**: AI analysis of OpenAPI spec changes for security impact
+- **Generated Code Security Review**: AI assessment of generated client code for security patterns
+- **Client Usage Security Guidance**: AI-generated security best practices for client library consumers
+
+### Implementation Prerequisites
+
+**Required Completion**:
+- [ ] OpenAPI Client Refactor Plan implementation complete
+- [ ] Client libraries published to GitHub Packages
+- [ ] Staging→production client workflow operational
+
+**Integration Points**:
+- Extends existing OSV-Scanner workflows
+- Integrates with current vulnerability monitoring script
+- Leverages established AI enhancement framework
+
+**Timeline**: 2-3 weeks after OpenAPI refactoring completion
+
+**Benefits**:
+- **Supply Chain Security**: End-to-end security from server to client libraries
+- **Automated Monitoring**: Client libraries monitored alongside server dependencies
+- **Comprehensive Coverage**: Security scanning includes generated artifacts
+
+---
+
 *Implementation plan updated: 2025-01-11*  
 *Status: Ready for hybrid FOSS + AI implementation with complete execution guidance*  
 *Priority: Phase 1 provides immediate AI cost elimination + optional ASVS enhancement*  
+*Future Extensions: Client library security integration pending OpenAPI refactoring*  
 *Estimated savings: 100% elimination of AI API costs + enhanced security coverage with zero/low-cost AI*

@@ -1,0 +1,205 @@
+# Docker Security Scanning - Parallel Security Analysis
+#
+# This callable workflow performs comprehensive security scanning of Docker images
+# that have been built and pushed to the registry. It runs in parallel with E2E tests
+# to optimize CI/CD pipeline performance while maintaining security guarantees.
+#
+# DESIGN PRINCIPLES:
+# - Registry-based scanning: Pulls images from registry instead of building locally
+# - Parallel execution: Runs independently of E2E tests for maximum performance
+# - Security-first: Blocks pipeline progression on critical vulnerabilities
+# - Future-ready: Extensible for ZAP, SAST, and other security tools
+# - Cost-optimized: Efficient resource usage through targeted scanning
+#
+# SECURITY COVERAGE:
+# - Container vulnerabilities (Trivy)
+# - Secret detection in images
+# - Configuration security issues
+# - Future: ZAP dynamic analysis, SAST integration
+#
+# INPUTS:
+#   webauthn-server-image: WebAuthn server Docker image tag to scan
+#   test-credentials-image: Test credentials service Docker image tag to scan
+#   registry-url: Docker registry URL
+#   skip-scan: Skip scanning for testing purposes
+#
+# OUTPUTS:
+#   security-scan-passed: Whether security scan passed without critical vulnerabilities
+#   critical-vulnerabilities: Number of critical vulnerabilities found
+#   scan-results: JSON scan results for reporting
+#   sarif-uploaded: Whether SARIF results were uploaded to GitHub Security
+
+name: Docker Security Scanning
+
+on:
+  workflow_call:
+    inputs:
+      webauthn-server-image:
+        description: 'WebAuthn server Docker image tag to scan'
+        required: true
+        type: string
+      test-credentials-image:
+        description: 'Test credentials service Docker image tag to scan'
+        required: true
+        type: string
+      registry-url:
+        description: 'Docker registry URL'
+        required: false
+        type: string
+        default: 'ghcr.io'
+      skip-scan:
+        description: 'Skip scanning for testing purposes'
+        required: false
+        type: boolean
+        default: false
+    outputs:
+      security-scan-passed:
+        description: 'Whether security scan passed without critical vulnerabilities'
+        value: ${{ jobs.scan-docker-images.outputs.scan-passed }}
+      critical-vulnerabilities:
+        description: 'Number of critical vulnerabilities found'
+        value: ${{ jobs.scan-docker-images.outputs.critical-vulnerabilities }}
+      scan-results:
+        description: 'JSON scan results for reporting'
+        value: ${{ jobs.scan-docker-images.outputs.scan-results }}
+      sarif-uploaded:
+        description: 'Whether SARIF results were uploaded to GitHub Security'
+        value: ${{ jobs.scan-docker-images.outputs.sarif-uploaded }}
+
+env:
+  DOCKER_REGISTRY: ${{ inputs.registry-url }}
+  WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn-server-image }}
+  TEST_CREDENTIALS_IMAGE: ${{ inputs.test-credentials-image }}
+
+jobs:
+  # Single job: Comprehensive security scanning of registry images
+  scan-docker-images:
+    runs-on: ubuntu-latest
+    if: inputs.skip-scan != true
+    permissions:
+      contents: read          # Read repository code
+      security-events: write  # Upload SARIF results to GitHub Security
+      pull-requests: write    # Comment on PRs with scan results
+      issues: write          # Update issues with security findings
+    outputs:
+      scan-passed: ${{ steps.security-scan.outputs.scan-passed }}
+      critical-vulnerabilities: ${{ steps.security-scan.outputs.critical-vulnerabilities }}
+      scan-results: ${{ steps.security-scan.outputs.scan-results }}
+      sarif-uploaded: ${{ steps.upload-sarif.outcome == 'success' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Log in to the Container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull Docker images from registry
+        run: |
+          echo "🔍 Pulling Docker images for security scanning..."
+          echo "WebAuthn Server: ${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          echo "Test Credentials: ${{ env.TEST_CREDENTIALS_IMAGE }}"
+          
+          # Pull WebAuthn Server image
+          echo "📥 Pulling WebAuthn Server image..."
+          docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          
+          # Pull Test Credentials Service image  
+          echo "📥 Pulling Test Credentials Service image..."
+          docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
+          
+          # Verify images are available locally
+          echo "✅ Verifying pulled images..."
+          docker image inspect "${{ env.WEBAUTHN_SERVER_IMAGE }}" >/dev/null
+          docker image inspect "${{ env.TEST_CREDENTIALS_IMAGE }}" >/dev/null
+          
+          echo "✅ Docker images pulled successfully and ready for scanning"
+
+      - name: Comprehensive Docker Security Scanning
+        id: security-scan
+        env:
+          WEBAUTHN_IMAGE_TAG: ${{ env.WEBAUTHN_SERVER_IMAGE }}
+          TEST_CREDENTIALS_IMAGE_TAG: ${{ env.TEST_CREDENTIALS_IMAGE }}
+        run: |
+          echo "🔍 Starting comprehensive security scan of Docker images..."
+          echo "WebAuthn image: $WEBAUTHN_IMAGE_TAG"
+          echo "Test credentials image: $TEST_CREDENTIALS_IMAGE_TAG"
+
+          # Make sure the security scanning script is executable
+          chmod +x scripts/docker/scan-security.sh
+
+          # Run security scanning on pulled images
+          # Both images are considered "changed" for comprehensive scanning
+          scripts/docker/scan-security.sh "true" "true" "$WEBAUTHN_IMAGE_TAG" "$TEST_CREDENTIALS_IMAGE_TAG"
+
+      - name: Upload security scan results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-security-scan-results-parallel
+          path: |
+            docker-security-scan-results.json
+            docker-security-scan-results.sarif
+            *-vulns.json
+            *-secrets.json
+            *-config.json
+            *.sarif
+            scan-security.log
+          retention-days: 30
+
+      - name: Upload scan results to GitHub Security
+        id: upload-sarif
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        continue-on-error: true
+        with:
+          sarif_file: docker-security-scan-results.sarif
+          category: docker-security-parallel
+
+      - name: Post security scan results to PR
+        if: always() && github.event_name == 'pull_request'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
+          SCAN_RESULTS_FILE: docker-security-scan-results.json
+        run: |
+          echo "📝 Posting security scan results to PR #${{ github.event.pull_request.number || 'N/A' }}"
+          chmod +x scripts/ci/security-scan-pr-comment.cjs
+          node scripts/ci/security-scan-pr-comment.cjs
+
+      - name: Security scan summary
+        if: always()
+        run: |
+          echo "🎯 Docker Security Scanning Results (Parallel Execution):"
+          echo "  🖼️  WebAuthn Server: ${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          echo "  🖼️  Test Credentials: ${{ env.TEST_CREDENTIALS_IMAGE }}"
+          echo "  🔒 Security scan passed: ${{ steps.security-scan.outputs.scan-passed }}"
+          echo "  🚨 Critical vulnerabilities: ${{ steps.security-scan.outputs.critical-vulnerabilities }}"
+          echo "  📊 SARIF uploaded: ${{ steps.upload-sarif.outcome == 'success' }}"
+          echo "  ⚡ Execution mode: Parallel with E2E tests"
+          
+          if [[ "${{ steps.security-scan.outputs.scan-passed }}" == "true" ]]; then
+            echo "✅ Security scan passed - no critical vulnerabilities found"
+          else
+            echo "🚨 Security scan failed - critical vulnerabilities detected"
+            echo "❌ Pipeline will be marked as failed to prevent insecure deployments"
+          fi
+
+  # Skip job for testing purposes
+  skip-scan:
+    runs-on: ubuntu-latest
+    if: inputs.skip-scan == true
+    outputs:
+      scan-passed: "true"
+      critical-vulnerabilities: "0"
+      scan-results: "{}"
+      sarif-uploaded: "false"
+    steps:
+      - name: Skip security scanning
+        run: |
+          echo "⏭️ Security scanning skipped for testing purposes"
+          echo "🔒 In production, this would perform comprehensive security analysis"

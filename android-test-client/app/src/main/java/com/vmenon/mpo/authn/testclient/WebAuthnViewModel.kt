@@ -8,15 +8,15 @@ import androidx.lifecycle.ViewModel
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import com.vmenon.mpo.api.authn.client.api.RegistrationApi
-import com.vmenon.mpo.api.authn.client.api.AuthenticationApi
-import com.vmenon.mpo.api.authn.client.model.RegistrationRequest
-import com.vmenon.mpo.api.authn.client.model.RegistrationCompleteRequest
-import com.vmenon.mpo.api.authn.client.model.AuthenticationRequest
-import com.vmenon.mpo.api.authn.client.model.AuthenticationCompleteRequest
+import io.github.hitoshura25.webauthn.client.api.RegistrationApi
+import io.github.hitoshura25.webauthn.client.api.AuthenticationApi
+import io.github.hitoshura25.webauthn.client.model.RegistrationRequest
+import io.github.hitoshura25.webauthn.client.model.RegistrationCompleteRequest
+import io.github.hitoshura25.webauthn.client.model.AuthenticationRequest
+import io.github.hitoshura25.webauthn.client.model.AuthenticationCompleteRequest
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.vmenon.mpo.api.authn.client.ApiClient
+import io.github.hitoshura25.webauthn.client.ApiClient
 import java.security.SecureRandom
 
 class WebAuthnViewModel : ViewModel() {

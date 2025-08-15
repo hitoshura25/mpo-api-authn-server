@@ -11,3 +11,6 @@ buildscript {
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.23")
     }
 }
+
+// NOTE: Repository configuration moved to settings.gradle.kts 
+// when using dependencyResolutionManagement

@@ -1,202 +1,49 @@
-# Client Code Generation for MPO WebAuthn Server
+# Client Library Architecture for MPO WebAuthn Server
 
-This document explains how to automatically generate client libraries for the MPO WebAuthn authentication server.
+This document explains the implemented **Docker-inspired staging→production workflow** for client library generation, publishing, and consumption.
 
 ## Overview
 
-The server uses OpenAPI 3.0 specifications to automatically generate client libraries in multiple programming languages:
+The OpenAPI client library refactor has been **successfully implemented**, replacing the old file-copying approach with a modern package management workflow similar to Docker's staging→production pattern.
 
-- **TypeScript/JavaScript** - For web applications and Node.js
-- **Java** - For Android apps and Spring Boot services
-- **Python** - For Django/Flask applications
-- **C#** - For .NET applications
+## Architecture Summary
 
-## Quick Start
+### 🏗️ **Implemented Architecture** (Current State)
 
-### 1. Generate Android Client (Currently Available)
-
-```bash
-# Make sure your server is running on localhost:8080
-./gradlew :webauthn-server:run
-
-# In another terminal, generate Android client
-./gradlew :webauthn-server:copyGeneratedClientToLibrary
-```
-
-### 2. Generate Other Clients (Future Implementation)
-
-```bash
-# TypeScript client (when implemented)
-./gradlew :webauthn-server:generateTsClient
-
-# Java client (when implemented)
-./gradlew :webauthn-server:generateJavaClient
-
-# Python client (when implemented)
-./gradlew :webauthn-server:generatePythonClient
-
-# C# client (when implemented)
-./gradlew :webauthn-server:generateCsharpClient
-```
-
-### 3. Package for Distribution (Future Implementation)
-
-```bash
-# Generate and package all clients (when implemented)
-./gradlew :webauthn-server:generateAllClients
-```
-
-## Generated Client Locations
-
-After generation, client libraries will be available in:
+The project now uses dedicated client library submodules with automated publishing:
 
 ```
-webauthn-server/build/generated-clients/
-├── android/            # Android-specific Java client (currently implemented)
-├── typescript/         # TypeScript/JavaScript client (future)
-├── java/               # Java client (future)  
-├── python/             # Python client (future)
-└── csharp/             # C# client (future)
+mpo-api-authn-server/
+├── android-client-library/          # Dedicated Android client submodule
+│   ├── src/main/java/               # Generated OpenAPI client source
+│   ├── build.gradle.kts             # Publishing configuration
+│   └── README.md                    # Client documentation
+├── typescript-client-library/       # Dedicated TypeScript client submodule
+│   ├── src/                         # Generated TypeScript client source
+│   ├── package.json                 # npm publishing configuration
+│   └── README.md                    # Client documentation
+├── android-test-client/             # E2E test client (consumes published Android library)
+├── web-test-client/                 # E2E test client (consumes published npm library)
+└── .github/workflows/
+    ├── client-publish.yml           # Publishing orchestrator
+    ├── publish-android.yml          # Android-specific publishing
+    └── publish-typescript.yml       # TypeScript-specific publishing
 ```
 
-**Android Client Integration:**
-The Android client is automatically copied to:
-```
-android-test-client/client-library/src/main/java/
-```
+### 🔄 **Staging→Production Workflow**
 
-## Automated Client Publishing
+1. **Client Generation**: OpenAPI spec generates client code in submodules
+2. **Staging Publishing**: PR changes publish staging packages to GitHub Packages
+3. **E2E Validation**: Test clients consume staging packages for validation
+4. **Production Publishing**: Main branch merges publish to npm + GitHub Packages
+5. **GitHub Releases**: Automated release creation with usage examples
 
-Client libraries are automatically published through a **consolidated E2E testing and publishing workflow**:
+## Published Client Libraries
 
-### Consolidated Publishing Workflow
-- **Main Workflow**: `.github/workflows/client-e2e-tests.yml`
-- **Triggered by**: `default-branch-push.yml` and `pull-request.yml` wrapper workflows
-- **Process**: Generate clients → E2E testing → Conditional publishing → GitHub releases
-- **Publishing**: Only occurs when OpenAPI changes are detected
+### Android Library
 
-### Published Libraries
+**Production Package**:
 
-#### Android Client Library
-- **Package**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client`
-- **Registry**: GitHub Packages (Maven)
-
-#### npm Client Library  
-- **Package**: `@vmenon25/mpo-webauthn-client`
-- **Registry**: npm Registry (public)
-
-### Centralized Package Configuration
-
-Both client libraries use **centralized configuration** managed in the GitHub Actions workflow (`.github/workflows/client-e2e-tests.yml`):
-
-```yaml
-env:
-  BASE_VERSION: "1.0"
-  NPM_SCOPE: "@vmenon25"
-  NPM_PACKAGE_NAME: "mpo-webauthn-client"
-```
-
-**Configuration Benefits:**
-- **Single Point of Control**: All package naming is managed in one location
-- **Consistent Versioning**: Both Android and npm use the same base version
-- **Easy Scope Changes**: Update `NPM_SCOPE` once to change all publishing configurations
-- **Automated Documentation**: Package names in release notes automatically use centralized values
-
-**To change npm scope:**
-1. Update `NPM_SCOPE` and `NPM_PACKAGE_NAME` in `.github/workflows/client-e2e-tests.yml`
-2. The workflow will automatically:
-   - Generate the full package name as `${NPM_SCOPE}/${NPM_PACKAGE_NAME}`
-   - Update publishing configurations for both staging and production
-   - Include correct package names in GitHub release documentation
-
-### Version Management
-Both clients use **unified npm-compatible 3-part semantic versioning** with **enhanced regex validation**:
-- **Format**: `{BASE_VERSION}.{BUILD_NUMBER}` (e.g., `1.0.26`, `1.0.27`)
-- **Base Version**: Currently `1.0` (npm-compatible format)
-- **Build Number**: GitHub Actions run number  
-- **Script**: `scripts/core/version-manager.sh`
-- **Validation Pattern**: `^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9-]+(\.[a-zA-Z0-9-]+)*)?$`
-
-**Enhanced Validation Features**:
-- **Hyphen Support**: Prerelease identifiers can now contain hyphens (e.g., `1.0.0-alpha-beta.1`)
-- **Robust Rejection**: Invalid formats properly rejected (2-part, 4-part, empty prerelease)
-- **Full npm Compliance**: 100% npm semver specification compliance
-- **Unified Format**: Both Android and npm use identical version numbers
-- **PR Versions**: Use `1.0.0-pr.42.123` format with enhanced validation
-
-### Change Detection
-Publishing only occurs when API-related files change:
-- OpenAPI specification (`webauthn-server/src/main/resources/openapi/**`)
-- Server build configuration (`webauthn-server/build.gradle.kts`)
-- Client library code
-- Main publishing workflow (`client-e2e-tests.yml`)
-
-### Manual Publishing
-You can trigger publishing manually through the consolidated workflow:
-```bash
-# Via GitHub Actions UI - trigger the main workflow
-# Go to Actions → "Client E2E Tests and Publishing" → Run workflow
-
-# Or trigger via command line
-gh workflow run client-e2e-tests.yml
-```
-
-### Individual Client Management
-
-```bash
-# Generate specific client
-./gradlew generateAndroidClient
-./gradlew generateTsClient
-
-# Build and publish individual clients
-cd build/generated-clients/android
-./gradlew build publishToMavenLocal
-
-cd build/generated-clients/typescript  
-npm install && npm run build && npm pack
-```
-
-### Publishing to Remote Repositories
-
-After running `./gradlew prepareClientPublishing`, you can publish to remote repositories:
-
-#### Maven Central (Java/Android)
-```bash
-cd build/generated-clients/java
-# Configure Maven credentials in ~/.m2/settings.xml
-./gradlew publish
-
-cd ../android
-./gradlew publish
-```
-
-#### NPM Registry (TypeScript)
-```bash
-cd build/generated-clients/typescript
-npm login
-npm publish
-```
-
-#### PyPI (Python)
-```bash
-cd build/generated-clients/python
-pip install twine
-python setup.py sdist bdist_wheel
-twine upload dist/*
-```
-
-#### NuGet Gallery (C#)
-```bash
-cd build/generated-clients/csharp
-dotnet pack
-dotnet nuget push *.nupkg --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json
-```
-
-### Using Published Clients
-
-Once published, consumers can use the clients directly:
-
-#### Android Project
 ```gradle
 repositories {
     maven {
@@ -209,285 +56,272 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.X'
 }
 ```
 
-#### NPM Project
+**Staging Package** (for PR testing):
+
+```gradle
+dependencies {
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client-staging:pr-123.456'
+}
+```
+
+### TypeScript/npm Library
+
+**Production Package**:
+
 ```bash
 npm install @vmenon25/mpo-webauthn-client
 ```
 
-#### Python Project
+**Staging Package** (for PR testing):
+
 ```bash
-pip install mpo-webauthn-client
+npm install @vmenon25/mpo-webauthn-client-staging@pr-123.456
 ```
 
-## Using the Generated Clients
+## Automated Publishing Workflows
 
-### TypeScript/JavaScript Example
+### Client Publishing Orchestrator
 
-```typescript
-import { AuthenticationApi, RegistrationApi, Configuration } from '@vmenon25/mpo-webauthn-client';
+**File**: `.github/workflows/client-publish.yml`
 
-const config = new Configuration({
-    basePath: 'http://localhost:8080'
-});
+- Coordinates parallel TypeScript and Android publishing
+- Supports both staging and production publishing
+- Validates inputs and provides comprehensive outputs
 
-const authApi = new AuthenticationApi(config);
-const regApi = new RegistrationApi(config);
+### Platform-Specific Workflows
 
-// Start registration
-const registrationResponse = await regApi.startRegistration({
-    registrationRequest: {
-        username: 'john.doe',
-        displayName: 'John Doe'
-    }
-});
+**Android Publishing** (`.github/workflows/publish-android.yml`):
 
-// Use with WebAuthn API
-const credential = await navigator.credentials.create({
-    publicKey: registrationResponse.data.publicKeyCredentialCreationOptions
-});
+- Generates Android client from OpenAPI spec
+- Publishes to GitHub Packages Maven repository
+- Handles version conflict detection
 
-// Complete registration
-const result = await regApi.completeRegistration({
-    registrationCompleteRequest: {
-        requestId: registrationResponse.data.requestId,
-        publicKeyCredential: credential
-    }
-});
+**TypeScript Publishing** (`.github/workflows/publish-typescript.yml`):
+
+- Generates TypeScript client from OpenAPI spec
+- Publishes to npm (production) or GitHub Packages (staging)
+- Builds CommonJS + ESM + TypeScript declarations
+
+## Version Management
+
+Both clients use **unified semantic versioning**:
+
+- **Format**: `{MAJOR}.{MINOR}.{PATCH}` (e.g., `1.0.26`)
+- **PR Versions**: `pr-{PR_NUMBER}.{RUN_NUMBER}` (e.g., `pr-123.456`)
+- **Script**: `scripts/core/version-manager.sh`
+- **Enhanced Validation**: Full npm semver compliance with prerelease support
+
+## E2E Testing Integration
+
+### Test Client Architecture
+
+- **android-test-client/**: Consumes published Android library for E2E testing
+- **web-test-client/**: Consumes published npm library for E2E testing
+- **E2E Workflow**: `.github/workflows/e2e-tests.yml` orchestrates cross-platform testing
+
+### Testing Flow
+
+1. **Staging Packages**: Published to GitHub Packages during PR validation
+2. **Package Consumption**: Test clients update dependencies to staging versions
+3. **E2E Validation**: Comprehensive WebAuthn flow testing with real packages
+4. **Production Publishing**: Only occurs after successful E2E validation
+
+## Local Development
+
+### Client Library Development
+
+```bash
+# Work with Android client library
+cd android-client-library
+./gradlew build test
+./gradlew publishToMavenLocal
+
+# Work with TypeScript client library
+cd typescript-client-library
+npm install
+npm run build
+npm test
 ```
 
-### Java Example
+### Generate and Update Clients
+
+```bash
+# Generate clients and copy to submodules
+./gradlew generateAndroidClient copyAndroidClientToSubmodule
+./gradlew generateTsClient copyTsClientToSubmodule
+
+# Build and test client libraries
+cd android-client-library && ./gradlew test
+cd typescript-client-library && npm test
+```
+
+### Test Client Development
+
+```bash
+# Android E2E test client
+cd android-test-client
+./gradlew build
+./gradlew connectedAndroidTest
+
+# Web E2E test client
+cd web-test-client
+npm install
+npm run build
+npm test
+```
+
+## Usage Examples
+
+### Android Integration
 
 ```java
-import com.vmenon.mpo.api.authn.client.DefaultApi;
-import com.vmenon.mpo.api.authn.client.model.*;
-import com.vmenon.mpo.api.authn.client.ApiClient;
+import io.github.hitoshura25.webauthn.client.api.*;
+import io.github.hitoshura25.webauthn.client.model.*;
 
 // Create API client
-ApiClient apiClient = new ApiClient();
-apiClient.
+Configuration config = new Configuration();
+config.
 
-        setBasePath("http://localhost:8080");
+        setBasePath("https://your-webauthn-server.com");
 
-        DefaultApi api = new DefaultApi(apiClient);
+        RegistrationApi registrationApi = new RegistrationApi(config);
 
         // Start registration
         RegistrationRequest request = new RegistrationRequest()
                 .username("john.doe")
                 .displayName("John Doe");
 
-        RegistrationResponse response = api.startRegistration(request);
-
-        // Complete registration (after WebAuthn interaction)
-        RegistrationCompleteRequest completeRequest = new RegistrationCompleteRequest()
-                .requestId(response.getRequestId())
-                .publicKeyCredential(credential); // From WebAuthn
-
-        RegistrationCompleteResponse result = api.completeRegistration(completeRequest);
+        RegistrationResponse response = registrationApi.startRegistration(request);
 ```
 
-### Python Example
+### TypeScript Integration
 
-```python
-import mpo_webauthn_client
-from mpo_webauthn_client.api import default_api
-from mpo_webauthn_client.model.registration_request import RegistrationRequest
-from mpo_webauthn_client.model.registration_complete_request import RegistrationCompleteRequest
+```typescript
+import { 
+  AuthenticationApi, 
+  RegistrationApi,
+  Configuration 
+} from '@vmenon25/mpo-webauthn-client';
 
-configuration = mpo_webauthn_client.Configuration(
-    host="http://localhost:8080"
-)
+// Configure API client
+const config = new Configuration({
+  basePath: 'https://your-webauthn-server.com'
+});
 
-with mpo_webauthn_client.ApiClient(configuration) as api_client:
-    api_instance = default_api.DefaultApi(api_client)
-    
-    # Start registration
-    registration_request = RegistrationRequest(
-        username="john.doe",
-        display_name="John Doe"
-    )
-    
-    response = api_instance.start_registration(registration_request)
-    
-    # Complete registration (after WebAuthn interaction)
-    complete_request = RegistrationCompleteRequest(
-        request_id=response.request_id,
-        public_key_credential=credential  # From WebAuthn
-    )
-    
-    result = api_instance.complete_registration(complete_request)
-```
-
-### C# Example
-
-```csharp
-using MpoWebAuthnClient.Api;
-using MpoWebAuthnClient.Model;
-
-var api = new DefaultApi("http://localhost:8080");
+const registrationApi = new RegistrationApi(config);
 
 // Start registration
-var request = new RegistrationRequest(
-    username: "john.doe",
-    displayName: "John Doe"
-);
-
-var response = await api.StartRegistrationAsync(request);
-
-// Complete registration (after WebAuthn interaction)
-var completeRequest = new RegistrationCompleteRequest(
-    requestId: response.RequestId,
-    publicKeyCredential: credential // From WebAuthn
-);
-
-var result = await api.CompleteRegistrationAsync(completeRequest);
-```
-
-## WebAuthn Integration
-
-The generated clients handle the HTTP communication, but you'll still need to integrate with the WebAuthn API in your
-client applications:
-
-### Web Browser (JavaScript)
-
-```javascript
-// Registration
-const registrationOptions = response.data.publicKeyCredentialCreationOptions;
-const credential = await navigator.credentials.create({
-    publicKey: registrationOptions
-});
-
-// Authentication  
-const authenticationOptions = response.data.publicKeyCredentialRequestOptions;
-const assertion = await navigator.credentials.get({
-    publicKey: authenticationOptions
+const response = await registrationApi.startRegistration({
+  registrationRequest: {
+    username: 'john.doe',
+    displayName: 'John Doe'
+  }
 });
 ```
 
-### Android (Java/Kotlin)
+## Configuration Management
 
-```java
-// Use Google's WebAuthn library for Android
-// https://developers.google.com/android/reference/com/google/android/gms/fido/fido2/Fido2ApiClient
-```
+### Centralized Package Configuration
 
-### iOS (Swift)
-
-```swift
-// Use AuthenticationServices framework
-// https://developer.apple.com/documentation/authenticationservices
-```
-
-## API Documentation
-
-Once your server is running, you can access:
-
-- **Swagger UI**: http://localhost:8080/swagger
-- **OpenAPI Spec**: http://localhost:8080/openapi
-
-## Customizing Generation
-
-### Modifying Client Configuration
-
-Edit the generation tasks in `build.gradle.kts` to customize client options:
-
-```kotlin
-// Example: Customize TypeScript client
-tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generateTsClient") {
-    configOptions.set(
-        mapOf(
-            "npmName" to "my-custom-client-name",
-            "supportsES6" to "true",
-            "withInterfaces" to "true"
-        )
-    )
-}
-```
-
-### Adding New Languages
-
-Add new generation tasks for additional languages:
-
-```kotlin
-// Example: Generate Go client
-tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>("generateGoClient") {
-    generatorName.set("go")
-    inputSpec.set(openApiSpecFile.absolutePath)
-    outputDir.set("${layout.buildDirectory}/generated-clients/go")
-
-    configOptions.set(
-        mapOf(
-            "packageName" to "webauthn",
-            "packageVersion" to project.version.toString()
-        )
-    )
-}
-```
-
-## Continuous Integration
-
-Add client generation to your CI/CD pipeline:
+All package names and versions are centrally managed in workflow environment variables:
 
 ```yaml
-# GitHub Actions example
-- name: Generate Client Libraries
-  run: |
-    ./gradlew build
-    ./gradlew run &
-    sleep 10
-    ./generate-clients.sh --package
-
-- name: Upload Client Artifacts
-  uses: actions/upload-artifact@v3
-  with:
-    name: client-libraries
-    path: build/client-distributions/
+# .github/workflows/client-publish.yml
+env:
+  NPM_PACKAGE_NAME: "mpo-webauthn-client"
+  ANDROID_GROUP_ID: "io.github.hitoshura25"
+  ANDROID_ARTIFACT_BASE_ID: "mpo-webauthn-android-client"
 ```
 
-## Troubleshooting
+### Environment-Specific Configuration
 
-### Server Not Running
-
-```bash
-# Start the server first
-./gradlew run
-
-# Or use Docker
-docker-compose up
-```
-
-### Generation Fails
-
-```bash
-# Check OpenAPI spec is valid
-curl http://localhost:8080/openapi
-
-# Check Gradle tasks
-./gradlew tasks --group=openapi
-```
-
-### Missing Dependencies
-
-```bash
-# Install required tools
-npm install -g @openapitools/openapi-generator-cli
-```
+- **Development**: Use published packages or local Maven/npm repositories
+- **Staging**: Use GitHub Packages with staging package names
+- **Production**: Use npm registry and GitHub Packages with production names
 
 ## Security Considerations
 
-- Always use HTTPS in production
-- Validate all inputs on the server side
-- Implement proper CORS policies
-- Use secure credential storage
-- Follow WebAuthn best practices
+- **GitHub Packages Authentication**: Uses GITHUB_TOKEN for package access
+- **npm Publishing**: Uses NPM_TOKEN secret for production publishing
+- **Version Validation**: Enhanced regex validation prevents malformed versions
+- **Package Signing**: npm packages include provenance attestations
+
+## Benefits Achieved
+
+✅ **Eliminated File Copying**: No more manual copying between generated and test clients  
+✅ **Standard Package Management**: Uses npm and Maven repositories properly  
+✅ **PR Testing**: Client changes validated before main branch merge  
+✅ **Parallel Publishing**: Android and TypeScript clients published independently  
+✅ **Production Validation**: E2E tests ensure published packages work correctly  
+✅ **Automated Releases**: GitHub releases created automatically with usage examples
+
+## Migration from Old Approach
+
+The previous file-copying approach has been completely replaced:
+
+### Old Approach (Removed)
+
+- ❌ Generated clients copied to `generated-client/` directories
+- ❌ Manual file copying between build output and test clients
+- ❌ Complex Gradle tasks for file management
+- ❌ No staging/testing of published packages
+
+### New Approach (Implemented)
+
+- ✅ Dedicated client library submodules
+- ✅ Standard npm and Maven publishing workflows
+- ✅ Staging→production validation pipeline
+- ✅ Automated package management
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Package Not Found**
+    - Verify GitHub Packages authentication is configured
+    - Check if package version exists in the registry
+    - Ensure repository configuration includes GitHub Packages
+
+2. **Version Conflicts**
+    - Client publishing workflows detect existing versions
+    - Staging packages use unique PR-based versions
+    - Production versions follow semantic versioning
+
+3. **Build Failures**
+    - Check client library submodules are up to date
+    - Verify OpenAPI specification is valid
+    - Review publishing workflow logs for specific errors
+
+### Debug Commands
+
+```bash
+# Check package availability
+npm view @vmenon25/mpo-webauthn-client
+
+# Verify GitHub Packages access
+gh api user/packages
+
+# Test local client generation
+./gradlew generateAndroidClient generateTsClient
+```
 
 ## Support
 
-For issues or questions:
+For issues related to client libraries:
 
-- Check the [OpenAPI Generator documentation](https://openapi-generator.tech/)
-- Review the [WebAuthn specification](https://www.w3.org/TR/webauthn-2/)
-- Open an issue on the project repository
+- **Client Library Issues**: Check submodule documentation (`android-client-library/README.md`, `typescript-client-library/README.md`)
+- **Publishing Issues**: Review workflow logs in `.github/workflows/`
+- **E2E Testing**: See test client documentation (`android-test-client/README.md`, `web-test-client/README.md`)
+- **OpenAPI Changes**: Ensure server specification is updated first
+
+## Related Documentation
+
+- [Main Project README](../../README.md) - Full project overview
+- [Android Test Client](../../android-test-client/README.md) - E2E testing with Android
+- [Web Test Client](../../web-test-client/README.md) - E2E testing with TypeScript
+- [Client Library Publishing](../development/client-library-publishing.md) - Workflow details
+- [OpenAPI Refactor Plan](../improvements/completed/openapi-client-refactor.md) - Completed implementation with learnings

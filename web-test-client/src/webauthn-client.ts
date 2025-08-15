@@ -1,5 +1,5 @@
-// Import generated API client
-import { Configuration, RegistrationApi, AuthenticationApi, HealthApi } from '../generated-client/src';
+// Import published API client library
+import { Configuration, RegistrationApi, AuthenticationApi, HealthApi } from '@vmenon25/mpo-webauthn-client';
 import type { 
     RegistrationRequest, 
     RegistrationCompleteRequest,

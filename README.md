@@ -11,8 +11,10 @@ This project follows a multi-module architecture for clear separation of concern
 - **webauthn-server/** - Main WebAuthn KTor server with production features
 - **webauthn-test-credentials-service/** - HTTP service for cross-platform testing credentials
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
-- **android-test-client/** - Android client with generated API library
-- **web-test-client/** - TypeScript web client with automated OpenAPI client generation and webpack bundling
+- **android-test-client/** - Android E2E test client consuming published Android library
+- **web-test-client/** - TypeScript E2E test client consuming published npm library
+- **android-client-library/** - Dedicated Android client library submodule
+- **typescript-client-library/** - Dedicated TypeScript client library submodule
 
 ## 🚀 Quick Start
 
@@ -40,14 +42,18 @@ cd webauthn-server
 # Server tests
 ./gradlew :webauthn-server:test
 
-# Android client tests  
+# Android client tests (uses published library)
 cd android-test-client && ./gradlew test
 
-# Web TypeScript client tests (requires server running)
+# Web TypeScript client tests (uses published library)
 cd web-test-client
 npm install
-npm run build  # Build TypeScript client
+npm run build
 npm test       # Run Playwright E2E tests
+
+# Client library tests (submodules)
+cd android-client-library && ./gradlew test
+cd typescript-client-library && npm test
 ```
 
 ## 🌐 Port Assignments
@@ -62,6 +68,7 @@ npm test       # Run Playwright E2E tests
 ## 🔐 Security Features
 
 ### WebAuthn Security
+
 - **WebAuthn 2.0/FIDO2** compliance using Yubico library
 - **Username enumeration protection** - Authentication start doesn't reveal user existence
 - **Replay attack prevention** - Challenge/response validation
@@ -73,21 +80,25 @@ npm test       # Run Playwright E2E tests
 Automatic security analysis on all pull requests with intelligent fallback strategy:
 
 **Tier 1: Anthropic Official Security Action** (Primary)
+
 - Uses official `anthropics/claude-code-security-review@v1` action
 - Comprehensive security coverage maintained by Anthropic
 - Broad attack pattern detection and analysis
 
 **Tier 2: Gemini WebAuthn-Focused Analysis** (Fallback)
+
 - Custom WebAuthn-specific security analysis using Gemini AI
 - Focused on FIDO2/WebAuthn vulnerability patterns
 - PoisonSeed attacks, username enumeration, credential tampering detection
 
 **Tier 3: Template-Based Analysis** (Final Fallback)
+
 - Zero-cost security pattern analysis
 - Template-driven vulnerability detection
 - Ensures security coverage even when AI providers unavailable
 
 **Security Focus Areas**:
+
 - PoisonSeed attack patterns (CVE-2024-39912)
 - Username enumeration vulnerabilities
 - Cross-origin authentication abuse
@@ -95,6 +106,7 @@ Automatic security analysis on all pull requests with intelligent fallback strat
 - Information leakage in error responses
 
 **Automated Features**:
+
 - 🚨 **Critical vulnerability blocking** - PRs with high security scores cannot merge
 - 🏷️ **Automatic security labeling** - PRs tagged with analysis tier and risk level
 - 💬 **Detailed security comments** - AI-generated analysis and recommendations
@@ -102,36 +114,49 @@ Automatic security analysis on all pull requests with intelligent fallback strat
 
 ## 📱 Published Client Libraries
 
-Use the WebAuthn API in your applications with automatically published client libraries featuring **enhanced regex validation** and **unified 3-part versioning**:
+Use the WebAuthn API in your applications with automatically published client libraries featuring **Docker-inspired staging→production workflow**:
 
 ### Android Library
+
 ```gradle
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+        credentials {
+            username = "YOUR_GITHUB_USERNAME"
+            password = "YOUR_GITHUB_TOKEN"
+        }
+    }
+}
+
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.26'
 }
 ```
 
-**Enhanced Version Validation**: All published versions use robust regex validation ensuring full npm semver compliance with support for advanced prerelease identifiers including hyphens.
-
 ### TypeScript/npm Library
+
 ```bash
 npm install @vmenon25/mpo-webauthn-client
 ```
 
-### Manual Client Generation
+### Client Library Architecture (Implemented)
 
-Generate client libraries locally for development:
+**Staging→Production Workflow** (similar to Docker workflow):
+1. **PR Testing**: Staging packages published to GitHub Packages (e.g., `pr-123.456`)
+2. **E2E Validation**: Test clients consume staging packages for validation
+3. **Production Publishing**: Successful main branch merges publish to npm + GitHub Packages
+4. **GitHub Releases**: Automated release creation with usage examples
 
-```bash
-# Generate Android client
-./gradlew :webauthn-server:copyGeneratedClientToLibrary
-
-# Generate TypeScript web client
-./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient
-
-# Generate all clients
-./gradlew :webauthn-server:generateAllClients
-```
+- **Production**: Published to npm and GitHub Packages on main branch merges
+- **Staging**: Published to GitHub Packages for PR testing
+- **Client Submodules**: Dedicated `android-client-library/` and `typescript-client-library/` submodules
+- **Local Development**: Use published packages or generate with:
+  ```bash
+  # Generate and build clients in submodules
+  ./gradlew generateAndroidClient copyAndroidClientToSubmodule
+  ./gradlew generateTsClient copyTsClientToSubmodule
+  ```
 
 ## 🧪 Testing Architecture
 
@@ -143,12 +168,10 @@ The project uses a **layered testing approach** with different access patterns:
 2. **webauthn-test-credentials-service** - HTTP API wrapper (port 8081)
 3. **Integration tests** - Use shared library directly for performance
 
-### Cross-Platform Testing
-
-Start the test service for external clients:
+### Cross-Platform Testing Architecture
 
 ```bash
-# Start test service
+# Start test service for E2E testing
 ./gradlew :webauthn-test-credentials-service:run
 
 # Test endpoints available at http://localhost:8081
@@ -158,15 +181,18 @@ Start the test service for external clients:
 # - GET /test/sessions
 ```
 
-**Architecture Decisions**:
+**Testing Architecture Layers**:
 
-- **webauthn-server integration tests**: Use shared library directly for performance and reliability
-- **Android client tests**: Use HTTP API calls to webauthn-test-credentials-service for realistic cross-platform testing
-- **TypeScript web client**: Uses generated OpenAPI client with automated build process and UMD bundling for browser compatibility
+- **Unit Tests**: Use shared `webauthn-test-lib` directly for performance
+- **Integration Tests**: Server tests use in-memory test storage
+- **E2E Tests**: Android and web clients consume published staging packages
+- **Client Library Tests**: Independent testing of Android and TypeScript submodules
+- **Production Validation**: Published packages undergo comprehensive E2E validation
 
 ## 📊 Monitoring & Observability
 
 ### Application Monitoring
+
 - **OpenTelemetry** tracing with OTLP export
 - **Micrometer** metrics with Prometheus export
 - **Code coverage** reports with Kover
@@ -174,6 +200,7 @@ Start the test service for external clients:
 ### 🔍 AI-Enhanced Security Monitoring
 
 **Weekly Vulnerability Monitoring**:
+
 - Automated WebAuthn vulnerability database scanning
 - AI-enhanced risk assessment using Anthropic Claude
 - Automatic security test generation and PR creation
@@ -181,12 +208,14 @@ Start the test service for external clients:
 - Library correlation analysis with java-webauthn-server
 
 **Docker Security Scanning**:
+
 - Multi-layer vulnerability detection (OS, dependencies, secrets)
 - AI-powered vulnerability analysis and prioritization
 - GitHub Security integration with SARIF reporting
 - Automated security gate for DockerHub publishing
 
 **Continuous Security Validation**:
+
 - PR-triggered security analysis with 3-tier AI system
 - Environment variable pattern security validation
 - Automated security labeling and workflow management
@@ -229,11 +258,13 @@ Start the test service for external clients:
 The project uses a **smart CI/CD pipeline** with conditional execution and optimized resource usage:
 
 **Main Orchestrator**: `main-ci-cd.yml`
+
 - Orchestrates entire CI/CD pipeline using callable workflows
 - Eliminates workflow dispatch complexity and 404 errors
 - Conditional E2E test execution only when Docker images built
 
 **Smart Change Detection**: `build-and-test.yml`
+
 ```
 | Change Type        | Unit Tests | Docker Build | E2E Tests |
 |--------------------|-----------|-------------|----------|
@@ -246,11 +277,13 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 ```
 
 **Performance Benefits**:
+
 - ⚡ **Fast path**: Documentation/workflow changes complete in ~30 seconds
 - 🏃‍♂️ **Standard path**: Full CI pipeline ~8 minutes when needed
 - 🎯 **Smart detection**: Only run tests/builds for relevant changes
 
 **Cross-Platform E2E Testing**: `e2e-tests.yml`
+
 - Docker Compose with real service dependencies
 - Parallel Web (Playwright) and Android (connectedAndroidTest) testing
 - Uses exact Docker images built for the PR
@@ -259,18 +292,21 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 ### 🔒 Security Automation Workflows
 
 **3-Tier Security Analysis**: `security-analysis.yml`
+
 - Triggered on security-sensitive file changes
 - Intelligent tier selection with fallback strategy
 - Automated security gates and PR labeling
 - Complete security analysis consolidation
 
 **Docker Security & Publishing**: `main-branch-post-processing.yml`
+
 - AI-enhanced Docker vulnerability scanning
 - Change detection to prevent unnecessary publishing
 - Automated DockerHub publishing with security gates
 - GHCR cleanup and git tagging on successful publish
 
 **Vulnerability Monitoring**: `vulnerability-monitor.yml`
+
 - Weekly WebAuthn vulnerability database scans
 - AI-enhanced analysis and test generation
 - Automated PR creation with complete test implementations
@@ -279,6 +315,7 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 ### 🏗️ Environment Variable Management
 
 **Centralized Configuration**:
+
 ```yaml
 env:
   # Security Analysis Configuration
@@ -286,11 +323,11 @@ env:
   ANTHROPIC_TIER_ENABLED: true
   GEMINI_TIER_ENABLED: true
   TEMPLATE_TIER_ENABLED: true
-  
+
   # Docker Registry Configuration  
   DOCKER_REGISTRY: ghcr.io
   BASE_VERSION: "1.0"
-  
+
   # Service Ports
   WEBAUTHN_SERVER_PORT: 8080
   TEST_CREDENTIALS_PORT: 8081
@@ -298,6 +335,7 @@ env:
 ```
 
 **Security Best Practices**:
+
 - Secure environment variable handling in all workflows
 - Minimal required permissions per job
 - Branch-specific caching strategies
@@ -320,12 +358,16 @@ env:
 # Shared test library
 ./gradlew :webauthn-test-lib:build
 
-# Android client
-cd android-test-client && ./gradlew test
-cd android-test-client && ./gradlew client-library:publish
+# Android client library (submodule)
+cd android-client-library && ./gradlew test
+cd android-client-library && ./gradlew publish
 
-# TypeScript web client
-cd web-test-client && npm run build
+# TypeScript client library (submodule)
+cd typescript-client-library && npm run build
+cd typescript-client-library && npm test
+
+# E2E test clients (consume published libraries)
+cd android-test-client && ./gradlew connectedAndroidTest
 cd web-test-client && npm test
 ```
 
@@ -356,7 +398,7 @@ docker-compose down
 This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
 
 ```
-Copyright 2024 Vinayak Menon
+Copyright 2025 Vinayak Menon
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.

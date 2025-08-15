@@ -59,48 +59,98 @@ jobs:
     uses: ./.github/workflows/e2e-tests.yml
     permissions:
       contents: read          # Read repository code
-      packages: read          # Pull Docker images from GHCR
+      packages: write          # Pull/Push Docker images from GHCR and client lib packages
       pull-requests: write    # Comment on PRs with test results
+      id-token: write
     with:
-      pr_number: ${{ github.event.pull_request.number || github.run_number }}
+      pr-number: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}
       test_credentials_image: ${{ needs.build-and-test.outputs.test_credentials_image }}
     secrets: inherit
 
-  # Job 3: Report pipeline status
+  # Job 3: Security scanning using built Docker images (parallel with E2E tests)
+  security-scanning:
+    name: Security Scanning (Docker Images)
+    needs: build-and-test
+    if: |
+      always() &&
+      needs.build-and-test.outputs.docker_images_built == 'true'
+    uses: ./.github/workflows/docker-security-scan.yml
+    permissions:
+      contents: read          # Read repository code
+      security-events: write  # Upload SARIF results to GitHub Security
+      pull-requests: write    # Comment on PRs with scan results
+      issues: write          # Update issues with security findings
+    with:
+      webauthn-server-image: ${{ needs.build-and-test.outputs.webauthn_server_image }}
+      test-credentials-image: ${{ needs.build-and-test.outputs.test_credentials_image }}
+      registry-url: 'ghcr.io'
+      skip-scan: false
+    secrets: inherit
+
+  # Job 4: Report pipeline status
   report-pipeline-status:
     name: Report Pipeline Status
     runs-on: ubuntu-latest
-    needs: [ build-and-test, e2e-tests ]
+    needs: [ build-and-test, e2e-tests, security-scanning ]
     if: always()
     steps:
       - name: Report overall pipeline status
         run: |
-          echo "🏗️ CI/CD Pipeline Results Summary:"
+          echo "🏗️ CI/CD Pipeline Results Summary (Parallel Execution):"
           echo "Build & Test: ${{ needs.build-and-test.result }}"
           echo "Docker Images Built: ${{ needs.build-and-test.outputs.docker_images_built }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
+          echo "Security Scanning: ${{ needs.security-scanning.result }}"
 
-          if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
-            echo "✅ Build and test phase completed successfully"
-
-            if [[ "${{ needs.build-and-test.outputs.docker_images_built }}" == "true" ]]; then
-              echo "🐳 Docker images were built:"
-              echo "  WebAuthn Server: ${{ needs.build-and-test.outputs.webauthn_server_image }}"
-              echo "  Test Credentials: ${{ needs.build-and-test.outputs.test_credentials_image }}"
-
-              if [[ "${{ needs.e2e-tests.result }}" == "success" ]]; then
-                echo "🎉 Complete CI/CD pipeline passed - all tests successful!"
-              elif [[ "${{ needs.e2e-tests.result }}" == "failure" ]]; then
-                echo "❌ E2E tests failed - check integration test results"
-                exit 1
-              else
-                echo "⏸️ E2E tests were skipped or cancelled"
-              fi
-            else
-              echo "⚡ Fast path completed - no Docker builds needed (docs/workflow changes only)"
-            fi
-          else
+          # Check if build phase failed
+          if [[ "${{ needs.build-and-test.result }}" != "success" ]]; then
             echo "❌ Build and test phase failed"
             exit 1
+          fi
+
+          echo "✅ Build and test phase completed successfully"
+
+          if [[ "${{ needs.build-and-test.outputs.docker_images_built }}" == "true" ]]; then
+            echo "🐳 Docker images were built:"
+            echo "  WebAuthn Server: ${{ needs.build-and-test.outputs.webauthn_server_image }}"
+            echo "  Test Credentials: ${{ needs.build-and-test.outputs.test_credentials_image }}"
+
+            # Check security scanning results (critical for pipeline success)
+            if [[ "${{ needs.security-scanning.result }}" == "failure" ]]; then
+              echo "🚨 Security scanning failed - blocking pipeline"
+              echo "Critical vulnerabilities found: ${{ needs.security-scanning.outputs.critical-vulnerabilities }}"
+              echo "❌ Pipeline blocked due to security issues"
+              exit 1
+            elif [[ "${{ needs.security-scanning.result }}" == "success" ]]; then
+              if [[ "${{ needs.security-scanning.outputs.security-scan-passed }}" == "true" ]]; then
+                echo "🔒 Security scanning passed - no critical vulnerabilities"
+              else
+                echo "🚨 Security scanning completed but found issues"
+                echo "Critical vulnerabilities: ${{ needs.security-scanning.outputs.critical-vulnerabilities }}"
+                exit 1
+              fi
+            else
+              echo "⏸️ Security scanning was skipped or cancelled"
+            fi
+
+            # Check E2E test results
+            if [[ "${{ needs.e2e-tests.result }}" == "success" ]]; then
+              echo "🧪 E2E tests passed successfully"
+            elif [[ "${{ needs.e2e-tests.result }}" == "failure" ]]; then
+              echo "❌ E2E tests failed - check integration test results"
+              exit 1
+            else
+              echo "⏸️ E2E tests were skipped or cancelled"
+            fi
+
+            # Overall success summary
+            if [[ "${{ needs.security-scanning.outputs.security-scan-passed }}" == "true" && "${{ needs.e2e-tests.result }}" == "success" ]]; then
+              echo "🎉 Complete CI/CD pipeline passed:"
+              echo "  ✅ Security scanning: No critical vulnerabilities"
+              echo "  ✅ E2E testing: All integration tests successful"
+              echo "  ⚡ Performance: Parallel execution optimized pipeline time"
+            fi
+          else
+            echo "⚡ Fast path completed - no Docker builds needed (docs/workflow changes only)"
           fi

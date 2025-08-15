@@ -12,6 +12,7 @@ EVENT_NAME="${GITHUB_EVENT_NAME:-push}"
 REF_NAME="${GITHUB_REF_NAME:-main}"
 GITHUB_PR_NUMBER="${GITHUB_PR_NUMBER:-}"
 
+
 # Get version continuity from existing git tags
 get_next_build_number() {
     echo "🔍 Checking existing client library tags for version continuity..." >&2
@@ -73,11 +74,13 @@ generate_version() {
             fi
             ;;
         "pull_request")
-            # PR: prerelease version with PR and build identifiers (npm-safe)
-            pr_number="${GITHUB_PR_NUMBER:-${actual_build_number}}"
-            version="${BASE_VERSION}.0-pr.${pr_number}.${actual_build_number}"
+            # PR: prerelease version based on next build number + PR and run identifiers
+            # Use next build number (e.g., if latest is 1.0.35, use 1.0.36-pr.42.123)
+            pr_number="${GITHUB_PR_NUMBER:-unknown}"
+            next_build="${BASE_VERSION}.${actual_build_number}"
+            version="${next_build}-pr.${pr_number}.${BUILD_NUMBER}"
             is_prerelease="true"
-            echo "🔄 PR snapshot release: $version" >&2
+            echo "🔄 PR snapshot release: $version (based on next release ${next_build}, PR #${pr_number}, run ${BUILD_NUMBER})" >&2
             ;;
         "workflow_dispatch")
             # Manual dispatch: use base version with continuity

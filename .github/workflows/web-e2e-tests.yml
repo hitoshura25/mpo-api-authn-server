@@ -37,6 +37,18 @@ on:
         required: false
         type: string
         default: '21'
+      typescript-package-name:
+        description: 'TypeScript package name published'
+        required: true
+        type: string
+      client-version:
+        description: 'Client library version published'
+        required: true
+        type: string
+      cache-key:
+        description: 'Cache key for test results (from orchestrator)'
+        required: false
+        type: string
     outputs:
       tests-passed:
         description: 'Boolean indicating if web tests passed'
@@ -101,7 +113,7 @@ jobs:
       tests-passed: ${{ steps.test-execution.outputs.tests-passed }}
     permissions:
       contents: read
-      packages: read
+      packages: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -120,91 +132,74 @@ jobs:
           docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
           echo "✅ All images pulled successfully"
 
-      - name: Set up JDK for client generation
-        uses: actions/setup-java@v4
-        with:
-          java-version: ${{ inputs.java-version }}
-          distribution: 'temurin'
-
-      # E2E-specific Gradle caching for client generation
-      - name: Setup Gradle cache for E2E client generation
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-          key: gradle-e2e-web-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-e2e-web-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-e2e-web-${{ runner.os }}-main-
-            gradle-e2e-web-${{ runner.os }}-
-            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Generate client libraries
-        shell: bash
-        run: |
-          echo "📚 Generating client libraries for E2E tests"
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
-
       - name: Setup Node.js for TypeScript client tests
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: web-test-client/package-lock.json
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@hitoshura25'
 
-      - name: Generate TypeScript client from OpenAPI spec
+      - name: Update web client to use staging package
         env:
-          CLIENT_VERSION: ${{ github.run_number }}
+          STAGING_PACKAGE: ${{ inputs.typescript-package-name }}
+          STAGING_VERSION: ${{ inputs.client-version }}
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "🔨 Generating TypeScript client from OpenAPI specification..."
-          echo "Using version: $CLIENT_VERSION"
-          ./gradlew :webauthn-server:copyGeneratedTsClientToWebTestClient -PclientVersion="$CLIENT_VERSION" -PnpmName="mpo-webauthn-client"
+          echo "🌐 Updating web client to use staging package: $STAGING_PACKAGE@$STAGING_VERSION"
+          cd web-test-client
 
-          # Verify client generation
-          if [ -f "web-test-client/generated-client/src/index.ts" ]; then
-            echo "✅ TypeScript client generated successfully"
-          else
-            echo "❌ TypeScript client generation failed"
-            exit 1
-          fi
+          # Update package.json to use staging package instead of production package
+          npm pkg set dependencies."$STAGING_PACKAGE"="$STAGING_VERSION"
+          npm pkg delete dependencies."@vmenon25/mpo-webauthn-client"
 
-      - name: Install TypeScript client dependencies (parallel)
+          # Update TypeScript source files to use staging package imports
+          echo "📝 Updating TypeScript imports to use staging package..."
+          sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/index.ts
+          sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/webauthn-client.ts
+          sed -i.bak "s|from '@vmenon25/mpo-webauthn-client'|from '$STAGING_PACKAGE'|g" src/types.ts
+
+          # Show the changes made
+          echo "📋 Updated imports in src/index.ts:"
+          grep "from '$STAGING_PACKAGE'" src/index.ts || echo "No imports found in src/index.ts"
+
+          echo "📋 Updated imports in src/webauthn-client.ts:"
+          grep "from '$STAGING_PACKAGE'" src/webauthn-client.ts || echo "No imports found in src/webauthn-client.ts"
+
+          echo "📋 Updated imports in src/types.ts:"
+          grep "from '$STAGING_PACKAGE'" src/types.ts || echo "No imports found in src/types.ts"
+
+          # Configure npm to use GitHub Packages for staging packages
+          echo "@hitoshura25:registry=https://npm.pkg.github.com" >> .npmrc
+          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+
+          # Install staging package
+          npm install
+
+          echo "✅ Web client updated to use staging package (package.json + TypeScript imports)"
+
+      - name: Install dependencies and Playwright
         working-directory: web-test-client
         run: |
-          echo "📦 Installing TypeScript client dependencies"
-          # Install npm dependencies and Playwright in parallel
-          npm ci &
-          NPM_PID=$!
+          echo "📦 Installing dependencies and Playwright"
+          # Dependencies already installed in previous step via npm install
+          # Just need to install Playwright browsers
+          npx playwright install chromium
 
-          # Download Playwright browser in background
-          npx playwright install chromium --only-shell &
-          PLAYWRIGHT_PID=$!
-
-          # Wait for both to complete
-          wait $NPM_PID
-          wait $PLAYWRIGHT_PID
-
-          echo "✅ Dependencies installed in parallel"
+          echo "✅ Playwright browsers installed"
 
       - name: Build web-test-client TypeScript bundles
         working-directory: web-test-client
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "🔨 Building TypeScript web client bundles..."
+          echo "📋 Current .npmrc configuration:"
+          cat .npmrc
+
+          # Verify package installation before build
+          echo "🔍 Verifying staging package availability..."
+          npm list | grep "@hitoshura25" || echo "Staging package not found in node_modules"
+
           npm run build
           echo "✅ Web client bundles built successfully"
 
@@ -286,6 +281,7 @@ jobs:
         working-directory: web-test-client
         run: |
           set +e
+          npm run build:server
           npm test
           TEST_EXIT_CODE=$?
           set -e
@@ -294,11 +290,35 @@ jobs:
           if [ $TEST_EXIT_CODE -eq 0 ]; then
             echo "tests-passed=true" >> $GITHUB_OUTPUT
             echo "✅ Tests passed successfully"
+
+            # Create test results for caching
+            mkdir -p ../web-e2e-cache
+            echo '{
+              "status": "success",
+              "tests_passed": true,
+              "timestamp": "'$(date -Iseconds)'",
+              "images": {
+                "webauthn_server": "${{ env.WEBAUTHN_SERVER_IMAGE }}",
+                "test_credentials": "${{ env.TEST_CREDENTIALS_IMAGE }}"
+              },
+              "client_package": "${{ inputs.typescript-package-name }}@${{ inputs.client-version }}"
+            }' > ../web-e2e-results.json
+
+            echo "📝 Created test results file for caching"
           else
             echo "tests-passed=false" >> $GITHUB_OUTPUT
             echo "❌ Tests failed with exit code $TEST_EXIT_CODE"
             exit $TEST_EXIT_CODE
           fi
+
+      - name: Save test results to cache
+        if: steps.test-execution.outputs.tests-passed == 'true' && inputs.cache-key != ''
+        uses: actions/cache@v4
+        with:
+          key: ${{ inputs.cache-key }}
+          path: |
+            web-e2e-cache/
+            web-e2e-results.json
 
       - name: Upload Web E2E test reports
         uses: actions/upload-artifact@v4

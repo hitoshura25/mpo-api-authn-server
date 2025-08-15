@@ -44,7 +44,7 @@ repositories {
 }
 
 dependencies {
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.26'
 }
 ```
 
@@ -76,10 +76,10 @@ export TOKEN=your-github-personal-access-token
 ### Basic Usage
 
 ```kotlin
-import com.vmenon.mpo.api.authn.client.api.RegistrationApi
-import com.vmenon.mpo.api.authn.client.api.AuthenticationApi
-import com.vmenon.mpo.api.authn.client.Configuration
-import com.vmenon.mpo.api.authn.client.model.RegistrationRequest
+import io.github.hitoshura25.webauthn.client.api.RegistrationApi
+import io.github.hitoshura25.webauthn.client.api.AuthenticationApi
+import io.github.hitoshura25.webauthn.client.Configuration
+import io.github.hitoshura25.webauthn.client.model.RegistrationRequest
 
 // Configure the API client
 val configuration = Configuration().apply {
@@ -412,7 +412,7 @@ Libraries are **only published** when changes are detected in:
 ### Publishing Destinations
 
 **Main Branch (Production)**:
-- **Android**: GitHub Packages → `com.vmenon.mpo.api.authn:mpo-webauthn-android-client`
+- **Android**: GitHub Packages → `io.github.hitoshura25:mpo-webauthn-android-client`
 - **npm**: Public npm registry → `@vmenon25/mpo-webauthn-client`
 - **Docker**: DockerHub → `hitoshura25/webauthn-server`
 - **Releases**: GitHub releases with installation documentation
@@ -436,10 +436,10 @@ When you create a PR that modifies the OpenAPI spec or client configuration, bot
 ```gradle
 dependencies {
     // Standard PR version
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.0-pr.42.123'
     
     // Advanced prerelease with hyphens (now supported)
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-alpha-beta.1'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.0-alpha-beta.1'
 }
 ```
 

@@ -1,6 +1,6 @@
 # Android WebAuthn Test Client
 
-This is an Android test client for the MPO WebAuthn authentication server. It uses the OpenAPI-generated client library to demonstrate WebAuthn registration and authentication flows on Android.
+This is an Android E2E test client for the MPO WebAuthn authentication server. It consumes the published Android client library to demonstrate WebAuthn registration and authentication flows using real published packages.
 
 ## Features
 
@@ -8,7 +8,7 @@ This is an Android test client for the MPO WebAuthn authentication server. It us
 - **WebAuthn Authentication**: Authenticate existing users using biometric/security key
 - **Real-time Logging**: View detailed logs of the authentication process
 - **Error Handling**: Comprehensive error handling and user feedback
-- **Generated API Client**: Uses OpenAPI-generated client for type-safe API communication
+- **Published API Client**: Uses published Android client library for type-safe API communication
 
 ## Prerequisites
 
@@ -19,19 +19,30 @@ This is an Android test client for the MPO WebAuthn authentication server. It us
 
 ## Setup
 
-### 1. Build with Generated Client
+### 1. Published Client Library Architecture
 
-The Android test client uses the OpenAPI-generated client as a Maven dependency. Use the provided build script:
+The Android test client consumes the published Android client library from GitHub Packages:
 
-```bash
-# From android-test-client directory - builds client first, then app
-./build-with-client.sh
+```gradle
+repositories {
+    maven {
+        url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+        credentials {
+            username = System.getenv("GITHUB_ACTOR")
+            password = System.getenv("GITHUB_TOKEN")
+        }
+    }
+}
+
+dependencies {
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:X.X.X'
+}
 ```
 
-This script:
-1. Generates the Android API client from OpenAPI spec
-2. Builds and publishes it to local Maven repository  
-3. Builds the Android test client with the dependency
+**E2E Testing with Staging Packages**:
+- **PR Testing**: Uses staging packages (e.g., `pr-123.456`) for validation
+- **Production**: Uses production packages from main branch
+- **Version Resolution**: Automatically managed by GitHub Actions workflows
 
 ### 2. Open in Android Studio
 
@@ -43,14 +54,17 @@ This script:
 ### 3. Development Workflow
 
 ```bash
-# When API changes - rebuild everything
-./build-with-client.sh
-
-# For app-only changes - faster build
+# Standard Android development
 ./gradlew build
+
+# Run E2E tests with published client
+./gradlew connectedAndroidTest
 
 # Clean build
 ./gradlew clean build
+
+# Local client library development (if needed)
+cd ../android-client-library && ./gradlew publishToMavenLocal
 ```
 
 ## Configuration
@@ -112,8 +126,16 @@ android-test-client/
 │   │   └── WebAuthnViewModel.kt         # Business logic and API calls
 │   ├── src/androidTest/                 # Instrumentation tests
 │   └── src/test/                        # Unit tests
-├── generated-client/                    # OpenAPI-generated client
-└── build.gradle                         # Project configuration
+├── build.gradle.kts                     # Project configuration with published dependency
+└── settings.gradle.kts                  # Repository configuration for GitHub Packages
+```
+
+**Published Client Library Structure**:
+```
+../android-client-library/               # Dedicated client library submodule
+├── src/main/java/                       # Generated API client source
+├── build.gradle.kts                     # Publishing configuration
+└── README.md                            # Client library documentation
 ```
 
 ## Dependencies
@@ -130,7 +152,7 @@ android-test-client/
 ### API Client
 - OkHttp for HTTP communication  
 - Gson for JSON serialization
-- OpenAPI-generated client library
+- Published Android client library from GitHub Packages
 
 ## Testing
 
@@ -209,8 +231,9 @@ val task = fido2ApiClient.getSignIntent(publicKeyCredentialRequestOptions)
    - Check CORS configuration on server
 
 2. **Build Errors**
-   - Ensure generated client exists: `./gradlew generateAndroidClient`
+   - Check client library dependency is accessible: verify GitHub Packages authentication
    - Clean and rebuild: `./gradlew clean build`
+   - Check if client version exists in GitHub Packages
 
 3. **WebAuthn Errors**
    - Check device has biometric capability
@@ -240,7 +263,7 @@ private fun addLog(message: String) {
 ## Related Documentation
 
 - [Main Project README](../README.md)
-- [Client Generation Guide](../docs/setup/client-generation.md)
+- [Client Library Publishing](../docs/development/client-library-publishing.md)
 - [WebAuthn Security Analysis](../docs/security/webauthn-analysis.md)
 - [Android WebAuthn Guide](https://developers.google.com/identity/fido)
 - [FIDO2 API Reference](https://developers.google.com/android/reference/com/google/android/gms/fido/fido2/api/common/package-summary)

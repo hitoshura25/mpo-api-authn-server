@@ -45,7 +45,10 @@ android {
         }
         release {
             isMinifyEnabled = false
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro"
+            )
             buildConfigField("String", "SERVER_URL", "\"https://your-production-server.com\"")
         }
     }
@@ -85,9 +88,9 @@ dependencies {
     implementation("androidx.biometric:biometric:$biometricVersion")
     implementation("com.google.android.gms:play-services-fido:$playServicesFidoVersion")
 
-    // Local generated Android client library module (includes all necessary dependencies)
-    implementation(project(":client-library"))
-    
+    // Published Android client library from GitHub Packages
+    implementation("io.github.hitoshura25:mpo-webauthn-android-client:latest.release")
+
     // JSON Processing
     implementation("com.google.code.gson:gson:$gsonVersion")
 

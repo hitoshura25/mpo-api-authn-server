@@ -43,6 +43,18 @@ on:
         required: false
         type: string
         default: '29'
+      android-package-name:
+        description: 'Android Maven coordinates published'
+        required: true
+        type: string
+      client-version:
+        description: 'Client library version published'
+        required: true
+        type: string
+      cache-key:
+        description: 'Cache key for test results (from orchestrator)'
+        required: false
+        type: string
     outputs:
       tests-passed:
         description: 'Boolean indicating if Android tests passed'
@@ -108,7 +120,7 @@ jobs:
       tests-passed: ${{ steps.android-test-execution.outputs.tests-passed }}
     permissions:
       contents: read
-      packages: read
+      packages: write  # Required for publishing staging packages (includes read)
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -119,8 +131,8 @@ jobs:
           java-version: ${{ inputs.java-version }}
           distribution: 'temurin'
 
-      # Branch-specific Gradle caching
-      - name: Setup branch-specific Gradle cache
+      # Optimized Gradle caching with cross-workflow cache sharing
+      - name: Setup Gradle cache for Android E2E tests
         uses: actions/cache@v4
         with:
           path: |
@@ -128,11 +140,11 @@ jobs:
             ~/.gradle/wrapper
             .gradle/configuration-cache
             android-test-client/.gradle/configuration-cache
-          key: gradle-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: gradle-android-e2e-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
-            gradle-${{ runner.os }}-
+            gradle-android-e2e-${{ runner.os }}-${{ github.ref_name }}-
+            gradle-android-e2e-${{ runner.os }}-main-
+            gradle-android-e2e-${{ runner.os }}-
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -158,40 +170,26 @@ jobs:
           docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
           echo "✅ All images pulled successfully"
 
-      # E2E-specific Gradle caching for client generation (Android job)
-      - name: Setup Gradle cache for E2E client generation
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-            .gradle/configuration-cache
-            android-test-client/.gradle/configuration-cache
-          key: gradle-e2e-android-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-          restore-keys: |
-            gradle-e2e-android-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-e2e-android-${{ runner.os }}-main-
-            gradle-e2e-android-${{ runner.os }}-
-            gradle-docker-build-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-unit-tests-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-${{ github.ref_name }}-
-            gradle-${{ runner.os }}-main-
+      # NOTE: Gradle already setup above - no need for duplicate setup
+      # This section was removed to eliminate redundant Gradle configuration
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-          build-scan-publish: true
-          build-scan-terms-of-use-url: "https://gradle.com/terms-of-service"
-          build-scan-terms-of-use-agree: "yes"
-          # Disable built-in cache since we're managing it manually
-          cache-disabled: true
-
-      - name: Generate client libraries
-        shell: bash
+      - name: Update Android client to use staging package
+        env:
+          STAGING_PACKAGE: ${{ inputs.android-package-name }}
+          STAGING_VERSION: ${{ inputs.client-version }}
         run: |
-          echo "📚 Generating client libraries for E2E tests"
-          ./gradlew :webauthn-server:copyGeneratedClientToLibrary --build-cache --parallel --configuration-cache
+          echo "📱 Updating Android client to use staging package: $STAGING_PACKAGE:$STAGING_VERSION"
+          cd android-test-client
+
+          # Update build.gradle.kts to use staging package instead of latest.release
+          echo "📝 Updating Android dependency:"
+          echo "  FROM: implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")"
+          echo "  TO:   implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")"
+
+          sed -i.bak "s|implementation(\"io.github.hitoshura25:mpo-webauthn-android-client:latest.release\")|implementation(\"$STAGING_PACKAGE:$STAGING_VERSION\")|g" app/build.gradle.kts
+
+          echo "📋 Dependency update result:"
+          grep "implementation.*mpo-webauthn-android-client" app/build.gradle.kts || echo "❌ No Android client dependency found!"
 
       - name: Enable KVM group permissions for Android Emulator
         run: |
@@ -212,6 +210,7 @@ jobs:
 
       - name: create AVD and generate snapshot for caching
         if: steps.avd-cache.outputs.cache-hit != 'true'
+        timeout-minutes: 8
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: ${{ env.ANDROID_API_VERSION }}
@@ -298,6 +297,13 @@ jobs:
       - name: Run Android E2E tests with emulator
         id: android-test-execution
         uses: reactivecircus/android-emulator-runner@v2
+        env:
+          GITHUB_PACKAGES_USERNAME: ${{ github.actor }}
+          GITHUB_PACKAGES_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
+          TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
+          ANDROID_PACKAGE_NAME: ${{ inputs.android-package-name }}
+          CLIENT_VERSION: ${{ inputs.client-version }}
         with:
           api-level: ${{ env.ANDROID_API_VERSION }}
           target: google_apis
@@ -307,6 +313,15 @@ jobs:
           force-avd-creation: false
           emulator-options: -no-snapshot-save -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -memory 2048
           script: ./scripts/core/run-android-tests.sh
+
+      - name: Save test results to cache
+        if: steps.android-test-execution.outputs.tests-passed == 'true' && inputs.cache-key != ''
+        uses: actions/cache@v4
+        with:
+          key: ${{ inputs.cache-key }}
+          path: |
+            android-e2e-cache/
+            android-e2e-results.json
 
       - name: Upload Android E2E test reports
         uses: actions/upload-artifact@v4

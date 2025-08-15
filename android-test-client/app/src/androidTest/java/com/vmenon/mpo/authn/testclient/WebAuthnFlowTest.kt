@@ -4,18 +4,18 @@ import androidx.test.ext.junit.rules.ActivityScenarioRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.platform.app.InstrumentationRegistry
-import com.vmenon.mpo.api.authn.client.api.RegistrationApi
-import com.vmenon.mpo.api.authn.client.api.AuthenticationApi
-import com.vmenon.mpo.api.authn.client.model.RegistrationRequest
-import com.vmenon.mpo.api.authn.client.model.RegistrationCompleteRequest
-import com.vmenon.mpo.api.authn.client.model.AuthenticationRequest
-import com.vmenon.mpo.api.authn.client.model.AuthenticationCompleteRequest
+import io.github.hitoshura25.webauthn.client.api.RegistrationApi
+import io.github.hitoshura25.webauthn.client.api.AuthenticationApi
+import io.github.hitoshura25.webauthn.client.model.RegistrationRequest
+import io.github.hitoshura25.webauthn.client.model.RegistrationCompleteRequest
+import io.github.hitoshura25.webauthn.client.model.AuthenticationRequest
+import io.github.hitoshura25.webauthn.client.model.AuthenticationCompleteRequest
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import com.vmenon.mpo.api.authn.client.ApiClient
+import io.github.hitoshura25.webauthn.client.ApiClient
 import java.util.UUID
 
 @RunWith(AndroidJUnit4::class)
@@ -68,7 +68,8 @@ class WebAuthnFlowTest {
             println("✓ Registration start successful - Request ID: ${startRegistrationResponse.requestId}")
 
             // Step 2: Extract challenge and generate test credential via test service
-            val challenge = extractChallenge(startRegistrationResponse.publicKeyCredentialCreationOptions)
+            val challenge =
+                extractChallenge(startRegistrationResponse.publicKeyCredentialCreationOptions)
             val testCredentialResponse = testServiceClient.generateRegistrationCredential(
                 TestRegistrationRequest(
                     challenge = challenge,
@@ -83,7 +84,8 @@ class WebAuthnFlowTest {
                 credential = testCredentialResponse.credential
             }
 
-            val completeRegistrationResponse = registrationApi.completeRegistration(completeRegistrationRequest)
+            val completeRegistrationResponse =
+                registrationApi.completeRegistration(completeRegistrationRequest)
 
             // Verify completion response
             assert(completeRegistrationResponse.success == true) { "Registration should be successful" }
@@ -141,7 +143,7 @@ class WebAuthnFlowTest {
     fun testServerHealthCheck() = runBlocking {
         try {
             // Simple health check to ensure server is accessible
-            val healthApi = com.vmenon.mpo.api.authn.client.api.HealthApi(apiClient)
+            val healthApi = io.github.hitoshura25.webauthn.client.api.HealthApi(apiClient)
             val healthResponse = healthApi.getHealth()
 
             assert(healthResponse.status.toString() == "healthy") { "Server health check should return healthy" }

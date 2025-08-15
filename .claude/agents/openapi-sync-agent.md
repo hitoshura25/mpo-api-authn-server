@@ -1,3 +1,9 @@
+---
+name: openapi-sync-agent
+description: Specialized agent for investigating and resolving OpenAPI specification drift, ensuring perfect synchronization between server implementations and client contracts. Use for specification drift detection, response structure analysis, client contract validation, and coordinated updates across server and generated clients.
+model: inherit
+---
+
 # OpenAPI Synchronization Agent
 
 ## Purpose

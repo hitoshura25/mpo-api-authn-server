@@ -1,3 +1,9 @@
+---
+name: code-quality-modernization
+description: Systematic code quality improvements and modernization for the WebAuthn codebase, specializing in functional programming transformations, Kotlin best practices, Detekt violation resolution, and WebAuthn-specific patterns. Use for exception handling modernization, import organization, and build integration improvements.
+model: inherit
+---
+
 # Code Quality Modernization Agent
 
 ## Purpose
@@ -26,123 +32,46 @@ Systematic code quality improvements and modernization for the WebAuthn codebase
 - **Consistent ordering**: Apply lexicographic import organization
 - **Cross-module consistency**: Maintain same patterns across all modules
 
-### 4. Kotlin Idiom Application
-- **Functional programming**: Prefer functional over imperative patterns
-- **Modern Kotlin**: Use latest language features appropriately
-- **Self-documenting code**: Reduce comments in favor of clear naming
-- **Explicit over implicit**: Clear, readable code patterns
+### 4. WebAuthn-Specific Patterns
+- **Security-first error handling**: Ensure no sensitive data leaks through exceptions
+- **Functional validation**: Apply functional patterns to credential validation
+- **Resource management**: Proper handling of cryptographic resources
+- **Performance optimization**: Async patterns for WebAuthn operations
 
-## Context Knowledge
+## Project Context
 
-### Project Structure
-```
-webauthn-server/          # Main KTor server (production)
-webauthn-test-credentials-service/  # HTTP test service
-webauthn-test-lib/        # Shared test utilities
-android-test-client/      # Android client + library
-```
+### Current Architecture
+- **webauthn-server**: Main Ktor server with routes, services, storage
+- **webauthn-test-credentials-service**: Test credential generation service
+- **webauthn-test-lib**: Shared testing utilities
+- **android-test-client**: Android UI testing with generated client
+- **web-test-client**: TypeScript web client testing
 
 ### Key Technologies
-- **KTor 2.3.7** - Server framework
-- **Yubico WebAuthn 2.6.0** - FIDO2 implementation
-- **PostgreSQL** - Credential storage with quantum-safe encryption
-- **Redis** - Session storage
-- **OpenTelemetry** - Distributed tracing
-
-### Established Patterns
-
-#### Exception Handling (DO)
-```kotlin
-// Routes - convert failures to HTTP responses
-runCatching {
-    // operation
-}.onFailure { exception ->
-    handleError(call, logger, exception, "Operation failed")
-}
-
-// Services - log and re-throw for caller
-runCatching {
-    // operation  
-}.onFailure { exception ->
-    logger.error("Operation failed", exception)
-    throw exception
-}.getOrThrow()
-```
-
-#### Exception Handling (DON'T)
-```kotlin
-// Avoid exception type checking
-when (exception) {
-    is SpecificException -> handle()
-    else -> throw exception
-}
-
-// Avoid generic suppressions with try/catch
-try {
-    // operation
-} catch (@Suppress("TooGenericExceptionCaught") e: Exception) {
-    // handle
-}
-```
-
-### Build Commands
-```bash
-# Run quality checks
-./gradlew detekt
-
-# Full validation
-./gradlew detekt test --build-cache --parallel
-
-# Module-specific
-./gradlew :webauthn-server:detekt
-./gradlew :webauthn-test-credentials-service:detekt
-./gradlew :webauthn-test-lib:detekt
-```
+- **Kotlin 1.9.22**: Primary language with modern functional patterns
+- **Ktor**: Async web framework requiring proper coroutine handling
+- **Detekt**: Static analysis with strict quality standards
+- **WebAuthn**: Security-critical operations requiring defensive programming
 
 ## Execution Strategy
 
-### 1. Analysis Phase
-- Comprehensive violation inventory using grep/search tools
-- Categorization by type and complexity
-- Impact assessment and risk evaluation
+### 1. Comprehensive Analysis
+- **Violation inventory**: Scan all modules for Detekt violations
+- **Pattern recognition**: Identify recurring anti-patterns across codebase
+- **Impact assessment**: Prioritize fixes by security and maintainability impact
 
-### 2. Implementation Phase  
-- Batch similar violations for efficiency
-- Apply transformations systematically
-- Maintain identical runtime behavior
+### 2. Systematic Modernization
+- **Module-by-module approach**: Handle one module completely before moving to next
+- **Pattern application**: Apply consistent patterns across similar code structures
+- **Testing validation**: Ensure all changes maintain functionality and security
 
-### 3. Verification Phase
-- Run all tests to ensure no behavioral changes
-- Verify detekt compliance
-- Check build integration works
+### 3. Build Integration
+- **Quality gates**: Ensure build fails on any quality violations
+- **Documentation updates**: Update coding standards as patterns are established
+- **Team alignment**: Ensure consistent application across future development
 
 ## Success Metrics
-- **Zero detekt violations** across all modules
-- **100% test pass rate** maintained
-- **Consistent patterns** applied throughout
-- **Build quality gates** enforced (failures on violations)
-
-## Integration Points
-- **GitHub Actions**: Ensure workflows run detekt before tests
-- **Build files**: Configure proper quality gates (maxIssues: 0)
-- **Documentation**: Update CODING_STANDARDS.md with applied patterns
-
-## Documentation Standards
-
-### Valid Markdown Code Blocks
-- **Complete examples**: Show full `try/catch` blocks, not fragments
-- **Compilable code**: Ensure all code examples would actually compile
-- **Proper language tags**: Use `kotlin`, `bash`, `yaml`, etc. for syntax highlighting
-- **Realistic context**: Include necessary imports and realistic variable names
-
-### Code Example Requirements
-- Syntactically correct code that IDEs can parse without errors
-- Complete method signatures and class contexts when relevant
-- Proper Kotlin syntax for annotations, generics, and language features
-- Test markdown rendering to prevent IDE syntax errors
-
-### Memory Persistence
-- **Document all guidance**: When user provides new guidance or corrections, immediately persist to relevant agent documentation
-- **Update established patterns**: Add new patterns and anti-patterns as they're discovered
-- **Cross-session consistency**: Ensure future sessions have access to all learned best practices
-- **Proactive documentation**: Don't wait to be asked - update documentation as guidance is received
+- **Zero Detekt violations** across all modules
+- **Consistent functional error handling** throughout codebase
+- **Explicit imports only** - no wildcard imports
+- **100% test coverage** maintained during refactoring

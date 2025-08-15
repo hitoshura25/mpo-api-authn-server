@@ -1,4 +1,4 @@
-// Re-export types from generated client for convenience
+// Re-export types from published client for convenience
 export type {
     RegistrationRequest,
     RegistrationCompleteRequest,
@@ -10,7 +10,7 @@ export type {
     AuthenticationCompleteResponse,
     ErrorResponse,
     HealthResponse
-} from '../generated-client/src';
+} from '@vmenon25/mpo-webauthn-client';
 
 // WebAuthn Client specific types
 export interface WebAuthnClientOptions {

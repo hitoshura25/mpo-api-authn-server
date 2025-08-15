@@ -383,10 +383,42 @@ main() {
     local webauthn_image_tag="${3:-}"
     local test_credentials_image_tag="${4:-}"
     
-    # Validate required environment variables
-    if [ -z "${DOCKER_REGISTRY:-}" ] || [ -z "${DOCKER_IMAGE_NAME:-}" ] || [ -z "${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-}" ]; then
-        log "❌ Error: Missing required environment variables"
-        log "Required: DOCKER_REGISTRY, DOCKER_IMAGE_NAME, DOCKER_TEST_CREDENTIALS_IMAGE_NAME"
+    # Parse image components from full image tags (new approach)
+    # This replaces the old environment variable approach for better compatibility
+    if [ -n "$webauthn_image_tag" ]; then
+        # Extract registry and image name from full tag
+        DOCKER_REGISTRY="${webauthn_image_tag%%/*}"
+        local temp_name="${webauthn_image_tag#*/}"
+        DOCKER_IMAGE_NAME="${temp_name%:*}"
+        log "📋 Parsed WebAuthn image: registry=$DOCKER_REGISTRY, name=$DOCKER_IMAGE_NAME"
+    fi
+    
+    if [ -n "$test_credentials_image_tag" ]; then
+        # Extract registry and image name from full tag  
+        if [ -z "${DOCKER_REGISTRY:-}" ]; then
+            DOCKER_REGISTRY="${test_credentials_image_tag%%/*}"
+        fi
+        local temp_name="${test_credentials_image_tag#*/}"
+        DOCKER_TEST_CREDENTIALS_IMAGE_NAME="${temp_name%:*}"
+        log "📋 Parsed Test Credentials image: registry=$DOCKER_REGISTRY, name=$DOCKER_TEST_CREDENTIALS_IMAGE_NAME"
+    fi
+    
+    # Validate we have the required information (either from env vars or parsed from image tags)
+    if [ -z "${DOCKER_REGISTRY:-}" ]; then
+        log "❌ Error: Could not determine Docker registry"
+        log "Either set DOCKER_REGISTRY environment variable or provide full image tags"
+        exit 1
+    fi
+    
+    if [[ "$webauthn_changed" == "true" ]] && [ -z "${DOCKER_IMAGE_NAME:-}" ]; then
+        log "❌ Error: Could not determine WebAuthn image name"
+        log "Either set DOCKER_IMAGE_NAME environment variable or provide webauthn_image_tag parameter"
+        exit 1
+    fi
+    
+    if [[ "$test_credentials_changed" == "true" ]] && [ -z "${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-}" ]; then
+        log "❌ Error: Could not determine Test Credentials image name"
+        log "Either set DOCKER_TEST_CREDENTIALS_IMAGE_NAME environment variable or provide test_credentials_image_tag parameter"
         exit 1
     fi
     

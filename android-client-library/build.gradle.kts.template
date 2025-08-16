@@ -1,11 +1,14 @@
 plugins {
     id("java-library")
     id("maven-publish")
+    id("signing")
 }
 
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
+    withJavadocJar()
+    withSourcesJar()
 }
 
 // Configure version from parent project or environment
@@ -51,10 +54,28 @@ configurations.all {
 
 dependencies {
     // GENERATED_DEPENDENCIES_PLACEHOLDER
-    
+
     // Generated code uses @javax.annotation.Generated, so we need javax version
     // Jakarta version is excluded during dependency extraction to prevent conflicts
     implementation("javax.annotation:javax.annotation-api:1.3.2")
+}
+
+// Configure Javadoc to recognize OpenAPI generator custom tags
+tasks.withType<Javadoc> {
+    // Register custom tags used by OpenAPI generator
+    (options as StandardJavadocDocletOptions).tags(
+        "http.response.details:a:HTTP Response Details:",
+        "http.request:a:HTTP Request:",
+        "http.response:a:HTTP Response:",
+        "http.method:a:HTTP Method:",
+        "http.status:a:HTTP Status:",
+        "apiNote:a:API Note:",
+        "implNote:a:Implementation Note:",
+        "since:a:Since:"
+    )
+    
+    // Suppress warnings for missing @param and @return tags in generated code
+    (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
 }
 
 publishing {
@@ -68,7 +89,10 @@ publishing {
 
             pom {
                 name.set("MPO WebAuthn Android Client")
-                description.set("Generated Android client for MPO WebAuthn API")
+                description.set(
+                    "Generated Android client library for MPO WebAuthn API - " +
+                        "FIDO2/WebAuthn authentication",
+                )
                 url.set("https://github.com/hitoshura25/mpo-api-authn-server")
 
                 licenses {
@@ -80,9 +104,9 @@ publishing {
 
                 developers {
                     developer {
-                        id.set("webauthn-server")
-                        name.set("WebAuthn Server Team")
-                        email.set("support@example.com")
+                        id.set("hitoshura25")
+                        name.set("Hitoshura")
+                        email.set("hitoshura25@users.noreply.github.com")
                     }
                 }
 
@@ -91,22 +115,64 @@ publishing {
                     developerConnection.set(
                         "scm:git:ssh://github.com:hitoshura25/mpo-api-authn-server.git",
                     )
-                    url.set("https://github.com/hitoshura25/mpo-api-authn-server/tree/main")
+                    url.set("https://github.com/hitoshura25/mpo-api-authn-server")
                 }
             }
         }
     }
 
     repositories {
-        maven {
-            name = "GitHubPackages"
-            url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
-            credentials {
-                username = project.findProperty("GitHubPackagesUsername") as String?
-                    ?: System.getenv("ANDROID_PUBLISH_USER")
-                password = project.findProperty("GitHubPackagesPassword") as String?
-                    ?: System.getenv("ANDROID_PUBLISH_TOKEN")
+        // Determine publishing target based on environment/properties (defaults to staging)
+        val publishType =
+            project.findProperty("publishType") as String?
+                ?: System.getenv("PUBLISH_TYPE") ?: "staging"
+        if (publishType == "production") {
+            // Maven Central (for production) - New Central Portal Staging API
+            maven {
+                name = "CentralPortal"
+                url =
+                    uri(
+                        "https://ossrh-staging-api.central.sonatype.com/service/local/" +
+                            "staging/deploy/maven2/",
+                    )
+                credentials {
+                    username = project.findProperty("centralPortalUsername") as String?
+                        ?: System.getenv("CENTRAL_PORTAL_USERNAME")
+                    password = project.findProperty("centralPortalPassword") as String?
+                        ?: System.getenv("CENTRAL_PORTAL_PASSWORD")
+                }
+            }
+        } else {
+            // GitHub Packages (for staging) - default fallback
+            maven {
+                name = "GitHubPackages"
+                url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
+                credentials {
+                    username = project.findProperty("GitHubPackagesUsername") as String?
+                        ?: System.getenv("ANDROID_PUBLISH_USER")
+                    password = project.findProperty("GitHubPackagesPassword") as String?
+                        ?: System.getenv("ANDROID_PUBLISH_TOKEN")
+                }
             }
         }
+    }
+}
+
+// Signing configuration for Maven Central (production only)
+signing {
+    val publishType =
+        project.findProperty("publishType") as String?
+            ?: System.getenv("PUBLISH_TYPE") ?: "staging"
+    val signingKey =
+        project.findProperty("signingKey") as String?
+            ?: System.getenv("SIGNING_KEY")
+    val signingPassword =
+        project.findProperty("signingPassword") as String?
+            ?: System.getenv("SIGNING_PASSWORD")
+
+    // Only sign for production publishing and if we have the required properties
+    if (publishType == "production" && signingKey != null && signingPassword != null) {
+        useInMemoryPgpKeys(signingKey, signingPassword)
+        sign(publishing.publications["maven"])
     }
 }

@@ -28,10 +28,11 @@ on:
         description: 'Test credentials service Docker image tag'
         required: true
         type: string
-      pr-number:
-        description: 'PR number for artifact naming'
-        required: true
+      workflow-identifier:
+        description: 'Workflow identifier for artifact naming (PR number or fallback value for main branch)'
+        required: false
         type: string
+        default: 'main'
       java-version:
         description: 'Java version for client generation'
         required: false
@@ -58,7 +59,7 @@ on:
         value: ${{ jobs.run-web-tests.result }}
       artifact-name:
         description: 'Name of uploaded test artifacts'
-        value: web-e2e-test-reports-pr-${{ inputs.pr-number }}
+        value: web-e2e-test-reports-${{ inputs.workflow-identifier }}
 
 env:
   DOCKER_REGISTRY: ghcr.io
@@ -324,7 +325,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: web-e2e-test-reports-pr-${{ inputs.pr-number }}
+          name: web-e2e-test-reports-${{ inputs.workflow-identifier }}
           path: |
             web-test-client/test-results/
             web-test-client/playwright-report/

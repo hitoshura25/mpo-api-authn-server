@@ -63,7 +63,7 @@ jobs:
       pull-requests: write    # Comment on PRs with test results
       id-token: write
     with:
-      pr-number: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
+      workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}
       test_credentials_image: ${{ needs.build-and-test.outputs.test_credentials_image }}
     secrets: inherit

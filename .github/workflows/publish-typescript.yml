@@ -48,6 +48,30 @@ on:
         description: 'Base npm package name (e.g., mpo-webauthn-client)'
         required: true
         type: string
+      npm-staging-registry-url:
+        description: 'npm staging registry URL'
+        required: true
+        type: string
+      npm-staging-credential-env:
+        description: 'Environment variable name for staging credentials'
+        required: true
+        type: string
+      npm-production-registry-url:
+        description: 'npm production registry URL'
+        required: true
+        type: string
+      npm-production-credential-env:
+        description: 'Environment variable name for production credentials'
+        required: true
+        type: string
+      npm-staging-suffix:
+        description: 'Suffix for staging package names'
+        required: true
+        type: string
+      npm-production-suffix:
+        description: 'Suffix for production package names'
+        required: true
+        type: string
       android-group-id:
         description: 'Android group ID (for Gradle generation parameters)'
         required: true
@@ -92,16 +116,18 @@ jobs:
       - name: Set package information
         id: package-info
         run: |
-          # Determine package names based on publish type
+          # Determine package names and registry based on publish type using centralized configuration
           if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
-            # Staging package names (GitHub Packages)
-            PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}-staging"
-            NPM_REGISTRY="https://npm.pkg.github.com"
+            # Staging package names and registry from central config
+            PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}${{ inputs.npm-staging-suffix }}"
+            NPM_REGISTRY="${{ inputs.npm-staging-registry-url }}"
+            CREDENTIAL_ENV="${{ inputs.npm-staging-credential-env }}"
             echo "📦 STAGING TypeScript package"
           else
-            # Production package names (npm)
-            PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}"
-            NPM_REGISTRY="https://registry.npmjs.org"
+            # Production package names and registry from central config
+            PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}${{ inputs.npm-production-suffix }}"
+            NPM_REGISTRY="${{ inputs.npm-production-registry-url }}"
+            CREDENTIAL_ENV="${{ inputs.npm-production-credential-env }}"
             echo "🚀 PRODUCTION TypeScript package"
           fi
 
@@ -110,12 +136,14 @@ jobs:
           echo "package-name=${PACKAGE_NAME}" >> $GITHUB_OUTPUT
           echo "package-full-name=${PACKAGE_FULL_NAME}" >> $GITHUB_OUTPUT
           echo "npm-registry=${NPM_REGISTRY}" >> $GITHUB_OUTPUT
+          echo "credential-env=${CREDENTIAL_ENV}" >> $GITHUB_OUTPUT
 
-          echo "📦 TypeScript Package Information:"
+          echo "📦 TypeScript Package Information (from central config):"
           echo "  Package name: ${PACKAGE_NAME}"
           echo "  Version: ${{ inputs.client-version }}"
           echo "  Full name: ${PACKAGE_FULL_NAME}"
           echo "  Registry: ${NPM_REGISTRY}"
+          echo "  Credential env: ${CREDENTIAL_ENV}"
           echo "  Publish type: ${{ inputs.publish-type }}"
 
       - name: Set up JDK for client generation
@@ -196,7 +224,8 @@ jobs:
       - name: Publish TypeScript client to GitHub Packages (staging)
         if: inputs.publish-type == 'staging' && steps.check-npm-version.outputs.skip-publish == 'false'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Use dynamic credential based on central config (GitHub Packages uses GITHUB_TOKEN)
+          NODE_AUTH_TOKEN: ${{ steps.package-info.outputs.credential-env == 'GITHUB_TOKEN' && secrets.GITHUB_TOKEN || secrets.NPM_TOKEN }}
           NPM_CONFIG_REGISTRY: ${{ steps.package-info.outputs.npm-registry }}
         run: |
           echo "📦 Publishing TypeScript client to GitHub Packages (staging)..."
@@ -208,9 +237,12 @@ jobs:
           npm pkg set version="${{ inputs.client-version }}"
           npm pkg set "publishConfig.${{ inputs.npm-scope }}:registry"="${{ steps.package-info.outputs.npm-registry }}"
 
-          # Configure authentication for GitHub Packages
+          # Configure authentication for npm registry (from central config)
           echo "${{ inputs.npm-scope }}:registry=${{ steps.package-info.outputs.npm-registry }}" >> .npmrc
-          echo "//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          
+          # Extract hostname from registry URL for dynamic authentication configuration
+          REGISTRY_HOST=$(echo "${{ steps.package-info.outputs.npm-registry }}" | sed 's|https://||' | sed 's|/.*||')
+          echo "//${REGISTRY_HOST}/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig'
@@ -259,7 +291,8 @@ jobs:
       - name: Publish TypeScript client to npm (production)
         if: inputs.publish-type == 'production'
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Use dynamic credential based on central config (npm registry uses NPM_TOKEN)
+          NODE_AUTH_TOKEN: ${{ steps.package-info.outputs.credential-env == 'GITHUB_TOKEN' && secrets.GITHUB_TOKEN || secrets.NPM_TOKEN }}
           NPM_CONFIG_REGISTRY: ${{ steps.package-info.outputs.npm-registry }}
         run: |
           echo "🚀 Publishing TypeScript client to npm (production)..."
@@ -271,8 +304,10 @@ jobs:
           npm pkg set version="${{ inputs.client-version }}"
           npm pkg delete publishConfig  # Remove GitHub Packages config
 
-          # Configure authentication for npm registry
-          echo "//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          # Configure authentication for npm registry (from central config)
+          # Extract hostname from registry URL for dynamic authentication configuration
+          REGISTRY_HOST=$(echo "${{ steps.package-info.outputs.npm-registry }}" | sed 's|https://||' | sed 's|/.*||')
+          echo "//${REGISTRY_HOST}/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig // "none"'

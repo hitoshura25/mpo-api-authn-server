@@ -44,7 +44,7 @@ fun Application.configureHealthRoutes() {
             call.respond(
                 mapOf(
                     "status" to "healthy",
-                    "timestamp" to System.currentTimeMillis().toString(),
+                    "timestamp" to System.currentTimeMillis(),
                 ),
             )
         }

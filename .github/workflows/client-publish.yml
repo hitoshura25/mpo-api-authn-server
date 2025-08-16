@@ -51,8 +51,8 @@ on:
         required: false
         type: string
       npm-scope:
-        description: 'NPM package scope'
-        required: true
+        description: 'NPM package scope (optional - will use central config if not provided)'
+        required: false
         type: string
     outputs:
       # Backward-compatible outputs for existing calling workflows
@@ -83,10 +83,8 @@ on:
         value: ${{ jobs.aggregate-results.outputs.android-skipped }}
 
 env:
-  # Centralized package configuration
-  NPM_PACKAGE_NAME: "mpo-webauthn-client"
-  ANDROID_GROUP_ID: "io.github.hitoshura25"
-  ANDROID_ARTIFACT_BASE_ID: "mpo-webauthn-android-client"
+  # Central configuration file path
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
 
 jobs:
   # Job 1: Input validation and shared configuration
@@ -132,22 +130,154 @@ jobs:
           echo "✅ Input validation passed"
           echo "validated=true" >> $GITHUB_OUTPUT
 
-  # Job 2: Convert environment variables to job outputs (required for callable workflows)
+  # Job 2: Load central configuration and create job outputs (required for callable workflows)
   setup-config:
     runs-on: ubuntu-latest
     outputs:
+      # Package configuration outputs
+      npm-scope: ${{ steps.config.outputs.npm-scope }}
       npm-package-name: ${{ steps.config.outputs.npm-package-name }}
       android-group-id: ${{ steps.config.outputs.android-group-id }}
       android-artifact-base-id: ${{ steps.config.outputs.android-artifact-base-id }}
+      # TypeScript repository configuration outputs
+      npm-staging-registry-url: ${{ steps.config.outputs.npm-staging-registry-url }}
+      npm-staging-credential-env: ${{ steps.config.outputs.npm-staging-credential-env }}
+      npm-production-registry-url: ${{ steps.config.outputs.npm-production-registry-url }}
+      npm-production-credential-env: ${{ steps.config.outputs.npm-production-credential-env }}
+      # TypeScript package suffix configuration
+      npm-staging-suffix: ${{ steps.config.outputs.npm-staging-suffix }}
+      npm-production-suffix: ${{ steps.config.outputs.npm-production-suffix }}
+      # Repository configuration outputs for Android
+      android-staging-repository-url: ${{ steps.config.outputs.android-staging-repository-url }}
+      android-staging-username-env: ${{ steps.config.outputs.android-staging-username-env }}
+      android-staging-password-env: ${{ steps.config.outputs.android-staging-password-env }}
+      android-staging-username-property: ${{ steps.config.outputs.android-staging-username-property }}
+      android-staging-password-property: ${{ steps.config.outputs.android-staging-password-property }}
+      android-production-repository-url: ${{ steps.config.outputs.android-production-repository-url }}
+      android-production-username-env: ${{ steps.config.outputs.android-production-username-env }}
+      android-production-password-env: ${{ steps.config.outputs.android-production-password-env }}
+      android-production-username-property: ${{ steps.config.outputs.android-production-username-property }}
+      android-production-password-property: ${{ steps.config.outputs.android-production-password-property }}
+      # Package suffix configuration
+      android-staging-suffix: ${{ steps.config.outputs.android-staging-suffix }}
+      android-production-suffix: ${{ steps.config.outputs.android-production-suffix }}
     steps:
-      - name: Setup configuration outputs
+      - name: Checkout code for configuration
+        uses: actions/checkout@v4
+
+      - name: Load central configuration
         id: config
         run: |
-          echo "🔧 Converting environment variables to job outputs for callable workflows..."
-          echo "npm-package-name=${{ env.NPM_PACKAGE_NAME }}" >> $GITHUB_OUTPUT
-          echo "android-group-id=${{ env.ANDROID_GROUP_ID }}" >> $GITHUB_OUTPUT
-          echo "android-artifact-base-id=${{ env.ANDROID_ARTIFACT_BASE_ID }}" >> $GITHUB_OUTPUT
-          echo "✅ Configuration outputs set"
+          echo "🔧 Loading central configuration from ${{ env.PUBLISHING_CONFIG_FILE }}..."
+          
+          # Validate configuration file exists
+          if [[ ! -f "${{ env.PUBLISHING_CONFIG_FILE }}" ]]; then
+            echo "❌ Configuration file not found: ${{ env.PUBLISHING_CONFIG_FILE }}"
+            exit 1
+          fi
+
+          # Install yq for YAML parsing
+          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+          # Load package configuration (with input override support)
+          NPM_SCOPE_FROM_CONFIG=$(yq '.packages.typescript.scope' ${{ env.PUBLISHING_CONFIG_FILE }})
+          NPM_BASE_NAME=$(yq '.packages.typescript.basePackageName' ${{ env.PUBLISHING_CONFIG_FILE }})
+          
+          # Use input npm-scope if provided, otherwise use central config value
+          if [[ -n "${{ inputs.npm-scope }}" ]]; then
+            NPM_SCOPE="${{ inputs.npm-scope }}"
+            echo "ℹ️ Using npm-scope from workflow input: ${NPM_SCOPE}"
+          else
+            NPM_SCOPE="${NPM_SCOPE_FROM_CONFIG}"
+            echo "ℹ️ Using npm-scope from central config: ${NPM_SCOPE}"
+          fi
+          ANDROID_GROUP_ID=$(yq '.packages.android.groupId' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_ARTIFACT_BASE_ID=$(yq '.packages.android.baseArtifactId' ${{ env.PUBLISHING_CONFIG_FILE }})
+
+          # Load repository configuration for npm/TypeScript
+          NPM_STAGING_REGISTRY_URL=$(yq '.repositories.staging.npm.registry' ${{ env.PUBLISHING_CONFIG_FILE }})
+          NPM_STAGING_CREDENTIAL_ENV=$(yq '.repositories.staging.npm.credentials.tokenEnv' ${{ env.PUBLISHING_CONFIG_FILE }})
+          NPM_PRODUCTION_REGISTRY_URL=$(yq '.repositories.production.npm.registry' ${{ env.PUBLISHING_CONFIG_FILE }})
+          NPM_PRODUCTION_CREDENTIAL_ENV=$(yq '.repositories.production.npm.credentials.tokenEnv' ${{ env.PUBLISHING_CONFIG_FILE }})
+
+          # Load repository configuration for Android staging
+          ANDROID_STAGING_REPO_URL=$(yq '.repositories.staging.android.url' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_STAGING_USERNAME_ENV=$(yq '.repositories.staging.android.credentials.usernameEnv' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_STAGING_PASSWORD_ENV=$(yq '.repositories.staging.android.credentials.passwordEnv' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_STAGING_USERNAME_PROPERTY=$(yq '.repositories.staging.android.credentials.usernameProperty' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_STAGING_PASSWORD_PROPERTY=$(yq '.repositories.staging.android.credentials.passwordProperty' ${{ env.PUBLISHING_CONFIG_FILE }})
+
+          # Load repository configuration for Android production
+          ANDROID_PRODUCTION_REPO_URL=$(yq '.repositories.production.android.url' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_PRODUCTION_USERNAME_ENV=$(yq '.repositories.production.android.credentials.usernameEnv' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_PRODUCTION_PASSWORD_ENV=$(yq '.repositories.production.android.credentials.passwordEnv' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_PRODUCTION_USERNAME_PROPERTY=$(yq '.repositories.production.android.credentials.usernameProperty' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_PRODUCTION_PASSWORD_PROPERTY=$(yq '.repositories.production.android.credentials.passwordProperty' ${{ env.PUBLISHING_CONFIG_FILE }})
+
+          # Load package suffix configuration
+          NPM_STAGING_SUFFIX=$(yq '.naming.staging.npmSuffix' ${{ env.PUBLISHING_CONFIG_FILE }})
+          NPM_PRODUCTION_SUFFIX=$(yq '.naming.production.npmSuffix' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_STAGING_SUFFIX=$(yq '.naming.staging.androidSuffix' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_PRODUCTION_SUFFIX=$(yq '.naming.production.androidSuffix' ${{ env.PUBLISHING_CONFIG_FILE }})
+
+          # Validate all required values are present
+          if [[ -z "$NPM_SCOPE" || "$NPM_BASE_NAME" == "null" || "$ANDROID_GROUP_ID" == "null" || "$ANDROID_ARTIFACT_BASE_ID" == "null" ]]; then
+            echo "❌ Missing required package configuration:"
+            echo "  NPM_SCOPE: '${NPM_SCOPE}'"
+            echo "  NPM_BASE_NAME: '${NPM_BASE_NAME}'"
+            echo "  ANDROID_GROUP_ID: '${ANDROID_GROUP_ID}'"
+            echo "  ANDROID_ARTIFACT_BASE_ID: '${ANDROID_ARTIFACT_BASE_ID}'"
+            exit 1
+          fi
+
+          if [[ "$NPM_STAGING_REGISTRY_URL" == "null" || "$NPM_PRODUCTION_REGISTRY_URL" == "null" || "$ANDROID_STAGING_REPO_URL" == "null" || "$ANDROID_PRODUCTION_REPO_URL" == "null" ]]; then
+            echo "❌ Missing required repository configuration in ${{ env.PUBLISHING_CONFIG_FILE }}"
+            exit 1
+          fi
+
+          # Set outputs for package configuration (backward compatibility)
+          echo "npm-scope=${NPM_SCOPE}" >> $GITHUB_OUTPUT
+          echo "npm-package-name=${NPM_BASE_NAME}" >> $GITHUB_OUTPUT
+          echo "android-group-id=${ANDROID_GROUP_ID}" >> $GITHUB_OUTPUT
+          echo "android-artifact-base-id=${ANDROID_ARTIFACT_BASE_ID}" >> $GITHUB_OUTPUT
+
+          # Set outputs for TypeScript repository configuration
+          echo "npm-staging-registry-url=${NPM_STAGING_REGISTRY_URL}" >> $GITHUB_OUTPUT
+          echo "npm-staging-credential-env=${NPM_STAGING_CREDENTIAL_ENV}" >> $GITHUB_OUTPUT
+          echo "npm-production-registry-url=${NPM_PRODUCTION_REGISTRY_URL}" >> $GITHUB_OUTPUT
+          echo "npm-production-credential-env=${NPM_PRODUCTION_CREDENTIAL_ENV}" >> $GITHUB_OUTPUT
+
+          # Set outputs for Android repository configuration
+          echo "android-staging-repository-url=${ANDROID_STAGING_REPO_URL}" >> $GITHUB_OUTPUT
+          echo "android-staging-username-env=${ANDROID_STAGING_USERNAME_ENV}" >> $GITHUB_OUTPUT
+          echo "android-staging-password-env=${ANDROID_STAGING_PASSWORD_ENV}" >> $GITHUB_OUTPUT
+          echo "android-staging-username-property=${ANDROID_STAGING_USERNAME_PROPERTY}" >> $GITHUB_OUTPUT
+          echo "android-staging-password-property=${ANDROID_STAGING_PASSWORD_PROPERTY}" >> $GITHUB_OUTPUT
+          
+          echo "android-production-repository-url=${ANDROID_PRODUCTION_REPO_URL}" >> $GITHUB_OUTPUT
+          echo "android-production-username-env=${ANDROID_PRODUCTION_USERNAME_ENV}" >> $GITHUB_OUTPUT
+          echo "android-production-password-env=${ANDROID_PRODUCTION_PASSWORD_ENV}" >> $GITHUB_OUTPUT
+          echo "android-production-username-property=${ANDROID_PRODUCTION_USERNAME_PROPERTY}" >> $GITHUB_OUTPUT
+          echo "android-production-password-property=${ANDROID_PRODUCTION_PASSWORD_PROPERTY}" >> $GITHUB_OUTPUT
+
+          # Set outputs for package suffix configuration
+          echo "npm-staging-suffix=${NPM_STAGING_SUFFIX}" >> $GITHUB_OUTPUT
+          echo "npm-production-suffix=${NPM_PRODUCTION_SUFFIX}" >> $GITHUB_OUTPUT
+          echo "android-staging-suffix=${ANDROID_STAGING_SUFFIX}" >> $GITHUB_OUTPUT
+          echo "android-production-suffix=${ANDROID_PRODUCTION_SUFFIX}" >> $GITHUB_OUTPUT
+
+          echo "✅ Central configuration loaded successfully:"
+          echo "  NPM package: ${NPM_SCOPE}/${NPM_BASE_NAME} $([ -n "${{ inputs.npm-scope }}" ] && echo "(scope from input)" || echo "(scope from config)")"
+          echo "  NPM staging registry: ${NPM_STAGING_REGISTRY_URL}"
+          echo "  NPM production registry: ${NPM_PRODUCTION_REGISTRY_URL}"
+          echo "  NPM staging suffix: '${NPM_STAGING_SUFFIX}'"
+          echo "  NPM production suffix: '${NPM_PRODUCTION_SUFFIX}'"
+          echo "  Android package: ${ANDROID_GROUP_ID}:${ANDROID_ARTIFACT_BASE_ID}"
+          echo "  Android staging repository: ${ANDROID_STAGING_REPO_URL}"
+          echo "  Android production repository: ${ANDROID_PRODUCTION_REPO_URL}"
+          echo "  Android staging suffix: '${ANDROID_STAGING_SUFFIX}'"
+          echo "  Android production suffix: '${ANDROID_PRODUCTION_SUFFIX}'"
 
   # Job 3: TypeScript client generation and publishing (parallel)
   publish-typescript:
@@ -161,8 +291,14 @@ jobs:
     with:
       publish-type: ${{ inputs.publish-type }}
       client-version: ${{ inputs.client-version }}
-      npm-scope: ${{ inputs.npm-scope }}
+      npm-scope: ${{ needs.setup-config.outputs.npm-scope }}
       npm-package-name: ${{ needs.setup-config.outputs.npm-package-name }}
+      npm-staging-registry-url: ${{ needs.setup-config.outputs.npm-staging-registry-url }}
+      npm-staging-credential-env: ${{ needs.setup-config.outputs.npm-staging-credential-env }}
+      npm-production-registry-url: ${{ needs.setup-config.outputs.npm-production-registry-url }}
+      npm-production-credential-env: ${{ needs.setup-config.outputs.npm-production-credential-env }}
+      npm-staging-suffix: ${{ needs.setup-config.outputs.npm-staging-suffix }}
+      npm-production-suffix: ${{ needs.setup-config.outputs.npm-production-suffix }}
       android-group-id: ${{ needs.setup-config.outputs.android-group-id }}  # Needed for Gradle generation
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
@@ -181,8 +317,25 @@ jobs:
       client-version: ${{ inputs.client-version }}
       android-group-id: ${{ needs.setup-config.outputs.android-group-id }}
       android-artifact-base-id: ${{ needs.setup-config.outputs.android-artifact-base-id }}
+      # Repository configuration from central config
+      android-staging-repository-url: ${{ needs.setup-config.outputs.android-staging-repository-url }}
+      android-staging-username-env: ${{ needs.setup-config.outputs.android-staging-username-env }}
+      android-staging-password-env: ${{ needs.setup-config.outputs.android-staging-password-env }}
+      android-staging-username-property: ${{ needs.setup-config.outputs.android-staging-username-property }}
+      android-staging-password-property: ${{ needs.setup-config.outputs.android-staging-password-property }}
+      android-production-repository-url: ${{ needs.setup-config.outputs.android-production-repository-url }}
+      android-production-username-env: ${{ needs.setup-config.outputs.android-production-username-env }}
+      android-production-password-env: ${{ needs.setup-config.outputs.android-production-password-env }}
+      android-production-username-property: ${{ needs.setup-config.outputs.android-production-username-property }}
+      android-production-password-property: ${{ needs.setup-config.outputs.android-production-password-property }}
+      android-staging-suffix: ${{ needs.setup-config.outputs.android-staging-suffix }}
+      android-production-suffix: ${{ needs.setup-config.outputs.android-production-suffix }}
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+      CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+      CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
 
   # Job 5: Aggregate results and provide backward-compatible outputs
   aggregate-results:

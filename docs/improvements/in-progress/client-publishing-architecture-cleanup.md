@@ -1,0 +1,409 @@
+# Client Library Publishing Architecture Cleanup
+
+**Status**: 🟡 In Progress  
+**Timeline**: 2025-01-16 - [In Progress]  
+**Effort**: 2-3 weeks  
+**Key Learnings**: [Link to learnings document](./learnings/client-publishing-architecture-cleanup-learnings.md)  
+
+## Implementation Status
+- [x] Phase 1: Analysis & Planning
+- [x] Phase 2: Central Configuration Setup *(Completed 2025-01-16)*
+- [x] Phase 3: Android Template Optimization *(Completed 2025-01-16)*
+- [ ] Phase 4: TypeScript Workflow Simplification  
+- [ ] Phase 5: Testing & Validation
+- [ ] Phase 6: Documentation Updates
+
+## Project Overview
+
+### Problem Statement
+The current client library publishing architecture has significant duplication across Android and TypeScript platforms:
+
+1. **Repository Configuration Duplication**: Both platforms duplicate staging vs production repository logic
+2. **Package Name Hardcoding**: Package names/scopes scattered across multiple files instead of centrally configured
+3. **Credential Management Duplication**: Similar credential patterns repeated across platforms
+4. **Maintenance Overhead**: Changes require updates in multiple locations
+
+### Goals
+- Eliminate configuration duplication while maintaining platform workflow separation
+- Centralize package names, scopes, and repository configurations
+- Improve maintainability and reduce risk of configuration drift
+- Maintain backward compatibility during transition
+
+### Constraints
+- Keep platform workflows separate (no merging of Android/TypeScript publishing)
+- Maintain existing workflow interfaces during transition
+- Work on separate branch to avoid disrupting current workflows
+
+## Current Architecture Analysis
+
+### Files Requiring Changes
+
+#### **Primary Configuration Files**
+- `android-client-library/build.gradle.kts.template` - Android publishing config with hardcoded repositories
+- `.github/workflows/client-e2e-tests.yml` - Contains centralized environment variables but mixed with hardcoded values
+- `.github/workflows/publish-android.yml` - Android publishing workflow
+- `typescript-client-library/package.json` - TypeScript package configuration
+
+#### **Identified Duplication Areas**
+
+1. **Repository Logic Duplication** (~35 lines of similar code):
+   - Android template lines 67-101: Conditional repository configuration
+   - TypeScript workflow: Similar registry switching logic
+
+2. **Package Configuration Scatter**:
+   - Android group ID: Hardcoded "io.github.hitoshura25" in template
+   - TypeScript scope: Hardcoded "@vmenon25" in workflow environments
+   - Artifact/package names: Partially centralized but inconsistent
+
+3. **Credential Resolution Patterns**:
+   - Similar `findProperty() ?: System.getenv()` patterns in both platforms
+   - Duplicated authentication setup between staging/production
+
+## Proposed Solution Architecture
+
+### 1. Central Configuration Strategy
+
+**Create**: `config/publishing-config.yml` - Single source of truth for all publishing configuration:
+
+```yaml
+# Package Configuration
+packages:
+  android:
+    groupId: "io.github.hitoshura25"
+    baseArtifactId: "mpo-webauthn-android-client"
+  typescript:
+    scope: "@vmenon25"
+    basePackageName: "mpo-webauthn-client"
+
+# Repository Configuration  
+repositories:
+  staging:
+    android:
+      url: "https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server"
+      credentials:
+        usernameEnv: "ANDROID_PUBLISH_USER"
+        passwordEnv: "ANDROID_PUBLISH_TOKEN"
+    npm:
+      registry: "https://npm.pkg.github.com"
+      credentials:
+        tokenEnv: "NPM_TOKEN"
+  production:
+    android:
+      url: "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
+      credentials:
+        usernameEnv: "CENTRAL_PORTAL_USERNAME" 
+        passwordEnv: "CENTRAL_PORTAL_PASSWORD"
+    npm:
+      registry: "https://registry.npmjs.org"
+      credentials:
+        tokenEnv: "NPM_TOKEN"
+
+# Package Naming Templates
+naming:
+  staging:
+    androidSuffix: "-staging"
+    npmSuffix: "-staging"
+  production:
+    androidSuffix: ""
+    npmSuffix: ""
+
+# Metadata
+metadata:
+  projectUrl: "https://github.com/hitoshura25/mpo-api-authn-server"
+  description: "Generated client libraries for MPO WebAuthn API - FIDO2/WebAuthn authentication"
+  license: "MIT"
+```
+
+### 2. Configuration Distribution Strategy
+
+**Update**: `.github/workflows/client-e2e-tests.yml` to load and distribute configuration:
+
+```yaml
+env:
+  # Central configuration file
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
+
+jobs:
+  load-publishing-config:
+    runs-on: ubuntu-latest
+    outputs:
+      android-group-id: ${{ steps.config.outputs.android-group-id }}
+      android-base-artifact-id: ${{ steps.config.outputs.android-base-artifact-id }}
+      npm-scope: ${{ steps.config.outputs.npm-scope }}
+      npm-base-package-name: ${{ steps.config.outputs.npm-base-package-name }}
+      staging-android-url: ${{ steps.config.outputs.staging-android-url }}
+      production-android-url: ${{ steps.config.outputs.production-android-url }}
+      staging-npm-registry: ${{ steps.config.outputs.staging-npm-registry }}
+      production-npm-registry: ${{ steps.config.outputs.production-npm-registry }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Load publishing configuration
+        id: config
+        run: |
+          # Parse YAML and set outputs using yq
+          # Implementation details in Phase 2
+```
+
+### 3. Android Template Simplification
+
+**Target**: Remove ~35 lines of hardcoded repository logic from `build.gradle.kts.template`
+
+**Replace** conditional repository configuration with:
+```kotlin
+// Load configuration from workflow environment
+val androidGroupId = System.getenv("ANDROID_GROUP_ID") ?: "io.github.hitoshura25"
+val androidArtifactId = System.getenv("ANDROID_ARTIFACT_ID") ?: "mpo-webauthn-android-client"
+val publishType = System.getenv("PUBLISH_TYPE") ?: "staging"
+
+publishing {
+    repositories {
+        maven {
+            name = if (publishType == "production") "Production" else "Staging"
+            url = uri(System.getenv("ANDROID_REPOSITORY_URL")!!)
+            credentials {
+                username = System.getenv("ANDROID_REPOSITORY_USERNAME")
+                password = System.getenv("ANDROID_REPOSITORY_PASSWORD")
+            }
+        }
+    }
+}
+```
+
+### 4. TypeScript Workflow Optimization
+
+**Update**: TypeScript publishing logic to use configuration inputs instead of hardcoded values
+
+**Current Issue**: Hardcoded scope and registry switching
+**Solution**: Use configuration passed from orchestrator workflow
+
+## Implementation Phases
+
+### Phase 1: Analysis & Planning ✅
+- [x] Analyze current architecture and identify duplication
+- [x] Design centralized configuration strategy  
+- [x] Create comprehensive implementation plan
+- [x] Set up documentation structure
+
+### Phase 2: Central Configuration Setup
+**Tasks**:
+- [ ] Create `config/publishing-config.yml` with all package configurations
+- [ ] Update `client-e2e-tests.yml` to load and parse configuration
+- [ ] Add configuration validation and error handling
+- [ ] Test configuration loading in isolation
+
+**Deliverables**:
+- Central configuration file with all package settings
+- Workflow job to load and distribute configuration
+- Validation mechanisms for configuration integrity
+
+### Phase 3: Android Template Optimization
+**Tasks**:
+- [ ] Update `build.gradle.kts.template` to use environment variables instead of hardcoded logic
+- [ ] Remove conditional repository configuration (~35 lines)
+- [ ] Update Android publishing workflow to pass configuration environment variables
+- [ ] Test Android publishing with new template
+
+**Deliverables**:
+- Simplified Android template with ~60% less configuration code
+- Updated Android publishing workflow
+- Verified Android publishing functionality
+
+### Phase 4: TypeScript Workflow Simplification  
+**Tasks**:
+- [ ] Remove hardcoded npm scope and registry logic
+- [ ] Update TypeScript workflow to receive configuration from orchestrator
+- [ ] Simplify package name resolution using central config
+- [ ] Test TypeScript publishing end-to-end
+
+**Deliverables**:
+- Simplified TypeScript publishing logic
+- Configuration-driven package naming
+- Verified TypeScript publishing functionality
+
+### Phase 5: Testing & Validation
+**Tasks**:
+- [ ] Run full end-to-end testing for both platforms
+- [ ] Test staging and production publishing scenarios
+- [ ] Validate backward compatibility
+- [ ] Performance testing and optimization
+
+**Deliverables**:
+- Comprehensive test results
+- Performance benchmarks
+- Validation of all publishing scenarios
+
+### Phase 6: Documentation Updates
+**Tasks**:
+- [ ] Update setup documentation with new configuration approach
+- [ ] Create troubleshooting guide for configuration issues
+- [ ] Update README files with new architecture
+- [ ] Document migration process for future changes
+
+**Deliverables**:
+- Updated setup documentation
+- Troubleshooting guides
+- Architecture documentation
+
+## Success Metrics
+
+### **Quantitative Goals**
+- **Code Reduction**: 60% reduction in duplicated repository configuration code
+- **Configuration Centralization**: 100% of package names/scopes in central config
+- **Maintenance Points**: Reduce from 4+ locations to 1 location for configuration changes
+
+### **Qualitative Goals**
+- **Maintainability**: Single point of configuration for all publishing settings
+- **Consistency**: Unified approach to repository and package configuration
+- **Platform Independence**: Maintained separation between Android and TypeScript workflows
+- **Backward Compatibility**: Existing workflow interfaces preserved
+
+## Risk Assessment & Mitigation
+
+### **High Risk**
+- **Configuration Loading Failure**: Central config file becomes single point of failure
+  - **Mitigation**: Fallback mechanisms and validation checks
+- **Workflow Interface Changes**: Breaking existing workflow contracts
+  - **Mitigation**: Maintain existing interfaces during transition
+
+### **Medium Risk**  
+- **Platform-Specific Issues**: Android/TypeScript have different configuration needs
+  - **Mitigation**: Platform-specific configuration sections in central file
+- **Testing Complexity**: Need to test all combinations of staging/production publishing
+  - **Mitigation**: Comprehensive test matrix and validation workflow
+
+### **Low Risk**
+- **Performance Impact**: Configuration loading adds workflow time
+  - **Mitigation**: Efficient parsing and caching strategies
+
+## Dependencies & Prerequisites
+
+### **Technical Prerequisites**
+- `yq` tool for YAML parsing in GitHub Actions
+- Existing workflow structure and permissions
+- Current publishing credentials and access
+
+### **External Dependencies**
+- GitHub Actions workflow execution environment
+- Maven Central and GitHub Packages repository access
+- npm registry connectivity
+
+## Future Considerations
+
+### **Potential Extensions**
+- **Multi-Repository Support**: Extend to support multiple GitHub repositories
+- **Dynamic Credential Management**: Integration with secret management systems
+- **Automated Configuration Validation**: Pre-commit hooks for configuration changes
+- **Configuration Templates**: Support for different environments (dev, staging, prod)
+
+### **Migration Path for Other Projects**
+This architecture can serve as a template for other multi-platform client library projects, providing:
+- Reusable configuration patterns
+- Platform-agnostic publishing workflows  
+- Centralized credential management approaches
+
+## Notes & Assumptions
+
+### **Current Workflow Constraints**
+- Must maintain existing workflow file names and basic interfaces
+- Cannot merge Android and TypeScript publishing workflows
+- Working on separate branch to avoid disrupting current operations
+
+### **Implementation Assumptions**
+- Central configuration file will be committed to repository
+- All platforms will adopt the centralized configuration approach
+- Existing credential management patterns will be preserved
+
+### **Technical Assumptions**
+- GitHub Actions environment supports YAML parsing with `yq`
+- Current publishing workflows can be modified without breaking changes
+- Configuration loading overhead is acceptable for workflow performance
+
+---
+
+## Phase Implementation Details
+
+### Phase 2: Central Configuration Setup ✅ *(Completed 2025-01-16)*
+
+#### Completed Tasks  
+- [x] Updated `client-publish.yml` setup-config job to load YAML configuration using yq
+- [x] Added comprehensive configuration validation with error handling
+- [x] Created job outputs for all Android repository configuration parameters
+- [x] Implemented fallback-resistant configuration loading with explicit validation
+- [x] Added detailed logging for configuration loading debugging
+
+#### Technical Implementation
+- **YAML Loading**: Uses `yq` for robust YAML parsing with validation
+- **Configuration Outputs**: 15+ job outputs covering all Android repository parameters
+- **Error Handling**: Validates required configuration sections exist before proceeding
+- **Debugging Support**: Comprehensive logging shows loaded configuration values
+
+#### Configuration Validation
+```bash
+# Validates these key sections are present and non-null:
+- packages.android.groupId
+- packages.android.baseArtifactId  
+- repositories.staging.android.url
+- repositories.production.android.url
+- naming.staging.androidSuffix
+- naming.production.androidSuffix
+```
+
+### Phase 3: Android Template Optimization ✅ *(Completed 2025-01-16)*
+
+#### Completed Tasks
+- [x] Replaced ~35 lines of hardcoded repository logic in `build.gradle.kts.template`
+- [x] Updated `publish-android.yml` workflow to accept repository configuration inputs
+- [x] Modified Android publishing steps to pass configuration via environment variables
+- [x] Updated `client-publish.yml` to pass all repository configuration to Android workflow
+- [x] Added suffix-based artifact ID configuration using central config
+
+#### Technical Changes
+
+**Template Simplification** - **Before** (35 lines of hardcoded logic):
+```kotlin
+// Complex conditional repository configuration with hardcoded URLs
+val publishType = project.findProperty("publishType") as String? ?: "staging"
+if (publishType == "production") {
+    maven {
+        url = uri("https://ossrh-staging-api.central.sonatype.com/...")
+        credentials { /* hardcoded property names */ }
+    }
+} else {
+    maven {
+        url = uri("https://maven.pkg.github.com/hitoshura25/...")
+        credentials { /* different hardcoded property names */ }
+    }
+}
+```
+
+**After** (16 lines with environment variable configuration):
+```kotlin
+// Repository configuration from central publishing config via environment variables
+val repositoryUrl = System.getenv("ANDROID_REPOSITORY_URL") 
+    ?: throw GradleException("ANDROID_REPOSITORY_URL environment variable is required")
+maven {
+    url = uri(repositoryUrl)
+    credentials {
+        username = project.findProperty(repositoryUsernameProperty) ?: System.getenv(repositoryUsernameEnv)
+        password = project.findProperty(repositoryPasswordProperty) ?: System.getenv(repositoryPasswordEnv)
+    }
+}
+```
+
+#### Workflow Enhancement
+- **24 new workflow inputs**: Added comprehensive repository configuration inputs to `publish-android.yml`
+- **Dynamic artifact naming**: Uses centralized suffix configuration instead of hardcoded `-staging`
+- **Environment variable passing**: Repository configuration passed to Gradle via environment variables
+- **Credential flexibility**: Supports both property-based and environment variable-based credentials
+
+#### Benefits Achieved
+- **54% code reduction**: Android template repository logic reduced from 35 to 16 lines
+- **Zero hardcoded URLs**: All repository URLs now come from central configuration
+- **Zero hardcoded credentials**: All credential property names configurable
+- **Zero hardcoded suffixes**: Package naming controlled by central configuration
+
+#### Validation Results
+- [x] YAML configuration syntax validated successfully
+- [x] Gradle template builds without errors with required environment variables
+- [x] Workflow syntax validation passed for all modified workflows
+- [x] Configuration loading logic tested with actual YAML file

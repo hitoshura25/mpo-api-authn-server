@@ -19,7 +19,7 @@
 # INPUTS:
 #   publish-type: 'staging' or 'production'
 #   client-version: Version for client libraries (e.g., 'pr-123.456' or '1.0.32')
-#   pr-number: PR number (required for staging, ignored for production)
+#   workflow-identifier: Workflow identifier (required for staging, ignored for production)
 #   npm-scope: NPM package scope
 #
 # OUTPUTS:
@@ -46,8 +46,8 @@ on:
         description: 'Version for client libraries'
         required: true
         type: string
-      pr-number:
-        description: 'PR number (for staging only)'
+      workflow-identifier:
+        description: 'Workflow identifier (for staging only)'
         required: false
         type: string
       npm-scope:
@@ -101,7 +101,7 @@ jobs:
           echo "🔍 Validating workflow inputs..."
           echo "  Publish type: ${{ inputs.publish-type }}"
           echo "  Client version: ${{ inputs.client-version }}"
-          echo "  PR number: ${{ inputs.pr-number }}"
+          echo "  Workflow identifier: ${{ inputs.workflow-identifier }}"
           echo "  NPM scope: ${{ inputs.npm-scope }}"
 
           if [[ "${{ inputs.publish-type }}" != "staging" && "${{ inputs.publish-type }}" != "production" ]]; then
@@ -110,9 +110,23 @@ jobs:
             exit 1
           fi
 
-          if [[ "${{ inputs.publish-type }}" == "staging" && -z "${{ inputs.pr-number }}" ]]; then
-            echo "❌ PR number is required for staging publishes"
+          # For staging publishes, workflow-identifier is required but can be fallback values for main branch
+          if [[ "${{ inputs.publish-type }}" == "staging" && -z "${{ inputs.workflow-identifier }}" ]]; then
+            echo "❌ Workflow identifier is required for staging publishes (can be fallback value like 'main')"
             exit 1
+          fi
+
+          # Accept fallback workflow-identifier values for main branch staging publishes
+          # Main branch pushes use staging publishes with fallback workflow-identifier values like 'main' or run number
+          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
+            echo "✅ Staging publish with workflow-identifier: ${{ inputs.workflow-identifier }}"
+            if [[ "${{ inputs.workflow-identifier }}" == "main" ]]; then
+              echo "   (Main branch staging publish - will use run number for unique versioning)"
+            elif [[ "${{ inputs.workflow-identifier }}" =~ ^[0-9]+$ ]]; then
+              echo "   (PR staging publish)"
+            else
+              echo "   (Custom staging publish identifier)"
+            fi
           fi
 
           echo "✅ Input validation passed"
@@ -138,7 +152,7 @@ jobs:
   # Job 3: TypeScript client generation and publishing (parallel)
   publish-typescript:
     uses: ./.github/workflows/publish-typescript.yml
-    needs: [validate-inputs, setup-config]
+    needs: [ validate-inputs, setup-config ]
     if: needs.validate-inputs.outputs.validated == 'true'
     permissions:
       contents: read
@@ -157,7 +171,7 @@ jobs:
   # Job 4: Android client generation and publishing (parallel)
   publish-android:
     uses: ./.github/workflows/publish-android.yml
-    needs: [validate-inputs, setup-config]
+    needs: [ validate-inputs, setup-config ]
     if: needs.validate-inputs.outputs.validated == 'true'
     permissions:
       contents: read
@@ -172,7 +186,7 @@ jobs:
 
   # Job 5: Aggregate results and provide backward-compatible outputs
   aggregate-results:
-    needs: [validate-inputs, setup-config, publish-typescript, publish-android]
+    needs: [ validate-inputs, setup-config, publish-typescript, publish-android ]
     runs-on: ubuntu-latest
     # Always run to provide outputs, even if publishing jobs failed
     if: always() && needs.validate-inputs.outputs.validated == 'true'
@@ -205,15 +219,15 @@ jobs:
             # Handle job failures gracefully
             TS_PUBLISHED="false"
             ANDROID_PUBLISHED="false"
-            
+
             if [[ "${{ needs.publish-typescript.result }}" == "success" && "${{ needs.publish-typescript.outputs.published }}" == "true" ]]; then
               TS_PUBLISHED="true"
             fi
-            
+
             if [[ "${{ needs.publish-android.result }}" == "success" && "${{ needs.publish-android.outputs.published }}" == "true" ]]; then
               ANDROID_PUBLISHED="true"
             fi
-            
+
             if [[ "${TS_PUBLISHED}" == "true" || "${ANDROID_PUBLISHED}" == "true" ]]; then
               echo "staging-published=true" >> $GITHUB_OUTPUT
             else

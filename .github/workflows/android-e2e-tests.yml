@@ -29,10 +29,11 @@ on:
         description: 'Test credentials service Docker image tag'
         required: true
         type: string
-      pr-number:
-        description: 'PR number for artifact naming'
-        required: true
+      workflow-identifier:
+        description: 'Workflow identifier for artifact naming (PR number or fallback value for main branch)'
+        required: false
         type: string
+        default: 'main'
       java-version:
         description: 'Java version for builds'
         required: false
@@ -64,7 +65,7 @@ on:
         value: ${{ jobs.run-android-tests.result }}
       artifact-name:
         description: 'Name of uploaded test artifacts'
-        value: android-e2e-test-reports-pr-${{ inputs.pr-number }}
+        value: android-e2e-test-reports-${{ inputs.workflow-identifier }}
 
 env:
   DOCKER_REGISTRY: ghcr.io
@@ -327,7 +328,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: android-e2e-test-reports-pr-${{ inputs.pr-number }}
+          name: android-e2e-test-reports-${{ inputs.workflow-identifier }}
           path: |
             android-test-client/app/build/reports/androidTests/connected/
             android-test-client/app/build/outputs/androidTest-results/connected/

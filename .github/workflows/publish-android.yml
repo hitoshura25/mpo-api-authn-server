@@ -1,12 +1,12 @@
 # Android Client Generation & Publishing - Platform-Specific Workflow
 #
 # This callable workflow handles complete Android client lifecycle:
-# generation from OpenAPI spec + Maven publishing to GitHub Packages.
+# generation from OpenAPI spec + Maven publishing to appropriate registries.
 #
 # DESIGN PATTERN:
 # - Self-contained platform workflow (generation + publishing)
 # - No external artifact dependencies
-# - GitHub Packages Maven publishing
+# - Registry-aware publishing (staging vs production)
 # - Version conflict detection and handling
 #
 # INPUTS:
@@ -23,6 +23,7 @@
 #
 # SECURITY:
 #   - GitHub Packages: Uses GITHUB_TOKEN (automatic)
+#   - Maven Central: Uses OSSRH credentials and GPG signing
 #   - Minimal permissions: contents:read, packages:write
 
 name: Android Client Publishing
@@ -50,6 +51,18 @@ on:
       GRADLE_ENCRYPTION_KEY:
         description: 'Gradle build cache encryption key'
         required: true
+      CENTRAL_PORTAL_USERNAME:
+        description: 'Central Portal username for Maven Central publishing'
+        required: false
+      CENTRAL_PORTAL_PASSWORD:
+        description: 'Central Portal password for Maven Central publishing'
+        required: false
+      SIGNING_KEY:
+        description: 'GPG private key for signing Maven Central artifacts'
+        required: false
+      SIGNING_PASSWORD:
+        description: 'GPG private key password for signing'
+        required: false
     outputs:
       published:
         description: 'Whether package was successfully published'
@@ -171,8 +184,8 @@ jobs:
             echo "skip-publish=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Publish Android client to GitHub Packages
-        if: steps.check-android-version.outputs.skip-publish == 'false'
+      - name: Publish Android client to GitHub Packages (staging)
+        if: inputs.publish-type == 'staging' && steps.check-android-version.outputs.skip-publish == 'false'
         env:
           CLIENT_VERSION: ${{ inputs.client-version }}
           ANDROID_PUBLISH_USER: ${{ github.actor }}
@@ -180,13 +193,14 @@ jobs:
           ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
           ANDROID_GROUP_ID: ${{ inputs.android-group-id }}
         run: |
-          echo "📱 Publishing Android client to GitHub Packages..."
+          echo "📱 Publishing Android client to GitHub Packages (staging)..."
           echo "  Group ID: ${ANDROID_GROUP_ID}"
           echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
           echo "  Version: ${CLIENT_VERSION}"
 
-          # Build and publish Android client library directly
+          # Build and publish Android client library to GitHub Packages
           ./gradlew :android-client-library:publish \
+            -PpublishType="staging" \
             -PGitHubPackagesUsername="${ANDROID_PUBLISH_USER}" \
             -PGitHubPackagesPassword="${ANDROID_PUBLISH_TOKEN}" \
             -PclientVersion="${CLIENT_VERSION}" \
@@ -196,18 +210,54 @@ jobs:
 
           echo "✅ Android client published to GitHub Packages successfully"
 
+      - name: Publish Android client to Maven Central (production)
+        if: inputs.publish-type == 'production'
+        env:
+          CLIENT_VERSION: ${{ inputs.client-version }}
+          ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
+          ANDROID_GROUP_ID: ${{ inputs.android-group-id }}
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+        run: |
+          echo "🚀 Publishing Android client to Maven Central (production)..."
+          echo "  Group ID: ${ANDROID_GROUP_ID}"
+          echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
+          echo "  Version: ${CLIENT_VERSION}"
+
+          # Build and publish Android client library to Maven Central
+          ./gradlew :android-client-library:publish \
+            -PpublishType="production" \
+            -PcentralPortalUsername="${CENTRAL_PORTAL_USERNAME}" \
+            -PcentralPortalPassword="${CENTRAL_PORTAL_PASSWORD}" \
+            -PsigningKey="${SIGNING_KEY}" \
+            -PsigningPassword="${SIGNING_PASSWORD}" \
+            -PclientVersion="${CLIENT_VERSION}" \
+            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
+            -PandroidGroupId="${ANDROID_GROUP_ID}" \
+            --build-cache --parallel --configuration-cache --info
+
+          echo "✅ Android client published to Maven Central successfully"
+
       - name: Skip Android publishing (version exists)
-        if: steps.check-android-version.outputs.skip-publish == 'true'
+        if: inputs.publish-type == 'staging' && steps.check-android-version.outputs.skip-publish == 'true'
         run: |
           echo "⏭️ Skipping Android client publishing - version ${{ inputs.client-version }} already exists"
 
       - name: Set publish result
         id: publish-result
         run: |
-          if [[ "${{ steps.check-android-version.outputs.skip-publish }}" == "true" ]]; then
-            echo "published=false" >> $GITHUB_OUTPUT
-            echo "skipped=true" >> $GITHUB_OUTPUT
+          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
+            if [[ "${{ steps.check-android-version.outputs.skip-publish }}" == "true" ]]; then
+              echo "published=false" >> $GITHUB_OUTPUT
+              echo "skipped=true" >> $GITHUB_OUTPUT
+            else
+              echo "published=true" >> $GITHUB_OUTPUT
+              echo "skipped=false" >> $GITHUB_OUTPUT
+            fi
           else
+            # Production publishing doesn't check for existing versions
             echo "published=true" >> $GITHUB_OUTPUT
             echo "skipped=false" >> $GITHUB_OUTPUT
           fi
@@ -216,5 +266,7 @@ jobs:
         run: |
           echo "🎯 Android Client Publishing Results:"
           echo "  Package: ${{ steps.package-info.outputs.package-full-name }}"
+          echo "  Publish type: ${{ inputs.publish-type }}"
+          echo "  Registry: ${{ inputs.publish-type == 'staging' && 'GitHub Packages' || 'Maven Central' }}"
           echo "  Published: ${{ steps.publish-result.outputs.published }}"
           echo "  Skipped: ${{ steps.publish-result.outputs.skipped }}"

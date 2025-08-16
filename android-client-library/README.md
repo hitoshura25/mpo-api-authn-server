@@ -59,7 +59,7 @@ Add this dependency to your project's POM:
 <dependency>
   <groupId>io.github.hitoshura25</groupId>
   <artifactId>mpo-webauthn-android-client</artifactId>
-  <version>1.0-SNAPSHOT</version>
+  <version>1.0.0-SNAPSHOT</version>
   <scope>compile</scope>
 </dependency>
 ```
@@ -75,7 +75,7 @@ Add this dependency to your project's build file:
   }
 
   dependencies {
-     implementation "io.github.hitoshura25:mpo-webauthn-android-client:1.0-SNAPSHOT"
+     implementation "io.github.hitoshura25:mpo-webauthn-android-client:1.0.0-SNAPSHOT"
   }
 ```
 
@@ -89,7 +89,7 @@ mvn clean package
 
 Then manually install the following JARs:
 
-* `target/mpo-webauthn-android-client-1.0-SNAPSHOT.jar`
+* `target/mpo-webauthn-android-client-1.0.0-SNAPSHOT.jar`
 * `target/lib/*.jar`
 
 ## Getting Started

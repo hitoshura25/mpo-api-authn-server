@@ -279,8 +279,7 @@ jobs:
 
           # Build TypeScript client (CommonJS + ESM + type declarations)
           echo "🔨 Building TypeScript client..."
-          npx tsc --project tsconfig.json
-          npx tsc --project tsconfig.esm.json
+          npm run build
 
           # Verify build outputs exist and are valid
           echo "📁 Verifying build outputs:"

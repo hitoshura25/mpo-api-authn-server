@@ -18,8 +18,8 @@ repositories:
       credentials:
         usernameEnv: "ANDROID_PUBLISH_USER"
         passwordEnv: "ANDROID_PUBLISH_TOKEN"
-        usernameProperty: "GitHubPackagesUsername"
-        passwordProperty: "GitHubPackagesPassword"
+        # Property names are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
+        # in the Android template since the repository name is hardcoded as "PublishingRepository"
     npm:
       registry: "https://npm.pkg.github.com"
       credentials:
@@ -30,8 +30,8 @@ repositories:
       credentials:
         usernameEnv: "CENTRAL_PORTAL_USERNAME" 
         passwordEnv: "CENTRAL_PORTAL_PASSWORD"
-        usernameProperty: "centralPortalUsername"
-        passwordProperty: "centralPortalPassword"
+        # Property names are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
+        # in the Android template since the repository name is hardcoded as "PublishingRepository"
     npm:
       registry: "https://registry.npmjs.org"
       credentials:

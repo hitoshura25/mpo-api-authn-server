@@ -48,28 +48,16 @@ on:
         description: 'Base npm package name (e.g., mpo-webauthn-client)'
         required: true
         type: string
-      npm-staging-registry-url:
-        description: 'npm staging registry URL'
+      npm-registry-url:
+        description: 'npm registry URL for selected environment'
         required: true
         type: string
-      npm-staging-credential-env:
-        description: 'Environment variable name for staging credentials'
+      npm-credential-env:
+        description: 'Environment variable name for registry credentials'
         required: true
         type: string
-      npm-production-registry-url:
-        description: 'npm production registry URL'
-        required: true
-        type: string
-      npm-production-credential-env:
-        description: 'Environment variable name for production credentials'
-        required: true
-        type: string
-      npm-staging-suffix:
-        description: 'Suffix for staging package names'
-        required: true
-        type: string
-      npm-production-suffix:
-        description: 'Suffix for production package names'
+      npm-suffix:
+        description: 'Suffix for package names in selected environment'
         required: true
         type: string
       android-group-id:
@@ -116,20 +104,11 @@ jobs:
       - name: Set package information
         id: package-info
         run: |
-          # Determine package names and registry based on publish type using centralized configuration
-          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
-            # Staging package names and registry from central config
-            PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}${{ inputs.npm-staging-suffix }}"
-            NPM_REGISTRY="${{ inputs.npm-staging-registry-url }}"
-            CREDENTIAL_ENV="${{ inputs.npm-staging-credential-env }}"
-            echo "📦 STAGING TypeScript package"
-          else
-            # Production package names and registry from central config
-            PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}${{ inputs.npm-production-suffix }}"
-            NPM_REGISTRY="${{ inputs.npm-production-registry-url }}"
-            CREDENTIAL_ENV="${{ inputs.npm-production-credential-env }}"
-            echo "🚀 PRODUCTION TypeScript package"
-          fi
+          # Use environment-specific configuration from centralized config
+          PACKAGE_NAME="${{ inputs.npm-scope }}/${{ inputs.npm-package-name }}${{ inputs.npm-suffix }}"
+          NPM_REGISTRY="${{ inputs.npm-registry-url }}"
+          CREDENTIAL_ENV="${{ inputs.npm-credential-env }}"
+          echo "📦 ${{ inputs.publish-type == 'staging' && 'STAGING' || 'PRODUCTION' }} TypeScript package"
 
           PACKAGE_FULL_NAME="${PACKAGE_NAME}@${{ inputs.client-version }}"
 

@@ -47,53 +47,24 @@ on:
         description: 'Publishing type (staging/production)'
         required: true
         type: string
-      # Repository configuration inputs for centralized config
-      android-staging-repository-url:
-        description: 'Android staging repository URL'
+      # Environment-specific repository configuration inputs for centralized config
+      android-repository-url:
+        description: 'Android repository URL for selected environment'
         required: true
         type: string
-      android-staging-username-env:
-        description: 'Environment variable name for staging repository username'
+      android-username-env:
+        description: 'Environment variable name for repository username'
         required: true
         type: string
-      android-staging-password-env:
-        description: 'Environment variable name for staging repository password'
+      android-password-env:
+        description: 'Environment variable name for repository password'
         required: true
         type: string
-      android-staging-username-property:
-        description: 'Gradle property name for staging repository username'
-        required: true
-        type: string
-      android-staging-password-property:
-        description: 'Gradle property name for staging repository password'
-        required: true
-        type: string
-      android-production-repository-url:
-        description: 'Android production repository URL'
-        required: true
-        type: string
-      android-production-username-env:
-        description: 'Environment variable name for production repository username'
-        required: true
-        type: string
-      android-production-password-env:
-        description: 'Environment variable name for production repository password'
-        required: true
-        type: string
-      android-production-username-property:
-        description: 'Gradle property name for production repository username'
-        required: true
-        type: string
-      android-production-password-property:
-        description: 'Gradle property name for production repository password'
-        required: true
-        type: string
-      android-staging-suffix:
-        description: 'Suffix to append to staging artifact ID'
-        required: true
-        type: string
-      android-production-suffix:
-        description: 'Suffix to append to production artifact ID'
+      # android-username-property and android-password-property removed
+      # These are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
+      # in the Android template since the repository name is hardcoded as "PublishingRepository"
+      android-suffix:
+        description: 'Suffix to append to artifact ID for selected environment'
         required: true
         type: string
     secrets:
@@ -145,13 +116,8 @@ jobs:
         id: package-info
         run: |
           # Determine artifact ID based on publish type using centralized configuration
-          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
-            ANDROID_ARTIFACT_ID="${{ inputs.android-artifact-base-id }}${{ inputs.android-staging-suffix }}"
-            echo "📦 STAGING Android package (suffix: '${{ inputs.android-staging-suffix }}')"
-          else
-            ANDROID_ARTIFACT_ID="${{ inputs.android-artifact-base-id }}${{ inputs.android-production-suffix }}"
-            echo "🚀 PRODUCTION Android package (suffix: '${{ inputs.android-production-suffix }}')"
-          fi
+          ANDROID_ARTIFACT_ID="${{ inputs.android-artifact-base-id }}${{ inputs.android-suffix }}"
+          echo "📦 ${{ inputs.publish-type == 'staging' && 'STAGING' || 'PRODUCTION' }} Android package (suffix: '${{ inputs.android-suffix }}')"
 
           PACKAGE_NAME="${{ inputs.android-group-id }}:${ANDROID_ARTIFACT_ID}"
           PACKAGE_FULL_NAME="${PACKAGE_NAME}:${{ inputs.client-version }}"
@@ -233,91 +199,54 @@ jobs:
             echo "skip-publish=false" >> $GITHUB_OUTPUT
           fi
 
-      - name: Publish Android client to staging repository
-        if: inputs.publish-type == 'staging' && steps.check-android-version.outputs.skip-publish == 'false'
+      - name: Publish Android client to selected repository
+        if: steps.check-android-version.outputs.skip-publish == 'false' || inputs.publish-type == 'production'
         env:
           CLIENT_VERSION: ${{ inputs.client-version }}
           ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
           ANDROID_GROUP_ID: ${{ inputs.android-group-id }}
-          # Repository configuration from central config
-          ANDROID_REPOSITORY_URL: ${{ inputs.android-staging-repository-url }}
-          ANDROID_REPOSITORY_USERNAME_ENV: ${{ inputs.android-staging-username-env }}
-          ANDROID_REPOSITORY_PASSWORD_ENV: ${{ inputs.android-staging-password-env }}
-          ANDROID_REPOSITORY_USERNAME_PROPERTY: ${{ inputs.android-staging-username-property }}
-          ANDROID_REPOSITORY_PASSWORD_PROPERTY: ${{ inputs.android-staging-password-property }}
-          # Dynamic credential values
-          ANDROID_PUBLISH_USER: ${{ github.actor }}
-          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Repository configuration from central config (environment-specific)
+          ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
+          ANDROID_REPOSITORY_USERNAME_ENV: ${{ inputs.android-username-env }}
+          ANDROID_REPOSITORY_PASSWORD_ENV: ${{ inputs.android-password-env }}
+          # Property names are hardcoded in template as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
         run: |
-          echo "📱 Publishing Android client to staging repository (from central config)..."
+          echo "📱 Publishing Android client to ${{ inputs.publish-type }} repository (from central config)..."
           echo "  Group ID: ${ANDROID_GROUP_ID}"
           echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
           echo "  Version: ${CLIENT_VERSION}"
           echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
           echo "  Username env var: ${ANDROID_REPOSITORY_USERNAME_ENV}"
           echo "  Password env var: ${ANDROID_REPOSITORY_PASSWORD_ENV}"
+          echo "  Username property: PublishingRepositoryUsername (hardcoded)"
+          echo "  Password property: PublishingRepositoryPassword (hardcoded)"
+          
+          # Determine credential values based on publish type
+          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
+            CREDENTIAL_USERNAME="${{ github.actor }}"
+            CREDENTIAL_PASSWORD="${{ secrets.GITHUB_TOKEN }}"
+            echo "  Using GitHub credentials for staging publish"
+          else
+            CREDENTIAL_USERNAME="${{ secrets.CENTRAL_PORTAL_USERNAME }}"
+            CREDENTIAL_PASSWORD="${{ secrets.CENTRAL_PORTAL_PASSWORD }}"
+            echo "  Using Central Portal credentials for production publish"
+          fi
 
           # Build and publish Android client library using centralized repository configuration
           env ANDROID_REPOSITORY_URL="${ANDROID_REPOSITORY_URL}" \
               ANDROID_REPOSITORY_USERNAME_ENV="${ANDROID_REPOSITORY_USERNAME_ENV}" \
               ANDROID_REPOSITORY_PASSWORD_ENV="${ANDROID_REPOSITORY_PASSWORD_ENV}" \
-              ANDROID_REPOSITORY_USERNAME_PROPERTY="${ANDROID_REPOSITORY_USERNAME_PROPERTY}" \
-              ANDROID_REPOSITORY_PASSWORD_PROPERTY="${ANDROID_REPOSITORY_PASSWORD_PROPERTY}" \
           ./gradlew :android-client-library:publish \
-            -PpublishType="staging" \
-            -P${ANDROID_REPOSITORY_USERNAME_PROPERTY}="${ANDROID_PUBLISH_USER}" \
-            -P${ANDROID_REPOSITORY_PASSWORD_PROPERTY}="${ANDROID_PUBLISH_TOKEN}" \
+            -PpublishType="${{ inputs.publish-type }}" \
+            -PPublishingRepositoryUsername="${CREDENTIAL_USERNAME}" \
+            -PPublishingRepositoryPassword="${CREDENTIAL_PASSWORD}" \
+            $([ "${{ inputs.publish-type }}" == "production" ] && echo "-PsigningKey=${{ secrets.SIGNING_KEY }} -PsigningPassword=${{ secrets.SIGNING_PASSWORD }}") \
             -PclientVersion="${CLIENT_VERSION}" \
             -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
             -PandroidGroupId="${ANDROID_GROUP_ID}" \
             --build-cache --parallel --configuration-cache --info
 
-          echo "✅ Android client published to staging repository successfully"
-
-      - name: Publish Android client to production repository
-        if: inputs.publish-type == 'production'
-        env:
-          CLIENT_VERSION: ${{ inputs.client-version }}
-          ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
-          ANDROID_GROUP_ID: ${{ inputs.android-group-id }}
-          # Repository configuration from central config
-          ANDROID_REPOSITORY_URL: ${{ inputs.android-production-repository-url }}
-          ANDROID_REPOSITORY_USERNAME_ENV: ${{ inputs.android-production-username-env }}
-          ANDROID_REPOSITORY_PASSWORD_ENV: ${{ inputs.android-production-password-env }}
-          ANDROID_REPOSITORY_USERNAME_PROPERTY: ${{ inputs.android-production-username-property }}
-          ANDROID_REPOSITORY_PASSWORD_PROPERTY: ${{ inputs.android-production-password-property }}
-          # Dynamic credential values
-          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
-          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
-        run: |
-          echo "🚀 Publishing Android client to production repository (from central config)..."
-          echo "  Group ID: ${ANDROID_GROUP_ID}"
-          echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
-          echo "  Version: ${CLIENT_VERSION}"
-          echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
-          echo "  Username env var: ${ANDROID_REPOSITORY_USERNAME_ENV}"
-          echo "  Password env var: ${ANDROID_REPOSITORY_PASSWORD_ENV}"
-
-          # Build and publish Android client library using centralized repository configuration
-          env ANDROID_REPOSITORY_URL="${ANDROID_REPOSITORY_URL}" \
-              ANDROID_REPOSITORY_USERNAME_ENV="${ANDROID_REPOSITORY_USERNAME_ENV}" \
-              ANDROID_REPOSITORY_PASSWORD_ENV="${ANDROID_REPOSITORY_PASSWORD_ENV}" \
-              ANDROID_REPOSITORY_USERNAME_PROPERTY="${ANDROID_REPOSITORY_USERNAME_PROPERTY}" \
-              ANDROID_REPOSITORY_PASSWORD_PROPERTY="${ANDROID_REPOSITORY_PASSWORD_PROPERTY}" \
-          ./gradlew :android-client-library:publish \
-            -PpublishType="production" \
-            -P${ANDROID_REPOSITORY_USERNAME_PROPERTY}="${CENTRAL_PORTAL_USERNAME}" \
-            -P${ANDROID_REPOSITORY_PASSWORD_PROPERTY}="${CENTRAL_PORTAL_PASSWORD}" \
-            -PsigningKey="${SIGNING_KEY}" \
-            -PsigningPassword="${SIGNING_PASSWORD}" \
-            -PclientVersion="${CLIENT_VERSION}" \
-            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
-            -PandroidGroupId="${ANDROID_GROUP_ID}" \
-            --build-cache --parallel --configuration-cache --info
-
-          echo "✅ Android client published to production repository successfully"
+          echo "✅ Android client published to ${{ inputs.publish-type }} repository successfully"
 
       - name: Skip Android publishing (version exists)
         if: inputs.publish-type == 'staging' && steps.check-android-version.outputs.skip-publish == 'true'

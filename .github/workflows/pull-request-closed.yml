@@ -15,27 +15,56 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "Cleaning up Docker images for PR #$PR_NUMBER"
+          echo "🐳 Cleaning up Docker images for PR #$PR_NUMBER"
+          
+          WEBAUTHN_DELETED=0
+          TEST_CREDS_DELETED=0
 
           # Cleanup webauthn-server images
-          gh api --paginate "/users/${{ github.repository_owner }}/packages/container/webauthn-server/versions" \
-            --jq '.[] | select(.metadata.container.tags[]? | test("^pr-'$PR_NUMBER'(-|$)")) | .id' | \
-          while read version_id; do
-            if [ -n "$version_id" ]; then
-              echo "Deleting webauthn-server version: $version_id"
-              gh api -X DELETE "/users/${{ github.repository_owner }}/packages/container/webauthn-server/versions/$version_id" || echo "Failed to delete $version_id"
-            fi
-          done
+          echo "🔍 Checking webauthn-server images..."
+          if gh api "/users/${{ github.repository_owner }}/packages/container/webauthn-server/versions" >/dev/null 2>&1; then
+            gh api --paginate "/users/${{ github.repository_owner }}/packages/container/webauthn-server/versions" \
+              --jq '.[] | select(.metadata.container.tags[]? | test("^pr-'$PR_NUMBER'(-|$)")) | .id' | \
+            while read version_id; do
+              if [ -n "$version_id" ]; then
+                echo "🗑️  Deleting webauthn-server version: $version_id"
+                if gh api -X DELETE "/users/${{ github.repository_owner }}/packages/container/webauthn-server/versions/$version_id" >/dev/null 2>&1; then
+                  WEBAUTHN_DELETED=$((WEBAUTHN_DELETED + 1))
+                  echo "✅ Successfully deleted webauthn-server version $version_id"
+                else
+                  echo "❌ Failed to delete webauthn-server version $version_id"
+                fi
+              fi
+            done
+          else
+            echo "ℹ️  No webauthn-server package found (package may not exist yet)"
+          fi
 
           # Cleanup webauthn-test-credentials-service images
-          gh api --paginate "/users/${{ github.repository_owner }}/packages/container/webauthn-test-credentials-service/versions" \
-            --jq '.[] | select(.metadata.container.tags[]? | test("^pr-'$PR_NUMBER'(-|$)")) | .id' | \
-          while read version_id; do
-            if [ -n "$version_id" ]; then
-              echo "Deleting test-credentials version: $version_id"
-              gh api -X DELETE "/users/${{ github.repository_owner }}/packages/container/webauthn-test-credentials-service/versions/$version_id" || echo "Failed to delete $version_id"
-            fi
-          done
+          echo "🔍 Checking webauthn-test-credentials-service images..."
+          if gh api "/users/${{ github.repository_owner }}/packages/container/webauthn-test-credentials-service/versions" >/dev/null 2>&1; then
+            gh api --paginate "/users/${{ github.repository_owner }}/packages/container/webauthn-test-credentials-service/versions" \
+              --jq '.[] | select(.metadata.container.tags[]? | test("^pr-'$PR_NUMBER'(-|$)")) | .id' | \
+            while read version_id; do
+              if [ -n "$version_id" ]; then
+                echo "🗑️  Deleting test-credentials version: $version_id"
+                if gh api -X DELETE "/users/${{ github.repository_owner }}/packages/container/webauthn-test-credentials-service/versions/$version_id" >/dev/null 2>&1; then
+                  TEST_CREDS_DELETED=$((TEST_CREDS_DELETED + 1))
+                  echo "✅ Successfully deleted test-credentials version $version_id"
+                else
+                  echo "❌ Failed to delete test-credentials version $version_id"
+                fi
+              fi
+            done
+          else
+            echo "ℹ️  No webauthn-test-credentials-service package found (package may not exist yet)"
+          fi
+          
+          echo ""
+          echo "📊 Docker Cleanup Summary:"
+          echo "  WebAuthn Server images deleted: $WEBAUTHN_DELETED"
+          echo "  Test Credentials images deleted: $TEST_CREDS_DELETED"
+          echo "  Total Docker images deleted: $((WEBAUTHN_DELETED + TEST_CREDS_DELETED))"
 
   cleanup-npm-packages:
     runs-on: ubuntu-latest
@@ -47,16 +76,36 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "Cleaning up NPM packages for PR #$PR_NUMBER"
-
-          gh api --paginate "/user/packages/npm/${{ github.repository_owner }}%2Fmpo-webauthn-client/versions" \
-            --jq '.[] | select(.name | test("^pr-'$PR_NUMBER'\\.")) | .id' | \
-          while read version_id; do
-            if [ -n "$version_id" ]; then
-              echo "Deleting NPM version: $version_id"
-              gh api -X DELETE "/user/packages/npm/${{ github.repository_owner }}%2Fmpo-webauthn-client/versions/$version_id" || echo "Failed to delete $version_id"
-            fi
-          done
+          echo "📦 Cleaning up NPM packages for PR #$PR_NUMBER"
+          
+          NPM_DELETED=0
+          
+          # The staging NPM packages use @hitoshura25 scope with -staging suffix
+          PACKAGE_NAME="hitoshura25%2Fmpo-webauthn-client-staging"
+          
+          echo "🔍 Checking NPM package: @hitoshura25/mpo-webauthn-client-staging"
+          if gh api "/user/packages/npm/$PACKAGE_NAME/versions" >/dev/null 2>&1; then
+            gh api --paginate "/user/packages/npm/$PACKAGE_NAME/versions" \
+              --jq '.[] | select(.name | test("^1\\.0\\.[0-9]+-pr\\.'$PR_NUMBER'\\.")) | .id' | \
+            while read version_id; do
+              if [ -n "$version_id" ]; then
+                VERSION_NAME=$(gh api "/user/packages/npm/$PACKAGE_NAME/versions/$version_id" --jq '.name')
+                echo "🗑️  Deleting NPM version: $VERSION_NAME (ID: $version_id)"
+                if gh api -X DELETE "/user/packages/npm/$PACKAGE_NAME/versions/$version_id" >/dev/null 2>&1; then
+                  NPM_DELETED=$((NPM_DELETED + 1))
+                  echo "✅ Successfully deleted NPM version $VERSION_NAME"
+                else
+                  echo "❌ Failed to delete NPM version $VERSION_NAME"
+                fi
+              fi
+            done
+          else
+            echo "ℹ️  No NPM staging package found @hitoshura25/mpo-webauthn-client-staging (package may not exist yet)"
+          fi
+          
+          echo ""
+          echo "📊 NPM Cleanup Summary:"
+          echo "  NPM package versions deleted: $NPM_DELETED"
 
   cleanup-maven-packages:
     runs-on: ubuntu-latest
@@ -68,13 +117,70 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          echo "Cleaning up Maven packages for PR #$PR_NUMBER"
+          echo "🏗️  Cleaning up Maven packages for PR #$PR_NUMBER"
+          
+          MAVEN_DELETED=0
+          
+          # The staging Maven packages use -staging suffix
+          PACKAGE_NAME="io.github.hitoshura25.mpo-webauthn-android-client-staging"
+          
+          echo "🔍 Checking Maven package: $PACKAGE_NAME"
+          if gh api "/user/packages/maven/$PACKAGE_NAME/versions" >/dev/null 2>&1; then
+            gh api --paginate "/user/packages/maven/$PACKAGE_NAME/versions" \
+              --jq '.[] | select(.name | test("^1\\.0\\.[0-9]+-pr\\.'$PR_NUMBER'\\.")) | .id' | \
+            while read version_id; do
+              if [ -n "$version_id" ]; then
+                VERSION_NAME=$(gh api "/user/packages/maven/$PACKAGE_NAME/versions/$version_id" --jq '.name')
+                echo "🗑️  Deleting Maven version: $VERSION_NAME (ID: $version_id)"
+                if gh api -X DELETE "/user/packages/maven/$PACKAGE_NAME/versions/$version_id" >/dev/null 2>&1; then
+                  MAVEN_DELETED=$((MAVEN_DELETED + 1))
+                  echo "✅ Successfully deleted Maven version $VERSION_NAME"
+                else
+                  echo "❌ Failed to delete Maven version $VERSION_NAME"
+                fi
+              fi
+            done
+          else
+            echo "ℹ️  No Maven staging package found $PACKAGE_NAME (package may not exist yet)"
+          fi
+          
+          echo ""
+          echo "📊 Maven Cleanup Summary:"
+          echo "  Maven package versions deleted: $MAVEN_DELETED"
 
-          gh api --paginate "/user/packages/maven/io.github.hitoshura25.mpo-webauthn-android-client/versions" \
-            --jq '.[] | select(.name | test("^pr-'$PR_NUMBER'\\.")) | .id' | \
-          while read version_id; do
-            if [ -n "$version_id" ]; then
-              echo "Deleting Maven version: $version_id"
-              gh api -X DELETE "/user/packages/maven/io.github.hitoshura25.mpo-webauthn-android-client/versions/$version_id" || echo "Failed to delete $version_id"
-            fi
-          done
+  cleanup-summary:
+    runs-on: ubuntu-latest
+    needs: [ cleanup-docker-images, cleanup-npm-packages, cleanup-maven-packages ]
+    if: always()
+    steps:
+      - name: Cleanup Summary Report
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          echo "🧹 PR #$PR_NUMBER Cleanup Complete"
+          echo ""
+          echo "📋 Job Results:"
+          echo "  Docker Images Cleanup: ${{ needs.cleanup-docker-images.result }}"
+          echo "  NPM Packages Cleanup: ${{ needs.cleanup-npm-packages.result }}"
+          echo "  Maven Packages Cleanup: ${{ needs.cleanup-maven-packages.result }}"
+          echo ""
+          
+          FAILED_JOBS=0
+          if [[ "${{ needs.cleanup-docker-images.result }}" == "failure" ]]; then
+            FAILED_JOBS=$((FAILED_JOBS + 1))
+          fi
+          if [[ "${{ needs.cleanup-npm-packages.result }}" == "failure" ]]; then
+            FAILED_JOBS=$((FAILED_JOBS + 1))
+          fi
+          if [[ "${{ needs.cleanup-maven-packages.result }}" == "failure" ]]; then
+            FAILED_JOBS=$((FAILED_JOBS + 1))
+          fi
+          
+          if [[ $FAILED_JOBS -eq 0 ]]; then
+            echo "✅ All cleanup operations completed successfully"
+            echo "🎉 PR #$PR_NUMBER artifacts have been cleaned up"
+          else
+            echo "⚠️ $FAILED_JOBS cleanup job(s) encountered issues"
+            echo "🔍 Check individual job logs for details"
+            echo "📝 Some packages may not have existed (404 errors are normal for new PRs)"
+          fi

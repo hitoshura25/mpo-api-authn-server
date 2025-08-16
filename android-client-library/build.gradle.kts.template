@@ -60,6 +60,24 @@ dependencies {
     implementation("javax.annotation:javax.annotation-api:1.3.2")
 }
 
+// Configure Javadoc to recognize OpenAPI generator custom tags
+tasks.withType<Javadoc> {
+    // Register custom tags used by OpenAPI generator
+    (options as StandardJavadocDocletOptions).tags(
+        "http.response.details:a:HTTP Response Details:",
+        "http.request:a:HTTP Request:",
+        "http.response:a:HTTP Response:",
+        "http.method:a:HTTP Method:",
+        "http.status:a:HTTP Status:",
+        "apiNote:a:API Note:",
+        "implNote:a:Implementation Note:",
+        "since:a:Since:"
+    )
+    
+    // Suppress warnings for missing @param and @return tags in generated code
+    (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
+}
+
 publishing {
     publications {
         create<MavenPublication>("maven") {
@@ -71,7 +89,10 @@ publishing {
 
             pom {
                 name.set("MPO WebAuthn Android Client")
-                description.set("Generated Android client library for MPO WebAuthn API - FIDO2/WebAuthn authentication")
+                description.set(
+                    "Generated Android client library for MPO WebAuthn API - " +
+                        "FIDO2/WebAuthn authentication",
+                )
                 url.set("https://github.com/hitoshura25/mpo-api-authn-server")
 
                 licenses {
@@ -91,7 +112,9 @@ publishing {
 
                 scm {
                     connection.set("scm:git:git://github.com/hitoshura25/mpo-api-authn-server.git")
-                    developerConnection.set("scm:git:ssh://github.com:hitoshura25/mpo-api-authn-server.git")
+                    developerConnection.set(
+                        "scm:git:ssh://github.com:hitoshura25/mpo-api-authn-server.git",
+                    )
                     url.set("https://github.com/hitoshura25/mpo-api-authn-server")
                 }
             }
@@ -100,16 +123,23 @@ publishing {
 
     repositories {
         // Determine publishing target based on environment/properties (defaults to staging)
-        val publishType = project.findProperty("publishType") as String? ?: System.getenv("PUBLISH_TYPE") ?: "staging"
-        
+        val publishType =
+            project.findProperty("publishType") as String?
+                ?: System.getenv("PUBLISH_TYPE") ?: "staging"
         if (publishType == "production") {
             // Maven Central (for production) - New Central Portal Staging API
             maven {
                 name = "CentralPortal"
-                url = uri("https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/")
+                url =
+                    uri(
+                        "https://ossrh-staging-api.central.sonatype.com/service/local/" +
+                            "staging/deploy/maven2/",
+                    )
                 credentials {
-                    username = project.findProperty("centralPortalUsername") as String? ?: System.getenv("CENTRAL_PORTAL_USERNAME")
-                    password = project.findProperty("centralPortalPassword") as String? ?: System.getenv("CENTRAL_PORTAL_PASSWORD")
+                    username = project.findProperty("centralPortalUsername") as String?
+                        ?: System.getenv("CENTRAL_PORTAL_USERNAME")
+                    password = project.findProperty("centralPortalPassword") as String?
+                        ?: System.getenv("CENTRAL_PORTAL_PASSWORD")
                 }
             }
         } else {
@@ -130,9 +160,15 @@ publishing {
 
 // Signing configuration for Maven Central (production only)
 signing {
-    val publishType = project.findProperty("publishType") as String? ?: System.getenv("PUBLISH_TYPE") ?: "staging"
-    val signingKey = project.findProperty("signingKey") as String? ?: System.getenv("SIGNING_KEY")
-    val signingPassword = project.findProperty("signingPassword") as String? ?: System.getenv("SIGNING_PASSWORD")
+    val publishType =
+        project.findProperty("publishType") as String?
+            ?: System.getenv("PUBLISH_TYPE") ?: "staging"
+    val signingKey =
+        project.findProperty("signingKey") as String?
+            ?: System.getenv("SIGNING_KEY")
+    val signingPassword =
+        project.findProperty("signingPassword") as String?
+            ?: System.getenv("SIGNING_PASSWORD")
 
     // Only sign for production publishing and if we have the required properties
     if (publishType == "production" && signingKey != null && signingPassword != null) {

@@ -16,11 +16,18 @@
 #
 # TRIGGERS:
 # - Pull requests to main branch
-# - Pushes to main branch
+# - Pushes to main branch  
+# - Manual dispatch with force options (UI)
+#
+# MANUAL FORCE OPTIONS:
+# - Force full pipeline: Runs unit tests + Docker build + E2E tests + security scanning
+# - Force Docker build: Runs Docker build + E2E tests (skips unit tests if no code changes)
+# - Force unit tests: Runs unit tests only (skips Docker/E2E)
 #
 # EXECUTION FLOW:
 # PR: build-and-test → e2e-tests (if Docker images built)
 # Main: build-and-test → e2e-tests (if Docker images built)
+# Manual: force options override smart change detection
 
 name: Main CI/CD Pipeline
 
@@ -29,6 +36,23 @@ on:
     branches: [ main ]
   push:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      force-full-pipeline:
+        description: 'Force full pipeline (unit tests + Docker build + E2E tests + security scanning)'
+        required: false
+        default: false
+        type: boolean
+      force-docker-build:
+        description: 'Force Docker build and E2E tests (skip unit tests if no code changes)'
+        required: false
+        default: false
+        type: boolean
+      force-unit-tests:
+        description: 'Force unit tests only (skip Docker/E2E)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   # Workflow-level permissions: minimal by default, jobs can request additional permissions
@@ -39,6 +63,10 @@ jobs:
   build-and-test:
     name: Build & Test (Unit Tests + Docker Images)
     uses: ./.github/workflows/build-and-test.yml
+    with:
+      force-full-pipeline: ${{ inputs.force-full-pipeline || false }}
+      force-docker-build: ${{ inputs.force-docker-build || false }}
+      force-unit-tests: ${{ inputs.force-unit-tests || false }}
     permissions:
       contents: read          # Read repository code
       packages: write         # Push Docker images to GHCR

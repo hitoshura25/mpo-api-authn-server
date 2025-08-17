@@ -21,6 +21,7 @@
 # INPUTS:
 #   webauthn-docker-changes-detected: Whether Webauthn Server Docker-related changes were detected
 #   test-credentials-docker-changes-detected: Whether Test Credentials Docker-related changes were detected
+#   force-build: Force Docker build regardless of change detection (for UI force options)
 #   image-tag-base: Base tag for Docker images (e.g., 'pr-123', 'latest')
 #   registry-config: Docker registry configuration
 #   java-version: Java version for JAR builds
@@ -44,6 +45,11 @@ on:
         description: 'Whether Test Credentials Docker-related changes were detected'
         required: true
         type: boolean
+      force-build:
+        description: 'Force Docker build regardless of change detection'
+        required: false
+        type: boolean
+        default: false
       image-tag-base:
         description: 'Base tag for Docker images'
         required: false
@@ -99,7 +105,9 @@ jobs:
   # Single consolidated job: Build and push Docker images
   build-push-docker-images:
     runs-on: ubuntu-latest
-    if: inputs.webauthn-docker-changes-detected == true ||
+    if: |
+      inputs.force-build == true ||
+      inputs.webauthn-docker-changes-detected == true ||
       inputs.test-credentials-docker-changes-detected == true
     permissions:
       contents: read
@@ -146,6 +154,24 @@ jobs:
           build-scan-terms-of-use-agree: "yes"
           # Disable built-in cache since we're managing it manually
           cache-disabled: true
+
+      # STEP 0: Detect build strategy
+      - name: Detect Docker build strategy
+        run: |
+          echo "🔍 Docker Build Strategy Analysis:"
+          echo "  Force build: ${{ inputs.force-build }}"
+          echo "  WebAuthn changes detected: ${{ inputs.webauthn-docker-changes-detected }}"
+          echo "  Test credentials changes detected: ${{ inputs.test-credentials-docker-changes-detected }}"
+          echo ""
+          
+          if [[ "${{ inputs.force-build }}" == "true" ]]; then
+            echo "🚀 FORCE BUILD MODE: Building all images regardless of change detection"
+          elif [[ "${{ inputs.webauthn-docker-changes-detected }}" == "true" || "${{ inputs.test-credentials-docker-changes-detected }}" == "true" ]]; then
+            echo "📝 CHANGE-BASED BUILD: Building images based on detected changes"
+          else
+            echo "⚠️ UNEXPECTED: No changes detected and no force build (this step should not run)"
+          fi
+          echo ""
 
       # STEP 1: Build JAR files (once)
       - name: Build JAR files for Docker images

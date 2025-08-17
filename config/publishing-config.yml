@@ -1,0 +1,62 @@
+# Central Publishing Configuration
+# Single source of truth for all client library publishing settings
+
+# Package Configuration
+packages:
+  android:
+    groupId: "io.github.hitoshura25"
+    baseArtifactId: "mpo-webauthn-android-client"
+  typescript:
+    scope: "@vmenon25"
+    basePackageName: "mpo-webauthn-client"
+
+# Repository Configuration  
+repositories:
+  staging:
+    android:
+      url: "https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server"
+      credentials:
+        usernameEnv: "ANDROID_PUBLISH_USER"
+        passwordEnv: "ANDROID_PUBLISH_TOKEN"
+        # Property names are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
+        # in the Android template since the repository name is hardcoded as "PublishingRepository"
+    npm:
+      registry: "https://npm.pkg.github.com"
+      credentials:
+        tokenEnv: "GITHUB_TOKEN"
+  production:
+    android:
+      url: "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
+      credentials:
+        usernameEnv: "CENTRAL_PORTAL_USERNAME" 
+        passwordEnv: "CENTRAL_PORTAL_PASSWORD"
+        # Property names are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
+        # in the Android template since the repository name is hardcoded as "PublishingRepository"
+    npm:
+      registry: "https://registry.npmjs.org"
+      credentials:
+        tokenEnv: "NPM_TOKEN"
+
+# Package Naming Templates
+naming:
+  staging:
+    androidSuffix: "-staging"
+    npmSuffix: "-staging"
+  production:
+    androidSuffix: ""
+    npmSuffix: ""
+
+# Metadata
+metadata:
+  projectUrl: "https://github.com/hitoshura25/mpo-api-authn-server"
+  description: "Generated client libraries for MPO WebAuthn API - FIDO2/WebAuthn authentication"
+  license: "MIT"
+  author:
+    name: "Hitoshura"
+    email: "hitoshura25@users.noreply.github.com"
+    id: "hitoshura25"
+
+# Configuration validation
+schema:
+  version: "1.0"
+  lastUpdated: "2025-01-16"

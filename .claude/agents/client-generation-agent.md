@@ -244,6 +244,97 @@ cd typescript-client-library && git status
 - **Integration guidance**: Provide clear examples for consuming published packages
 - **Workflow maintenance**: Keep publishing workflow documentation current with implementation
 
+## Testing and Validation
+
+### Configuration-Driven Publishing Testing Suite
+
+**Location**: `scripts/testing/client-publishing/`
+
+This comprehensive testing framework MUST be used when making changes to:
+- Publishing configuration (`config/publishing-config.yml`)
+- Publishing workflows (`.github/workflows/client-publish.yml`, `publish-android.yml`, `publish-typescript.yml`)
+- Android template (`android-client-library/build.gradle.kts.template`)
+- Environment selection logic or workflow inputs
+
+#### **Testing Categories (15 tests total)**:
+
+1. **Configuration Validation** (`config-validation/`):
+   ```bash
+   # Validate YAML syntax, structure, and completeness
+   ./scripts/testing/client-publishing/run-all-tests.sh --category config-validation
+   ```
+
+2. **Workflow Syntax** (`workflow-syntax/`):
+   ```bash
+   # Validate GitHub Actions workflows and input/output mapping
+   ./scripts/testing/client-publishing/run-all-tests.sh --category workflow-syntax
+   ```
+
+3. **Gradle Simulation** (`gradle-simulation/`):
+   ```bash
+   # Test Android template generation and property mapping
+   ./scripts/testing/client-publishing/run-all-tests.sh --category gradle-simulation
+   ```
+
+4. **Environment Selection** (`environment-selection/`):
+   ```bash
+   # Test staging vs production configuration loading
+   ./scripts/testing/client-publishing/run-all-tests.sh --category environment-selection
+   ```
+
+5. **Integration Testing** (`integration/`):
+   ```bash
+   # End-to-end workflow simulation without actual publishing
+   ./scripts/testing/client-publishing/run-all-tests.sh --category integration
+   ```
+
+#### **Mandatory Testing Protocol**:
+
+**BEFORE making any workflow changes**:
+```bash
+# 1. Run full test suite to establish baseline
+./scripts/testing/client-publishing/run-all-tests.sh
+
+# 2. Make your changes to workflows/configuration
+
+# 3. Run full test suite again to validate changes
+./scripts/testing/client-publishing/run-all-tests.sh
+
+# 4. If any tests fail, fix issues before committing
+```
+
+**For publishing workflow modifications**:
+- ALWAYS test both staging and production scenarios
+- Validate environment selection logic works correctly
+- Ensure Android property names remain correct (`PublishingRepositoryUsername`/`PublishingRepositoryPassword`)
+- Verify TypeScript workflow input/output mapping
+
+**For configuration changes**:
+- Run configuration validation tests first
+- Test environment isolation (staging vs production)
+- Validate all required fields are present
+- Ensure YAML syntax remains valid
+
+#### **Error Detection**:
+The test suite automatically detects:
+- Missing or invalid configuration fields
+- Broken workflow syntax or dependencies
+- Incorrect Gradle property mapping
+- Environment selection logic failures
+- Cross-platform consistency issues
+
+#### **Quick Validation**:
+```bash
+# Quick configuration check
+./scripts/testing/client-publishing/config-validation/test-config-syntax.sh
+
+# Quick workflow validation
+./scripts/testing/client-publishing/workflow-syntax/test-workflow-syntax.sh
+
+# Full suite (2-3 minutes)
+./scripts/testing/client-publishing/run-all-tests.sh
+```
+
 ## Configuration Management
 
 ### Centralized Package Configuration

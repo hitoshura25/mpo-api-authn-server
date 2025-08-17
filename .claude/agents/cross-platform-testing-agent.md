@@ -307,11 +307,58 @@ adb logcat | grep WebAuthn
 npx playwright test --debug
 ```
 
+## Client Publishing Testing Integration
+
+### Configuration-Driven Publishing Testing Suite
+
+**Location**: `scripts/testing/client-publishing/`
+
+When coordinating client library publishing or workflow changes, ALWAYS use this testing suite to validate configuration-driven publishing infrastructure:
+
+#### **Publishing Infrastructure Validation**:
+```bash
+# Before client generation/publishing changes
+./scripts/testing/client-publishing/run-all-tests.sh
+
+# Specific categories for publishing coordination:
+./scripts/testing/client-publishing/run-all-tests.sh --category config-validation
+./scripts/testing/client-publishing/run-all-tests.sh --category workflow-syntax
+./scripts/testing/client-publishing/run-all-tests.sh --category integration
+```
+
+#### **Cross-Platform Publishing Consistency**:
+The test suite validates:
+- **Android + TypeScript package naming** consistency
+- **Environment selection** (staging vs production) works correctly
+- **Configuration isolation** prevents staging/production config leakage
+- **Workflow input/output mapping** between orchestrator and platform workflows
+
+#### **Integration with E2E Testing**:
+1. **Publishing Infrastructure Tests** (client-publishing suite) - Validate publishing workflows
+2. **Cross-Platform Functional Tests** (your coordination) - Validate published packages work
+3. **Combined Validation** - Both infrastructure and functionality
+
+#### **Workflow Change Protocol**:
+When coordinating changes that affect client publishing:
+```bash
+# 1. Validate current publishing infrastructure
+./scripts/testing/client-publishing/run-all-tests.sh
+
+# 2. Make API/workflow changes
+
+# 3. Re-validate publishing infrastructure
+./scripts/testing/client-publishing/run-all-tests.sh
+
+# 4. Coordinate cross-platform E2E testing with published packages
+# (your existing coordination logic)
+```
+
 ## Historical Context
 - **August 2025**: Resolved major cross-platform testing issue where Android UI tests failed due to OpenAPI model mismatches
 - **Root cause**: Server response format didn't match OpenAPI specification used for client generation
 - **Solution**: Coordinated OpenAPI sync, client regeneration, and comprehensive testing across all platforms
 - **Lesson learned**: Always test all platforms after any API-related changes, even seemingly minor ones
+- **August 2025**: Implemented comprehensive client publishing testing suite to prevent configuration drift and workflow failures
 
 ## Documentation Standards
 - **Test execution logs**: Capture detailed logs from all platforms for failure analysis

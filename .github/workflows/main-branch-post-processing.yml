@@ -50,8 +50,7 @@ env:
 
   # Client Library Publishing Configuration
   BASE_VERSION: "1.0"
-  NPM_SCOPE: "@vmenon25"
-  NPM_PACKAGE_NAME: "mpo-webauthn-client"
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
 
   # Note: AI Security Analysis moved to security-analysis.yml for consolidation
 
@@ -60,7 +59,56 @@ permissions:
   contents: read
 
 jobs:
-  # Job 1: Check if main CI built new Docker images (determines processing strategy)
+  # Job 1: Load central configuration for client publishing
+  setup-config:
+    name: Load central configuration
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    outputs:
+      npm-scope: ${{ steps.config.outputs.npm-scope }}
+      npm-package-name: ${{ steps.config.outputs.npm-package-name }}
+    steps:
+      - name: Checkout code for configuration
+        uses: actions/checkout@v4
+
+      - name: Load central configuration
+        id: config
+        run: |
+          echo "🔧 Loading central configuration from ${{ env.PUBLISHING_CONFIG_FILE }}..."
+          
+          # Validate configuration file exists
+          if [[ ! -f "${{ env.PUBLISHING_CONFIG_FILE }}" ]]; then
+            echo "❌ Configuration file not found: ${{ env.PUBLISHING_CONFIG_FILE }}"
+            exit 1
+          fi
+
+          # Verify yq is available (pre-installed on ubuntu-latest runners)
+          if ! command -v yq &> /dev/null; then
+            echo "❌ yq not found. Using pre-installed version on ubuntu-latest runners."
+            exit 1
+          fi
+          echo "✅ Using pre-installed yq: $(yq --version)"
+
+          # Load package configuration
+          NPM_SCOPE=$(yq '.packages.typescript.scope' ${{ env.PUBLISHING_CONFIG_FILE }})
+          NPM_PACKAGE_NAME=$(yq '.packages.typescript.basePackageName' ${{ env.PUBLISHING_CONFIG_FILE }})
+          
+          # Validate required values are present
+          if [[ -z "$NPM_SCOPE" || "$NPM_PACKAGE_NAME" == "null" ]]; then
+            echo "❌ Missing required npm configuration:"
+            echo "  NPM_SCOPE: '${NPM_SCOPE}'"
+            echo "  NPM_PACKAGE_NAME: '${NPM_PACKAGE_NAME}'"
+            exit 1
+          fi
+
+          # Set outputs
+          echo "npm-scope=${NPM_SCOPE}" >> $GITHUB_OUTPUT
+          echo "npm-package-name=${NPM_PACKAGE_NAME}" >> $GITHUB_OUTPUT
+
+          echo "✅ Central configuration loaded successfully:"
+          echo "  NPM package: ${NPM_SCOPE}/${NPM_PACKAGE_NAME}"
+
+  # Job 2: Check if main CI built new Docker images (determines processing strategy)
   check-main-ci-images:
     name: Check if main CI built new images
     runs-on: ubuntu-latest
@@ -333,14 +381,14 @@ jobs:
   # SCOPE: @vmenon25/* packages (production scoped packages)
   publish-client-libraries:
     name: Publish production client libraries
-    needs: generate-production-version
+    needs: [ setup-config, generate-production-version ]
     if: github.event.workflow_run.conclusion == 'success'
     uses: ./.github/workflows/client-publish.yml
     with:
       publish-type: "production"
       client-version: "${{ needs.generate-production-version.outputs.version }}"
       workflow-identifier: "production"
-      npm-scope: "@vmenon25"
+      npm-scope: "${{ needs.setup-config.outputs.npm-scope }}"
     secrets: inherit
     permissions:
       contents: write  # Required for creating GitHub releases
@@ -376,7 +424,7 @@ jobs:
   create-client-releases:
     name: Create GitHub releases for client libraries
     runs-on: ubuntu-latest
-    needs: [ generate-production-version, publish-client-libraries ]
+    needs: [ setup-config, generate-production-version, publish-client-libraries ]
     if: |
       always() &&
       needs.publish-client-libraries.result == 'success' &&
@@ -401,13 +449,13 @@ jobs:
             ### Installation
 
             ```bash
-            npm install ${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}
+            npm install ${{ needs.setup-config.outputs.npm-scope }}/${{ needs.setup-config.outputs.npm-package-name }}
             ```
 
             ### Usage
 
             ```typescript
-            import { AuthenticationApi, RegistrationApi, Configuration } from '${{ env.NPM_SCOPE }}/${{ env.NPM_PACKAGE_NAME }}';
+            import { AuthenticationApi, RegistrationApi, Configuration } from '${{ needs.setup-config.outputs.npm-scope }}/${{ needs.setup-config.outputs.npm-package-name }}';
 
             const config = new Configuration({
               basePath: 'https://your-webauthn-server.com'

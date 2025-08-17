@@ -122,37 +122,24 @@ publishing {
     }
 
     repositories {
-        // Determine publishing target based on environment/properties (defaults to staging)
-        val publishType =
-            project.findProperty("publishType") as String?
-                ?: System.getenv("PUBLISH_TYPE") ?: "staging"
-        if (publishType == "production") {
-            // Maven Central (for production) - New Central Portal Staging API
-            maven {
-                name = "CentralPortal"
-                url =
-                    uri(
-                        "https://ossrh-staging-api.central.sonatype.com/service/local/" +
-                            "staging/deploy/maven2/",
-                    )
-                credentials {
-                    username = project.findProperty("centralPortalUsername") as String?
-                        ?: System.getenv("CENTRAL_PORTAL_USERNAME")
-                    password = project.findProperty("centralPortalPassword") as String?
-                        ?: System.getenv("CENTRAL_PORTAL_PASSWORD")
-                }
-            }
-        } else {
-            // GitHub Packages (for staging) - default fallback
-            maven {
-                name = "GitHubPackages"
-                url = uri("https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server")
-                credentials {
-                    username = project.findProperty("GitHubPackagesUsername") as String?
-                        ?: System.getenv("ANDROID_PUBLISH_USER")
-                    password = project.findProperty("GitHubPackagesPassword") as String?
-                        ?: System.getenv("ANDROID_PUBLISH_TOKEN")
-                }
+        // Repository configuration from central publishing config via environment variables
+        val repositoryUrl = System.getenv("ANDROID_REPOSITORY_URL")
+            ?: throw GradleException("ANDROID_REPOSITORY_URL environment variable is required")
+        val repositoryUsernameEnv = System.getenv("ANDROID_REPOSITORY_USERNAME_ENV")
+            ?: throw GradleException("ANDROID_REPOSITORY_USERNAME_ENV environment variable is required")
+        val repositoryPasswordEnv = System.getenv("ANDROID_REPOSITORY_PASSWORD_ENV")
+            ?: throw GradleException("ANDROID_REPOSITORY_PASSWORD_ENV environment variable is required")
+
+        maven {
+            name = "PublishingRepository"
+            url = uri(repositoryUrl)
+            credentials {
+                // Property names are hardcoded based on repository name "PublishingRepository"
+                // Use property-based credentials first, then fall back to environment variables
+                username = project.findProperty("PublishingRepositoryUsername") as String?
+                    ?: System.getenv(repositoryUsernameEnv)
+                password = project.findProperty("PublishingRepositoryPassword") as String?
+                    ?: System.getenv(repositoryPasswordEnv)
             }
         }
     }

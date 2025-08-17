@@ -51,8 +51,8 @@ on:
         required: false
         type: string
       npm-scope:
-        description: 'NPM package scope'
-        required: true
+        description: 'NPM package scope (optional - will use central config if not provided)'
+        required: false
         type: string
     outputs:
       # Backward-compatible outputs for existing calling workflows
@@ -83,10 +83,8 @@ on:
         value: ${{ jobs.aggregate-results.outputs.android-skipped }}
 
 env:
-  # Centralized package configuration
-  NPM_PACKAGE_NAME: "mpo-webauthn-client"
-  ANDROID_GROUP_ID: "io.github.hitoshura25"
-  ANDROID_ARTIFACT_BASE_ID: "mpo-webauthn-android-client"
+  # Central configuration file path
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
 
 jobs:
   # Job 1: Input validation and shared configuration
@@ -132,22 +130,122 @@ jobs:
           echo "✅ Input validation passed"
           echo "validated=true" >> $GITHUB_OUTPUT
 
-  # Job 2: Convert environment variables to job outputs (required for callable workflows)
+  # Job 2: Load central configuration and create job outputs (required for callable workflows)
   setup-config:
     runs-on: ubuntu-latest
     outputs:
+      # Package configuration outputs
+      npm-scope: ${{ steps.config.outputs.npm-scope }}
       npm-package-name: ${{ steps.config.outputs.npm-package-name }}
       android-group-id: ${{ steps.config.outputs.android-group-id }}
       android-artifact-base-id: ${{ steps.config.outputs.android-artifact-base-id }}
+      # Environment-specific repository configuration outputs (selected based on publish-type)
+      npm-registry-url: ${{ steps.config.outputs.npm-registry-url }}
+      npm-credential-env: ${{ steps.config.outputs.npm-credential-env }}
+      npm-suffix: ${{ steps.config.outputs.npm-suffix }}
+      android-repository-url: ${{ steps.config.outputs.android-repository-url }}
+      android-username-env: ${{ steps.config.outputs.android-username-env }}
+      android-password-env: ${{ steps.config.outputs.android-password-env }}
+      # android-username-property and android-password-property removed - hardcoded in template
+      android-suffix: ${{ steps.config.outputs.android-suffix }}
     steps:
-      - name: Setup configuration outputs
+      - name: Checkout code for configuration
+        uses: actions/checkout@v4
+
+      - name: Load central configuration
         id: config
         run: |
-          echo "🔧 Converting environment variables to job outputs for callable workflows..."
-          echo "npm-package-name=${{ env.NPM_PACKAGE_NAME }}" >> $GITHUB_OUTPUT
-          echo "android-group-id=${{ env.ANDROID_GROUP_ID }}" >> $GITHUB_OUTPUT
-          echo "android-artifact-base-id=${{ env.ANDROID_ARTIFACT_BASE_ID }}" >> $GITHUB_OUTPUT
-          echo "✅ Configuration outputs set"
+          echo "🔧 Loading central configuration from ${{ env.PUBLISHING_CONFIG_FILE }}..."
+          
+          # Validate configuration file exists
+          if [[ ! -f "${{ env.PUBLISHING_CONFIG_FILE }}" ]]; then
+            echo "❌ Configuration file not found: ${{ env.PUBLISHING_CONFIG_FILE }}"
+            exit 1
+          fi
+
+          # Verify yq is available (pre-installed on ubuntu-latest runners)
+          if ! command -v yq &> /dev/null; then
+            echo "❌ yq not found. Using pre-installed version on ubuntu-latest runners."
+            exit 1
+          fi
+          echo "✅ Using pre-installed yq: $(yq --version)"
+
+          # Load package configuration (with input override support)
+          NPM_SCOPE_FROM_CONFIG=$(yq '.packages.typescript.scope' ${{ env.PUBLISHING_CONFIG_FILE }})
+          NPM_BASE_NAME=$(yq '.packages.typescript.basePackageName' ${{ env.PUBLISHING_CONFIG_FILE }})
+          
+          # Use input npm-scope if provided, otherwise use central config value
+          if [[ -n "${{ inputs.npm-scope }}" ]]; then
+            NPM_SCOPE="${{ inputs.npm-scope }}"
+            echo "ℹ️ Using npm-scope from workflow input: ${NPM_SCOPE}"
+          else
+            NPM_SCOPE="${NPM_SCOPE_FROM_CONFIG}"
+            echo "ℹ️ Using npm-scope from central config: ${NPM_SCOPE}"
+          fi
+          ANDROID_GROUP_ID=$(yq '.packages.android.groupId' ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_ARTIFACT_BASE_ID=$(yq '.packages.android.baseArtifactId' ${{ env.PUBLISHING_CONFIG_FILE }})
+
+          # Select environment-specific configuration based on publish-type
+          PUBLISH_TYPE="${{ inputs.publish-type }}"
+          echo "🎯 Loading configuration for environment: ${PUBLISH_TYPE}"
+
+          # Load repository configuration for selected environment
+          NPM_REGISTRY_URL=$(yq ".repositories.${PUBLISH_TYPE}.npm.registry" ${{ env.PUBLISHING_CONFIG_FILE }})
+          NPM_CREDENTIAL_ENV=$(yq ".repositories.${PUBLISH_TYPE}.npm.credentials.tokenEnv" ${{ env.PUBLISHING_CONFIG_FILE }})
+          
+          ANDROID_REPO_URL=$(yq ".repositories.${PUBLISH_TYPE}.android.url" ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_USERNAME_ENV=$(yq ".repositories.${PUBLISH_TYPE}.android.credentials.usernameEnv" ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_PASSWORD_ENV=$(yq ".repositories.${PUBLISH_TYPE}.android.credentials.passwordEnv" ${{ env.PUBLISHING_CONFIG_FILE }})
+          # Property names are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
+          # in the Android template since the repository name is hardcoded as "PublishingRepository"
+          
+          # Load package suffix configuration for selected environment
+          NPM_SUFFIX=$(yq ".naming.${PUBLISH_TYPE}.npmSuffix" ${{ env.PUBLISHING_CONFIG_FILE }})
+          ANDROID_SUFFIX=$(yq ".naming.${PUBLISH_TYPE}.androidSuffix" ${{ env.PUBLISHING_CONFIG_FILE }})
+
+          # Validate all required values are present
+          if [[ -z "$NPM_SCOPE" || "$NPM_BASE_NAME" == "null" || "$ANDROID_GROUP_ID" == "null" || "$ANDROID_ARTIFACT_BASE_ID" == "null" ]]; then
+            echo "❌ Missing required package configuration:"
+            echo "  NPM_SCOPE: '${NPM_SCOPE}'"
+            echo "  NPM_BASE_NAME: '${NPM_BASE_NAME}'"
+            echo "  ANDROID_GROUP_ID: '${ANDROID_GROUP_ID}'"
+            echo "  ANDROID_ARTIFACT_BASE_ID: '${ANDROID_ARTIFACT_BASE_ID}'"
+            exit 1
+          fi
+
+          if [[ "$NPM_REGISTRY_URL" == "null" || "$ANDROID_REPO_URL" == "null" ]]; then
+            echo "❌ Missing required repository configuration for ${PUBLISH_TYPE} environment in ${{ env.PUBLISHING_CONFIG_FILE }}"
+            echo "  NPM_REGISTRY_URL: '${NPM_REGISTRY_URL}'"
+            echo "  ANDROID_REPO_URL: '${ANDROID_REPO_URL}'"
+            exit 1
+          fi
+
+          # Set outputs for package configuration (backward compatibility)
+          echo "npm-scope=${NPM_SCOPE}" >> $GITHUB_OUTPUT
+          echo "npm-package-name=${NPM_BASE_NAME}" >> $GITHUB_OUTPUT
+          echo "android-group-id=${ANDROID_GROUP_ID}" >> $GITHUB_OUTPUT
+          echo "android-artifact-base-id=${ANDROID_ARTIFACT_BASE_ID}" >> $GITHUB_OUTPUT
+
+          # Set outputs for selected environment repository configuration
+          echo "npm-registry-url=${NPM_REGISTRY_URL}" >> $GITHUB_OUTPUT
+          echo "npm-credential-env=${NPM_CREDENTIAL_ENV}" >> $GITHUB_OUTPUT
+          echo "npm-suffix=${NPM_SUFFIX}" >> $GITHUB_OUTPUT
+          
+          echo "android-repository-url=${ANDROID_REPO_URL}" >> $GITHUB_OUTPUT
+          echo "android-username-env=${ANDROID_USERNAME_ENV}" >> $GITHUB_OUTPUT
+          echo "android-password-env=${ANDROID_PASSWORD_ENV}" >> $GITHUB_OUTPUT
+          # android-username-property and android-password-property no longer needed - hardcoded in template
+          echo "android-suffix=${ANDROID_SUFFIX}" >> $GITHUB_OUTPUT
+
+          echo "✅ Central configuration loaded successfully for ${PUBLISH_TYPE} environment:"
+          echo "  NPM package: ${NPM_SCOPE}/${NPM_BASE_NAME} $([ -n "${{ inputs.npm-scope }}" ] && echo "(scope from input)" || echo "(scope from config)")"
+          echo "  NPM registry: ${NPM_REGISTRY_URL}"
+          echo "  NPM suffix: '${NPM_SUFFIX}'"
+          echo "  Android package: ${ANDROID_GROUP_ID}:${ANDROID_ARTIFACT_BASE_ID}"
+          echo "  Android repository: ${ANDROID_REPO_URL}"
+          echo "  Android suffix: '${ANDROID_SUFFIX}'"
+          echo "  Android username property: PublishingRepositoryUsername (hardcoded)"
+          echo "  Android password property: PublishingRepositoryPassword (hardcoded)"
 
   # Job 3: TypeScript client generation and publishing (parallel)
   publish-typescript:
@@ -161,8 +259,11 @@ jobs:
     with:
       publish-type: ${{ inputs.publish-type }}
       client-version: ${{ inputs.client-version }}
-      npm-scope: ${{ inputs.npm-scope }}
+      npm-scope: ${{ needs.setup-config.outputs.npm-scope }}
       npm-package-name: ${{ needs.setup-config.outputs.npm-package-name }}
+      npm-registry-url: ${{ needs.setup-config.outputs.npm-registry-url }}
+      npm-credential-env: ${{ needs.setup-config.outputs.npm-credential-env }}
+      npm-suffix: ${{ needs.setup-config.outputs.npm-suffix }}
       android-group-id: ${{ needs.setup-config.outputs.android-group-id }}  # Needed for Gradle generation
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
@@ -181,8 +282,18 @@ jobs:
       client-version: ${{ inputs.client-version }}
       android-group-id: ${{ needs.setup-config.outputs.android-group-id }}
       android-artifact-base-id: ${{ needs.setup-config.outputs.android-artifact-base-id }}
+      # Environment-specific repository configuration from central config
+      android-repository-url: ${{ needs.setup-config.outputs.android-repository-url }}
+      android-username-env: ${{ needs.setup-config.outputs.android-username-env }}
+      android-password-env: ${{ needs.setup-config.outputs.android-password-env }}
+      # android-username-property and android-password-property removed - hardcoded in template
+      android-suffix: ${{ needs.setup-config.outputs.android-suffix }}
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+      CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+      CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
 
   # Job 5: Aggregate results and provide backward-compatible outputs
   aggregate-results:

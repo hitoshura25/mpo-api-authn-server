@@ -217,6 +217,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
         run: |
           echo "🧹 Starting smart staging cleanup"
           echo "📋 Cleanup scope: ONLY GitHub Packages staging artifacts"

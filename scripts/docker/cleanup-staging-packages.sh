@@ -4,6 +4,7 @@
 #
 # This script cleans up staging artifacts from GitHub Packages after main CI/CD completion.
 # It targets ONLY staging packages and provides different cleanup strategies based on workflow outcome.
+# Configuration is loaded from a central YAML file with environment variable override support.
 #
 # CLEANUP SCOPE - ONLY GitHub Packages:
 # - GHCR (GitHub Container Registry): Staging Docker images
@@ -23,6 +24,18 @@
 #   GH_TOKEN - GitHub token with packages:write permission (required)
 #   GITHUB_REPOSITORY_OWNER - Repository owner (if not provided as argument)
 #   PRESERVE_STAGING - Set to 'true' to skip all cleanup (emergency override)
+#   CONFIG_FILE - Path to central configuration file (default: config/publishing-config.yml)
+#
+# CONFIGURATION OVERRIDES (optional - defaults loaded from central config):
+#   ANDROID_GROUP_ID - Maven group ID for Android packages
+#   ANDROID_BASE_ARTIFACT_ID - Base artifact ID for Android packages
+#   TYPESCRIPT_SCOPE - npm scope for TypeScript packages
+#   TYPESCRIPT_BASE_PACKAGE_NAME - Base package name for TypeScript packages
+#   ANDROID_STAGING_SUFFIX - Suffix for Android staging packages
+#   NPM_STAGING_SUFFIX - Suffix for npm staging packages
+#   AUTHOR_ID - Author identifier for repository references
+#   DOCKER_WEBAUTHN_IMAGE_NAME - WebAuthn server Docker image name
+#   DOCKER_TEST_CREDENTIALS_IMAGE_NAME - Test credentials service Docker image name
 #
 # EXIT CODES:
 #   0 - Success (cleanup completed or skipped)
@@ -34,6 +47,97 @@ set -euo pipefail
 # Configuration
 WORKFLOW_OUTCOME="${1:-success}"
 REPOSITORY_OWNER="${2:-${GITHUB_REPOSITORY_OWNER:-}}"
+
+# Central configuration file path
+CONFIG_FILE="${CONFIG_FILE:-config/publishing-config.yml}"
+
+# Load central configuration using yq
+load_central_config() {
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        log "❌ Error: Configuration file not found: $CONFIG_FILE"
+        exit 1
+    fi
+    
+    if ! command -v yq &> /dev/null; then
+        log "❌ Error: yq is not installed (required for configuration loading)"
+        exit 1
+    fi
+    
+    log "📋 Loading central configuration from: $CONFIG_FILE"
+    
+    # Load configuration values with environment variable overrides
+    ANDROID_GROUP_ID="${ANDROID_GROUP_ID:-$(yq eval '.packages.android.groupId' "$CONFIG_FILE")}"
+    ANDROID_BASE_ARTIFACT_ID="${ANDROID_BASE_ARTIFACT_ID:-$(yq eval '.packages.android.baseArtifactId' "$CONFIG_FILE")}"
+    
+    TYPESCRIPT_SCOPE="${TYPESCRIPT_SCOPE:-$(yq eval '.packages.typescript.scope' "$CONFIG_FILE")}"
+    TYPESCRIPT_BASE_PACKAGE_NAME="${TYPESCRIPT_BASE_PACKAGE_NAME:-$(yq eval '.packages.typescript.basePackageName' "$CONFIG_FILE")}"
+    
+    ANDROID_STAGING_SUFFIX="${ANDROID_STAGING_SUFFIX:-$(yq eval '.naming.staging.androidSuffix' "$CONFIG_FILE")}"
+    NPM_STAGING_SUFFIX="${NPM_STAGING_SUFFIX:-$(yq eval '.naming.staging.npmSuffix' "$CONFIG_FILE")}"
+    
+    AUTHOR_ID="${AUTHOR_ID:-$(yq eval '.metadata.author.id' "$CONFIG_FILE")}"
+    
+    # Docker image names (not in config file, use environment variables)
+    DOCKER_WEBAUTHN_IMAGE_NAME="${DOCKER_WEBAUTHN_IMAGE_NAME:-webauthn-server}"
+    DOCKER_TEST_CREDENTIALS_IMAGE_NAME="${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-webauthn-test-credentials-service}"
+    
+    # Construct full package names
+    ANDROID_STAGING_PACKAGE="${ANDROID_GROUP_ID}.${ANDROID_BASE_ARTIFACT_ID}${ANDROID_STAGING_SUFFIX}"
+    NPM_STAGING_PACKAGE_NAME="${TYPESCRIPT_BASE_PACKAGE_NAME}${NPM_STAGING_SUFFIX}"
+    NPM_SCOPE_CLEAN="${TYPESCRIPT_SCOPE#@}"  # Remove @ prefix for scope
+    
+    # Validate required configuration
+    validate_config
+}
+
+# Function to validate configuration values
+validate_config() {
+    local errors=0
+    
+    # Check for null or empty values from yq
+    if [[ "$ANDROID_GROUP_ID" == "null" || -z "$ANDROID_GROUP_ID" ]]; then
+        log "❌ Error: Android groupId not found in configuration"
+        ((errors++))
+    fi
+    
+    if [[ "$ANDROID_BASE_ARTIFACT_ID" == "null" || -z "$ANDROID_BASE_ARTIFACT_ID" ]]; then
+        log "❌ Error: Android baseArtifactId not found in configuration"
+        ((errors++))
+    fi
+    
+    if [[ "$TYPESCRIPT_SCOPE" == "null" || -z "$TYPESCRIPT_SCOPE" ]]; then
+        log "❌ Error: TypeScript scope not found in configuration"
+        ((errors++))
+    fi
+    
+    if [[ "$TYPESCRIPT_BASE_PACKAGE_NAME" == "null" || -z "$TYPESCRIPT_BASE_PACKAGE_NAME" ]]; then
+        log "❌ Error: TypeScript basePackageName not found in configuration"
+        ((errors++))
+    fi
+    
+    if [[ "$AUTHOR_ID" == "null" || -z "$AUTHOR_ID" ]]; then
+        log "❌ Error: Author ID not found in configuration"
+        ((errors++))
+    fi
+    
+    if [[ $errors -gt 0 ]]; then
+        log "❌ Configuration validation failed with $errors errors"
+        exit 1
+    fi
+    
+    log "✅ Configuration validation complete:"
+    log "  Android Group ID: $ANDROID_GROUP_ID"
+    log "  Android Base Artifact ID: $ANDROID_BASE_ARTIFACT_ID"
+    log "  Android Staging Suffix: $ANDROID_STAGING_SUFFIX"
+    log "  TypeScript Scope: $TYPESCRIPT_SCOPE"
+    log "  TypeScript Base Package: $TYPESCRIPT_BASE_PACKAGE_NAME"
+    log "  npm Staging Suffix: $NPM_STAGING_SUFFIX"
+    log "  Author ID: $AUTHOR_ID"
+    log "  Docker WebAuthn Image: $DOCKER_WEBAUTHN_IMAGE_NAME"
+    log "  Docker Test Credentials Image: $DOCKER_TEST_CREDENTIALS_IMAGE_NAME"
+    log "  Constructed Android Staging Package: $ANDROID_STAGING_PACKAGE"
+    log "  Constructed npm Staging Package: $NPM_STAGING_PACKAGE_NAME"
+}
 
 # Emergency override check
 if [[ "${PRESERVE_STAGING:-false}" == "true" ]]; then
@@ -97,7 +201,7 @@ validate_github_cli() {
 cleanup_staging_docker() {
     log "🐳 Cleaning up staging Docker images from GHCR..."
     
-    local packages=("webauthn-server" "webauthn-test-credentials-service")
+    local packages=("$DOCKER_WEBAUTHN_IMAGE_NAME" "$DOCKER_TEST_CREDENTIALS_IMAGE_NAME")
     local total_deleted=0
     
     for package in "${packages[@]}"; do
@@ -164,8 +268,8 @@ cleanup_staging_docker() {
 cleanup_staging_npm() {
     log "📦 Cleaning up staging npm packages..."
     
-    local scope="vmenon25"
-    local base_package="mpo-webauthn-client-staging"
+    local scope="$NPM_SCOPE_CLEAN"
+    local base_package="$NPM_STAGING_PACKAGE_NAME"
     local scoped_package="${scope}%2F${base_package}"  # URL-encoded @scope/package
     local total_deleted=0
     
@@ -236,7 +340,7 @@ cleanup_staging_npm() {
 cleanup_staging_maven() {
     log "🏗️ Cleaning up staging Maven packages..."
     
-    local package_name="io.github.hitoshura25.mpo-webauthn-android-client-staging"
+    local package_name="$ANDROID_STAGING_PACKAGE"
     local total_deleted=0
     
     # Try multiple API endpoints (user/repo/org packages)
@@ -350,6 +454,9 @@ main() {
     
     # Check for emergency override first
     check_preserve_override
+    
+    # Load central configuration
+    load_central_config
     
     # Validate inputs and GitHub CLI
     validate_inputs

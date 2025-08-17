@@ -99,7 +99,6 @@ jobs:
             infrastructure-workflows:
               - '.github/workflows/security-analysis.yml'
               - '.github/workflows/vulnerability-monitor.yml'
-              - '.github/workflows/pull-request-closed.yml'
               - '.github/workflows/main-branch-post-processing.yml'
             webauthn-server-tests:
               - 'webauthn-server/src/**'

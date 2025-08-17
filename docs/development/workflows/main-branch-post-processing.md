@@ -20,10 +20,10 @@ The `main-branch-post-processing.yml` workflow runs after the main CI/CD pipelin
 - **Repository Descriptions**: Updates DockerHub repository descriptions automatically
 - **Git Tagging**: Creates timestamp-based tags for successful publishes
 
-### Phase 3: Registry Optimization
+### Phase 3: Comprehensive Reporting
 
-- **GHCR Cleanup**: Automatically removes old image versions to prevent registry bloat
-- **Comprehensive Reporting**: Detailed status reporting for all operations
+- **Status Reporting**: Detailed status reporting for all operations
+- **Production Preservation**: Production packages are never automatically cleaned up
 
 ## Required Secrets
 
@@ -110,21 +110,15 @@ graph TD
 - Updates repository descriptions using README files
 - Publishes both images if they pass security gates
 
-### 5. cleanup-ghcr
 
-- **Always runs** (regardless of CI/CD success/failure)
-- Keeps latest 5 versions, deletes older ones
-- Prevents registry storage bloat
-- Uses GitHub CLI to interact with packages API
-
-### 6. tag-repository
+### 5. tag-repository
 
 - **Only runs on successful DockerHub publish**
 - Creates timestamp-based git tags
 - Format: `dockerhub-publish-YYYYMMDD-HHMMSS`
 - Includes commit message with publish details
 
-### 7. report-post-processing-status
+### 6. report-post-processing-status
 
 - **Always runs** with comprehensive status reporting
 - Shows results of all jobs
@@ -158,7 +152,6 @@ fi
 
 ## Performance Benefits
 
-- **Registry Optimization**: Automatic cleanup prevents storage bloat
 - **Bandwidth Efficiency**: Only publishes when changes detected
 - **Storage Efficiency**: Maintains clean registries
 - **Historical Tracking**: Git tags provide publish history
@@ -206,9 +199,6 @@ Test Credentials Service changed: false
     - Ensure `DOCKER_USERNAME` and `DOCKER_PASSWORD` secrets are set
     - Verify token has correct permissions
 
-2. **GHCR Authentication Failures**
-    - Workflow uses `GITHUB_TOKEN` automatically
-    - Ensure workflow has `packages: write` permission
 
 3. **Change Detection False Positives**
     - Digests are compared at manifest level, very reliable
@@ -224,8 +214,6 @@ Test Credentials Service changed: false
 # Check image digests manually
 docker buildx imagetools inspect ghcr.io/hitoshura25/webauthn-server:latest --format '{{json .}}'
 
-# List GHCR packages
-gh api /orgs/hitoshura25/packages/container/webauthn-server/versions
 
 # Check DockerHub repository
 curl -s https://hub.docker.com/v2/repositories/hitoshura25/webauthn-server/

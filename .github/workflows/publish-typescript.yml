@@ -200,11 +200,29 @@ jobs:
             echo "skip-publish=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Set up authentication credentials
+        id: setup-auth
+        run: |
+          # Extract credential selection logic into reusable step
+          CREDENTIAL_ENV="${{ steps.package-info.outputs.credential-env }}"
+          if [[ "${CREDENTIAL_ENV}" == "GITHUB_TOKEN" ]]; then
+            echo "auth-token=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
+            echo "📋 Using GITHUB_TOKEN for authentication"
+          else
+            echo "auth-token=${{ secrets.NPM_TOKEN }}" >> $GITHUB_OUTPUT
+            echo "📋 Using NPM_TOKEN for authentication"
+          fi
+          
+          # Extract registry hostname for reuse (shared logic)
+          REGISTRY_URL="${{ steps.package-info.outputs.npm-registry }}"
+          REGISTRY_HOST=$(echo "${REGISTRY_URL}" | sed 's|https://||' | sed 's|/.*||')
+          echo "registry-host=${REGISTRY_HOST}" >> $GITHUB_OUTPUT
+          echo "📋 Registry host: ${REGISTRY_HOST}"
+
       - name: Publish TypeScript client to GitHub Packages (staging)
         if: inputs.publish-type == 'staging' && steps.check-npm-version.outputs.skip-publish == 'false'
         env:
-          # Use dynamic credential based on central config (GitHub Packages uses GITHUB_TOKEN)
-          NODE_AUTH_TOKEN: ${{ steps.package-info.outputs.credential-env == 'GITHUB_TOKEN' && secrets.GITHUB_TOKEN || secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ steps.setup-auth.outputs.auth-token }}
           NPM_CONFIG_REGISTRY: ${{ steps.package-info.outputs.npm-registry }}
         run: |
           echo "📦 Publishing TypeScript client to GitHub Packages (staging)..."
@@ -219,9 +237,8 @@ jobs:
           # Configure authentication for npm registry (from central config)
           echo "${{ inputs.npm-scope }}:registry=${{ steps.package-info.outputs.npm-registry }}" >> .npmrc
           
-          # Extract hostname from registry URL for dynamic authentication configuration
-          REGISTRY_HOST=$(echo "${{ steps.package-info.outputs.npm-registry }}" | sed 's|https://||' | sed 's|/.*||')
-          echo "//${REGISTRY_HOST}/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          # Use extracted registry hostname (shared logic from setup-auth step)
+          echo "//${{ steps.setup-auth.outputs.registry-host }}/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig'
@@ -270,8 +287,7 @@ jobs:
       - name: Publish TypeScript client to npm (production)
         if: inputs.publish-type == 'production'
         env:
-          # Use dynamic credential based on central config (npm registry uses NPM_TOKEN)
-          NODE_AUTH_TOKEN: ${{ steps.package-info.outputs.credential-env == 'GITHUB_TOKEN' && secrets.GITHUB_TOKEN || secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ steps.setup-auth.outputs.auth-token }}
           NPM_CONFIG_REGISTRY: ${{ steps.package-info.outputs.npm-registry }}
         run: |
           echo "🚀 Publishing TypeScript client to npm (production)..."
@@ -284,9 +300,8 @@ jobs:
           npm pkg delete publishConfig  # Remove GitHub Packages config
 
           # Configure authentication for npm registry (from central config)
-          # Extract hostname from registry URL for dynamic authentication configuration
-          REGISTRY_HOST=$(echo "${{ steps.package-info.outputs.npm-registry }}" | sed 's|https://||' | sed 's|/.*||')
-          echo "//${REGISTRY_HOST}/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
+          # Use extracted registry hostname (shared logic from setup-auth step)
+          echo "//${{ steps.setup-auth.outputs.registry-host }}/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
 
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig // "none"'

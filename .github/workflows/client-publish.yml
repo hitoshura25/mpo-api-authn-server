@@ -163,9 +163,12 @@ jobs:
             exit 1
           fi
 
-          # Install yq for YAML parsing
-          sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
-          sudo chmod +x /usr/local/bin/yq
+          # Verify yq is available (pre-installed on ubuntu-latest runners)
+          if ! command -v yq &> /dev/null; then
+            echo "❌ yq not found. Using pre-installed version on ubuntu-latest runners."
+            exit 1
+          fi
+          echo "✅ Using pre-installed yq: $(yq --version)"
 
           # Load package configuration (with input override support)
           NPM_SCOPE_FROM_CONFIG=$(yq '.packages.typescript.scope' ${{ env.PUBLISHING_CONFIG_FILE }})

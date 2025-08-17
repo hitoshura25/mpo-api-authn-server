@@ -372,3 +372,69 @@ android-ui-tests:
 # Full Android validation
 ./scripts/android-full-validation.sh
 ```
+
+## Android Publishing Infrastructure Testing
+
+### Configuration-Driven Publishing Validation
+
+**Location**: `scripts/testing/client-publishing/`
+
+When working on Android client library issues, ALWAYS validate the publishing infrastructure:
+
+#### **Android-Specific Testing Categories**:
+```bash
+# Validate Android template and Gradle configuration
+./scripts/testing/client-publishing/run-all-tests.sh --category gradle-simulation
+
+# Test Android property mapping (PublishingRepositoryUsername/Password)
+./scripts/testing/client-publishing/gradle-simulation/test-property-mapping.sh
+
+# Validate Android artifact naming and versioning
+./scripts/testing/client-publishing/gradle-simulation/test-android-template.sh
+```
+
+#### **Publishing Configuration Validation**:
+Essential for Android publishing issues:
+```bash
+# Validate config structure for Android packages
+./scripts/testing/client-publishing/config-validation/test-config-structure.sh
+
+# Test environment selection (staging vs production)
+./scripts/testing/client-publishing/environment-selection/test-config-loading.sh
+
+# Full publishing infrastructure validation
+./scripts/testing/client-publishing/run-all-tests.sh
+```
+
+#### **Android Publishing Troubleshooting Protocol**:
+1. **Repository Configuration Issues**: 
+   - Run `gradle-simulation` tests to validate repository setup
+   - Check hardcoded property names: `PublishingRepositoryUsername`/`PublishingRepositoryPassword`
+   - Verify environment selection loads correct staging/production config
+
+2. **Template Generation Issues**:
+   - Test Android template with various environment variable combinations
+   - Validate Gradle property mapping and credential resolution
+   - Ensure artifact naming follows central configuration
+
+3. **Workflow Integration Issues**:
+   - Validate workflow syntax and input/output mapping
+   - Test job dependencies and conditional logic
+   - Verify secret passing and environment variable conversion
+
+#### **Integration with Android E2E Testing**:
+```bash
+# 1. Validate publishing infrastructure
+./scripts/testing/client-publishing/run-all-tests.sh --category gradle-simulation
+
+# 2. Test Android client generation and building
+cd android-client-library && ./gradlew build test
+
+# 3. Test Android E2E with published packages  
+cd android-test-client && ./gradlew connectedAndroidTest
+```
+
+## Documentation Standards
+- **Client library validation**: Confirm generated client integration works correctly
+- **Publishing infrastructure validation**: Always test configuration-driven publishing setup
+- **Documentation standards**: Keep Android-specific documentation and examples current

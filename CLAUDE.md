@@ -50,6 +50,7 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 - **Full Build**: `./gradlew build`
 - **All Tests**: `./gradlew test`
 - **Lint**: `./gradlew detekt`
+- **Gradle Config Cache Validation**: `./scripts/core/validate-gradle-config-cache.sh`
 
 ## Development Guidance & Critical Reminders
 
@@ -525,13 +526,48 @@ job-name:
    - **Solution**: Upgrade OpenAPI generator plugin to latest version which uses matching OkHttp client version
    - **Rule**: When facing version constraint conflicts, upgrade the root dependency (plugin/library) rather than downgrade individual dependencies
    - **Benefits**: Latest versions include security fixes, performance improvements, and compatibility updates
-11. **Gradle Configuration Cache Compatibility**: CRITICAL for all custom Gradle task development
-   - **❌ NEVER access project properties in doLast blocks**: `project.rootDir`, `Task.project` break configuration cache
-   - **Warning Sign**: "invocation of 'Task.project' at execution time is unsupported"
-   - **Symptoms**: Template processing fails silently, generated files don't appear, "task not found" errors
-   - **✅ SOLUTION**: Configure paths at configuration time using `layout.projectDirectory.file()`, access with `.asFile` in execution
-   - **Documentation**: See `docs/development/gradle-configuration-cache-compatibility.md` for complete patterns and examples
-   - **Rule**: Test all custom tasks with `--configuration-cache` flag to catch compatibility issues early
+11. **🚨 CRITICAL: Gradle Configuration Cache Compatibility** - MANDATORY for all custom Gradle task development
+   - **❌ IMMEDIATE REJECTION CRITERIA**: Any `project.*` access in `doLast`/`doFirst` blocks breaks configuration cache
+     - `project.rootDir`, `project.buildDir`, `project.version` in execution phase
+     - `Task.project` accessor usage anywhere in task
+     - `project.findProperty()` calls inside execution blocks
+   - **🔍 WARNING SIGNS**: 
+     - "invocation of 'Task.project' at execution time is unsupported"
+     - Template processing fails silently with no error messages
+     - Generated files don't appear in expected locations
+     - Publishing workflows fail with "task not found" errors despite task being defined
+   - **✅ MANDATORY SOLUTION PATTERN**:
+     ```gradle
+     // ✅ CORRECT: Configure at configuration time
+     def templateFile = layout.projectDirectory.file("templates/client.template")
+     def outputDir = layout.buildDirectory.dir("generated")
+     def capturedVersion = project.version
+     
+     inputs.file(templateFile)
+     outputs.dir(outputDir)
+     
+     doLast {
+         // ✅ Safe to access configured values
+         def actualFile = templateFile.asFile
+         def actualDir = outputDir.get().asFile
+         actualFile.text = processTemplate(actualFile.text, capturedVersion)
+     }
+     ```
+   - **📚 REQUIRED READING**:
+     - **Complete Guide**: `docs/development/gradle-configuration-cache-compatibility.md`
+     - **Code Review Checklist**: `docs/development/gradle-task-code-review-checklist.md`
+   - **🧪 MANDATORY TESTING**: ALL custom tasks MUST pass these tests before merge:
+     ```bash
+     # Automated validation (recommended)
+     ./scripts/core/validate-gradle-config-cache.sh [task-name]
+     
+     # Manual testing commands
+     ./gradlew [task-name] --configuration-cache --info
+     ./gradlew [task-name] --configuration-cache --info  # Second run should be fast
+     ./gradlew build --configuration-cache --configuration-cache-problems=warn
+     ```
+   - **⚡ PERFORMANCE IMPACT**: Configuration cache violations destroy build performance for ALL developers
+   - **🔄 CODE REVIEW REQUIREMENT**: Use checklist for ALL Gradle task modifications
 
 ### 🔍 CRITICAL: Script Integration & Testing Patterns
 

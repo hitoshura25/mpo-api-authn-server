@@ -250,6 +250,7 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
     // Configuration cache compatible approach - configure paths as properties  
     val templateFile = layout.projectDirectory.file("../android-client-library/build.gradle.kts.template")
     val finalBuildFile = layout.projectDirectory.file("../android-client-library/build.gradle.kts")
+    val outputDir = layout.buildDirectory.dir("generated-clients/android")
     
     // CRITICAL: Declare generated build.gradle.kts as output so it's included in cache
     inputs.file(templateFile)
@@ -257,7 +258,7 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
 
     // Extract dependencies from generated build.gradle and create final build.gradle.kts
     doLast {
-        val outputPath = project.layout.buildDirectory.dir("generated-clients/android").get().asFile
+        val outputPath = outputDir.get().asFile
         val generatedBuildGradle = File(outputPath, "build.gradle")
 
         // Extract dependencies from generated build.gradle with inline conversion

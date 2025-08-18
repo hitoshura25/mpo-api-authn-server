@@ -194,10 +194,10 @@ jobs:
           PUBLISH_TYPE: ${{ inputs.publish-type }}
           # Repository configuration from central config (environment-specific)
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
-          # Set credential environment variables for property values
-          # Template uses properties, workflow passes environment variable values as properties
-          ANDROID_PUBLISH_USER: ${{ github.actor }}
-          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Set credential environment variables that template expects directly
+          # Template uses GITHUB_ACTOR and GITHUB_TOKEN environment variables
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
           CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
@@ -219,17 +219,10 @@ jobs:
           # Generate and publish Android client using environment variables only
           # This maintains configuration cache compatibility by avoiding Gradle property changes
           echo "🔧 Generating Android client..."
-          # Back to property-based approach since environment variables broke template processing
-          GRADLE_PROPS="-PPublishingRepositoryUsername=${ANDROID_PUBLISH_USER} -PPublishingRepositoryPassword=${ANDROID_PUBLISH_TOKEN}"
-          
-          if [[ "${{ inputs.publish-type }}" == "production" ]]; then
-            GRADLE_PROPS="${GRADLE_PROPS} -PsigningKey=${SIGNING_KEY} -PsigningPassword=${SIGNING_PASSWORD}"
-          fi
-          
-          echo "🔍 Using properties approach (environment variables failed template processing)"
-          echo "🔍 Username: ${ANDROID_PUBLISH_USER}"
-          echo "🔍 Token length: ${#ANDROID_PUBLISH_TOKEN}"
-          ./gradlew generateAndroidClient copyAndroidClientToSubmodule ${GRADLE_PROPS} \
+          echo "🔍 Trying environment variables approach (with fixed configuration cache compatibility)"
+          echo "🔍 Username: ${GITHUB_ACTOR}"
+          echo "🔍 Token length: ${#GITHUB_TOKEN}"
+          ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
             --build-cache --parallel --configuration-cache
           
           echo "🔍 Verifying build.gradle.kts generation..."
@@ -243,9 +236,9 @@ jobs:
           
           echo "📦 Publishing Android client..."
           
-          # Use same properties for configuration cache compatibility
-          echo "🔍 Running publish with same properties as generation"
-          ./gradlew :android-client-library:publish ${GRADLE_PROPS} \
+          # No Gradle properties needed - credentials come from environment variables
+          echo "🔍 Running publish with environment variables only (no properties = no cache invalidation)"
+          ./gradlew :android-client-library:publish \
             --build-cache --parallel --configuration-cache
 
           echo "✅ Android client generated and published to ${{ inputs.publish-type }} repository successfully"

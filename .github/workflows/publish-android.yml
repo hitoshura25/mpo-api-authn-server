@@ -237,7 +237,14 @@ jobs:
           rm -f android-client-library/build.gradle.kts
           
           echo "🔧 Generating Android client..."
-          ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
+          # Pass same properties to generation step to maintain configuration cache compatibility
+          GRADLE_PROPS="-PPublishingRepositoryUsername=${ANDROID_PUBLISH_USER} -PPublishingRepositoryPassword=${ANDROID_PUBLISH_TOKEN}"
+          
+          if [[ "${{ inputs.publish-type }}" == "production" ]]; then
+            GRADLE_PROPS="${GRADLE_PROPS} -PsigningKey=${SIGNING_KEY} -PsigningPassword=${SIGNING_PASSWORD}"
+          fi
+          
+          ./gradlew generateAndroidClient copyAndroidClientToSubmodule ${GRADLE_PROPS} \
             --build-cache --parallel --configuration-cache
           
           echo "🔍 Debugging generated build.gradle.kts..."
@@ -253,9 +260,8 @@ jobs:
           fi
           
           echo "📦 Publishing Android client..."
-          # Use environment variables only - no Gradle properties to maintain configuration cache compatibility
-          # Template reads all configuration from environment variables
-          ./gradlew :android-client-library:publish \
+          # Use same GRADLE_PROPS as generation step for configuration cache compatibility
+          ./gradlew :android-client-library:publish ${GRADLE_PROPS} \
             --build-cache --parallel --configuration-cache
 
           echo "✅ Android client generated and published to ${{ inputs.publish-type }} repository successfully"

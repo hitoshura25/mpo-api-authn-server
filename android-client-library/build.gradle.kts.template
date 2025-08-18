@@ -11,13 +11,13 @@ java {
     withSourcesJar()
 }
 
-// Configure version from environment only (configuration cache compatible)
+// Configure version from environment variables (properties not needed for non-publishing configuration)
 val clientVersion = System.getenv("CLIENT_VERSION") ?: "1.0.0-SNAPSHOT"
 
-// Configure artifact ID from environment only (configuration cache compatible)
+// Configure artifact ID from environment variables
 val androidArtifactId = System.getenv("ANDROID_ARTIFACT_ID") ?: "mpo-webauthn-android-client"
 
-// Configure group ID from environment only (configuration cache compatible)
+// Configure group ID from environment variables  
 val androidGroupId = System.getenv("ANDROID_GROUP_ID") ?: "io.github.hitoshura25"
 
 version = clientVersion
@@ -119,18 +119,10 @@ publishing {
             name = "PublishingRepository"
             url = uri(repositoryUrl)
             credentials {
-                // Use environment variables only for configuration cache compatibility
-                val credentialUsername = System.getenv(repositoryUsernameEnv)
-                val credentialPassword = System.getenv(repositoryPasswordEnv)
-                
-                // Only set credentials if they are available to avoid Gradle configuration errors
-                if (credentialUsername != null && credentialPassword != null) {
-                    username = credentialUsername
-                    password = credentialPassword
-                } else {
-                    throw GradleException("Publishing credentials are required but not found. " +
-                        "Expected environment variables: $repositoryUsernameEnv, $repositoryPasswordEnv")
-                }
+                // Gradle publishing plugin requires property-based credentials for named repositories
+                // Properties are passed via workflow with environment variable values
+                username = project.findProperty("PublishingRepositoryUsername") as String?
+                password = project.findProperty("PublishingRepositoryPassword") as String?
             }
         }
     }

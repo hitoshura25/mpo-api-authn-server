@@ -77,9 +77,9 @@ load_central_config() {
     
     AUTHOR_ID="${AUTHOR_ID:-$(yq eval '.metadata.author.id' "$CONFIG_FILE")}"
     
-    # Docker image names (full GHCR paths including repository owner)
-    DOCKER_WEBAUTHN_IMAGE_NAME="${DOCKER_WEBAUTHN_IMAGE_NAME:-${REPOSITORY_OWNER}/webauthn-server}"
-    DOCKER_TEST_CREDENTIALS_IMAGE_NAME="${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-${REPOSITORY_OWNER}/webauthn-test-credentials-service}"
+    # Docker image names (just the image names, not full paths)
+    DOCKER_WEBAUTHN_IMAGE_NAME="${DOCKER_WEBAUTHN_IMAGE_NAME:-webauthn-server}"
+    DOCKER_TEST_CREDENTIALS_IMAGE_NAME="${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-webauthn-test-credentials-service}"
     
     # Construct full package names
     ANDROID_STAGING_PACKAGE="${ANDROID_GROUP_ID}.${ANDROID_BASE_ARTIFACT_ID}${ANDROID_STAGING_SUFFIX}"
@@ -246,7 +246,8 @@ cleanup_staging_docker() {
             .[] | 
             select(
                 (.metadata.container.tags[]? | test("^pr-[0-9]+")) or
-                (.metadata.container.tags[]? | test("-staging$"))
+                (.metadata.container.tags[]? | test("-staging$")) or
+                (.metadata.container.tags[]? | test("^pr-"))
             ) | 
             .id'
             log "  Strategy: DELETE ALL staging images (workflow succeeded)"
@@ -256,11 +257,18 @@ cleanup_staging_docker() {
             [.[] | 
              select(
                 (.metadata.container.tags[]? | test("^pr-[0-9]+")) or
-                (.metadata.container.tags[]? | test("-staging$"))
+                (.metadata.container.tags[]? | test("-staging$")) or
+                (.metadata.container.tags[]? | test("^pr-"))
              )] |
             sort_by(.created_at) | reverse | .[5:] | .[].id'
             log "  Strategy: Keep last 5 staging versions (workflow failed)"
         fi
+        
+        # Debug: First show all versions for this package
+        local all_versions
+        all_versions=$(gh api "${endpoint}/versions" --jq '.[] | {id: .id, tags: .metadata.container.tags, created: .created_at}' 2>/dev/null || echo "[]")
+        log "🔍 All versions found for $package:"
+        echo "$all_versions" | jq -r '. | "  - ID: \(.id), Tags: \(.tags // [] | join(", ")), Created: \(.created)"' 2>/dev/null || log "  (No versions or failed to parse)"
         
         local versions
         versions=$(gh api \
@@ -269,6 +277,7 @@ cleanup_staging_docker() {
             --jq "$versions_query" \
             2>/dev/null || echo "")
             
+        log "🔍 Staging versions after filtering: $(echo "$versions" | wc -l | tr -d ' ') versions"
         if [[ -z "$versions" ]]; then
             log "ℹ️ No staging versions to clean up for $package"
             continue
@@ -326,15 +335,21 @@ cleanup_staging_npm() {
         return 0
     fi
         
-    # Get versions based on workflow outcome
+    # Debug: First show all versions for this npm package
+    local all_versions
+    all_versions=$(gh api "${endpoint}/versions" --jq '.[] | {id: .id, name: .name, created: .created_at}' 2>/dev/null || echo "[]")
+    log "🔍 All npm versions found:"
+    echo "$all_versions" | jq -r '. | "  - ID: \(.id), Name: \(.name), Created: \(.created)"' 2>/dev/null || log "  (No versions or failed to parse)"
+    
+    # Get versions based on workflow outcome - filter staging versions (contain -pr.)
     local versions_query
     if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
-        # Delete ALL staging versions on success
-        versions_query='.[] | .id'
+        # Delete ALL staging versions on success (versions containing -pr.)
+        versions_query='.[] | select(.name | test("-pr\\.")) | .id'
         log "  Strategy: DELETE ALL staging versions (workflow succeeded)"
     else
         # Keep last 5 staging versions on failure
-        versions_query='sort_by(.created_at) | reverse | .[5:] | .[].id'
+        versions_query='[.[] | select(.name | test("-pr\\."))] | sort_by(.created_at) | reverse | .[5:] | .[].id'
         log "  Strategy: Keep last 5 staging versions (workflow failed)"
     fi
     
@@ -345,6 +360,7 @@ cleanup_staging_npm() {
         --jq "$versions_query" \
         2>/dev/null || echo "")
         
+    log "🔍 Staging npm versions after filtering: $(echo "$versions" | wc -l | tr -d ' ') versions"
     if [[ -z "$versions" ]]; then
         log "ℹ️ No staging npm versions to clean up"
         return 0
@@ -381,15 +397,21 @@ cleanup_staging_maven() {
         return 0
     fi
         
-    # Get versions based on workflow outcome
+    # Debug: First show all versions for this Maven package
+    local all_versions
+    all_versions=$(gh api "${endpoint}/versions" --jq '.[] | {id: .id, name: .name, created: .created_at}' 2>/dev/null || echo "[]")
+    log "🔍 All Maven versions found:"
+    echo "$all_versions" | jq -r '. | "  - ID: \(.id), Name: \(.name), Created: \(.created)"' 2>/dev/null || log "  (No versions or failed to parse)"
+    
+    # Get versions based on workflow outcome - filter staging versions (contain -pr.)
     local versions_query
     if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
-        # Delete ALL staging versions on success
-        versions_query='.[] | .id'
+        # Delete ALL staging versions on success (versions containing -pr.)
+        versions_query='.[] | select(.name | test("-pr\\.")) | .id'
         log "  Strategy: DELETE ALL staging versions (workflow succeeded)"
     else
         # Keep last 5 staging versions on failure
-        versions_query='sort_by(.created_at) | reverse | .[5:] | .[].id'
+        versions_query='[.[] | select(.name | test("-pr\\."))] | sort_by(.created_at) | reverse | .[5:] | .[].id'
         log "  Strategy: Keep last 5 staging versions (workflow failed)"
     fi
     
@@ -400,6 +422,7 @@ cleanup_staging_maven() {
         --jq "$versions_query" \
         2>/dev/null || echo "")
         
+    log "🔍 Staging Maven versions after filtering: $(echo "$versions" | wc -l | tr -d ' ') versions"
     if [[ -z "$versions" ]]; then
         log "ℹ️ No staging Maven versions to clean up"
         return 0

@@ -264,11 +264,15 @@ cleanup_staging_docker() {
             log "  Strategy: Keep last 5 staging versions (workflow failed)"
         fi
         
-        # Debug: First show all versions for this package
-        local all_versions
-        all_versions=$(gh api "${endpoint}/versions" --jq '.[] | {id: .id, tags: .metadata.container.tags, created: .created_at}' 2>/dev/null || echo "[]")
-        log "🔍 All versions found for $package:"
-        echo "$all_versions" | jq -r '. | "  - ID: \(.id), Tags: \(.tags // [] | join(", ")), Created: \(.created)"' 2>/dev/null || log "  (No versions or failed to parse)"
+        # Debug: First show basic info about versions for this package
+        local version_count
+        version_count=$(gh api "${endpoint}/versions" --jq 'length' 2>/dev/null || echo "0")
+        log "🔍 Total versions found for $package: $version_count"
+        
+        if [[ "$version_count" -gt 0 ]]; then
+            log "🔍 Sample version details:"
+            gh api "${endpoint}/versions" --jq '.[:3] | .[] | "  - ID: \(.id), Tags: \(.metadata.container.tags // [] | join(", ")), Created: \(.created_at)"' 2>/dev/null || log "  (Failed to get details)"
+        fi
         
         local versions
         versions=$(gh api \
@@ -277,8 +281,14 @@ cleanup_staging_docker() {
             --jq "$versions_query" \
             2>/dev/null || echo "")
             
-        log "🔍 Staging versions after filtering: $(echo "$versions" | wc -l | tr -d ' ') versions"
-        if [[ -z "$versions" ]]; then
+        # Count non-empty lines
+        local staging_count=0
+        if [[ -n "$versions" ]]; then
+            staging_count=$(echo "$versions" | grep -c . || echo "0")
+        fi
+        
+        log "🔍 Staging versions after filtering: $staging_count versions"
+        if [[ "$staging_count" -eq 0 ]]; then
             log "ℹ️ No staging versions to clean up for $package"
             continue
         fi
@@ -335,11 +345,15 @@ cleanup_staging_npm() {
         return 0
     fi
         
-    # Debug: First show all versions for this npm package
-    local all_versions
-    all_versions=$(gh api "${endpoint}/versions" --jq '.[] | {id: .id, name: .name, created: .created_at}' 2>/dev/null || echo "[]")
-    log "🔍 All npm versions found:"
-    echo "$all_versions" | jq -r '. | "  - ID: \(.id), Name: \(.name), Created: \(.created)"' 2>/dev/null || log "  (No versions or failed to parse)"
+    # Debug: First show basic info about npm versions
+    local version_count
+    version_count=$(gh api "${endpoint}/versions" --jq 'length' 2>/dev/null || echo "0")
+    log "🔍 Total npm versions found: $version_count"
+    
+    if [[ "$version_count" -gt 0 ]]; then
+        log "🔍 Sample npm version details:"
+        gh api "${endpoint}/versions" --jq '.[:3] | .[] | "  - ID: \(.id), Name: \(.name), Created: \(.created_at)"' 2>/dev/null || log "  (Failed to get details)"
+    fi
     
     # Get versions based on workflow outcome - filter staging versions (contain -pr.)
     local versions_query
@@ -360,8 +374,14 @@ cleanup_staging_npm() {
         --jq "$versions_query" \
         2>/dev/null || echo "")
         
-    log "🔍 Staging npm versions after filtering: $(echo "$versions" | wc -l | tr -d ' ') versions"
-    if [[ -z "$versions" ]]; then
+    # Count non-empty lines
+    local staging_count=0
+    if [[ -n "$versions" ]]; then
+        staging_count=$(echo "$versions" | grep -c . || echo "0")
+    fi
+    
+    log "🔍 Staging npm versions after filtering: $staging_count versions"
+    if [[ "$staging_count" -eq 0 ]]; then
         log "ℹ️ No staging npm versions to clean up"
         return 0
     fi
@@ -397,11 +417,15 @@ cleanup_staging_maven() {
         return 0
     fi
         
-    # Debug: First show all versions for this Maven package
-    local all_versions
-    all_versions=$(gh api "${endpoint}/versions" --jq '.[] | {id: .id, name: .name, created: .created_at}' 2>/dev/null || echo "[]")
-    log "🔍 All Maven versions found:"
-    echo "$all_versions" | jq -r '. | "  - ID: \(.id), Name: \(.name), Created: \(.created)"' 2>/dev/null || log "  (No versions or failed to parse)"
+    # Debug: First show basic info about Maven versions
+    local version_count
+    version_count=$(gh api "${endpoint}/versions" --jq 'length' 2>/dev/null || echo "0")
+    log "🔍 Total Maven versions found: $version_count"
+    
+    if [[ "$version_count" -gt 0 ]]; then
+        log "🔍 Sample Maven version details:"
+        gh api "${endpoint}/versions" --jq '.[:3] | .[] | "  - ID: \(.id), Name: \(.name), Created: \(.created_at)"' 2>/dev/null || log "  (Failed to get details)"
+    fi
     
     # Get versions based on workflow outcome - filter staging versions (contain -pr.)
     local versions_query
@@ -422,8 +446,14 @@ cleanup_staging_maven() {
         --jq "$versions_query" \
         2>/dev/null || echo "")
         
-    log "🔍 Staging Maven versions after filtering: $(echo "$versions" | wc -l | tr -d ' ') versions"
-    if [[ -z "$versions" ]]; then
+    # Count non-empty lines
+    local staging_count=0
+    if [[ -n "$versions" ]]; then
+        staging_count=$(echo "$versions" | grep -c . || echo "0")
+    fi
+    
+    log "🔍 Staging Maven versions after filtering: $staging_count versions"
+    if [[ "$staging_count" -eq 0 ]]; then
         log "ℹ️ No staging Maven versions to clean up"
         return 0
     fi

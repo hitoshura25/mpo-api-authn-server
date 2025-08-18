@@ -77,9 +77,9 @@ load_central_config() {
     
     AUTHOR_ID="${AUTHOR_ID:-$(yq eval '.metadata.author.id' "$CONFIG_FILE")}"
     
-    # Docker image names (not in config file, use environment variables)
-    DOCKER_WEBAUTHN_IMAGE_NAME="${DOCKER_WEBAUTHN_IMAGE_NAME:-webauthn-server}"
-    DOCKER_TEST_CREDENTIALS_IMAGE_NAME="${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-webauthn-test-credentials-service}"
+    # Docker image names (full GHCR paths including repository owner)
+    DOCKER_WEBAUTHN_IMAGE_NAME="${DOCKER_WEBAUTHN_IMAGE_NAME:-${REPOSITORY_OWNER}/webauthn-server}"
+    DOCKER_TEST_CREDENTIALS_IMAGE_NAME="${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-${REPOSITORY_OWNER}/webauthn-test-credentials-service}"
     
     # Construct full package names
     ANDROID_STAGING_PACKAGE="${ANDROID_GROUP_ID}.${ANDROID_BASE_ARTIFACT_ID}${ANDROID_STAGING_SUFFIX}"
@@ -197,6 +197,30 @@ validate_github_cli() {
     log "✅ GitHub CLI authentication validated"
 }
 
+# Function to find the correct API endpoint for a package
+find_package_endpoint() {
+    local package_type="$1"
+    local package_name="$2"
+    
+    local endpoints=(
+        "/orgs/${REPOSITORY_OWNER}/packages/${package_type}/${package_name}"
+        "/users/${REPOSITORY_OWNER}/packages/${package_type}/${package_name}"
+        "/user/packages/${package_type}/${package_name}"
+    )
+    
+    for endpoint in "${endpoints[@]}"; do
+        log "🔍 Testing endpoint: $endpoint"
+        if gh api "${endpoint}/versions" >/dev/null 2>&1; then
+            log "✅ Found package at: $endpoint"
+            echo "$endpoint"
+            return 0
+        fi
+    done
+    
+    log "❌ Package not found at any endpoint: $package_name"
+    return 1
+}
+
 # Function to clean up staging Docker images from GHCR
 cleanup_staging_docker() {
     log "🐳 Cleaning up staging Docker images from GHCR..."
@@ -206,6 +230,13 @@ cleanup_staging_docker() {
     
     for package in "${packages[@]}"; do
         log "🔍 Processing Docker package: $package"
+        
+        # Find the correct API endpoint for this package
+        local endpoint
+        if ! endpoint=$(find_package_endpoint "container" "$package"); then
+            log "⚠️ Skipping Docker package (not found): $package"
+            continue
+        fi
         
         # Get staging versions based on workflow outcome
         local versions_query
@@ -234,7 +265,7 @@ cleanup_staging_docker() {
         local versions
         versions=$(gh api \
             --method GET \
-            "/orgs/${REPOSITORY_OWNER}/packages/container/${package}/versions" \
+            "${endpoint}/versions" \
             --jq "$versions_query" \
             2>/dev/null || echo "")
             
@@ -248,12 +279,13 @@ cleanup_staging_docker() {
             if [[ -n "$version_id" ]]; then
                 if gh api \
                     --method DELETE \
-                    "/orgs/${REPOSITORY_OWNER}/packages/container/${package}/versions/$version_id" \
+                    "${endpoint}/versions/$version_id" \
                     2>/dev/null; then
                     ((package_deleted++))
                     ((total_deleted++))
+                    log "✅ Deleted Docker version: $version_id"
                 else
-                    log "⚠️ Failed to delete Docker version $version_id"
+                    log "⚠️ Failed to delete Docker version: $version_id"
                 fi
             fi
         done <<< "$versions"
@@ -273,67 +305,66 @@ cleanup_staging_npm() {
     local scoped_package="${scope}%2F${base_package}"  # URL-encoded @scope/package
     local total_deleted=0
     
-    # Try multiple API endpoints (user/repo/org packages)
-    local api_endpoints=(
-        "/user/packages/npm/$scoped_package"
-        "/repos/${GITHUB_REPOSITORY:-$REPOSITORY_OWNER/repo}/packages/npm/$base_package"
-        "/orgs/$REPOSITORY_OWNER/packages/npm/$base_package"
+    # Try to find the npm package using different naming patterns
+    local package_patterns=(
+        "$scoped_package"        # URL-encoded scoped package
+        "$base_package"          # Base package name
+        "${scope}/${base_package}"  # Scoped package with slash
     )
     
-    for endpoint in "${api_endpoints[@]}"; do
-        log "🔍 Checking npm endpoint: $endpoint"
-        
-        if ! gh api "${endpoint}/versions" >/dev/null 2>&1; then
-            continue
-        fi
-        
-        log "📍 Found staging npm package at: $endpoint"
-        
-        # Get versions based on workflow outcome
-        local versions_query
-        if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
-            # Delete ALL staging versions on success
-            versions_query='.[] | .id'
-            log "  Strategy: DELETE ALL staging versions (workflow succeeded)"
-        else
-            # Keep last 5 staging versions on failure
-            versions_query='sort_by(.created_at) | reverse | .[5:] | .[].id'
-            log "  Strategy: Keep last 5 staging versions (workflow failed)"
-        fi
-        
-        local versions
-        versions=$(gh api \
-            --paginate \
-            "${endpoint}/versions" \
-            --jq "$versions_query" \
-            2>/dev/null || echo "")
-            
-        if [[ -z "$versions" ]]; then
-            log "ℹ️ No staging npm versions to clean up"
+    local endpoint
+    for pattern in "${package_patterns[@]}"; do
+        log "🔍 Trying npm package pattern: $pattern"
+        if endpoint=$(find_package_endpoint "npm" "$pattern"); then
+            log "📍 Found staging npm package: $pattern at $endpoint"
             break
         fi
-        
-        while IFS= read -r version_id; do
-            if [[ -n "$version_id" ]]; then
-                if gh api \
-                    --method DELETE \
-                    "${endpoint}/versions/$version_id" \
-                    2>/dev/null; then
-                    ((total_deleted++))
-                else
-                    log "⚠️ Failed to delete npm version $version_id"
-                fi
-            fi
-        done <<< "$versions"
-        
-        break  # Found and processed the package, no need to try other endpoints
     done
     
-    if [[ $total_deleted -eq 0 ]]; then
-        log "ℹ️ No staging npm packages found or processed"
-    else
-        log "📦 npm staging cleanup complete: $total_deleted versions deleted"
+    if [[ -z "$endpoint" ]]; then
+        log "ℹ️ No staging npm packages found"
+        return 0
     fi
+        
+    # Get versions based on workflow outcome
+    local versions_query
+    if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
+        # Delete ALL staging versions on success
+        versions_query='.[] | .id'
+        log "  Strategy: DELETE ALL staging versions (workflow succeeded)"
+    else
+        # Keep last 5 staging versions on failure
+        versions_query='sort_by(.created_at) | reverse | .[5:] | .[].id'
+        log "  Strategy: Keep last 5 staging versions (workflow failed)"
+    fi
+    
+    local versions
+    versions=$(gh api \
+        --paginate \
+        "${endpoint}/versions" \
+        --jq "$versions_query" \
+        2>/dev/null || echo "")
+        
+    if [[ -z "$versions" ]]; then
+        log "ℹ️ No staging npm versions to clean up"
+        return 0
+    fi
+    
+    while IFS= read -r version_id; do
+        if [[ -n "$version_id" ]]; then
+            if gh api \
+                --method DELETE \
+                "${endpoint}/versions/$version_id" \
+                2>/dev/null; then
+                ((total_deleted++))
+                log "✅ Deleted npm version: $version_id"
+            else
+                log "⚠️ Failed to delete npm version: $version_id"
+            fi
+        fi
+    done <<< "$versions"
+    
+    log "📦 npm staging cleanup complete: $total_deleted versions deleted"
 }
 
 # Function to clean up staging Maven packages
@@ -343,67 +374,52 @@ cleanup_staging_maven() {
     local package_name="$ANDROID_STAGING_PACKAGE"
     local total_deleted=0
     
-    # Try multiple API endpoints (user/repo/org packages)
-    local api_endpoints=(
-        "/user/packages/maven/$package_name"
-        "/repos/${GITHUB_REPOSITORY:-$REPOSITORY_OWNER/repo}/packages/maven/$package_name"
-        "/orgs/$REPOSITORY_OWNER/packages/maven/$package_name"
-    )
-    
-    for endpoint in "${api_endpoints[@]}"; do
-        log "🔍 Checking Maven endpoint: $endpoint"
-        
-        if ! gh api "${endpoint}/versions" >/dev/null 2>&1; then
-            continue
-        fi
-        
-        log "📍 Found staging Maven package at: $endpoint"
-        
-        # Get versions based on workflow outcome
-        local versions_query
-        if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
-            # Delete ALL staging versions on success
-            versions_query='.[] | .id'
-            log "  Strategy: DELETE ALL staging versions (workflow succeeded)"
-        else
-            # Keep last 5 staging versions on failure
-            versions_query='sort_by(.created_at) | reverse | .[5:] | .[].id'
-            log "  Strategy: Keep last 5 staging versions (workflow failed)"
-        fi
-        
-        local versions
-        versions=$(gh api \
-            --paginate \
-            "${endpoint}/versions" \
-            --jq "$versions_query" \
-            2>/dev/null || echo "")
-            
-        if [[ -z "$versions" ]]; then
-            log "ℹ️ No staging Maven versions to clean up"
-            break
-        fi
-        
-        while IFS= read -r version_id; do
-            if [[ -n "$version_id" ]]; then
-                if gh api \
-                    --method DELETE \
-                    "${endpoint}/versions/$version_id" \
-                    2>/dev/null; then
-                    ((total_deleted++))
-                else
-                    log "⚠️ Failed to delete Maven version $version_id"
-                fi
-            fi
-        done <<< "$versions"
-        
-        break  # Found and processed the package
-    done
-    
-    if [[ $total_deleted -eq 0 ]]; then
-        log "ℹ️ No staging Maven packages found or processed"
-    else
-        log "🏗️ Maven staging cleanup complete: $total_deleted versions deleted"
+    # Find the Maven package using dynamic endpoint detection
+    local endpoint
+    if ! endpoint=$(find_package_endpoint "maven" "$package_name"); then
+        log "ℹ️ No staging Maven packages found"
+        return 0
     fi
+        
+    # Get versions based on workflow outcome
+    local versions_query
+    if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
+        # Delete ALL staging versions on success
+        versions_query='.[] | .id'
+        log "  Strategy: DELETE ALL staging versions (workflow succeeded)"
+    else
+        # Keep last 5 staging versions on failure
+        versions_query='sort_by(.created_at) | reverse | .[5:] | .[].id'
+        log "  Strategy: Keep last 5 staging versions (workflow failed)"
+    fi
+    
+    local versions
+    versions=$(gh api \
+        --paginate \
+        "${endpoint}/versions" \
+        --jq "$versions_query" \
+        2>/dev/null || echo "")
+        
+    if [[ -z "$versions" ]]; then
+        log "ℹ️ No staging Maven versions to clean up"
+        return 0
+    fi
+    
+    while IFS= read -r version_id; do
+        if [[ -n "$version_id" ]]; then
+            if gh api \
+                --method DELETE \
+                "${endpoint}/versions/$version_id" \
+                2>/dev/null; then
+                ((total_deleted++))
+                log "✅ Deleted Maven version: $version_id"
+            else
+                log "⚠️ Failed to delete Maven version: $version_id"
+            fi
+        fi
+    done <<< "$versions"
+    
+    log "🏗️ Maven staging cleanup complete: $total_deleted versions deleted"
 }
 
 # Main cleanup function

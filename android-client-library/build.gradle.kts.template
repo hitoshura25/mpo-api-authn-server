@@ -11,29 +11,14 @@ java {
     withSourcesJar()
 }
 
-// Configure version from parent project or environment
-val clientVersion =
-    if (project.hasProperty("clientVersion")) {
-        project.property("clientVersion") as String
-    } else {
-        System.getenv("CLIENT_VERSION") ?: "1.0.0-SNAPSHOT"
-    }
+// Configure version from environment only (configuration cache compatible)
+val clientVersion = System.getenv("CLIENT_VERSION") ?: "1.0.0-SNAPSHOT"
 
-// Configure artifact ID from parent project or environment
-val androidArtifactId =
-    if (project.hasProperty("androidArtifactId")) {
-        project.property("androidArtifactId") as String
-    } else {
-        System.getenv("ANDROID_ARTIFACT_ID") ?: "mpo-webauthn-android-client"
-    }
+// Configure artifact ID from environment only (configuration cache compatible)
+val androidArtifactId = System.getenv("ANDROID_ARTIFACT_ID") ?: "mpo-webauthn-android-client"
 
-// Configure group ID from parent project or environment
-val androidGroupId =
-    if (project.hasProperty("androidGroupId")) {
-        project.property("androidGroupId") as String
-    } else {
-        System.getenv("ANDROID_GROUP_ID") ?: "io.github.hitoshura25"
-    }
+// Configure group ID from environment only (configuration cache compatible)
+val androidGroupId = System.getenv("ANDROID_GROUP_ID") ?: "io.github.hitoshura25"
 
 version = clientVersion
 
@@ -134,12 +119,18 @@ publishing {
             name = "PublishingRepository"
             url = uri(repositoryUrl)
             credentials {
-                // Property names are hardcoded based on repository name "PublishingRepository"
-                // Use property-based credentials first, then fall back to environment variables
-                username = project.findProperty("PublishingRepositoryUsername") as String?
-                    ?: System.getenv(repositoryUsernameEnv)
-                password = project.findProperty("PublishingRepositoryPassword") as String?
-                    ?: System.getenv(repositoryPasswordEnv)
+                // Use environment variables only for configuration cache compatibility
+                val credentialUsername = System.getenv(repositoryUsernameEnv)
+                val credentialPassword = System.getenv(repositoryPasswordEnv)
+                
+                // Only set credentials if they are available to avoid Gradle configuration errors
+                if (credentialUsername != null && credentialPassword != null) {
+                    username = credentialUsername
+                    password = credentialPassword
+                } else {
+                    throw GradleException("Publishing credentials are required but not found. " +
+                        "Expected environment variables: $repositoryUsernameEnv, $repositoryPasswordEnv")
+                }
             }
         }
     }
@@ -147,15 +138,9 @@ publishing {
 
 // Signing configuration for Maven Central (production only)
 signing {
-    val publishType =
-        project.findProperty("publishType") as String?
-            ?: System.getenv("PUBLISH_TYPE") ?: "staging"
-    val signingKey =
-        project.findProperty("signingKey") as String?
-            ?: System.getenv("SIGNING_KEY")
-    val signingPassword =
-        project.findProperty("signingPassword") as String?
-            ?: System.getenv("SIGNING_PASSWORD")
+    val publishType = System.getenv("PUBLISH_TYPE") ?: "staging"
+    val signingKey = System.getenv("SIGNING_KEY")
+    val signingPassword = System.getenv("SIGNING_PASSWORD")
 
     // Only sign for production publishing and if we have the required properties
     if (publishType == "production" && signingKey != null && signingPassword != null) {

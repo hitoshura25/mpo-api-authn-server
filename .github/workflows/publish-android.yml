@@ -185,14 +185,22 @@ jobs:
       - name: Generate and publish Android client
         if: steps.check-android-version.outputs.skip-publish == 'false' || inputs.publish-type == 'production'
         env:
+          # Configuration for template (environment variables only for configuration cache compatibility)
           CLIENT_VERSION: ${{ inputs.client-version }}
           ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
           ANDROID_GROUP_ID: ${{ inputs.android-group-id }}
+          PUBLISH_TYPE: ${{ inputs.publish-type }}
           # Repository configuration from central config (environment-specific)
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
           ANDROID_REPOSITORY_USERNAME_ENV: ${{ inputs.android-username-env }}
           ANDROID_REPOSITORY_PASSWORD_ENV: ${{ inputs.android-password-env }}
-          # Property names are hardcoded in template as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
+          # Actual credential values (determined by publish type)
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           echo "📱 Generating and publishing Android client to ${{ inputs.publish-type }} repository (from central config)..."
           echo "  Group ID: ${ANDROID_GROUP_ID}"
@@ -218,33 +226,16 @@ jobs:
             exit 1
           fi
           
-          # Determine credential values based on publish type
-          if [[ "${{ inputs.publish-type }}" == "staging" ]]; then
-            CREDENTIAL_USERNAME="${{ github.actor }}"
-            CREDENTIAL_PASSWORD="${{ secrets.GITHUB_TOKEN }}"
-            echo "  Using GitHub credentials for staging publish"
-          else
-            CREDENTIAL_USERNAME="${{ secrets.CENTRAL_PORTAL_USERNAME }}"
-            CREDENTIAL_PASSWORD="${{ secrets.CENTRAL_PORTAL_PASSWORD }}"
-            echo "  Using Central Portal credentials for production publish"
-          fi
-
-          # Generate and publish Android client using direct configuration (no template processing)
-          # This eliminates configuration cache issues and template complexity
+          # Generate and publish Android client using environment variables only
+          # This maintains configuration cache compatibility by avoiding Gradle property changes
           echo "🔧 Generating Android client..."
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
             --build-cache --parallel --configuration-cache
           
           echo "📦 Publishing Android client..."
-          # Use explicit property passing to ensure reliable publishing
+          # Use environment variables only - no Gradle properties to maintain configuration cache compatibility
+          # Template reads all configuration from environment variables
           ./gradlew :android-client-library:publish \
-            -PpublishType="${{ inputs.publish-type }}" \
-            -PclientVersion="${CLIENT_VERSION}" \
-            -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
-            -PandroidGroupId="${ANDROID_GROUP_ID}" \
-            $([ "${{ inputs.publish-type }}" == "production" ] && echo "-PcentralPortalUsername=${CREDENTIAL_USERNAME} -PcentralPortalPassword=${CREDENTIAL_PASSWORD}") \
-            $([ "${{ inputs.publish-type }}" == "staging" ] && echo "-PGitHubPackagesUsername=${CREDENTIAL_USERNAME} -PGitHubPackagesPassword=${CREDENTIAL_PASSWORD}") \
-            $([ "${{ inputs.publish-type }}" == "production" ] && echo "-PsigningKey=${{ secrets.SIGNING_KEY }} -PsigningPassword=${{ secrets.SIGNING_PASSWORD }}") \
             --build-cache --parallel --configuration-cache
 
           echo "✅ Android client generated and published to ${{ inputs.publish-type }} repository successfully"

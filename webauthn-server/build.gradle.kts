@@ -247,6 +247,10 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
     inputs.file(staticOpenApiSpecFile)
     outputs.dir(layout.buildDirectory.dir("generated-clients/android"))
 
+    // Configuration cache compatible approach - configure paths as properties  
+    val templateFile = layout.projectDirectory.file("../android-client-library/build.gradle.kts.template")
+    val finalBuildFile = layout.projectDirectory.file("../android-client-library/build.gradle.kts")
+
     // Extract dependencies from generated build.gradle and create final build.gradle.kts
     doLast {
         val outputPath = project.layout.buildDirectory.dir("generated-clients/android").get().asFile
@@ -377,13 +381,13 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
             "    // No build.gradle file found"
         }
 
-        // Read the template file
-        val templateFile = File(project.rootDir, "android-client-library/build.gradle.kts.template")
-        if (!templateFile.exists()) {
-            throw GradleException("Template file not found: ${templateFile.absolutePath}")
+        // Read the template file using configuration cache compatible paths
+        val templateFileObj = templateFile.asFile
+        if (!templateFileObj.exists()) {
+            throw GradleException("Template file not found: ${templateFileObj.absolutePath}")
         }
 
-        val templateContent = templateFile.readText()
+        val templateContent = templateFileObj.readText()
 
         // Replace placeholder with extracted dependencies
         val finalContent = templateContent.replace(
@@ -392,8 +396,8 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
         )
 
         // Write the final build.gradle.kts to android-client-library
-        val finalBuildFile = File(project.rootDir, "android-client-library/build.gradle.kts")
-        finalBuildFile.writeText(finalContent)
+        val finalBuildFileObj = finalBuildFile.asFile
+        finalBuildFileObj.writeText(finalContent)
 
         println("✅ Generated android-client-library/build.gradle.kts from template with extracted dependencies")
 

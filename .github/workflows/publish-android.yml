@@ -220,15 +220,27 @@ jobs:
           # Generate and publish Android client using environment variables only
           # This maintains configuration cache compatibility by avoiding Gradle property changes
           echo "🔧 Generating Android client..."
-          # Pass same properties to generation step to maintain configuration cache compatibility
+          # Pass same properties to both steps to maintain configuration cache compatibility
           GRADLE_PROPS="-PPublishingRepositoryUsername=${ANDROID_PUBLISH_USER} -PPublishingRepositoryPassword=${ANDROID_PUBLISH_TOKEN}"
           
           if [[ "${{ inputs.publish-type }}" == "production" ]]; then
             GRADLE_PROPS="${GRADLE_PROPS} -PsigningKey=${SIGNING_KEY} -PsigningPassword=${SIGNING_PASSWORD}"
           fi
           
+          echo "🔍 Running generation with properties: ${GRADLE_PROPS}"
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule ${GRADLE_PROPS} \
             --build-cache --parallel --configuration-cache
+          
+          echo "🔍 Post-generation debugging..."
+          if [ -f "android-client-library/build.gradle.kts" ]; then
+            echo "✅ build.gradle.kts was generated successfully"
+            echo "📏 File size: $(wc -c < android-client-library/build.gradle.kts) bytes"
+          else
+            echo "❌ build.gradle.kts was NOT generated"
+            echo "📁 Contents of android-client-library/:"
+            ls -la android-client-library/ || echo "Directory doesn't exist"
+            echo "📋 Generation task output should show template processing..."
+          fi
           
           echo "📦 Publishing Android client..."
           
@@ -249,6 +261,7 @@ jobs:
           ./gradlew :android-client-library:tasks --group="publishing" ${GRADLE_PROPS} || echo "Failed to list tasks"
           
           # Use same GRADLE_PROPS as generation step for configuration cache compatibility
+          echo "🔍 Running publish with same properties: ${GRADLE_PROPS}"
           ./gradlew :android-client-library:publish ${GRADLE_PROPS} \
             --build-cache --parallel --configuration-cache
 

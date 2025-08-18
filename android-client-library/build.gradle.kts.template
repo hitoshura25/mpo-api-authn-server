@@ -115,10 +115,10 @@ publishing {
             name = "PublishingRepository"
             url = uri(repositoryUrl)
             credentials {
-                // Use environment variables directly to avoid configuration cache invalidation
-                // Credentials are set by workflow as environment variables
-                username = System.getenv("GITHUB_ACTOR")
-                password = System.getenv("GITHUB_TOKEN")
+                // Gradle publishing plugin requires property-based credentials for named repositories
+                // Properties are passed via workflow with environment variable values
+                username = project.findProperty("PublishingRepositoryUsername") as String?
+                password = project.findProperty("PublishingRepositoryPassword") as String?
             }
         }
     }

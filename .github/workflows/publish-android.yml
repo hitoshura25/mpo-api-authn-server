@@ -60,9 +60,10 @@ on:
         description: 'Environment variable name for repository password'
         required: true
         type: string
-      # android-username-property and android-password-property removed
-      # These are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
-      # in the Android template since the repository name is hardcoded as "PublishingRepository"
+      # android-username-property and android-password-property removed  
+      # Repository name "PublishingRepository" requires specific Gradle property names:
+      # "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
+      # These are provided via ORG_GRADLE_PROJECT_ environment variables for cache compatibility
       android-suffix:
         description: 'Suffix to append to artifact ID for selected environment'
         required: true
@@ -194,10 +195,16 @@ jobs:
           PUBLISH_TYPE: ${{ inputs.publish-type }}
           # Repository configuration from central config (environment-specific)
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
-          # Set credential environment variables that template expects directly
-          # Template uses GITHUB_ACTOR and GITHUB_TOKEN environment variables
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Gradle publishing credentials using ORG_GRADLE_PROJECT_ prefix (primary method)
+          # This allows environment variables to become Gradle properties without cache invalidation
+          # Repository name "PublishingRepository" requires these specific property names:
+          # Use environment-specific credentials based on publish-type from central configuration
+          ORG_GRADLE_PROJECT_PublishingRepositoryUsername: ${{ inputs.publish-type == 'staging' && github.actor || secrets.CENTRAL_PORTAL_USERNAME }}
+          ORG_GRADLE_PROJECT_PublishingRepositoryPassword: ${{ inputs.publish-type == 'staging' && secrets.GITHUB_TOKEN || secrets.CENTRAL_PORTAL_PASSWORD }}
+          # Direct environment variable fallback for compatibility
+          PUBLISHING_REPOSITORY_USERNAME: ${{ inputs.publish-type == 'staging' && github.actor || secrets.CENTRAL_PORTAL_USERNAME }}
+          PUBLISHING_REPOSITORY_PASSWORD: ${{ inputs.publish-type == 'staging' && secrets.GITHUB_TOKEN || secrets.CENTRAL_PORTAL_PASSWORD }}
+          # Maven Central credentials (production only)
           CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
           CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
@@ -208,7 +215,7 @@ jobs:
           echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
           echo "  Version: ${CLIENT_VERSION}"
           echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
-          echo "  Credentials: Passed via Gradle properties from environment variables"
+          echo "  Credentials: Using ORG_GRADLE_PROJECT_ environment variables (configuration cache compatible)"
           
           # Validate required environment variables for template processing
           if [[ -z "${ANDROID_REPOSITORY_URL}" ]]; then
@@ -219,9 +226,13 @@ jobs:
           # Generate and publish Android client using environment variables only
           # This maintains configuration cache compatibility by avoiding Gradle property changes
           echo "🔧 Generating Android client..."
-          echo "🔍 Trying environment variables approach (with fixed configuration cache compatibility)"
-          echo "🔍 Username: ${GITHUB_ACTOR}"
-          echo "🔍 Token length: ${#GITHUB_TOKEN}"
+          echo "🔍 Using ORG_GRADLE_PROJECT_ credentials approach (configuration cache compatible)"
+          echo "🔍 Publish type: ${{ inputs.publish-type }}"
+          echo "🔍 Selected credentials: ${{ inputs.publish-type == 'staging' && 'GitHub (github.actor + GITHUB_TOKEN)' || 'Maven Central (CENTRAL_PORTAL credentials)' }}"
+          echo "🔍 ORG_GRADLE_PROJECT_PublishingRepositoryUsername: ${ORG_GRADLE_PROJECT_PublishingRepositoryUsername}"
+          echo "🔍 ORG_GRADLE_PROJECT_PublishingRepositoryPassword length: ${#ORG_GRADLE_PROJECT_PublishingRepositoryPassword}"
+          echo "🔍 PUBLISHING_REPOSITORY_USERNAME (fallback): ${PUBLISHING_REPOSITORY_USERNAME}"
+          echo "🔍 PUBLISHING_REPOSITORY_PASSWORD length (fallback): ${#PUBLISHING_REPOSITORY_PASSWORD}"
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
             --build-cache --parallel --configuration-cache
           
@@ -236,8 +247,8 @@ jobs:
           
           echo "📦 Publishing Android client..."
           
-          # No Gradle properties needed - credentials come from environment variables
-          echo "🔍 Running publish with environment variables only (no properties = no cache invalidation)"
+          # Credentials via ORG_GRADLE_PROJECT_ environment variables (converted to properties automatically)
+          echo "🔍 Running publish with ORG_GRADLE_PROJECT_ credentials (configuration cache compatible)"
           ./gradlew :android-client-library:publish \
             --build-cache --parallel --configuration-cache
 

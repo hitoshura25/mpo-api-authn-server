@@ -115,10 +115,30 @@ publishing {
             name = "PublishingRepository"
             url = uri(repositoryUrl)
             credentials {
-                // Use environment variables directly to avoid configuration cache invalidation
-                // Credentials are set by workflow as environment variables
-                username = System.getenv("GITHUB_ACTOR")
-                password = System.getenv("GITHUB_TOKEN")
+                // Gradle automatically looks for properties named: {repositoryName}Username and {repositoryName}Password
+                // For repository name "PublishingRepository", it expects:
+                // - PublishingRepositoryUsername  
+                // - PublishingRepositoryPassword
+                //
+                // These properties can be provided via environment variables using the
+                // ORG_GRADLE_PROJECT_ prefix pattern for configuration cache compatibility:
+                // - ORG_GRADLE_PROJECT_PublishingRepositoryUsername
+                // - ORG_GRADLE_PROJECT_PublishingRepositoryPassword
+                //
+                // Gradle will automatically convert these env vars to project properties.
+                // We use explicit environment variable fallback for better error reporting.
+                username = project.findProperty("PublishingRepositoryUsername") as String?
+                    ?: System.getenv("PUBLISHING_REPOSITORY_USERNAME")
+                    ?: throw GradleException(
+                        "Publishing repository username is required. Set via ORG_GRADLE_PROJECT_PublishingRepositoryUsername environment variable " +
+                        "or PUBLISHING_REPOSITORY_USERNAME for direct environment variable access."
+                    )
+                password = project.findProperty("PublishingRepositoryPassword") as String?
+                    ?: System.getenv("PUBLISHING_REPOSITORY_PASSWORD")
+                    ?: throw GradleException(
+                        "Publishing repository password is required. Set via ORG_GRADLE_PROJECT_PublishingRepositoryPassword environment variable " +
+                        "or PUBLISHING_REPOSITORY_PASSWORD for direct environment variable access."
+                    )
             }
         }
     }

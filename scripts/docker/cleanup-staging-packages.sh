@@ -202,7 +202,9 @@ find_package_endpoint() {
     local package_type="$1"
     local package_name="$2"
     
+    # Try repository-scoped packages first, then user/org packages
     local endpoints=(
+        "/repos/${GITHUB_REPOSITORY:-${REPOSITORY_OWNER}/repo}/packages/${package_type}/${package_name}"
         "/orgs/${REPOSITORY_OWNER}/packages/${package_type}/${package_name}"
         "/users/${REPOSITORY_OWNER}/packages/${package_type}/${package_name}"
         "/user/packages/${package_type}/${package_name}"

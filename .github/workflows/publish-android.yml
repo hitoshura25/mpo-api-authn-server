@@ -139,7 +139,8 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # Standardized Gradle caching for Android client publishing
+      # Standardized Gradle caching for Android client publishing 
+      # Include android-client-library configuration cache for cross-step compatibility
       - name: Setup Gradle cache for Android client publishing
         uses: actions/cache@v4
         with:
@@ -147,6 +148,7 @@ jobs:
             ~/.gradle/caches
             ~/.gradle/wrapper
             .gradle/configuration-cache
+            android-client-library/.gradle/configuration-cache
           key: gradle-android-publish-${{ runner.os }}-${{ github.ref_name }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
           restore-keys: |
             gradle-android-publish-${{ runner.os }}-${{ github.ref_name }}-
@@ -194,9 +196,11 @@ jobs:
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
           ANDROID_REPOSITORY_USERNAME_ENV: ${{ inputs.android-username-env }}
           ANDROID_REPOSITORY_PASSWORD_ENV: ${{ inputs.android-password-env }}
-          # Actual credential values (determined by publish type)
-          GITHUB_ACTOR: ${{ github.actor }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Set actual credential environment variables based on publish type
+          # For staging: template expects ANDROID_PUBLISH_USER and ANDROID_PUBLISH_TOKEN
+          # For production: template expects CENTRAL_PORTAL_USERNAME and CENTRAL_PORTAL_PASSWORD  
+          ANDROID_PUBLISH_USER: ${{ github.actor }}
+          ANDROID_PUBLISH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
           CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}

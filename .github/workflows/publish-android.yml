@@ -194,8 +194,6 @@ jobs:
           PUBLISH_TYPE: ${{ inputs.publish-type }}
           # Repository configuration from central config (environment-specific)
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
-          ANDROID_REPOSITORY_USERNAME_ENV: ${{ inputs.android-username-env }}
-          ANDROID_REPOSITORY_PASSWORD_ENV: ${{ inputs.android-password-env }}
           # Set actual credential environment variables based on publish type
           # For staging: template expects ANDROID_PUBLISH_USER and ANDROID_PUBLISH_TOKEN
           # For production: template expects CENTRAL_PORTAL_USERNAME and CENTRAL_PORTAL_PASSWORD  
@@ -211,31 +209,16 @@ jobs:
           echo "  Artifact ID: ${ANDROID_ARTIFACT_ID}"
           echo "  Version: ${CLIENT_VERSION}"
           echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
-          echo "  Username env var: ${ANDROID_REPOSITORY_USERNAME_ENV}"
-          echo "  Password env var: ${ANDROID_REPOSITORY_PASSWORD_ENV}"
-          echo "  Username property: PublishingRepositoryUsername (hardcoded)"
-          echo "  Password property: PublishingRepositoryPassword (hardcoded)"
+          echo "  Credentials: Passed via Gradle properties from environment variables"
           
           # Validate required environment variables for template processing
           if [[ -z "${ANDROID_REPOSITORY_URL}" ]]; then
             echo "❌ ERROR: ANDROID_REPOSITORY_URL is required but not set"
             exit 1
           fi
-          if [[ -z "${ANDROID_REPOSITORY_USERNAME_ENV}" ]]; then
-            echo "❌ ERROR: ANDROID_REPOSITORY_USERNAME_ENV is required but not set"
-            exit 1
-          fi
-          if [[ -z "${ANDROID_REPOSITORY_PASSWORD_ENV}" ]]; then
-            echo "❌ ERROR: ANDROID_REPOSITORY_PASSWORD_ENV is required but not set"
-            exit 1
-          fi
           
           # Generate and publish Android client using environment variables only
           # This maintains configuration cache compatibility by avoiding Gradle property changes
-          echo "🔧 Ensuring clean generation..."
-          # Remove any existing generated build.gradle.kts to force template regeneration
-          rm -f android-client-library/build.gradle.kts
-          
           echo "🔧 Generating Android client..."
           # Pass same properties to generation step to maintain configuration cache compatibility
           GRADLE_PROPS="-PPublishingRepositoryUsername=${ANDROID_PUBLISH_USER} -PPublishingRepositoryPassword=${ANDROID_PUBLISH_TOKEN}"
@@ -246,18 +229,6 @@ jobs:
           
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule ${GRADLE_PROPS} \
             --build-cache --parallel --configuration-cache
-          
-          echo "🔍 Debugging generated build.gradle.kts..."
-          if [ -f "android-client-library/build.gradle.kts" ]; then
-            echo "✅ Generated build.gradle.kts exists"
-            echo "📋 Credential configuration in generated file:"
-            grep -A 10 -B 2 "credentials {" android-client-library/build.gradle.kts || echo "No credentials block found"
-            echo "📋 Repository configuration:"
-            grep -A 15 -B 2 "repositories {" android-client-library/build.gradle.kts || echo "No repositories block found"
-          else
-            echo "❌ Generated build.gradle.kts does not exist"
-            exit 1
-          fi
           
           echo "📦 Publishing Android client..."
           # Use same GRADLE_PROPS as generation step for configuration cache compatibility

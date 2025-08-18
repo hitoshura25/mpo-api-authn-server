@@ -110,10 +110,6 @@ publishing {
         // Repository configuration from central publishing config via environment variables
         val repositoryUrl = System.getenv("ANDROID_REPOSITORY_URL")
             ?: throw GradleException("ANDROID_REPOSITORY_URL environment variable is required")
-        val repositoryUsernameEnv = System.getenv("ANDROID_REPOSITORY_USERNAME_ENV")
-            ?: throw GradleException("ANDROID_REPOSITORY_USERNAME_ENV environment variable is required")
-        val repositoryPasswordEnv = System.getenv("ANDROID_REPOSITORY_PASSWORD_ENV")
-            ?: throw GradleException("ANDROID_REPOSITORY_PASSWORD_ENV environment variable is required")
 
         maven {
             name = "PublishingRepository"

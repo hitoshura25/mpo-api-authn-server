@@ -119,7 +119,6 @@ main-branch-post-processing.yml
 ├── publish-dockerhub (conditional)
 ├── publish-typescript-client (parallel, main-branch only)
 ├── publish-android-client (parallel, main-branch only)
-├── cleanup-ghcr (always)
 ├── tag-repository (conditional)
 └── report-post-processing-status (always)
 ```

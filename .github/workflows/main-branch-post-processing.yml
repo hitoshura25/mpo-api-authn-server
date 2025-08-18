@@ -308,32 +308,9 @@ jobs:
           short-description: 'WebAuthn test credentials service for cross-platform testing with FIDO2/WebAuthn'
           readme-filepath: ./webauthn-test-credentials-service/README.md
 
-  # Job 4: GHCR Cleanup (Only runs on successful CI/CD completion)
-  cleanup-ghcr:
-    name: Clean up GHCR images
-    runs-on: ubuntu-latest
-    needs: [ detect-changes ]
-    if: always() && github.event.workflow_run.conclusion == 'success'  # Run after detect-changes on successful CI/CD
-    permissions:
-      contents: read
-      packages: write  # Required to delete GHCR packages
-    steps:
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.DOCKER_REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Clean up old GHCR images
-        continue-on-error: true  # Don't fail the workflow if cleanup fails
-        run: |
-          chmod +x scripts/docker/cleanup-ghcr.sh
-          scripts/docker/cleanup-ghcr.sh "${{ github.repository_owner }}"
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # Job 5: Git Tagging (Only on successful DockerHub publish)
+  # Job 4: Git Tagging (Only on successful DockerHub publish)
   tag-repository:
     name: Tag repository on successful publish
     runs-on: ubuntu-latest
@@ -375,7 +352,7 @@ jobs:
             echo "  - ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest"
           fi
 
-  # Job 6: Publish Client Libraries using centralized workflow (Phase 4 Integration)
+  # Job 5: Publish Client Libraries using centralized workflow (Phase 4 Integration)
   # VERSION PATTERN: Semantic versioning (1.0.X) for production packages
   # REGISTRY: npm (production registry) + GitHub Packages (backup)
   # SCOPE: @vmenon25/* packages (production scoped packages)
@@ -395,7 +372,7 @@ jobs:
       packages: write  # Required for publishing to GitHub Packages
       id-token: write  # Required for npm publishing
 
-  # Job 6a: Generate production version for client libraries
+  # Job 5a: Generate production version for client libraries
   generate-production-version:
     name: Generate production version
     runs-on: ubuntu-latest
@@ -420,7 +397,7 @@ jobs:
           echo "🎯 Generating production client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
-  # Job 6b: Create GitHub releases for client libraries (after successful publishing)
+  # Job 5b: Create GitHub releases for client libraries (after successful publishing)
   create-client-releases:
     name: Create GitHub releases for client libraries
     runs-on: ubuntu-latest
@@ -531,18 +508,17 @@ jobs:
           draft: false
           prerelease: false
 
-  # Job 7: Report post-processing status (Updated for Phase 4)
+  # Job 6: Report post-processing status (Updated for Phase 4)
   report-post-processing-status:
     name: Report post-processing status
     runs-on: ubuntu-latest
-    needs: [ cleanup-ghcr, detect-changes, publish-dockerhub, tag-repository, publish-client-libraries, create-client-releases ]
+    needs: [ detect-changes, publish-dockerhub, tag-repository, publish-client-libraries, create-client-releases ]
     if: always()
     steps:
       - name: Report overall post-processing status
         run: |
           echo "📋 Main Branch Post-Processing Results Summary:"
           echo "Original CI/CD result: ${{ github.event.workflow_run.conclusion }}"
-          echo "GHCR cleanup: ${{ needs.cleanup-ghcr.result }}"
           echo "Change detection: ${{ needs.detect-changes.result }}"
           echo "DockerHub publishing: ${{ needs.publish-dockerhub.result }}"
           echo "Git tagging: ${{ needs.tag-repository.result }}"
@@ -550,8 +526,8 @@ jobs:
           echo "Client releases creation: ${{ needs.create-client-releases.result }}"
 
           echo ""
-          echo "🧹 GHCR Cleanup: Executed only on successful CI/CD to prevent registry bloat"
           echo "📚 Client Libraries: Published in parallel for efficiency"
+          echo "🧹 Note: Production packages are never cleaned up automatically"
 
           if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
             echo "✅ Original CI/CD pipeline succeeded"

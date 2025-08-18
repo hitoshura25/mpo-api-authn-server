@@ -5,14 +5,19 @@
 # for better maintainability and reusability.
 #
 # WORKFLOW DECISION MATRIX:
-# | Change Type        | Unit Tests | Docker Build | E2E Tests |
-# |--------------------|-----------:|-------------:|----------:|
-# | Documentation only |    ❌ Skip |     ❌ Skip |  ❌ Skip |
-# | Workflow changes   |    ❌ Skip |     ❌ Skip |  ❌ Skip |
-# | Source code        |     ✅ Run |      ✅ Build |   ✅ Run |
-# | Tests only         |     ✅ Run |     ❌ Skip |  ❌ Skip |
-# | Dockerfile only    |    ❌ Skip |      ✅ Build |   ✅ Run |
-# | Build config       |     ✅ Run |      ✅ Build |   ✅ Run |
+# | Change Type           | Unit Tests | Docker Build | E2E Tests |
+# |-----------------------|-----------:|-------------:|----------:|
+# | UI Force Full         |     ✅ Run |      ✅ Build |   ✅ Run |
+# | UI Force Docker       |    ❌ Skip |      ✅ Build |   ✅ Run |
+# | UI Force Tests        |     ✅ Run |     ❌ Skip |  ❌ Skip |
+# | Source code changes   |     ✅ Run |      ✅ Build |   ✅ Run |
+# | Unit test workflows   |     ✅ Run |     ❌ Skip |  ❌ Skip |
+# | Orchestration workflows|    ❌ Skip |      ✅ Build |   ✅ Run |
+# | Docker workflows      |    ❌ Skip |      ✅ Build |  ❌ Skip |
+# | E2E workflows         |    ❌ Skip |      ✅ Build |   ✅ Run |
+# | Dockerfile only       |    ❌ Skip |      ✅ Build |   ✅ Run |
+# | Documentation only    |    ❌ Skip |     ❌ Skip |  ❌ Skip |
+# | Infrastructure workflows|  ❌ Skip |     ❌ Skip |  ❌ Skip |
 #
 # PERFORMANCE BENEFITS:
 # - Fast path: Documentation/workflow changes complete in ~30 seconds
@@ -30,6 +35,22 @@ name: Build and Test - Orchestration Workflow
 
 on:
   workflow_call:
+    inputs:
+      force-full-pipeline:
+        description: 'Force full pipeline execution'
+        required: false
+        default: false
+        type: boolean
+      force-docker-build:
+        description: 'Force Docker build and E2E tests'
+        required: false
+        default: false
+        type: boolean
+      force-unit-tests:
+        description: 'Force unit tests execution'
+        required: false
+        default: false
+        type: boolean
     outputs:
       docker_images_built:
         description: 'Whether Docker images were built and pushed'
@@ -46,9 +67,12 @@ on:
       coverage_uploaded:
         description: 'Whether coverage reports were uploaded'
         value: ${{ jobs.run-unit-tests.outputs.coverage-uploaded }}
-      workflow_validation_level:
-        description: 'Workflow validation level applied (none, minimal, unit-tests, docker, e2e, full)'
-        value: ${{ jobs.detect-changes.outputs.workflow-validation-level }}
+      should_run_docker_workflow:
+        description: 'Whether Docker workflow should be executed'
+        value: ${{ jobs.detect-changes.outputs.should-run-docker-workflow }}
+      should_run_e2e_workflow:
+        description: 'Whether E2E workflow should be executed'
+        value: ${{ jobs.detect-changes.outputs.should-run-e2e-workflow }}
 
 env:
   ANDROID_API_VERSION: "29"
@@ -63,12 +87,24 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       # Core decision outputs - used by other jobs/steps in this workflow
-      should-build-docker: ${{ steps.decision-matrix.outputs.should-build-docker }}        # Used by: build-docker-images job condition & reporting
-      should-run-tests: ${{ steps.decision-matrix.outputs.should-run-tests }}              # Used by: run-unit-tests job condition & reporting
+      should-run-tests-workflow: ${{ steps.decision-matrix.outputs.should-run-tests-workflow }}              # Used by: run-unit-tests job condition & reporting
+      should-run-docker-workflow: ${{ steps.decision-matrix.outputs.should-run-docker-workflow }} # Used by: docker-build job condition & reporting
+      should-run-e2e-workflow: ${{ steps.decision-matrix.outputs.should-run-e2e-workflow }} # Used by: reporting and downstream E2E workflow triggering
       fast-path-eligible: ${{ steps.decision-matrix.outputs.fast-path-eligible }}          # Used by: reporting steps for status display
+
+      # Change type indicators - used for reporting and debugging
       source-code-changes: ${{ steps.decision-matrix.outputs.source-code-changes }}        # Used by: reporting step to show change type
       dockerfile-only-changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }} # Used by: reporting step to show change type
-      workflow-validation-level: ${{ steps.decision-matrix.outputs.workflow-validation-level }} # Used by: reporting step to show workflow validation level
+      docs-only-changes: ${{ steps.decision-matrix.outputs.docs-only-changes }}            # Used by: reporting step to show change type
+
+      # Workflow change indicators - used for validation strategy reporting
+      orchestration-workflow-changes: ${{ steps.decision-matrix.outputs.orchestration-workflow-changes }} # Used by: reporting workflow validation strategy
+      unit-test-workflow-changes: ${{ steps.decision-matrix.outputs.unit-test-workflow-changes }}       # Used by: reporting workflow validation strategy
+      docker-workflow-changes: ${{ steps.decision-matrix.outputs.docker-workflow-changes }}             # Used by: reporting workflow validation strategy
+      e2e-workflow-changes: ${{ steps.decision-matrix.outputs.e2e-workflow-changes }}                   # Used by: reporting workflow validation strategy
+      infrastructure-workflow-changes: ${{ steps.decision-matrix.outputs.infrastructure-workflow-changes }} # Used by: reporting workflow validation strategy
+
+      # Docker-specific change detection - used by docker-build workflow for optimization
       webauthn-docker-changes-detected: ${{ steps.changes.outputs.webauthn-server-docker }} # Used to further optimize docker build workflow
       test-credentials-docker-changes-detected: ${{ steps.changes.outputs.test-credentials-docker }} # Used to further optimize docker build workflow
     steps:
@@ -99,7 +135,6 @@ jobs:
             infrastructure-workflows:
               - '.github/workflows/security-analysis.yml'
               - '.github/workflows/vulnerability-monitor.yml'
-              - '.github/workflows/pull-request-closed.yml'
               - '.github/workflows/main-branch-post-processing.yml'
             webauthn-server-tests:
               - 'webauthn-server/src/**'
@@ -171,21 +206,89 @@ jobs:
             WORKFLOWS_CHANGED="true"
           fi
 
+          # Check for force overrides first (highest priority)
+          echo "🔍 Checking for UI force overrides..."
+          FORCE_FULL="${{ inputs.force-full-pipeline }}"
+          FORCE_DOCKER="${{ inputs.force-docker-build }}"
+          FORCE_TESTS="${{ inputs.force-unit-tests }}"
+
+          echo "  • Force full pipeline: $FORCE_FULL"
+          echo "  • Force Docker build: $FORCE_DOCKER"
+          echo "  • Force unit tests: $FORCE_TESTS"
+          echo ""
+
+          # Apply force overrides before any other logic
+          if [[ "$FORCE_FULL" == "true" ]]; then
+            echo "🚀 FORCING FULL PIPELINE due to UI override"
+            echo "should-run-tests-workflow=true" >> $GITHUB_OUTPUT
+            echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
+            echo "should-run-e2e-workflow=true" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+            echo "source-code-changes=forced" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only-changes=false" >> $GITHUB_OUTPUT
+            echo "orchestration-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "unit-test-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "docker-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "e2e-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "infrastructure-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo ""
+            echo "✅ Full pipeline forced via UI - skipping change detection"
+            exit 0
+          elif [[ "$FORCE_DOCKER" == "true" ]]; then
+            echo "🐳 FORCING DOCKER WORKFLOW due to UI override"
+            echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
+            echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
+            echo "should-run-e2e-workflow=true" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=forced" >> $GITHUB_OUTPUT
+            echo "docs-only-changes=false" >> $GITHUB_OUTPUT
+            echo "orchestration-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "unit-test-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "docker-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "e2e-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "infrastructure-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo ""
+            echo "✅ Docker workflow forced via UI - skipping change detection"
+            exit 0
+          elif [[ "$FORCE_TESTS" == "true" ]]; then
+            echo "🧪 FORCING UNIT TESTS due to UI override"
+            echo "should-run-tests-workflow=true" >> $GITHUB_OUTPUT
+            echo "should-run-docker-workflow=false" >> $GITHUB_OUTPUT
+            echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
+            echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only-changes=false" >> $GITHUB_OUTPUT
+            echo "orchestration-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "unit-test-workflow-changes=forced" >> $GITHUB_OUTPUT
+            echo "docker-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "e2e-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "infrastructure-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo ""
+            echo "✅ Unit tests forced via UI - skipping change detection"
+            exit 0
+          fi
+
           echo "🧮 Applying Decision Matrix Logic..."
           echo ""
-          echo "📋 Enhanced Decision Matrix with Granular Workflow Validation:"
-          echo "| Change Type              | Unit Tests | Docker Build | E2E Tests | Validation Level |"
-          echo "|--------------------------|-----------|-------------|-----------|------------------|"
-          echo "| Documentation only       |    ❌ Skip |     ❌ Skip |  ❌ Skip | None            |"
-          echo "| Orchestration workflows  |     ✅ Run |      ✅ Build |   ✅ Run | Full            |"
-          echo "| Unit test workflows      |     ✅ Run |     ❌ Skip |  ❌ Skip | Unit tests      |"
-          echo "| Docker workflows         |    ❌ Skip |      ✅ Build |  ❌ Skip | Docker build    |"
-          echo "| E2E workflows            |     ✅ Run |      ✅ Build |   ✅ Run | E2E validation  |"
-          echo "| Infrastructure workflows |    ❌ Skip |     ❌ Skip |  ❌ Skip | Minimal         |"
-          echo "| Source code              |     ✅ Run |      ✅ Build |   ✅ Run | Full            |"
-          echo "| Tests only               |     ✅ Run |     ❌ Skip |  ❌ Skip | Unit tests      |"
-          echo "| Dockerfile only          |    ❌ Skip |      ✅ Build |   ✅ Run | Docker + E2E    |"
-          echo "| Build config             |     ✅ Run |      ✅ Build |   ✅ Run | Full            |"
+          echo "📋 Clear Decision Matrix - Run Relevant Workflows for Validation:"
+          echo "| Change Type              | Unit Tests | Docker Workflow | E2E Workflow | Strategy       |"
+          echo "|--------------------------|-----------|-----------------|--------------|----------------|"
+          echo "| Source code changes      |     ✅ Run |          ✅ Run |      ✅ Run | Full pipeline  |"
+          echo "| Dockerfile only          |    ❌ Skip |          ✅ Run |      ✅ Run | Docker + E2E   |"
+          echo "| Documentation only       |    ❌ Skip |         ❌ Skip |     ❌ Skip | Fast path      |"
+          echo "| Unit test workflow       |     ✅ Run |         ❌ Skip |     ❌ Skip | Test validation |"
+          echo "| Docker workflow          |    ❌ Skip |          ✅ Run |     ❌ Skip | Build validation |"
+          echo "| E2E workflow             |    ❌ Skip |          ✅ Run |      ✅ Run | E2E validation |"
+          echo "| Orchestration workflow   |     ✅ Run |          ✅ Run |      ✅ Run | Full validation |"
+          echo "| Infrastructure workflow  |    ❌ Skip |         ❌ Skip |     ❌ Skip | Syntax only    |"
+          echo ""
+          echo "🔧 Workflow Changes Strategy:"
+          echo "• Run the specific workflows that changed to validate they work"
+          echo "• Force options override change detection for manual testing"
+          echo "• Force options available: force-full-pipeline, force-docker-build, force-unit-tests"
           echo ""
           echo "🔍 Analyzing current changes (using PRIORITY ORDER):"
           echo "  1️⃣ Source code changes (highest priority): $([ "$WEBAUTHN_TESTS" = "true" ] || [ "$TEST_CREDS_TESTS" = "true" ] && echo "YES" || echo "no")"
@@ -204,107 +307,119 @@ jobs:
 
           # Priority 1: Source code changes (any test changes) - highest priority
           if [[ "$WEBAUTHN_TESTS" == "true" ]] || [[ "$TEST_CREDS_TESTS" == "true" ]]; then
-            echo "source-code-changes=true" >> $GITHUB_OUTPUT
-            echo "should-run-tests=true" >> $GITHUB_OUTPUT
-            echo "should-build-docker=true" >> $GITHUB_OUTPUT
-            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
-            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
-            echo "build-config-changes=false" >> $GITHUB_OUTPUT
-            echo "docs-only=false" >> $GITHUB_OUTPUT
-            echo "workflows-only=false" >> $GITHUB_OUTPUT
-            echo "workflow-validation-level=none" >> $GITHUB_OUTPUT
+            echo "should-run-tests-workflow=true" >> $GITHUB_OUTPUT
+            echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
+            echo "should-run-e2e-workflow=true" >> $GITHUB_OUTPUT
             echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+            echo "source-code-changes=true" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only-changes=false" >> $GITHUB_OUTPUT
+            echo "orchestration-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "unit-test-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "docker-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "e2e-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "infrastructure-workflow-changes=false" >> $GITHUB_OUTPUT
             DECISION="Source code changes detected"
           # Priority 2: Dockerfile only (docker changes but no test changes)
           elif [[ "$WEBAUTHN_DOCKER" == "true" ]] || [[ "$TEST_CREDS_DOCKER" == "true" ]]; then
-            echo "source-code-changes=false" >> $GITHUB_OUTPUT
-            echo "should-run-tests=false" >> $GITHUB_OUTPUT
-            echo "should-build-docker=true" >> $GITHUB_OUTPUT
-            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
-            echo "dockerfile-only-changes=true" >> $GITHUB_OUTPUT
-            echo "build-config-changes=false" >> $GITHUB_OUTPUT
-            echo "docs-only=false" >> $GITHUB_OUTPUT
-            echo "workflows-only=false" >> $GITHUB_OUTPUT
-            echo "workflow-validation-level=none" >> $GITHUB_OUTPUT
+            echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
+            echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
+            echo "should-run-e2e-workflow=true" >> $GITHUB_OUTPUT
             echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=true" >> $GITHUB_OUTPUT
+            echo "docs-only-changes=false" >> $GITHUB_OUTPUT
+            echo "orchestration-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "unit-test-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "docker-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "e2e-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "infrastructure-workflow-changes=false" >> $GITHUB_OUTPUT
             DECISION="Dockerfile-only changes detected"
           # Priority 3: Documentation only (docs changed but nothing else)
           elif [[ "$DOCS_CHANGED" == "true" ]] && [[ "$WORKFLOWS_CHANGED" == "false" ]]; then
-            echo "source-code-changes=false" >> $GITHUB_OUTPUT
-            echo "should-run-tests=false" >> $GITHUB_OUTPUT
-            echo "should-build-docker=false" >> $GITHUB_OUTPUT
-            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
-            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
-            echo "build-config-changes=false" >> $GITHUB_OUTPUT
-            echo "docs-only=true" >> $GITHUB_OUTPUT
-            echo "workflows-only=false" >> $GITHUB_OUTPUT
-            echo "workflow-validation-level=none" >> $GITHUB_OUTPUT
+            echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
+            echo "should-run-docker-workflow=false" >> $GITHUB_OUTPUT
+            echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
             echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only-changes=true" >> $GITHUB_OUTPUT
+            echo "orchestration-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "unit-test-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "docker-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "e2e-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "infrastructure-workflow-changes=false" >> $GITHUB_OUTPUT
             DECISION="Documentation-only changes detected"
-          # Priority 4: Enhanced workflow changes with granular validation
+          # Priority 4: Workflow changes - run specific workflows to validate changes
           elif [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
-            # Determine validation level based on which workflows changed
+            # Set specific workflow change flags for reporting
+            echo "orchestration-workflow-changes=$ORCHESTRATION_WORKFLOWS" >> $GITHUB_OUTPUT
+            echo "unit-test-workflow-changes=$UNIT_TEST_WORKFLOWS" >> $GITHUB_OUTPUT
+            echo "docker-workflow-changes=$DOCKER_WORKFLOWS" >> $GITHUB_OUTPUT
+            echo "e2e-workflow-changes=$E2E_WORKFLOWS" >> $GITHUB_OUTPUT
+            echo "infrastructure-workflow-changes=$INFRASTRUCTURE_WORKFLOWS" >> $GITHUB_OUTPUT
 
+            # Set common change type outputs
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only-changes=false" >> $GITHUB_OUTPUT
+
+            # Determine what to run based on which specific workflows changed
+            # Priority order: Orchestration (highest) → E2E → Docker → Unit Test → Infrastructure (lowest)
             if [[ "$ORCHESTRATION_WORKFLOWS" == "true" ]]; then
-              # Full validation for orchestration changes
-              echo "should-run-tests=true" >> $GITHUB_OUTPUT
-              echo "should-build-docker=true" >> $GITHUB_OUTPUT
-              echo "workflow-validation-level=full" >> $GITHUB_OUTPUT
+              # Orchestration workflow changes - run full pipeline to validate orchestration
+              echo "should-run-tests-workflow=true" >> $GITHUB_OUTPUT
+              echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
+              echo "should-run-e2e-workflow=true" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
-              DECISION="Orchestration workflow changes - full validation required"
-
-            elif [[ "$UNIT_TEST_WORKFLOWS" == "true" ]]; then
-              # Unit tests only
-              echo "should-run-tests=true" >> $GITHUB_OUTPUT
-              echo "should-build-docker=false" >> $GITHUB_OUTPUT
-              echo "workflow-validation-level=unit-tests" >> $GITHUB_OUTPUT
-              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
-              DECISION="Unit test workflow changes - validating test execution"
-
-            elif [[ "$DOCKER_WORKFLOWS" == "true" ]]; then
-              # Docker build validation
-              echo "should-run-tests=false" >> $GITHUB_OUTPUT
-              echo "should-build-docker=true" >> $GITHUB_OUTPUT
-              echo "workflow-validation-level=docker" >> $GITHUB_OUTPUT
-              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
-              DECISION="Docker workflow changes - validating build process"
+              DECISION="Orchestration workflow changes - validating with full pipeline execution"
 
             elif [[ "$E2E_WORKFLOWS" == "true" ]]; then
-              # E2E validation (needs images)
-              echo "should-run-tests=true" >> $GITHUB_OUTPUT
-              echo "should-build-docker=true" >> $GITHUB_OUTPUT
-              echo "workflow-validation-level=e2e" >> $GITHUB_OUTPUT
+              # E2E workflow changes - run Docker + E2E to validate
+              echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
+              echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
+              echo "should-run-e2e-workflow=true" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
-              DECISION="E2E workflow changes - validating integration tests"
+              DECISION="E2E workflow changes - validating with Docker build + E2E execution"
+
+            elif [[ "$DOCKER_WORKFLOWS" == "true" ]]; then
+              # Docker workflow changes - run Docker workflow to validate
+              echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
+              echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
+              echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
+              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+              DECISION="Docker workflow changes - validating with Docker build execution"
+
+            elif [[ "$UNIT_TEST_WORKFLOWS" == "true" ]]; then
+              # Unit test workflow changes - run unit tests to validate
+              echo "should-run-tests-workflow=true" >> $GITHUB_OUTPUT
+              echo "should-run-docker-workflow=false" >> $GITHUB_OUTPUT
+              echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
+              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+              DECISION="Unit test workflow changes - validating with unit test execution"
 
             else
-              # Infrastructure workflows - minimal validation
-              echo "should-run-tests=false" >> $GITHUB_OUTPUT
-              echo "should-build-docker=false" >> $GITHUB_OUTPUT
-              echo "workflow-validation-level=minimal" >> $GITHUB_OUTPUT
+              # Infrastructure workflow changes - minimal validation (syntax check only)
+              echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
+              echo "should-run-docker-workflow=false" >> $GITHUB_OUTPUT
+              echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
-              DECISION="Infrastructure workflow changes - minimal validation"
+              DECISION="Infrastructure workflow changes - syntax validation only"
             fi
-
-            # Set common workflow change outputs
-            echo "source-code-changes=false" >> $GITHUB_OUTPUT
-            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
-            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
-            echo "build-config-changes=false" >> $GITHUB_OUTPUT
-            echo "docs-only=false" >> $GITHUB_OUTPUT
-            echo "workflows-only=false" >> $GITHUB_OUTPUT
           # Default: No significant changes
           else
-            echo "source-code-changes=false" >> $GITHUB_OUTPUT
-            echo "should-run-tests=false" >> $GITHUB_OUTPUT
-            echo "should-build-docker=false" >> $GITHUB_OUTPUT
-            echo "tests-only-changes=false" >> $GITHUB_OUTPUT
-            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
-            echo "build-config-changes=false" >> $GITHUB_OUTPUT
-            echo "docs-only=false" >> $GITHUB_OUTPUT
-            echo "workflows-only=false" >> $GITHUB_OUTPUT
-            echo "workflow-validation-level=none" >> $GITHUB_OUTPUT
+            echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
+            echo "should-run-docker-workflow=false" >> $GITHUB_OUTPUT
+            echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
             echo "fast-path-eligible=true" >> $GITHUB_OUTPUT
+            echo "source-code-changes=false" >> $GITHUB_OUTPUT
+            echo "dockerfile-only-changes=false" >> $GITHUB_OUTPUT
+            echo "docs-only-changes=false" >> $GITHUB_OUTPUT
+            echo "orchestration-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "unit-test-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "docker-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "e2e-workflow-changes=false" >> $GITHUB_OUTPUT
+            echo "infrastructure-workflow-changes=false" >> $GITHUB_OUTPUT
             DECISION="No significant changes detected"
           fi
 
@@ -313,65 +428,70 @@ jobs:
       - name: Print execution strategy
         run: |
           echo "🚀 Execution Strategy Based on Decision Matrix:"
-          echo "📊 Calculated Decisions:"
+          echo "📊 Change Detection Results:"
           echo "  • Source code changes: ${{ steps.decision-matrix.outputs.source-code-changes }}"
-          echo "  • Tests-only changes: ${{ steps.decision-matrix.outputs.tests-only-changes }}"
           echo "  • Dockerfile-only changes: ${{ steps.decision-matrix.outputs.dockerfile-only-changes }}"
-          echo "  • Documentation-only: ${{ steps.decision-matrix.outputs.docs-only }}"
-          echo "  • Workflow-only: ${{ steps.decision-matrix.outputs.workflows-only }}"
-          echo "  • Workflow validation level: ${{ steps.decision-matrix.outputs.workflow-validation-level }}"
+          echo "  • Documentation-only changes: ${{ steps.decision-matrix.outputs.docs-only-changes }}"
           echo "  • Fast path eligible: ${{ steps.decision-matrix.outputs.fast-path-eligible }}"
           echo ""
-          echo "⚙️  Pipeline Actions:"
-          echo "  • Should run unit tests: ${{ steps.decision-matrix.outputs.should-run-tests }}"
-          echo "  • Should build Docker images: ${{ steps.decision-matrix.outputs.should-build-docker }}"
+          echo "🔧 Workflow Change Detection:"
+          echo "  • Orchestration workflows: ${{ steps.decision-matrix.outputs.orchestration-workflow-changes }}"
+          echo "  • Unit test workflows: ${{ steps.decision-matrix.outputs.unit-test-workflow-changes }}"
+          echo "  • Docker workflows: ${{ steps.decision-matrix.outputs.docker-workflow-changes }}"
+          echo "  • E2E workflows: ${{ steps.decision-matrix.outputs.e2e-workflow-changes }}"
+          echo "  • Infrastructure workflows: ${{ steps.decision-matrix.outputs.infrastructure-workflow-changes }}"
+          echo ""
+          echo "⚙️  Pipeline Execution Plan:"
+          echo "  • Should run unit tests workflow: ${{ steps.decision-matrix.outputs.should-run-tests-workflow }}"
+          echo "  • Should run Docker workflow: ${{ steps.decision-matrix.outputs.should-run-docker-workflow }}"
+          echo "  • Should run E2E workflow: ${{ steps.decision-matrix.outputs.should-run-e2e-workflow }}"
           echo ""
 
-          if [[ "${{ steps.decision-matrix.outputs.source-code-changes }}" == "true" ]]; then
-            echo "✅ Source code changes - Will run unit tests AND build Docker images for E2E tests"
+          if [[ "${{ steps.decision-matrix.outputs.source-code-changes }}" == "true" || "${{ steps.decision-matrix.outputs.source-code-changes }}" == "forced" ]]; then
+            echo "✅ Source code changes - Full pipeline execution"
             echo "    🧪 Unit Tests: ENABLED (source code changed)"
-            echo "    🐳 Docker Build: ENABLED (for E2E testing)"
-            echo "    🎯 E2E Tests: ENABLED (using built images)"
-          elif [[ "${{ steps.decision-matrix.outputs.dockerfile-only-changes }}" == "true" ]]; then
-            echo "✅ Dockerfile-only changes - Will build Docker images for E2E tests (skip unit tests)"
+            echo "    🐳 Docker Workflow: ENABLED (for E2E testing)"
+            echo "    🎯 E2E Workflow: ENABLED (using built images)"
+          elif [[ "${{ steps.decision-matrix.outputs.dockerfile-only-changes }}" == "true" || "${{ steps.decision-matrix.outputs.dockerfile-only-changes }}" == "forced" ]]; then
+            echo "✅ Dockerfile-only changes - Docker + E2E execution"
             echo "    🧪 Unit Tests: SKIPPED (no test code changes)"
-            echo "    🐳 Docker Build: ENABLED (Dockerfile changed)"
-            echo "    🎯 E2E Tests: ENABLED (using built images)"
-          elif [[ "${{ steps.decision-matrix.outputs.docs-only }}" == "true" ]]; then
-            echo "⚡ Documentation-only changes - Fast path (no tests/builds needed)"
+            echo "    🐳 Docker Workflow: ENABLED (Dockerfile changed)"
+            echo "    🎯 E2E Workflow: ENABLED (using built images)"
+          elif [[ "${{ steps.decision-matrix.outputs.docs-only-changes }}" == "true" ]]; then
+            echo "⚡ Documentation-only changes - Fast path (syntax validation only)"
             echo "    🧪 Unit Tests: SKIPPED (no code changes)"
-            echo "    🐳 Docker Build: SKIPPED (no code/Docker changes)"
-            echo "    🎯 E2E Tests: SKIPPED (no images to test)"
-          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "full" ]]; then
-            echo "🔧 Orchestration workflow changes - Running full validation"
-            echo "    🧪 Unit Tests: ENABLED (workflow could affect all components)"
-            echo "    🐳 Docker Build: ENABLED (workflow could affect builds)"
-            echo "    🎯 E2E Tests: ENABLED (full validation required)"
-          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "unit-tests" ]]; then
-            echo "🧪 Unit test workflow changes - Validating test execution only"
-            echo "    🧪 Unit Tests: ENABLED (testing workflow changes)"
-            echo "    🐳 Docker Build: SKIPPED (no build workflow changes)"
-            echo "    🎯 E2E Tests: SKIPPED (no E2E workflow changes)"
-          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "docker" ]]; then
-            echo "🐳 Docker workflow changes - Validating build process"
+            echo "    🐳 Docker Workflow: SKIPPED (no code/Docker changes)"
+            echo "    🎯 E2E Workflow: SKIPPED (no images to test)"
+          elif [[ "${{ steps.decision-matrix.outputs.orchestration-workflow-changes }}" == "true" ]]; then
+            echo "🔧 Orchestration workflow changes - Full orchestration validation"
+            echo "    🧪 Unit Tests: ENABLED (orchestration includes unit test workflow logic)"
+            echo "    🐳 Docker Workflow: ENABLED (orchestration needs Docker validation)"
+            echo "    🎯 E2E Workflow: ENABLED (orchestration needs E2E validation)"
+          elif [[ "${{ steps.decision-matrix.outputs.e2e-workflow-changes }}" == "true" ]]; then
+            echo "🎯 E2E workflow changes - E2E validation"
             echo "    🧪 Unit Tests: SKIPPED (no test workflow changes)"
-            echo "    🐳 Docker Build: ENABLED (testing Docker workflow changes)"
-            echo "    🎯 E2E Tests: SKIPPED (no E2E workflow changes)"
-          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "e2e" ]]; then
-            echo "🎯 E2E workflow changes - Validating integration tests"
-            echo "    🧪 Unit Tests: ENABLED (E2E tests need unit test artifacts)"
-            echo "    🐳 Docker Build: ENABLED (E2E tests need Docker images)"
-            echo "    🎯 E2E Tests: ENABLED (testing E2E workflow changes)"
-          elif [[ "${{ steps.decision-matrix.outputs.workflow-validation-level }}" == "minimal" ]]; then
-            echo "⚡ Infrastructure workflow changes - Fast path (minimal validation)"
+            echo "    🐳 Docker Workflow: ENABLED (E2E tests need Docker images)"
+            echo "    🎯 E2E Workflow: ENABLED (validating E2E workflow changes)"
+          elif [[ "${{ steps.decision-matrix.outputs.docker-workflow-changes }}" == "true" ]]; then
+            echo "🐳 Docker workflow changes - Docker build validation"
+            echo "    🧪 Unit Tests: SKIPPED (no test workflow changes)"
+            echo "    🐳 Docker Workflow: ENABLED (validating Docker workflow changes)"
+            echo "    🎯 E2E Workflow: SKIPPED (no E2E workflow changes)"
+          elif [[ "${{ steps.decision-matrix.outputs.unit-test-workflow-changes }}" == "true" || "${{ steps.decision-matrix.outputs.unit-test-workflow-changes }}" == "forced" ]]; then
+            echo "🧪 Unit test workflow changes - Test workflow validation"
+            echo "    🧪 Unit Tests: ${{ steps.decision-matrix.outputs.should-run-tests-workflow == 'true' && 'ENABLED (testing workflow changes)' || 'SKIPPED (syntax validation only - use force-unit-tests for execution)' }}"
+            echo "    🐳 Docker Workflow: SKIPPED (no build workflow changes)"
+            echo "    🎯 E2E Workflow: SKIPPED (no E2E workflow changes)"
+          elif [[ "${{ steps.decision-matrix.outputs.infrastructure-workflow-changes }}" == "true" ]]; then
+            echo "⚡ Infrastructure workflow changes - Fast path (syntax validation only)"
             echo "    🧪 Unit Tests: SKIPPED (infrastructure workflows don't affect tests)"
-            echo "    🐳 Docker Build: SKIPPED (infrastructure workflows don't affect builds)"
-            echo "    🎯 E2E Tests: SKIPPED (infrastructure workflows don't affect E2E)"
+            echo "    🐳 Docker Workflow: SKIPPED (infrastructure workflows don't affect builds)"
+            echo "    🎯 E2E Workflow: SKIPPED (infrastructure workflows don't affect E2E)"
           elif [[ "${{ steps.decision-matrix.outputs.fast-path-eligible }}" == "true" ]]; then
-            echo "⚡ Fast path - No significant code changes detected"
+            echo "⚡ Fast path - No significant changes detected"
             echo "    🧪 Unit Tests: SKIPPED (no significant changes)"
-            echo "    🐳 Docker Build: SKIPPED (no significant changes)"
-            echo "    🎯 E2E Tests: SKIPPED (no significant changes)"
+            echo "    🐳 Docker Workflow: SKIPPED (no significant changes)"
+            echo "    🎯 E2E Workflow: SKIPPED (no significant changes)"
           else
             echo "🤔 Unexpected state - Please check decision matrix logic"
             echo "    This should not happen - all cases should be covered"
@@ -398,9 +518,9 @@ jobs:
   run-unit-tests:
     uses: ./.github/workflows/unit-tests.yml
     needs: [ detect-changes, setup-config ]
-    if: needs.detect-changes.outputs.should-run-tests == 'true'
+    if: needs.detect-changes.outputs.should-run-tests-workflow == 'true'
     with:
-      changes-detected: ${{ needs.detect-changes.outputs.should-run-tests == 'true' }}
+      changes-detected: ${{ needs.detect-changes.outputs.should-run-tests-workflow == 'true' }}
       test-scope: 'all'
       java-version: ${{ needs.setup-config.outputs.java-version }}
     secrets: inherit
@@ -411,13 +531,14 @@ jobs:
     needs: [ detect-changes, setup-config, run-unit-tests ]
     if: |
       always() &&
-      needs.detect-changes.outputs.should-build-docker == 'true' &&
+      needs.detect-changes.outputs.should-run-docker-workflow == 'true' &&
       (needs.run-unit-tests.result == 'success' ||
        needs.run-unit-tests.result == 'skipped' ||
-       needs.detect-changes.outputs.should-run-tests == 'false')
+       needs.detect-changes.outputs.should-run-tests-workflow == 'false')
     with:
       webauthn-docker-changes-detected: ${{ needs.detect-changes.outputs.webauthn-docker-changes-detected == 'true' }}
       test-credentials-docker-changes-detected: ${{ needs.detect-changes.outputs.test-credentials-docker-changes-detected == 'true' }}
+      force-build: ${{ inputs.force-full-pipeline == true || inputs.force-docker-build == true }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       registry-url: ${{ needs.setup-config.outputs.docker-registry }}
       webauthn-image-name: ${{ needs.setup-config.outputs.webauthn-image-name }}
@@ -434,11 +555,21 @@ jobs:
         run: |
           echo "📊 Build and Test Results Summary:"
           echo "Fast path eligible: ${{ needs.detect-changes.outputs.fast-path-eligible }}"
-          echo "Should run tests: ${{ needs.detect-changes.outputs.should-run-tests }}"
-          echo "Should build Docker: ${{ needs.detect-changes.outputs.should-build-docker }}"
+          echo "Should run tests workflow: ${{ needs.detect-changes.outputs.should-run-tests-workflow }}"
+          echo "Should run Docker workflow: ${{ needs.detect-changes.outputs.should-run-docker-workflow }}"
+          echo "Should run E2E workflow: ${{ needs.detect-changes.outputs.should-run-e2e-workflow }}"
+          echo ""
+          echo "📋 Change Types Detected:"
           echo "Source code changes: ${{ needs.detect-changes.outputs.source-code-changes }}"
           echo "Dockerfile-only changes: ${{ needs.detect-changes.outputs.dockerfile-only-changes }}"
-          echo "Workflow validation level: ${{ needs.detect-changes.outputs.workflow-validation-level }}"
+          echo "Documentation-only changes: ${{ needs.detect-changes.outputs.docs-only-changes }}"
+          echo ""
+          echo "🔧 Workflow Changes Detected:"
+          echo "Orchestration workflows: ${{ needs.detect-changes.outputs.orchestration-workflow-changes }}"
+          echo "Unit test workflows: ${{ needs.detect-changes.outputs.unit-test-workflow-changes }}"
+          echo "Docker workflows: ${{ needs.detect-changes.outputs.docker-workflow-changes }}"
+          echo "E2E workflows: ${{ needs.detect-changes.outputs.e2e-workflow-changes }}"
+          echo "Infrastructure workflows: ${{ needs.detect-changes.outputs.infrastructure-workflow-changes }}"
           echo "Unit tests: ${{ needs.run-unit-tests.result }}"
           echo "Unit tests passed: ${{ needs.run-unit-tests.outputs.tests-passed }}"
           echo "Coverage uploaded: ${{ needs.run-unit-tests.outputs.coverage-uploaded }}"

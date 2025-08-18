@@ -14,7 +14,7 @@ scripts/
 │   ├── detect-changes.sh      # Docker image change detection
 │   ├── scan-security.sh       # Comprehensive Docker security scanning
 │   ├── publish-dockerhub.sh   # DockerHub publishing with conditional logic
-│   └── cleanup-ghcr.sh        # GitHub Container Registry cleanup
+│   └── cleanup-staging-packages.sh # Staging artifacts cleanup
 ├── security/                  # Security analysis and testing
 │   ├── analyze-changes.sh     # Change-based security analysis
 │   ├── analyze-pr.sh          # AI-powered PR security analysis
@@ -62,6 +62,16 @@ scripts/
 
 ## Docker Scripts (`scripts/docker/`)
 
+### Docker Cleanup Architecture
+The project uses a staging-only cleanup strategy:
+
+**Staging Cleanup** (in main CI/CD):
+- `cleanup-staging-packages.sh`: Cleans staging/PR artifacts from GitHub Packages
+- Runs during main workflow execution
+- Smart cleanup based on workflow outcome (complete cleanup on success, conservative on failure)
+
+**Production Images**: Production packages are never automatically cleaned up to ensure availability and traceability
+
 ### detect-changes.sh
 **Purpose**: Compares Docker image digests between GHCR and DockerHub to determine if publishing is needed.
 
@@ -87,12 +97,13 @@ scripts/
 ./scripts/docker/publish-dockerhub.sh <webauthn_changed> <test_credentials_changed>
 ```
 
-### cleanup-ghcr.sh
-**Purpose**: Cleans up old Docker images from GitHub Container Registry to prevent storage bloat.
+
+### cleanup-staging-packages.sh
+**Purpose**: Smart cleanup of staging artifacts from GitHub Packages based on workflow outcome. Handles Docker images, npm packages, and Maven packages with staging suffixes.
 
 **Usage**:
 ```bash
-./scripts/docker/cleanup-ghcr.sh [repository_owner]
+./scripts/docker/cleanup-staging-packages.sh [success|failure] [repository_owner]
 ```
 
 ## Security Scripts (`scripts/security/`)
@@ -195,7 +206,8 @@ TEMPLATE_ONLY_MODE=true ./scripts/security/generate-tests.sh
    - Uses `scripts/docker/detect-changes.sh`
    - Uses `scripts/docker/scan-security.sh`
    - Uses `scripts/docker/publish-dockerhub.sh`
-   - Uses `scripts/docker/cleanup-ghcr.sh`
+- **main-ci-cd.yml**:
+   - Uses `scripts/docker/cleanup-staging-packages.sh` (staging artifacts cleanup)
 - **security-analysis.yml**:
    - Uses `scripts/security/analyze-changes.sh`
    - Uses `scripts/security/analyze-pr.sh`

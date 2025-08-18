@@ -16,11 +16,18 @@
 #
 # TRIGGERS:
 # - Pull requests to main branch
-# - Pushes to main branch
+# - Pushes to main branch  
+# - Manual dispatch with force options (UI)
+#
+# MANUAL FORCE OPTIONS:
+# - Force full pipeline: Runs unit tests + Docker build + E2E tests + security scanning
+# - Force Docker build: Runs Docker build + E2E tests (skips unit tests if no code changes)
+# - Force unit tests: Runs unit tests only (skips Docker/E2E)
 #
 # EXECUTION FLOW:
 # PR: build-and-test → e2e-tests (if Docker images built)
 # Main: build-and-test → e2e-tests (if Docker images built)
+# Manual: force options override smart change detection
 
 name: Main CI/CD Pipeline
 
@@ -29,6 +36,23 @@ on:
     branches: [ main ]
   push:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      force-full-pipeline:
+        description: 'Force full pipeline (unit tests + Docker build + E2E tests + security scanning)'
+        required: false
+        default: false
+        type: boolean
+      force-docker-build:
+        description: 'Force Docker build and E2E tests (skip unit tests if no code changes)'
+        required: false
+        default: false
+        type: boolean
+      force-unit-tests:
+        description: 'Force unit tests only (skip Docker/E2E)'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   # Workflow-level permissions: minimal by default, jobs can request additional permissions
@@ -39,6 +63,10 @@ jobs:
   build-and-test:
     name: Build & Test (Unit Tests + Docker Images)
     uses: ./.github/workflows/build-and-test.yml
+    with:
+      force-full-pipeline: ${{ inputs.force-full-pipeline || false }}
+      force-docker-build: ${{ inputs.force-docker-build || false }}
+      force-unit-tests: ${{ inputs.force-unit-tests || false }}
     permissions:
       contents: read          # Read repository code
       packages: write         # Push Docker images to GHCR
@@ -94,6 +122,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ build-and-test, e2e-tests, security-scanning ]
     if: always()
+    outputs:
+      pipeline-success: ${{ steps.determine-outcome.outputs.pipeline-success }}
+      workflow-outcome: ${{ steps.determine-outcome.outputs.workflow-outcome }}
     steps:
       - name: Report overall pipeline status
         run: |
@@ -153,4 +184,114 @@ jobs:
             fi
           else
             echo "⚡ Fast path completed - no Docker builds needed (docs/workflow changes only)"
+          fi
+
+      - name: Determine workflow outcome for cleanup
+        id: determine-outcome
+        run: |
+          # Determine overall pipeline success for staging cleanup
+          PIPELINE_SUCCESS=false
+          WORKFLOW_OUTCOME="failure"
+          
+          # Pipeline is successful if build-and-test succeeded and either:
+          # 1. No Docker images were built (fast path)
+          # 2. Docker images were built AND security scanning AND E2E tests passed
+          if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
+            if [[ "${{ needs.build-and-test.outputs.docker_images_built }}" != "true" ]]; then
+              # Fast path - no Docker builds
+              PIPELINE_SUCCESS=true
+              WORKFLOW_OUTCOME="success"
+            elif [[ "${{ needs.security-scanning.outputs.security-scan-passed }}" == "true" && "${{ needs.e2e-tests.result }}" == "success" ]]; then
+              # Full pipeline with Docker builds - all tests passed
+              PIPELINE_SUCCESS=true
+              WORKFLOW_OUTCOME="success"
+            fi
+          fi
+          
+          echo "pipeline-success=$PIPELINE_SUCCESS" >> $GITHUB_OUTPUT
+          echo "workflow-outcome=$WORKFLOW_OUTCOME" >> $GITHUB_OUTPUT
+          
+          echo "📊 Workflow outcome for staging cleanup: $WORKFLOW_OUTCOME"
+          echo "🎯 Pipeline success status: $PIPELINE_SUCCESS"
+
+  # Job 5: Smart staging cleanup (final step)
+  smart-staging-cleanup:
+    name: Smart Staging Cleanup
+    runs-on: ubuntu-latest
+    needs: [ build-and-test, e2e-tests, security-scanning, report-pipeline-status ]
+    if: always()
+    permissions:
+      contents: read     # Read repository code and git history
+      packages: write    # Delete GitHub Packages staging artifacts
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Fetch recent commits to check for [preserve] keyword
+
+      - name: Check for emergency preserve override
+        id: check-preserve
+        run: |
+          # Check latest commit message for [preserve] keyword
+          if git log -1 --pretty=%s | grep -i '\[preserve\]' >/dev/null; then
+            echo "🚨 EMERGENCY OVERRIDE: [preserve] keyword found in commit message"
+            echo "preserve-override=true" >> $GITHUB_OUTPUT
+          else
+            echo "preserve-override=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Smart staging cleanup
+        if: steps.check-preserve.outputs.preserve-override != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
+        run: |
+          echo "🧹 Starting smart staging cleanup"
+          echo "📋 Cleanup scope: ONLY GitHub Packages staging artifacts"
+          echo "🎯 Workflow outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
+          echo ""
+          
+          case "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" in
+            "success")
+              echo "✅ Workflow succeeded - performing COMPLETE staging cleanup"
+              echo "🗑️ Strategy: Delete ALL staging packages (validation complete, no longer needed)"
+              ;;
+            "failure")
+              echo "❌ Workflow failed - performing CONSERVATIVE staging cleanup"
+              echo "🔍 Strategy: Keep last 5 staging versions for debugging"
+              ;;
+          esac
+          echo ""
+          
+          # Execute staging cleanup script
+          chmod +x scripts/docker/cleanup-staging-packages.sh
+          scripts/docker/cleanup-staging-packages.sh "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" "${{ github.repository_owner }}"
+
+      - name: Report emergency preserve override
+        if: steps.check-preserve.outputs.preserve-override == 'true'
+        run: |
+          echo "🚨 EMERGENCY OVERRIDE ACTIVATED"
+          echo "⚠️  All staging packages preserved due to [preserve] keyword in commit message"
+          echo "🔍 Manual investigation may be required"
+          echo "📝 To resume normal cleanup, remove [preserve] from commit messages"
+
+      - name: Cleanup summary
+        if: always()
+        run: |
+          echo "📋 Smart Staging Cleanup Summary:"
+          echo "  Emergency Override: ${{ steps.check-preserve.outputs.preserve-override }}"
+          echo "  Workflow Outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
+          echo "  Pipeline Success: ${{ needs.report-pipeline-status.outputs.pipeline-success }}"
+          echo ""
+          
+          if [[ "${{ steps.check-preserve.outputs.preserve-override }}" == "true" ]]; then
+            echo "🚨 Cleanup skipped due to emergency override"
+          elif [[ "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" == "success" ]]; then
+            echo "🎉 Complete staging cleanup performed - all staging artifacts removed"
+            echo "✅ GitHub Packages staging cleanup completed successfully"
+          else
+            echo "🔍 Conservative staging cleanup performed - debugging artifacts preserved"
+            echo "⚠️  Some staging packages retained for investigation"
           fi

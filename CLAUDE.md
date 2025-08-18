@@ -525,6 +525,13 @@ job-name:
    - **Solution**: Upgrade OpenAPI generator plugin to latest version which uses matching OkHttp client version
    - **Rule**: When facing version constraint conflicts, upgrade the root dependency (plugin/library) rather than downgrade individual dependencies
    - **Benefits**: Latest versions include security fixes, performance improvements, and compatibility updates
+11. **Gradle Configuration Cache Compatibility**: CRITICAL for all custom Gradle task development
+   - **❌ NEVER access project properties in doLast blocks**: `project.rootDir`, `Task.project` break configuration cache
+   - **Warning Sign**: "invocation of 'Task.project' at execution time is unsupported"
+   - **Symptoms**: Template processing fails silently, generated files don't appear, "task not found" errors
+   - **✅ SOLUTION**: Configure paths at configuration time using `layout.projectDirectory.file()`, access with `.asFile` in execution
+   - **Documentation**: See `docs/development/gradle-configuration-cache-compatibility.md` for complete patterns and examples
+   - **Rule**: Test all custom tasks with `--configuration-cache` flag to catch compatibility issues early
 
 ### 🔍 CRITICAL: Script Integration & Testing Patterns
 

@@ -232,9 +232,25 @@ jobs:
           
           # Generate and publish Android client using environment variables only
           # This maintains configuration cache compatibility by avoiding Gradle property changes
+          echo "🔧 Ensuring clean generation..."
+          # Remove any existing generated build.gradle.kts to force template regeneration
+          rm -f android-client-library/build.gradle.kts
+          
           echo "🔧 Generating Android client..."
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
             --build-cache --parallel --configuration-cache
+          
+          echo "🔍 Debugging generated build.gradle.kts..."
+          if [ -f "android-client-library/build.gradle.kts" ]; then
+            echo "✅ Generated build.gradle.kts exists"
+            echo "📋 Credential configuration in generated file:"
+            grep -A 10 -B 2 "credentials {" android-client-library/build.gradle.kts || echo "No credentials block found"
+            echo "📋 Repository configuration:"
+            grep -A 15 -B 2 "repositories {" android-client-library/build.gradle.kts || echo "No repositories block found"
+          else
+            echo "❌ Generated build.gradle.kts does not exist"
+            exit 1
+          fi
           
           echo "📦 Publishing Android client..."
           # Use environment variables only - no Gradle properties to maintain configuration cache compatibility

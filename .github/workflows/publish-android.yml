@@ -229,21 +229,23 @@ jobs:
             echo "  Using Central Portal credentials for production publish"
           fi
 
-          # Generate and publish Android client in single Gradle invocation to avoid configuration cache issues
-          # This ensures template processing and publishing happen atomically
-          # Using --rerun-tasks to ensure fresh execution and avoid any caching conflicts
-          env ANDROID_REPOSITORY_URL="${ANDROID_REPOSITORY_URL}" \
-              ANDROID_REPOSITORY_USERNAME_ENV="${ANDROID_REPOSITORY_USERNAME_ENV}" \
-              ANDROID_REPOSITORY_PASSWORD_ENV="${ANDROID_REPOSITORY_PASSWORD_ENV}" \
-          ./gradlew generateAndroidClient copyAndroidClientToSubmodule :android-client-library:publish \
+          # Generate and publish Android client using direct configuration (no template processing)
+          # This eliminates configuration cache issues and template complexity
+          echo "🔧 Generating Android client..."
+          ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
+            --build-cache --parallel --configuration-cache
+          
+          echo "📦 Publishing Android client..."
+          # Use explicit property passing to ensure reliable publishing
+          ./gradlew :android-client-library:publish \
             -PpublishType="${{ inputs.publish-type }}" \
-            -PPublishingRepositoryUsername="${CREDENTIAL_USERNAME}" \
-            -PPublishingRepositoryPassword="${CREDENTIAL_PASSWORD}" \
-            $([ "${{ inputs.publish-type }}" == "production" ] && echo "-PsigningKey=${{ secrets.SIGNING_KEY }} -PsigningPassword=${{ secrets.SIGNING_PASSWORD }}") \
             -PclientVersion="${CLIENT_VERSION}" \
             -PandroidArtifactId="${ANDROID_ARTIFACT_ID}" \
             -PandroidGroupId="${ANDROID_GROUP_ID}" \
-            --build-cache --parallel --configuration-cache --rerun-tasks --info
+            $([ "${{ inputs.publish-type }}" == "production" ] && echo "-PcentralPortalUsername=${CREDENTIAL_USERNAME} -PcentralPortalPassword=${CREDENTIAL_PASSWORD}") \
+            $([ "${{ inputs.publish-type }}" == "staging" ] && echo "-PGitHubPackagesUsername=${CREDENTIAL_USERNAME} -PGitHubPackagesPassword=${CREDENTIAL_PASSWORD}") \
+            $([ "${{ inputs.publish-type }}" == "production" ] && echo "-PsigningKey=${{ secrets.SIGNING_KEY }} -PsigningPassword=${{ secrets.SIGNING_PASSWORD }}") \
+            --build-cache --parallel --configuration-cache
 
           echo "✅ Android client generated and published to ${{ inputs.publish-type }} repository successfully"
 

@@ -232,39 +232,16 @@ jobs:
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule ${GRADLE_PROPS} \
             --build-cache --parallel --configuration-cache
           
-          echo "🔍 Post-generation debugging..."
-          echo "📋 Template file exists? $([ -f "android-client-library/build.gradle.kts.template" ] && echo "YES" || echo "NO")"
-          if [ -f "android-client-library/build.gradle.kts.template" ]; then
-            echo "📏 Template size: $(wc -c < android-client-library/build.gradle.kts.template) bytes"
-          fi
-          
+          echo "🔍 Verifying build.gradle.kts generation..."
           if [ -f "android-client-library/build.gradle.kts" ]; then
-            echo "✅ build.gradle.kts was generated successfully"
+            echo "✅ build.gradle.kts generated successfully"
             echo "📏 File size: $(wc -c < android-client-library/build.gradle.kts) bytes"
           else
-            echo "❌ build.gradle.kts was NOT generated"
-            echo "📁 Contents of android-client-library/:"
-            ls -la android-client-library/ || echo "Directory doesn't exist"
-            echo "📋 Generation task output should show template processing..."
+            echo "❌ ERROR: build.gradle.kts was NOT generated (cache/output issue)"
+            exit 1
           fi
           
           echo "📦 Publishing Android client..."
-          
-          # Debug: Check if build.gradle.kts exists and has publishing configuration
-          echo "🔍 Pre-publish debugging..."
-          if [ -f "android-client-library/build.gradle.kts" ]; then
-            echo "✅ build.gradle.kts exists"
-            echo "📋 Publishing plugin check:"
-            grep -n "maven-publish" android-client-library/build.gradle.kts || echo "❌ maven-publish plugin not found"
-            echo "📋 Publishing block check:"
-            grep -A 5 "publishing {" android-client-library/build.gradle.kts || echo "❌ publishing block not found"
-          else
-            echo "❌ build.gradle.kts does not exist!"
-            ls -la android-client-library/
-          fi
-          
-          echo "🔍 Available tasks in android-client-library:"
-          ./gradlew :android-client-library:tasks --group="publishing" || echo "Failed to list tasks"
           
           # Use same properties for configuration cache compatibility
           echo "🔍 Running publish with same properties as generation"

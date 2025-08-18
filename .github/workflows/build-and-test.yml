@@ -365,21 +365,14 @@ jobs:
             echo "docs-only-changes=false" >> $GITHUB_OUTPUT
 
             # Determine what to run based on which specific workflows changed
-            if [[ "$UNIT_TEST_WORKFLOWS" == "true" ]]; then
-              # Unit test workflow changes - run unit tests to validate
+            # Priority order: Orchestration (highest) → E2E → Docker → Unit Test → Infrastructure (lowest)
+            if [[ "$ORCHESTRATION_WORKFLOWS" == "true" ]]; then
+              # Orchestration workflow changes - run full pipeline to validate orchestration
               echo "should-run-tests-workflow=true" >> $GITHUB_OUTPUT
-              echo "should-run-docker-workflow=false" >> $GITHUB_OUTPUT
-              echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
-              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
-              DECISION="Unit test workflow changes - validating with unit test execution"
-
-            elif [[ "$DOCKER_WORKFLOWS" == "true" ]]; then
-              # Docker workflow changes - run Docker workflow to validate
-              echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
               echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
-              echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
+              echo "should-run-e2e-workflow=true" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
-              DECISION="Docker workflow changes - validating with Docker build execution"
+              DECISION="Orchestration workflow changes - validating with full pipeline execution"
 
             elif [[ "$E2E_WORKFLOWS" == "true" ]]; then
               # E2E workflow changes - run Docker + E2E to validate
@@ -389,13 +382,21 @@ jobs:
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
               DECISION="E2E workflow changes - validating with Docker build + E2E execution"
 
-            elif [[ "$ORCHESTRATION_WORKFLOWS" == "true" ]]; then
-              # Orchestration workflow changes - run full pipeline to validate orchestration
-              echo "should-run-tests-workflow=true" >> $GITHUB_OUTPUT
+            elif [[ "$DOCKER_WORKFLOWS" == "true" ]]; then
+              # Docker workflow changes - run Docker workflow to validate
+              echo "should-run-tests-workflow=false" >> $GITHUB_OUTPUT
               echo "should-run-docker-workflow=true" >> $GITHUB_OUTPUT
-              echo "should-run-e2e-workflow=true" >> $GITHUB_OUTPUT
+              echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
               echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
-              DECISION="Orchestration workflow changes - validating with full pipeline execution"
+              DECISION="Docker workflow changes - validating with Docker build execution"
+
+            elif [[ "$UNIT_TEST_WORKFLOWS" == "true" ]]; then
+              # Unit test workflow changes - run unit tests to validate
+              echo "should-run-tests-workflow=true" >> $GITHUB_OUTPUT
+              echo "should-run-docker-workflow=false" >> $GITHUB_OUTPUT
+              echo "should-run-e2e-workflow=false" >> $GITHUB_OUTPUT
+              echo "fast-path-eligible=false" >> $GITHUB_OUTPUT
+              DECISION="Unit test workflow changes - validating with unit test execution"
 
             else
               # Infrastructure workflow changes - minimal validation (syntax check only)
@@ -462,30 +463,25 @@ jobs:
             echo "    🐳 Docker Workflow: SKIPPED (no code/Docker changes)"
             echo "    🎯 E2E Workflow: SKIPPED (no images to test)"
           elif [[ "${{ steps.decision-matrix.outputs.orchestration-workflow-changes }}" == "true" ]]; then
-            echo "🔧 Orchestration workflow changes - Syntax validation only"
-            echo "    🧪 Unit Tests: SKIPPED (workflow syntax change only - use force-unit-tests for execution validation)"
-            echo "    🐳 Docker Workflow: SKIPPED (workflow syntax change only - use force-docker-build for build validation)"
-            echo "    🎯 E2E Workflow: SKIPPED (workflow syntax change only - use force-full-pipeline for E2E validation)"
-          elif [[ "${{ steps.decision-matrix.outputs.unit-test-workflow-changes }}" == "true" || "${{ steps.decision-matrix.outputs.unit-test-workflow-changes }}" == "forced" ]]; then
-            echo "🧪 Unit test workflow changes - Test workflow validation"
-            echo "    🧪 Unit Tests: ${{ steps.decision-matrix.outputs.should-run-tests-workflow == 'true' && 'ENABLED (testing workflow changes)' || 'SKIPPED (syntax validation only - use force-unit-tests for execution)' }}"
-            echo "    🐳 Docker Workflow: SKIPPED (no build workflow changes)"
-            echo "    🎯 E2E Workflow: SKIPPED (no E2E workflow changes)"
-          elif [[ "${{ steps.decision-matrix.outputs.docker-workflow-changes }}" == "true" ]]; then
-            echo "🐳 Docker workflow changes - Docker build validation"
-            echo "    🧪 Unit Tests: SKIPPED (no test workflow changes)"
-            echo "    🐳 Docker Workflow: ENABLED (validating Docker workflow changes)"
-            echo "    🎯 E2E Workflow: SKIPPED (no E2E workflow changes)"
+            echo "🔧 Orchestration workflow changes - Full orchestration validation"
+            echo "    🧪 Unit Tests: ENABLED (orchestration includes unit test workflow logic)"
+            echo "    🐳 Docker Workflow: ENABLED (orchestration needs Docker validation)"
+            echo "    🎯 E2E Workflow: ENABLED (orchestration needs E2E validation)"
           elif [[ "${{ steps.decision-matrix.outputs.e2e-workflow-changes }}" == "true" ]]; then
             echo "🎯 E2E workflow changes - E2E validation"
             echo "    🧪 Unit Tests: SKIPPED (no test workflow changes)"
             echo "    🐳 Docker Workflow: ENABLED (E2E tests need Docker images)"
             echo "    🎯 E2E Workflow: ENABLED (validating E2E workflow changes)"
-          elif [[ "${{ steps.decision-matrix.outputs.orchestration-workflow-changes }}" == "true" ]]; then
-            echo "🔧 Orchestration workflow changes - Full orchestration validation"
-            echo "    🧪 Unit Tests: ENABLED (orchestration includes unit test workflow logic)"
-            echo "    🐳 Docker Workflow: ENABLED (orchestration needs Docker validation)"
-            echo "    🎯 E2E Workflow: ENABLED (orchestration needs E2E validation)"
+          elif [[ "${{ steps.decision-matrix.outputs.docker-workflow-changes }}" == "true" ]]; then
+            echo "🐳 Docker workflow changes - Docker build validation"
+            echo "    🧪 Unit Tests: SKIPPED (no test workflow changes)"
+            echo "    🐳 Docker Workflow: ENABLED (validating Docker workflow changes)"
+            echo "    🎯 E2E Workflow: SKIPPED (no E2E workflow changes)"
+          elif [[ "${{ steps.decision-matrix.outputs.unit-test-workflow-changes }}" == "true" || "${{ steps.decision-matrix.outputs.unit-test-workflow-changes }}" == "forced" ]]; then
+            echo "🧪 Unit test workflow changes - Test workflow validation"
+            echo "    🧪 Unit Tests: ${{ steps.decision-matrix.outputs.should-run-tests-workflow == 'true' && 'ENABLED (testing workflow changes)' || 'SKIPPED (syntax validation only - use force-unit-tests for execution)' }}"
+            echo "    🐳 Docker Workflow: SKIPPED (no build workflow changes)"
+            echo "    🎯 E2E Workflow: SKIPPED (no E2E workflow changes)"
           elif [[ "${{ steps.decision-matrix.outputs.infrastructure-workflow-changes }}" == "true" ]]; then
             echo "⚡ Infrastructure workflow changes - Fast path (syntax validation only)"
             echo "    🧪 Unit Tests: SKIPPED (infrastructure workflows don't affect tests)"

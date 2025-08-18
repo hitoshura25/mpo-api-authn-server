@@ -195,10 +195,6 @@ jobs:
           PUBLISH_TYPE: ${{ inputs.publish-type }}
           # Repository configuration from central config (environment-specific)
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
-          # Gradle publishing credentials using ORG_GRADLE_PROJECT_ prefix (primary method)
-          # This allows environment variables to become Gradle properties without cache invalidation
-          # Repository name "PublishingRepository" requires these specific property names:
-          # Use environment-specific credentials based on publish-type from central configuration
           # Gradle publishing credentials using ORG_GRADLE_PROJECT_ prefix for configuration cache compatibility
           # These environment variables become Gradle project properties automatically
           ORG_GRADLE_PROJECT_PublishingRepositoryUsername: ${{ inputs.publish-type == 'staging' && github.actor || secrets.CENTRAL_PORTAL_USERNAME }}
@@ -232,7 +228,6 @@ jobs:
           echo "  ORG_GRADLE_PROJECT_PublishingRepositoryUsername -> project.findProperty('PublishingRepositoryUsername')"
           echo "  ORG_GRADLE_PROJECT_PublishingRepositoryPassword -> project.findProperty('PublishingRepositoryPassword')"
           echo "🔍 Username: ${ORG_GRADLE_PROJECT_PublishingRepositoryUsername}"
-          echo "🔍 Password length: ${#ORG_GRADLE_PROJECT_PublishingRepositoryPassword}"
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
             --build-cache --parallel --configuration-cache
           

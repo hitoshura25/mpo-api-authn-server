@@ -126,6 +126,9 @@ validate_config() {
     fi
     
     log "✅ Configuration validation complete:"
+    log "  Repository Owner: $REPOSITORY_OWNER"
+    log "  GitHub Repository: ${GITHUB_REPOSITORY:-NOT_SET}"
+    log "  Constructed Repo Path: ${GITHUB_REPOSITORY:-${REPOSITORY_OWNER}/repo}"
     log "  Android Group ID: $ANDROID_GROUP_ID"
     log "  Android Base Artifact ID: $ANDROID_BASE_ARTIFACT_ID"
     log "  Android Staging Suffix: $ANDROID_STAGING_SUFFIX"
@@ -240,6 +243,8 @@ cleanup_staging_docker() {
             continue
         fi
         
+        log "📍 Using Docker endpoint: $endpoint"
+        
         # Get staging versions based on workflow outcome
         local versions_query
         if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
@@ -267,8 +272,18 @@ cleanup_staging_docker() {
         fi
         
         # Debug: First show basic info about versions for this package
+        log "🔍 Testing versions API call: gh api ${endpoint}/versions"
+        
+        local version_response
+        version_response=$(gh api "${endpoint}/versions" 2>&1 || echo "API_ERROR")
+        
+        if [[ "$version_response" == "API_ERROR" ]]; then
+            log "❌ API call failed for ${endpoint}/versions"
+            continue
+        fi
+        
         local version_count
-        version_count=$(gh api "${endpoint}/versions" --jq 'length' 2>/dev/null || echo "0")
+        version_count=$(echo "$version_response" | jq 'length' 2>/dev/null || echo "0")
         log "🔍 Total versions found for $package: $version_count"
         
         if [[ "$version_count" -gt 0 ]]; then

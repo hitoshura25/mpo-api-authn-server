@@ -200,29 +200,67 @@ validate_github_cli() {
     log "✅ GitHub CLI authentication validated"
 }
 
+# Function to URL-encode package names for API calls
+url_encode_package_name() {
+    local package_name="$1"
+    # URL encode forward slashes and other special characters that may appear in package names
+    echo "$package_name" | sed 's|/|%2F|g' | sed 's| |%20|g'
+}
+
 # Function to find the correct API endpoint for a package
 find_package_endpoint() {
     local package_type="$1"
     local package_name="$2"
     
-    # Try repository-scoped packages first, then user/org packages
+    # URL-encode the package name for API calls
+    local encoded_package_name
+    encoded_package_name=$(url_encode_package_name "$package_name")
+    
+    # Repository-owned packages use org endpoint pattern, not repos endpoint
+    # Based on GitHub API docs: https://docs.github.com/en/rest/packages/packages
     local endpoints=(
-        "/repos/${GITHUB_REPOSITORY:-${REPOSITORY_OWNER}/repo}/packages/${package_type}/${package_name}"
-        "/orgs/${REPOSITORY_OWNER}/packages/${package_type}/${package_name}"
-        "/users/${REPOSITORY_OWNER}/packages/${package_type}/${package_name}"
-        "/user/packages/${package_type}/${package_name}"
+        "/orgs/${REPOSITORY_OWNER}/packages/${package_type}/${encoded_package_name}"
+        "/users/${REPOSITORY_OWNER}/packages/${package_type}/${encoded_package_name}"
+        "/user/packages/${package_type}/${encoded_package_name}"
     )
     
     for endpoint in "${endpoints[@]}"; do
         log "🔍 Testing endpoint: $endpoint"
-        if gh api "${endpoint}/versions" >/dev/null 2>&1; then
+        log "🔍 Original package name: $package_name"
+        log "🔍 URL-encoded package name: $encoded_package_name"
+        
+        # Test endpoint with more robust error checking
+        local api_test_result
+        api_test_result=$(gh api "${endpoint}/versions" --silent 2>&1)
+        local api_exit_code=$?
+        
+        if [[ $api_exit_code -eq 0 ]]; then
             log "✅ Found package at: $endpoint"
+            
+            # Verify the endpoint actually returns version data
+            local version_count
+            version_count=$(echo "$api_test_result" | jq 'length' 2>/dev/null || echo "0")
+            log "🔍 Endpoint verification: $version_count versions available"
+            
             echo "$endpoint"
             return 0
+        else
+            log "❌ Endpoint failed: $endpoint (exit code: $api_exit_code)"
+            if [[ "$api_test_result" =~ "404" ]]; then
+                log "   Package not found at this endpoint"
+            elif [[ "$api_test_result" =~ "403" ]]; then
+                log "   Permission denied - check token permissions"
+            else
+                log "   Error details: $(echo "$api_test_result" | head -c 100)..."
+            fi
         fi
     done
     
     log "❌ Package not found at any endpoint: $package_name"
+    log "❌ Available endpoints tested:"
+    for endpoint in "${endpoints[@]}"; do
+        log "   - $endpoint/versions"
+    done
     return 1
 }
 
@@ -236,14 +274,36 @@ cleanup_staging_docker() {
     for package in "${packages[@]}"; do
         log "🔍 Processing Docker package: $package"
         
-        # Find the correct API endpoint for this package
-        local endpoint
-        if ! endpoint=$(find_package_endpoint "container" "$package"); then
-            log "⚠️ Skipping Docker package (not found): $package"
+        # Container packages in GHCR may use different naming patterns
+        # Try both simple name and repository-scoped name
+        local package_variants=(
+            "$package"                                                    # Simple name: webauthn-server
+            "${REPOSITORY_OWNER}/${package}"                             # Owner-scoped: hitoshura25/webauthn-server  
+            "mpo-api-authn-server/${package}"                           # Repo-scoped: mpo-api-authn-server/webauthn-server
+            "${REPOSITORY_OWNER}/mpo-api-authn-server/${package}"       # Full path: hitoshura25/mpo-api-authn-server/webauthn-server
+        )
+        
+        local endpoint=""
+        local found_package=""
+        
+        # Try each package name variant
+        for package_variant in "${package_variants[@]}"; do
+            log "🔍 Trying package variant: $package_variant"
+            if endpoint=$(find_package_endpoint "container" "$package_variant"); then
+                found_package="$package_variant"
+                log "✅ Found Docker package: $found_package"
+                break
+            fi
+        done
+        
+        if [[ -z "$endpoint" ]]; then
+            log "⚠️ Skipping Docker package (not found with any name variant): $package"
+            log "   Tried variants: ${package_variants[*]}"
             continue
         fi
         
         log "📍 Using Docker endpoint: $endpoint"
+        log "📍 Found package name: $found_package"
         
         # Get staging versions based on workflow outcome
         local versions_query
@@ -273,14 +333,19 @@ cleanup_staging_docker() {
         
         # Debug: First show basic info about versions for this package
         log "🔍 Testing versions API call: gh api ${endpoint}/versions"
+        log "🔍 Package name used: $found_package"
         
         local version_response
-        version_response=$(gh api "${endpoint}/versions" 2>&1 || echo "API_ERROR")
+        version_response=$(gh api "${endpoint}/versions" 2>&1)
+        local api_exit_code=$?
         
-        if [[ "$version_response" == "API_ERROR" ]]; then
+        if [[ $api_exit_code -ne 0 ]]; then
             log "❌ API call failed for ${endpoint}/versions"
+            log "❌ Error response: $version_response"
             continue
         fi
+        
+        log "🔍 Raw API response preview: $(echo "$version_response" | head -c 200)..."
         
         local version_count
         version_count=$(echo "$version_response" | jq 'length' 2>/dev/null || echo "0")

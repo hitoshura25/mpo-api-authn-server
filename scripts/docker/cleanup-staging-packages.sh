@@ -385,12 +385,70 @@ find_package_endpoint() {
     return 1
 }
 
+# Function to safely delete a Docker version with error recovery
+delete_docker_version() {
+    local endpoint="$1"
+    local version_id="$2"
+    local package_name="${3:-unknown}"
+    
+    if [[ -z "$version_id" || "$version_id" == "null" ]]; then
+        log "⚠️ Skipping invalid version ID: '$version_id'"
+        return 1
+    fi
+    
+    log "🔍 Attempting to delete Docker version ID: $version_id (package: $package_name)"
+    log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+    
+    # Temporarily disable error exit for this operation
+    set +e
+    local delete_result
+    local delete_exit_code
+    
+    # Attempt deletion with comprehensive error capture
+    log "🔍 Executing: gh api --method DELETE ${endpoint}/versions/$version_id"
+    delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1)
+    delete_exit_code=$?
+    
+    # Re-enable error exit
+    set -e
+    
+    if [[ $delete_exit_code -eq 0 ]]; then
+        log "✅ Successfully deleted Docker version: $version_id"
+        log "✅ Delete response: $delete_result"
+        return 0
+    else
+        log "❌ Failed to delete Docker version: $version_id"
+        log "❌ Exit code: $delete_exit_code"
+        log "❌ Full error response: $delete_result"
+        
+        # Enhanced error analysis
+        if [[ "$delete_result" =~ "404" ]]; then
+            log "❌ Error type: Version not found (404) - may have been deleted already"
+        elif [[ "$delete_result" =~ "403" ]]; then
+            log "❌ Error type: Permission denied (403) - check token permissions"
+            log "❌ Required permissions: packages:write for GitHub Packages"
+        elif [[ "$delete_result" =~ "401" ]]; then
+            log "❌ Error type: Unauthorized (401) - check token authentication"
+        elif [[ "$delete_result" =~ "422" ]]; then
+            log "❌ Error type: Unprocessable entity (422) - invalid request format"
+        elif [[ "$delete_result" =~ "500" ]] || [[ "$delete_result" =~ "502" ]] || [[ "$delete_result" =~ "503" ]]; then
+            log "❌ Error type: Server error - GitHub API may be temporarily unavailable"
+            log "🔄 Consider retry with exponential backoff"
+        else
+            log "❌ Error type: Unknown - full response logged above"
+        fi
+        
+        return 1
+    fi
+}
+
 # Function to clean up staging Docker images from GHCR
 cleanup_staging_docker() {
     log "🐳 Cleaning up staging Docker images from GHCR..."
     
     local packages=("$DOCKER_WEBAUTHN_IMAGE_NAME" "$DOCKER_TEST_CREDENTIALS_IMAGE_NAME")
     local total_deleted=0
+    local total_failed=0
     
     for package in "${packages[@]}"; do
         log "🔍 Processing Docker package: $package"
@@ -543,70 +601,70 @@ cleanup_staging_docker() {
         fi
         
         local package_deleted=0
+        local package_failed=0
         log "🗑️ Attempting to delete $staging_count staging versions..."
         
+        # Temporarily disable ERR trap for deletion loop
+        trap - ERR
+        
         while IFS= read -r version_id; do
-            if [[ -n "$version_id" && "$version_id" != "null" ]]; then
-                log "🔍 Attempting to delete Docker version ID: $version_id"
-                log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
-                
-                # Validate GitHub token permissions before deletion
-                local auth_check
-                auth_check=$(gh auth status 2>&1 || echo "Auth failed")
-                log "🔍 Auth status: $(echo "$auth_check" | head -n 1)"
-                
-                local delete_result
-                local delete_exit_code
-                
-                # Attempt deletion with comprehensive error capture
-                log "🔍 Executing: gh api --method DELETE ${endpoint}/versions/$version_id"
-                if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
-                    delete_exit_code=0
-                    ((package_deleted++))
-                    ((total_deleted++))
-                    log "✅ Successfully deleted Docker version: $version_id"
-                    log "✅ Delete response: $delete_result"
-                else
-                    delete_exit_code=$?
-                    log "❌ Failed to delete Docker version: $version_id"
-                    log "❌ Exit code: $delete_exit_code"
-                    log "❌ Full error response: $delete_result"
-                    
-                    # Enhanced error analysis
-                    if [[ "$delete_result" =~ "404" ]]; then
-                        log "❌ Error type: Version not found (404) - may have been deleted already"
-                    elif [[ "$delete_result" =~ "403" ]]; then
-                        log "❌ Error type: Permission denied (403) - check token permissions"
-                        log "❌ Required permissions: packages:write for GitHub Packages"
-                    elif [[ "$delete_result" =~ "401" ]]; then
-                        log "❌ Error type: Unauthorized (401) - check token authentication"
-                    elif [[ "$delete_result" =~ "422" ]]; then
-                        log "❌ Error type: Unprocessable entity (422) - invalid request format"
-                    elif [[ "$delete_result" =~ "500" ]] || [[ "$delete_result" =~ "502" ]] || [[ "$delete_result" =~ "503" ]]; then
-                        log "❌ Error type: Server error - GitHub API may be temporarily unavailable"
-                        log "🔄 Consider retry with exponential backoff"
-                    else
-                        log "❌ Error type: Unknown - full response logged above"
-                    fi
-                    
-                    # Continue with other versions instead of failing completely
-                    log "⚠️ Continuing with remaining versions despite this failure"
-                fi
+            if delete_docker_version "$endpoint" "$version_id" "$package"; then
+                ((package_deleted++))
+                ((total_deleted++))
             else
-                log "⚠️ Skipping invalid version ID: '$version_id'"
+                ((package_failed++))
+                ((total_failed++))
+                log "⚠️ Continuing with remaining versions despite this failure"
             fi
         done <<< "$versions"
         
-        # Ensure the loop completed successfully
-        local loop_exit_code=$?
-        if [[ $loop_exit_code -ne 0 ]]; then
-            log "⚠️ Version deletion loop had issues (exit code: $loop_exit_code)"
-        fi
+        # Re-enable ERR trap after deletion loop
+        trap 'log "❌ Error occurred at line $LINENO in function ${FUNCNAME[1]:-main}"; log "❌ Last command: $BASH_COMMAND"; log "❌ Exit code: $?"' ERR
         
-        log "📊 $package: deleted $package_deleted staging versions"
+        log "📊 $package: deleted $package_deleted staging versions, failed $package_failed deletions"
     done
     
-    log "🐳 Docker staging cleanup complete: $total_deleted total versions deleted"
+    if [[ $total_failed -gt 0 ]]; then
+        log "🐳 Docker staging cleanup complete with issues: $total_deleted deleted, $total_failed failed"
+        log "⚠️ Some deletions failed but script continued successfully"
+    else
+        log "🐳 Docker staging cleanup complete: $total_deleted total versions deleted"
+    fi
+}
+
+# Function to safely delete an npm version with error recovery
+delete_npm_version() {
+    local endpoint="$1"
+    local version_id="$2"
+    
+    if [[ -z "$version_id" || "$version_id" == "null" ]]; then
+        log "⚠️ Skipping invalid npm version ID: '$version_id'"
+        return 1
+    fi
+    
+    log "🔍 Attempting to delete npm version ID: $version_id"
+    log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+    
+    # Temporarily disable error exit for this operation
+    set +e
+    local delete_result
+    local delete_exit_code
+    
+    delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1)
+    delete_exit_code=$?
+    
+    # Re-enable error exit
+    set -e
+    
+    if [[ $delete_exit_code -eq 0 ]]; then
+        log "✅ Successfully deleted npm version: $version_id"
+        return 0
+    else
+        log "❌ Failed to delete npm version: $version_id"
+        log "❌ Exit code: $delete_exit_code"
+        log "❌ Error response: $delete_result"
+        return 1
+    fi
 }
 
 # Function to clean up staging npm packages
@@ -617,6 +675,7 @@ cleanup_staging_npm() {
     local base_package="$NPM_STAGING_PACKAGE_NAME"
     local scoped_package="${scope}%2F${base_package}"  # URL-encoded @scope/package
     local total_deleted=0
+    local total_failed=0
     
     # Try to find the npm package using different naming patterns
     # Based on testing, the working pattern is just the base package name without URL encoding the scope
@@ -699,33 +758,61 @@ cleanup_staging_npm() {
         return 0
     fi
     
+    # Temporarily disable ERR trap for deletion loop
+    trap - ERR
+    
     while IFS= read -r version_id; do
-        if [[ -n "$version_id" && "$version_id" != "null" ]]; then
-            log "🔍 Attempting to delete npm version ID: $version_id"
-            log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
-            
-            local delete_result
-            local delete_exit_code
-            
-            if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
-                delete_exit_code=0
-                ((total_deleted++))
-                log "✅ Successfully deleted npm version: $version_id"
-            else
-                delete_exit_code=$?
-                log "❌ Failed to delete npm version: $version_id"
-                log "❌ Exit code: $delete_exit_code"
-                log "❌ Error response: $delete_result"
-                
-                # Continue with other versions
-                log "⚠️ Continuing with remaining versions despite this failure"
-            fi
+        if delete_npm_version "$endpoint" "$version_id"; then
+            ((total_deleted++))
         else
-            log "⚠️ Skipping invalid npm version ID: '$version_id'"
+            ((total_failed++))
+            log "⚠️ Continuing with remaining versions despite this failure"
         fi
     done <<< "$versions"
     
-    log "📦 npm staging cleanup complete: $total_deleted versions deleted"
+    # Re-enable ERR trap after deletion loop
+    trap 'log "❌ Error occurred at line $LINENO in function ${FUNCNAME[1]:-main}"; log "❌ Last command: $BASH_COMMAND"; log "❌ Exit code: $?"' ERR
+    
+    if [[ $total_failed -gt 0 ]]; then
+        log "📦 npm staging cleanup complete with issues: $total_deleted deleted, $total_failed failed"
+    else
+        log "📦 npm staging cleanup complete: $total_deleted versions deleted"
+    fi
+}
+
+# Function to safely delete a Maven version with error recovery
+delete_maven_version() {
+    local endpoint="$1"
+    local version_id="$2"
+    
+    if [[ -z "$version_id" || "$version_id" == "null" ]]; then
+        log "⚠️ Skipping invalid Maven version ID: '$version_id'"
+        return 1
+    fi
+    
+    log "🔍 Attempting to delete Maven version ID: $version_id"
+    log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+    
+    # Temporarily disable error exit for this operation
+    set +e
+    local delete_result
+    local delete_exit_code
+    
+    delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1)
+    delete_exit_code=$?
+    
+    # Re-enable error exit
+    set -e
+    
+    if [[ $delete_exit_code -eq 0 ]]; then
+        log "✅ Successfully deleted Maven version: $version_id"
+        return 0
+    else
+        log "❌ Failed to delete Maven version: $version_id"
+        log "❌ Exit code: $delete_exit_code"
+        log "❌ Error response: $delete_result"
+        return 1
+    fi
 }
 
 # Function to clean up staging Maven packages
@@ -734,6 +821,7 @@ cleanup_staging_maven() {
     
     local package_name="$ANDROID_STAGING_PACKAGE"
     local total_deleted=0
+    local total_failed=0
     
     # Find the Maven package using dynamic endpoint detection
     # Based on testing, the full package name format works
@@ -803,33 +891,26 @@ cleanup_staging_maven() {
         return 0
     fi
     
+    # Temporarily disable ERR trap for deletion loop
+    trap - ERR
+    
     while IFS= read -r version_id; do
-        if [[ -n "$version_id" && "$version_id" != "null" ]]; then
-            log "🔍 Attempting to delete Maven version ID: $version_id"
-            log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
-            
-            local delete_result
-            local delete_exit_code
-            
-            if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
-                delete_exit_code=0
-                ((total_deleted++))
-                log "✅ Successfully deleted Maven version: $version_id"
-            else
-                delete_exit_code=$?
-                log "❌ Failed to delete Maven version: $version_id"
-                log "❌ Exit code: $delete_exit_code"
-                log "❌ Error response: $delete_result"
-                
-                # Continue with other versions
-                log "⚠️ Continuing with remaining versions despite this failure"
-            fi
+        if delete_maven_version "$endpoint" "$version_id"; then
+            ((total_deleted++))
         else
-            log "⚠️ Skipping invalid Maven version ID: '$version_id'"
+            ((total_failed++))
+            log "⚠️ Continuing with remaining versions despite this failure"
         fi
     done <<< "$versions"
     
-    log "🏗️ Maven staging cleanup complete: $total_deleted versions deleted"
+    # Re-enable ERR trap after deletion loop
+    trap 'log "❌ Error occurred at line $LINENO in function ${FUNCNAME[1]:-main}"; log "❌ Last command: $BASH_COMMAND"; log "❌ Exit code: $?"' ERR
+    
+    if [[ $total_failed -gt 0 ]]; then
+        log "🏗️ Maven staging cleanup complete with issues: $total_deleted deleted, $total_failed failed"
+    else
+        log "🏗️ Maven staging cleanup complete: $total_deleted versions deleted"
+    fi
 }
 
 # Main cleanup function
@@ -865,15 +946,41 @@ perform_staging_cleanup() {
     
     log ""
     
-    # Perform cleanup for each package type
-    cleanup_staging_docker
+    # Track overall cleanup statistics
+    local overall_success=true
+    local cleanup_errors=0
+    
+    # Perform cleanup for each package type with error tracking
+    log "🐳 Phase 1/3: Docker image cleanup"
+    if ! cleanup_staging_docker; then
+        overall_success=false
+        ((cleanup_errors++))
+        log "⚠️ Docker cleanup encountered issues but script continues"
+    fi
     log ""
-    cleanup_staging_npm
+    
+    log "📦 Phase 2/3: npm package cleanup"
+    if ! cleanup_staging_npm; then
+        overall_success=false
+        ((cleanup_errors++))
+        log "⚠️ npm cleanup encountered issues but script continues"
+    fi
     log ""
-    cleanup_staging_maven
+    
+    log "🏗️ Phase 3/3: Maven package cleanup"
+    if ! cleanup_staging_maven; then
+        overall_success=false
+        ((cleanup_errors++))
+        log "⚠️ Maven cleanup encountered issues but script continues"
+    fi
     
     log ""
-    log "🎉 GitHub Packages staging cleanup completed"
+    if [[ "$overall_success" == "true" ]]; then
+        log "🎉 GitHub Packages staging cleanup completed successfully"
+    else
+        log "⚠️ GitHub Packages staging cleanup completed with $cleanup_errors phase(s) having issues"
+        log "📋 Script completed successfully despite individual deletion failures"
+    fi
 }
 
 # Check for emergency override in commit message
@@ -908,9 +1015,12 @@ main() {
     perform_staging_cleanup
     
     log "✅ Staging cleanup script completed successfully"
+    log "📋 Summary: Script uses enhanced error recovery and continues despite individual failures"
+    log "🔧 If you see deletion failures above, check GitHub token permissions (packages:write required)"
 }
 
 # Enhanced error trapping for better debugging
+# Note: ERR trap disabled during deletion loops to allow graceful error handling
 trap 'log "❌ Error occurred at line $LINENO in function ${FUNCNAME[1]:-main}"; log "❌ Last command: $BASH_COMMAND"; log "❌ Exit code: $?"' ERR
 
 # Run main function

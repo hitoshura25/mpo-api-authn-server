@@ -171,7 +171,7 @@ jobs:
           echo "  WebAuthn changes detected: ${{ inputs.webauthn-docker-changes-detected }}"
           echo "  Test credentials changes detected: ${{ inputs.test-credentials-docker-changes-detected }}"
           echo ""
-          
+
           if [[ "${{ inputs.force-build }}" == "true" ]]; then
             echo "🚀 FORCE BUILD MODE: Building all images regardless of change detection"
           elif [[ "${{ inputs.webauthn-docker-changes-detected }}" == "true" || "${{ inputs.test-credentials-docker-changes-detected }}" == "true" ]]; then
@@ -249,118 +249,118 @@ jobs:
           provenance: false
 
       # STEP 4A: Create explicit SHA tags with PR/branch context for precise cleanup targeting
-      - name: Create explicit SHA tags for WebAuthn Server
-        if: steps.docker-push.outcome == 'success'
-        run: |
-          echo "🏷️ Creating explicit SHA tags with PR/branch context for precise cleanup targeting..."
-          
-          # Extract short SHA from image digest
-          DIGEST="${{ steps.docker-push.outputs.digest }}"
-          SHORT_SHA=$(echo "$DIGEST" | cut -c8-15)
-          echo "📋 WebAuthn Server Digest: $DIGEST"
-          echo "📋 Short SHA: $SHORT_SHA"
-          
-          # Determine context tag based on GitHub event
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number }}"
-            echo "🎯 PR Context: Creating tag $CONTEXT_TAG"
-          elif [[ "${{ github.ref_name }}" == "main" ]]; then
-            CONTEXT_TAG="sha256-${SHORT_SHA}-main-${{ github.run_number }}"
-            echo "🎯 Main Branch Context: Creating tag $CONTEXT_TAG"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            CONTEXT_TAG="sha256-${SHORT_SHA}-manual-$(date +%s)"
-            echo "🎯 Manual Trigger Context: Creating tag $CONTEXT_TAG"
-          else
-            CONTEXT_TAG="sha256-${SHORT_SHA}-branch-${{ github.ref_name }}-${{ github.run_number }}"
-            echo "🎯 Branch Context: Creating tag $CONTEXT_TAG"
-          fi
-          
-          # Get the full image name from the existing tags
-          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}"
-          
-          # Tag the image with the context-specific SHA tag
-          echo "🏷️ Tagging image with explicit SHA tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
-          docker buildx imagetools create "$FULL_IMAGE_NAME@$DIGEST" --tag "$FULL_IMAGE_NAME:$CONTEXT_TAG"
-          
-          echo "✅ Explicit SHA tag created successfully"
-          echo "📋 Tag: $CONTEXT_TAG"
-          echo "🔗 Full tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
-          
-          # Store context tag for cleanup script reference
-          echo "webauthn-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
-        id: webauthn-sha-tagging
-
-      - name: Generate artifact attestation for WebAuthn Server
-        id: webauthn-attestation
-        if: steps.docker-push.outcome == 'success'
-        uses: actions/attest-build-provenance@v2
-        continue-on-error: true  # Don't fail build on GitHub attestation service issues
-        with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
-          subject-digest: ${{ steps.docker-push.outputs.digest }}
-          push-to-registry: true
-        env:
-          ACTIONS_STEP_DEBUG: true
-
-      # STEP 4A2: Tag any attestation-generated digests for WebAuthn Server
-      - name: Tag attestation-generated digests for WebAuthn Server
-        if: steps.webauthn-attestation.outcome == 'success' && steps.webauthn-sha-tagging.outcome == 'success'
-        run: |
-          echo "🏷️ Checking for additional attestation-generated digests for WebAuthn Server..."
-          
-          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}"
-          PRIMARY_DIGEST="${{ steps.docker-push.outputs.digest }}"
-          
-          # Wait a moment for attestation to complete and registry to update
-          sleep 5
-          
-          echo "🔍 Using GitHub API to find all digests for WebAuthn Server..."
-          
-          # Use GitHub API to get all package versions for this repository
-          if gh api "/users/${{ github.repository_owner }}/packages/container/webauthn-server/versions" --silent > /tmp/webauthn_versions.json 2>/dev/null; then
-            echo "✅ Successfully retrieved package versions from GitHub API"
-            
-            # Find digests that are not tagged with PR context but should be
-            UNTAGGED_DIGESTS=$(jq -r '
-              .[] | 
-              select(
-                (.metadata.container.tags | length == 0) or 
-                (.metadata.container.tags | map(test("^sha256-[a-f0-9]+-pr-")) | any | not)
-              ) | 
-              select(.name | test("^sha256:[a-f0-9]{64}$")) | 
-              .name' /tmp/webauthn_versions.json 2>/dev/null || echo "")
-            
-            if [[ -n "$UNTAGGED_DIGESTS" ]]; then
-              echo "🔍 Found untagged digests (likely from attestation):"
-              echo "$UNTAGGED_DIGESTS"
-              
-              # Tag each untagged digest with PR context
-              echo "$UNTAGGED_DIGESTS" | while IFS= read -r digest; do
-                if [[ -n "$digest" && "$digest" != "$PRIMARY_DIGEST" ]]; then
-                  SHORT_SHA=$(echo "$digest" | cut -c8-15)
-                  ADDITIONAL_CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number || 'latest' }}"
-                  
-                  echo "🏷️ Tagging attestation digest: $digest"
-                  echo "🏷️ Context tag: $ADDITIONAL_CONTEXT_TAG"
-                  
-                  # Tag the attestation digest
-                  if docker buildx imagetools create "$FULL_IMAGE_NAME@$digest" --tag "$FULL_IMAGE_NAME:$ADDITIONAL_CONTEXT_TAG" 2>/dev/null; then
-                    echo "✅ Successfully tagged attestation digest: $ADDITIONAL_CONTEXT_TAG"
-                  else
-                    echo "⚠️ Failed to tag attestation digest: $digest (continuing...)"
-                  fi
-                fi
-              done
-            else
-              echo "ℹ️ No untagged digests found - all digests already have PR context"
-            fi
-            
-            rm -f /tmp/webauthn_versions.json
-          else
-            echo "⚠️ Could not retrieve package versions from GitHub API"
-          fi
-          
-          echo "✅ WebAuthn Server attestation digest tagging completed"
+      #      - name: Create explicit SHA tags for WebAuthn Server
+      #        if: steps.docker-push.outcome == 'success'
+      #        run: |
+      #          echo "🏷️ Creating explicit SHA tags with PR/branch context for precise cleanup targeting..."
+      #
+      #          # Extract short SHA from image digest
+      #          DIGEST="${{ steps.docker-push.outputs.digest }}"
+      #          SHORT_SHA=$(echo "$DIGEST" | cut -c8-15)
+      #          echo "📋 WebAuthn Server Digest: $DIGEST"
+      #          echo "📋 Short SHA: $SHORT_SHA"
+      #
+      #          # Determine context tag based on GitHub event
+      #          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+      #            CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number }}"
+      #            echo "🎯 PR Context: Creating tag $CONTEXT_TAG"
+      #          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+      #            CONTEXT_TAG="sha256-${SHORT_SHA}-main-${{ github.run_number }}"
+      #            echo "🎯 Main Branch Context: Creating tag $CONTEXT_TAG"
+      #          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+      #            CONTEXT_TAG="sha256-${SHORT_SHA}-manual-$(date +%s)"
+      #            echo "🎯 Manual Trigger Context: Creating tag $CONTEXT_TAG"
+      #          else
+      #            CONTEXT_TAG="sha256-${SHORT_SHA}-branch-${{ github.ref_name }}-${{ github.run_number }}"
+      #            echo "🎯 Branch Context: Creating tag $CONTEXT_TAG"
+      #          fi
+      #
+      #          # Get the full image name from the existing tags
+      #          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}"
+      #
+      #          # Tag the image with the context-specific SHA tag
+      #          echo "🏷️ Tagging image with explicit SHA tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
+      #          docker buildx imagetools create "$FULL_IMAGE_NAME@$DIGEST" --tag "$FULL_IMAGE_NAME:$CONTEXT_TAG"
+      #
+      #          echo "✅ Explicit SHA tag created successfully"
+      #          echo "📋 Tag: $CONTEXT_TAG"
+      #          echo "🔗 Full tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
+      #
+      #          # Store context tag for cleanup script reference
+      #          echo "webauthn-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
+      #        id: webauthn-sha-tagging
+      #
+      #      - name: Generate artifact attestation for WebAuthn Server
+      #        id: webauthn-attestation
+      #        if: steps.docker-push.outcome == 'success'
+      #        uses: actions/attest-build-provenance@v2
+      #        continue-on-error: true  # Don't fail build on GitHub attestation service issues
+      #        with:
+      #          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
+      #          subject-digest: ${{ steps.docker-push.outputs.digest }}
+      #          push-to-registry: true
+      #        env:
+      #          ACTIONS_STEP_DEBUG: true
+      #
+      #      # STEP 4A2: Tag any attestation-generated digests for WebAuthn Server
+      #      - name: Tag attestation-generated digests for WebAuthn Server
+      #        if: steps.webauthn-attestation.outcome == 'success' && steps.webauthn-sha-tagging.outcome == 'success'
+      #        run: |
+      #          echo "🏷️ Checking for additional attestation-generated digests for WebAuthn Server..."
+      #
+      #          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}"
+      #          PRIMARY_DIGEST="${{ steps.docker-push.outputs.digest }}"
+      #
+      #          # Wait a moment for attestation to complete and registry to update
+      #          sleep 5
+      #
+      #          echo "🔍 Using GitHub API to find all digests for WebAuthn Server..."
+      #
+      #          # Use GitHub API to get all package versions for this repository
+      #          if gh api "/users/${{ github.repository_owner }}/packages/container/webauthn-server/versions" --silent > /tmp/webauthn_versions.json 2>/dev/null; then
+      #            echo "✅ Successfully retrieved package versions from GitHub API"
+      #
+      #            # Find digests that are not tagged with PR context but should be
+      #            UNTAGGED_DIGESTS=$(jq -r '
+      #              .[] |
+      #              select(
+      #                (.metadata.container.tags | length == 0) or
+      #                (.metadata.container.tags | map(test("^sha256-[a-f0-9]+-pr-")) | any | not)
+      #              ) |
+      #              select(.name | test("^sha256:[a-f0-9]{64}$")) |
+      #              .name' /tmp/webauthn_versions.json 2>/dev/null || echo "")
+      #
+      #            if [[ -n "$UNTAGGED_DIGESTS" ]]; then
+      #              echo "🔍 Found untagged digests (likely from attestation):"
+      #              echo "$UNTAGGED_DIGESTS"
+      #
+      #              # Tag each untagged digest with PR context
+      #              echo "$UNTAGGED_DIGESTS" | while IFS= read -r digest; do
+      #                if [[ -n "$digest" && "$digest" != "$PRIMARY_DIGEST" ]]; then
+      #                  SHORT_SHA=$(echo "$digest" | cut -c8-15)
+      #                  ADDITIONAL_CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number || 'latest' }}"
+      #
+      #                  echo "🏷️ Tagging attestation digest: $digest"
+      #                  echo "🏷️ Context tag: $ADDITIONAL_CONTEXT_TAG"
+      #
+      #                  # Tag the attestation digest
+      #                  if docker buildx imagetools create "$FULL_IMAGE_NAME@$digest" --tag "$FULL_IMAGE_NAME:$ADDITIONAL_CONTEXT_TAG" 2>/dev/null; then
+      #                    echo "✅ Successfully tagged attestation digest: $ADDITIONAL_CONTEXT_TAG"
+      #                  else
+      #                    echo "⚠️ Failed to tag attestation digest: $digest (continuing...)"
+      #                  fi
+      #                fi
+      #              done
+      #            else
+      #              echo "ℹ️ No untagged digests found - all digests already have PR context"
+      #            fi
+      #
+      #            rm -f /tmp/webauthn_versions.json
+      #          else
+      #            echo "⚠️ Could not retrieve package versions from GitHub API"
+      #          fi
+      #
+      #          echo "✅ WebAuthn Server attestation digest tagging completed"
 
       - name: Push Test Credentials Service to registry
         id: docker-test-credentials-push
@@ -375,118 +375,118 @@ jobs:
           provenance: false
 
       # STEP 4B: Create explicit SHA tags for Test Credentials Service
-      - name: Create explicit SHA tags for Test Credentials Service
-        if: steps.docker-test-credentials-push.outcome == 'success'
-        run: |
-          echo "🏷️ Creating explicit SHA tags with PR/branch context for Test Credentials Service..."
-          
-          # Extract short SHA from image digest
-          DIGEST="${{ steps.docker-test-credentials-push.outputs.digest }}"
-          SHORT_SHA=$(echo "$DIGEST" | cut -c8-15)
-          echo "📋 Test Credentials Digest: $DIGEST"
-          echo "📋 Short SHA: $SHORT_SHA"
-          
-          # Determine context tag based on GitHub event (same logic as WebAuthn Server)
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number }}"
-            echo "🎯 PR Context: Creating tag $CONTEXT_TAG"
-          elif [[ "${{ github.ref_name }}" == "main" ]]; then
-            CONTEXT_TAG="sha256-${SHORT_SHA}-main-${{ github.run_number }}"
-            echo "🎯 Main Branch Context: Creating tag $CONTEXT_TAG"
-          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            CONTEXT_TAG="sha256-${SHORT_SHA}-manual-$(date +%s)"
-            echo "🎯 Manual Trigger Context: Creating tag $CONTEXT_TAG"
-          else
-            CONTEXT_TAG="sha256-${SHORT_SHA}-branch-${{ github.ref_name }}-${{ github.run_number }}"
-            echo "🎯 Branch Context: Creating tag $CONTEXT_TAG"
-          fi
-          
-          # Get the full image name from the existing tags
-          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
-          
-          # Tag the image with the context-specific SHA tag
-          echo "🏷️ Tagging image with explicit SHA tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
-          docker buildx imagetools create "$FULL_IMAGE_NAME@$DIGEST" --tag "$FULL_IMAGE_NAME:$CONTEXT_TAG"
-          
-          echo "✅ Explicit SHA tag created successfully"
-          echo "📋 Tag: $CONTEXT_TAG"
-          echo "🔗 Full tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
-          
-          # Store context tag for cleanup script reference
-          echo "test-credentials-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
-        id: test-credentials-sha-tagging
-
-      - name: Generate artifact attestation for Test Credentials Service
-        id: test-credentials-attestation
-        if: steps.docker-test-credentials-push.outcome == 'success'
-        uses: actions/attest-build-provenance@v2
-        continue-on-error: true  # Don't fail build on GitHub attestation service issues
-        with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
-          subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
-          push-to-registry: true
-        env:
-          ACTIONS_STEP_DEBUG: true
-
-      # STEP 4B2: Tag any attestation-generated digests for Test Credentials Service
-      - name: Tag attestation-generated digests for Test Credentials Service
-        if: steps.test-credentials-attestation.outcome == 'success' && steps.test-credentials-sha-tagging.outcome == 'success'
-        run: |
-          echo "🏷️ Checking for additional attestation-generated digests for Test Credentials Service..."
-          
-          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
-          PRIMARY_DIGEST="${{ steps.docker-test-credentials-push.outputs.digest }}"
-          
-          # Wait a moment for attestation to complete and registry to update
-          sleep 5
-          
-          echo "🔍 Using GitHub API to find all digests for Test Credentials Service..."
-          
-          # Use GitHub API to get all package versions for this repository
-          if gh api "/users/${{ github.repository_owner }}/packages/container/webauthn-test-credentials-service/versions" --silent > /tmp/test_credentials_versions.json 2>/dev/null; then
-            echo "✅ Successfully retrieved package versions from GitHub API"
-            
-            # Find digests that are not tagged with PR context but should be
-            UNTAGGED_DIGESTS=$(jq -r '
-              .[] | 
-              select(
-                (.metadata.container.tags | length == 0) or 
-                (.metadata.container.tags | map(test("^sha256-[a-f0-9]+-pr-")) | any | not)
-              ) | 
-              select(.name | test("^sha256:[a-f0-9]{64}$")) | 
-              .name' /tmp/test_credentials_versions.json 2>/dev/null || echo "")
-            
-            if [[ -n "$UNTAGGED_DIGESTS" ]]; then
-              echo "🔍 Found untagged digests (likely from attestation):"
-              echo "$UNTAGGED_DIGESTS"
-              
-              # Tag each untagged digest with PR context
-              echo "$UNTAGGED_DIGESTS" | while IFS= read -r digest; do
-                if [[ -n "$digest" && "$digest" != "$PRIMARY_DIGEST" ]]; then
-                  SHORT_SHA=$(echo "$digest" | cut -c8-15)
-                  ADDITIONAL_CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number || 'latest' }}"
-                  
-                  echo "🏷️ Tagging attestation digest: $digest"
-                  echo "🏷️ Context tag: $ADDITIONAL_CONTEXT_TAG"
-                  
-                  # Tag the attestation digest
-                  if docker buildx imagetools create "$FULL_IMAGE_NAME@$digest" --tag "$FULL_IMAGE_NAME:$ADDITIONAL_CONTEXT_TAG" 2>/dev/null; then
-                    echo "✅ Successfully tagged attestation digest: $ADDITIONAL_CONTEXT_TAG"
-                  else
-                    echo "⚠️ Failed to tag attestation digest: $digest (continuing...)"
-                  fi
-                fi
-              done
-            else
-              echo "ℹ️ No untagged digests found - all digests already have PR context"
-            fi
-            
-            rm -f /tmp/test_credentials_versions.json
-          else
-            echo "⚠️ Could not retrieve package versions from GitHub API"
-          fi
-          
-          echo "✅ Test Credentials Service attestation digest tagging completed"
+      #      - name: Create explicit SHA tags for Test Credentials Service
+      #        if: steps.docker-test-credentials-push.outcome == 'success'
+      #        run: |
+      #          echo "🏷️ Creating explicit SHA tags with PR/branch context for Test Credentials Service..."
+      #
+      #          # Extract short SHA from image digest
+      #          DIGEST="${{ steps.docker-test-credentials-push.outputs.digest }}"
+      #          SHORT_SHA=$(echo "$DIGEST" | cut -c8-15)
+      #          echo "📋 Test Credentials Digest: $DIGEST"
+      #          echo "📋 Short SHA: $SHORT_SHA"
+      #
+      #          # Determine context tag based on GitHub event (same logic as WebAuthn Server)
+      #          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+      #            CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number }}"
+      #            echo "🎯 PR Context: Creating tag $CONTEXT_TAG"
+      #          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+      #            CONTEXT_TAG="sha256-${SHORT_SHA}-main-${{ github.run_number }}"
+      #            echo "🎯 Main Branch Context: Creating tag $CONTEXT_TAG"
+      #          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+      #            CONTEXT_TAG="sha256-${SHORT_SHA}-manual-$(date +%s)"
+      #            echo "🎯 Manual Trigger Context: Creating tag $CONTEXT_TAG"
+      #          else
+      #            CONTEXT_TAG="sha256-${SHORT_SHA}-branch-${{ github.ref_name }}-${{ github.run_number }}"
+      #            echo "🎯 Branch Context: Creating tag $CONTEXT_TAG"
+      #          fi
+      #
+      #          # Get the full image name from the existing tags
+      #          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
+      #
+      #          # Tag the image with the context-specific SHA tag
+      #          echo "🏷️ Tagging image with explicit SHA tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
+      #          docker buildx imagetools create "$FULL_IMAGE_NAME@$DIGEST" --tag "$FULL_IMAGE_NAME:$CONTEXT_TAG"
+      #
+      #          echo "✅ Explicit SHA tag created successfully"
+      #          echo "📋 Tag: $CONTEXT_TAG"
+      #          echo "🔗 Full tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
+      #
+      #          # Store context tag for cleanup script reference
+      #          echo "test-credentials-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
+      #        id: test-credentials-sha-tagging
+      #
+      #      - name: Generate artifact attestation for Test Credentials Service
+      #        id: test-credentials-attestation
+      #        if: steps.docker-test-credentials-push.outcome == 'success'
+      #        uses: actions/attest-build-provenance@v2
+      #        continue-on-error: true  # Don't fail build on GitHub attestation service issues
+      #        with:
+      #          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
+      #          subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
+      #          push-to-registry: true
+      #        env:
+      #          ACTIONS_STEP_DEBUG: true
+      #
+      #      # STEP 4B2: Tag any attestation-generated digests for Test Credentials Service
+      #      - name: Tag attestation-generated digests for Test Credentials Service
+      #        if: steps.test-credentials-attestation.outcome == 'success' && steps.test-credentials-sha-tagging.outcome == 'success'
+      #        run: |
+      #          echo "🏷️ Checking for additional attestation-generated digests for Test Credentials Service..."
+      #
+      #          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
+      #          PRIMARY_DIGEST="${{ steps.docker-test-credentials-push.outputs.digest }}"
+      #
+      #          # Wait a moment for attestation to complete and registry to update
+      #          sleep 5
+      #
+      #          echo "🔍 Using GitHub API to find all digests for Test Credentials Service..."
+      #
+      #          # Use GitHub API to get all package versions for this repository
+      #          if gh api "/users/${{ github.repository_owner }}/packages/container/webauthn-test-credentials-service/versions" --silent > /tmp/test_credentials_versions.json 2>/dev/null; then
+      #            echo "✅ Successfully retrieved package versions from GitHub API"
+      #
+      #            # Find digests that are not tagged with PR context but should be
+      #            UNTAGGED_DIGESTS=$(jq -r '
+      #              .[] |
+      #              select(
+      #                (.metadata.container.tags | length == 0) or
+      #                (.metadata.container.tags | map(test("^sha256-[a-f0-9]+-pr-")) | any | not)
+      #              ) |
+      #              select(.name | test("^sha256:[a-f0-9]{64}$")) |
+      #              .name' /tmp/test_credentials_versions.json 2>/dev/null || echo "")
+      #
+      #            if [[ -n "$UNTAGGED_DIGESTS" ]]; then
+      #              echo "🔍 Found untagged digests (likely from attestation):"
+      #              echo "$UNTAGGED_DIGESTS"
+      #
+      #              # Tag each untagged digest with PR context
+      #              echo "$UNTAGGED_DIGESTS" | while IFS= read -r digest; do
+      #                if [[ -n "$digest" && "$digest" != "$PRIMARY_DIGEST" ]]; then
+      #                  SHORT_SHA=$(echo "$digest" | cut -c8-15)
+      #                  ADDITIONAL_CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number || 'latest' }}"
+      #
+      #                  echo "🏷️ Tagging attestation digest: $digest"
+      #                  echo "🏷️ Context tag: $ADDITIONAL_CONTEXT_TAG"
+      #
+      #                  # Tag the attestation digest
+      #                  if docker buildx imagetools create "$FULL_IMAGE_NAME@$digest" --tag "$FULL_IMAGE_NAME:$ADDITIONAL_CONTEXT_TAG" 2>/dev/null; then
+      #                    echo "✅ Successfully tagged attestation digest: $ADDITIONAL_CONTEXT_TAG"
+      #                  else
+      #                    echo "⚠️ Failed to tag attestation digest: $digest (continuing...)"
+      #                  fi
+      #                fi
+      #              done
+      #            else
+      #              echo "ℹ️ No untagged digests found - all digests already have PR context"
+      #            fi
+      #
+      #            rm -f /tmp/test_credentials_versions.json
+      #          else
+      #            echo "⚠️ Could not retrieve package versions from GitHub API"
+      #          fi
+      #
+      #          echo "✅ Test Credentials Service attestation digest tagging completed"
 
       - name: Set push status
         id: push-status
@@ -524,16 +524,16 @@ jobs:
           if [[ "${{ steps.docker-push.outputs.digest }}" != "" ]]; then
             echo "    🔍 Digest: ${{ steps.docker-push.outputs.digest }}"
           fi
-          if [[ "${{ steps.webauthn-sha-tagging.outputs.webauthn-context-tag }}" != "" ]]; then
-            echo "    🏷️  Context Tag: ${{ steps.webauthn-sha-tagging.outputs.webauthn-context-tag }}"
-          fi
-          echo "  📦 Test Credentials: ${{ steps.docker-test-credentials-meta.outputs.tags }}"
-          if [[ "${{ steps.docker-test-credentials-push.outputs.digest }}" != "" ]]; then
-            echo "    🔍 Digest: ${{ steps.docker-test-credentials-push.outputs.digest }}"
-          fi
-          if [[ "${{ steps.test-credentials-sha-tagging.outputs.test-credentials-context-tag }}" != "" ]]; then
-            echo "    🏷️  Context Tag: ${{ steps.test-credentials-sha-tagging.outputs.test-credentials-context-tag }}"
-          fi
+          #          if [[ "${{ steps.webauthn-sha-tagging.outputs.webauthn-context-tag }}" != "" ]]; then
+          #            echo "    🏷️  Context Tag: ${{ steps.webauthn-sha-tagging.outputs.webauthn-context-tag }}"
+          #          fi
+          #          echo "  📦 Test Credentials: ${{ steps.docker-test-credentials-meta.outputs.tags }}"
+          #          if [[ "${{ steps.docker-test-credentials-push.outputs.digest }}" != "" ]]; then
+          #            echo "    🔍 Digest: ${{ steps.docker-test-credentials-push.outputs.digest }}"
+          #          fi
+          #          if [[ "${{ steps.test-credentials-sha-tagging.outputs.test-credentials-context-tag }}" != "" ]]; then
+          #            echo "    🏷️  Context Tag: ${{ steps.test-credentials-sha-tagging.outputs.test-credentials-context-tag }}"
+          #          fi
           echo "  🏗️  Images built: ${{ steps.build-status.outputs.images-built }}"
           echo "  🚀 Images pushed: ${{ steps.push-status.outputs.images-pushed }}"
           echo "  🎯 Explicit SHA Tagging: Enabled for precise cleanup targeting"

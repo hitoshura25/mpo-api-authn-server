@@ -289,11 +289,20 @@ cleanup_staging_docker() {
         # Try each package name variant
         for package_variant in "${package_variants[@]}"; do
             log "🔍 Trying package variant: $package_variant"
-            if endpoint=$(find_package_endpoint "container" "$package_variant"); then
-                found_package="$package_variant"
-                log "✅ Found Docker package: $found_package"
-                break
-            fi
+            
+            # Test quietly first to avoid duplicate logging
+            local test_endpoint
+            test_endpoint=$(url_encode_package_name "$package_variant")
+            
+            # Try each endpoint type quietly
+            for test_ep in "/orgs/${REPOSITORY_OWNER}/packages/container/${test_endpoint}" "/users/${REPOSITORY_OWNER}/packages/container/${test_endpoint}" "/user/packages/container/${test_endpoint}"; do
+                if gh api "${test_ep}/versions" --silent >/dev/null 2>&1; then
+                    endpoint="$test_ep"
+                    found_package="$package_variant"
+                    log "✅ Found Docker package: $found_package at $endpoint"
+                    break 2
+                fi
+            done
         done
         
         if [[ -z "$endpoint" ]]; then
@@ -303,7 +312,6 @@ cleanup_staging_docker() {
         fi
         
         log "📍 Using Docker endpoint: $endpoint"
-        log "📍 Found package name: $found_package"
         
         # Get staging versions based on workflow outcome
         local versions_query
@@ -331,21 +339,24 @@ cleanup_staging_docker() {
             log "  Strategy: Keep last 5 staging versions (workflow failed)"
         fi
         
-        # Debug: First show basic info about versions for this package
-        log "🔍 Testing versions API call: gh api ${endpoint}/versions"
-        log "🔍 Package name used: $found_package"
+        # Make API call to get package versions
+        log "🔍 Getting versions for package: $found_package"
         
         local version_response
-        version_response=$(gh api "${endpoint}/versions" 2>&1)
-        local api_exit_code=$?
+        local api_exit_code
         
-        if [[ $api_exit_code -ne 0 ]]; then
-            log "❌ API call failed for ${endpoint}/versions"
+        # Make the API call with proper error handling
+        if version_response=$(gh api "${endpoint}/versions" 2>&1); then
+            api_exit_code=0
+            log "✅ API call successful"
+        else
+            api_exit_code=$?
+            log "❌ API call failed for ${endpoint}/versions (exit code: $api_exit_code)"
             log "❌ Error response: $version_response"
             continue
         fi
         
-        log "🔍 Raw API response preview: $(echo "$version_response" | head -c 200)..."
+        log "🔍 Raw API response received (length: ${#version_response} chars)"
         
         local version_count
         version_count=$(echo "$version_response" | jq 'length' 2>/dev/null || echo "0")

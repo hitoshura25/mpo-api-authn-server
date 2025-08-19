@@ -306,9 +306,10 @@ find_package_endpoint() {
     esac
     
     for endpoint in "${endpoints[@]}"; do
-        log "🔍 Testing endpoint: $endpoint"
-        log "🔍 Original package name: $package_name"
-        log "🔍 URL-encoded package name: $encoded_package_name"
+        # Send logging to stderr to avoid contaminating command substitution
+        log "🔍 Testing endpoint: $endpoint" >&2
+        log "🔍 Original package name: $package_name" >&2
+        log "🔍 URL-encoded package name: $encoded_package_name" >&2
         
         # Test endpoint with more robust error checking
         local api_test_result
@@ -316,31 +317,32 @@ find_package_endpoint() {
         local api_exit_code=$?
         
         if [[ $api_exit_code -eq 0 ]]; then
-            log "✅ Found package at: $endpoint"
+            log "✅ Found package at: $endpoint" >&2
             
             # Verify the endpoint actually returns version data
             local version_count
             version_count=$(echo "$api_test_result" | jq 'length' 2>/dev/null || echo "0")
-            log "🔍 Endpoint verification: $version_count versions available"
+            log "🔍 Endpoint verification: $version_count versions available" >&2
             
+            # Only return the clean endpoint path to stdout
             echo "$endpoint"
             return 0
         else
-            log "❌ Endpoint failed: $endpoint (exit code: $api_exit_code)"
+            log "❌ Endpoint failed: $endpoint (exit code: $api_exit_code)" >&2
             if [[ "$api_test_result" =~ "404" ]]; then
-                log "   Package not found at this endpoint"
+                log "   Package not found at this endpoint" >&2
             elif [[ "$api_test_result" =~ "403" ]]; then
-                log "   Permission denied - check token permissions"
+                log "   Permission denied - check token permissions" >&2
             else
-                log "   Error details: $(echo "$api_test_result" | head -c 100)..."
+                log "   Error details: $(echo "$api_test_result" | head -c 100)..." >&2
             fi
         fi
     done
     
-    log "❌ Package not found at any endpoint: $package_name"
-    log "❌ Available endpoints tested:"
+    log "❌ Package not found at any endpoint: $package_name" >&2
+    log "❌ Available endpoints tested:" >&2
     for endpoint in "${endpoints[@]}"; do
-        log "   - $endpoint/versions"
+        log "   - $endpoint/versions" >&2
     done
     return 1
 }

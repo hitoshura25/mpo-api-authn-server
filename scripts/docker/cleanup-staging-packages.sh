@@ -140,6 +140,8 @@ validate_config() {
     log "  Docker Test Credentials Image: $DOCKER_TEST_CREDENTIALS_IMAGE_NAME"
     log "  Constructed Android Staging Package: $ANDROID_STAGING_PACKAGE"
     log "  Constructed npm Staging Package: $NPM_STAGING_PACKAGE_NAME"
+    log "  npm Scope (clean): $NPM_SCOPE_CLEAN"
+    log "  npm Scoped Package (URL-encoded): ${NPM_SCOPE_CLEAN}%2F${NPM_STAGING_PACKAGE_NAME}"
 }
 
 # Emergency override check
@@ -152,6 +154,56 @@ fi
 # Function to log with timestamp
 log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $*"
+}
+
+# Function to determine cleanup scope based on context
+determine_cleanup_scope() {
+    local event_name="${GITHUB_EVENT_NAME:-}"
+    local pr_number="${GITHUB_PR_NUMBER:-}"
+    local ref_name="${GITHUB_REF_NAME:-}"
+    
+    log "🔍 Determining cleanup scope from context:"
+    log "  Event Name: ${event_name:-'NOT_SET'}"
+    log "  PR Number: ${pr_number:-'NOT_SET'}"
+    log "  Ref Name: ${ref_name:-'NOT_SET'}"
+    
+    # Determine cleanup context
+    if [[ "$event_name" == "pull_request" && -n "$pr_number" ]]; then
+        # PR context - clean only current PR packages
+        CLEANUP_CONTEXT="pr"
+        CLEANUP_PR_NUMBER="$pr_number"
+        log "✅ Context: PR #${pr_number} - will target only pr-${pr_number} packages"
+    elif [[ "$event_name" == "push" && "$ref_name" == "main" ]]; then
+        # Main branch context - determine which PR packages to clean
+        CLEANUP_CONTEXT="main"
+        CLEANUP_PR_NUMBER=""
+        
+        # For main branch, we could look at recent merge commits to find the PR number
+        # For now, we'll use a more conservative approach and clean recent staging packages
+        local recent_pr_from_merge
+        recent_pr_from_merge=$(git log -1 --pretty=%s | grep -oE '#[0-9]+' | head -1 | tr -d '#' || echo "")
+        
+        if [[ -n "$recent_pr_from_merge" ]]; then
+            CLEANUP_PR_NUMBER="$recent_pr_from_merge"
+            log "✅ Context: Main branch (recent merge from PR #${recent_pr_from_merge}) - will target pr-${recent_pr_from_merge} packages"
+        else
+            log "⚠️ Context: Main branch (no recent PR detected) - will use broad staging pattern for safety"
+        fi
+    else
+        # Unknown context - use broad staging pattern but log the issue
+        CLEANUP_CONTEXT="unknown"
+        CLEANUP_PR_NUMBER=""
+        log "⚠️ Context: Unknown (event: ${event_name}, ref: ${ref_name}) - will use broad staging pattern"
+        log "🔧 Consider updating workflow to provide proper context variables"
+    fi
+    
+    # Set global variables for use in cleanup functions
+    export CLEANUP_CONTEXT
+    export CLEANUP_PR_NUMBER
+    
+    log "📋 Final cleanup scope:"
+    log "  Context: $CLEANUP_CONTEXT"
+    log "  PR Number: ${CLEANUP_PR_NUMBER:-'NONE'}"
 }
 
 # Function to validate inputs
@@ -216,13 +268,42 @@ find_package_endpoint() {
     local encoded_package_name
     encoded_package_name=$(url_encode_package_name "$package_name")
     
-    # Repository-owned packages use org endpoint pattern, not repos endpoint
-    # Based on GitHub API docs: https://docs.github.com/en/rest/packages/packages
-    local endpoints=(
-        "/orgs/${REPOSITORY_OWNER}/packages/${package_type}/${encoded_package_name}"
-        "/users/${REPOSITORY_OWNER}/packages/${package_type}/${encoded_package_name}"
-        "/user/packages/${package_type}/${encoded_package_name}"
-    )
+    # Use the endpoint patterns that were verified to work in testing
+    local endpoints=()
+    case "$package_type" in
+        "container")
+            # Docker/container packages - use user-scoped endpoints (verified working)
+            endpoints=(
+                "/users/${REPOSITORY_OWNER}/packages/container/${encoded_package_name}"
+                "/orgs/${REPOSITORY_OWNER}/packages/container/${encoded_package_name}"
+                "/user/packages/container/${encoded_package_name}"
+            )
+            ;;
+        "npm")
+            # npm packages - use user packages endpoint (verified working)
+            endpoints=(
+                "/user/packages/npm/${encoded_package_name}"
+                "/orgs/${REPOSITORY_OWNER}/packages/npm/${encoded_package_name}"
+                "/users/${REPOSITORY_OWNER}/packages/npm/${encoded_package_name}"
+            )
+            ;;
+        "maven")
+            # Maven packages - use user packages endpoint (verified working)
+            endpoints=(
+                "/user/packages/maven/${encoded_package_name}"
+                "/orgs/${REPOSITORY_OWNER}/packages/maven/${encoded_package_name}"
+                "/users/${REPOSITORY_OWNER}/packages/maven/${encoded_package_name}"
+            )
+            ;;
+        *)
+            # Generic fallback for other package types
+            endpoints=(
+                "/user/packages/${package_type}/${encoded_package_name}"
+                "/orgs/${REPOSITORY_OWNER}/packages/${package_type}/${encoded_package_name}"
+                "/users/${REPOSITORY_OWNER}/packages/${package_type}/${encoded_package_name}"
+            )
+            ;;
+    esac
     
     for endpoint in "${endpoints[@]}"; do
         log "🔍 Testing endpoint: $endpoint"
@@ -286,23 +367,18 @@ cleanup_staging_docker() {
         local endpoint=""
         local found_package=""
         
-        # Try each package name variant
+        # Try each package name variant using the improved endpoint discovery
         for package_variant in "${package_variants[@]}"; do
             log "🔍 Trying package variant: $package_variant"
             
-            # Test quietly first to avoid duplicate logging
-            local test_endpoint
-            test_endpoint=$(url_encode_package_name "$package_variant")
-            
-            # Try each endpoint type quietly
-            for test_ep in "/orgs/${REPOSITORY_OWNER}/packages/container/${test_endpoint}" "/users/${REPOSITORY_OWNER}/packages/container/${test_endpoint}" "/user/packages/container/${test_endpoint}"; do
-                if gh api "${test_ep}/versions" --silent >/dev/null 2>&1; then
-                    endpoint="$test_ep"
-                    found_package="$package_variant"
-                    log "✅ Found Docker package: $found_package at $endpoint"
-                    break 2
-                fi
-            done
+            # Use the improved find_package_endpoint function
+            if endpoint=$(find_package_endpoint "container" "$package_variant" 2>/dev/null); then
+                found_package="$package_variant"
+                log "✅ Found Docker package: $found_package at $endpoint"
+                break
+            else
+                log "   Package variant not found: $package_variant"
+            fi
         done
         
         if [[ -z "$endpoint" ]]; then
@@ -313,30 +389,38 @@ cleanup_staging_docker() {
         
         log "📍 Using Docker endpoint: $endpoint"
         
-        # Get staging versions based on workflow outcome
+        # Get staging versions based on workflow outcome and cleanup context
         local versions_query
-        if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
-            # Delete ALL staging images on success (pr- tags and staging suffixes)
-            versions_query='
-            .[] | 
-            select(
-                (.metadata.container.tags[]? | test("^pr-[0-9]+")) or
-                (.metadata.container.tags[]? | test("-staging$")) or
-                (.metadata.container.tags[]? | test("^pr-"))
-            ) | 
-            .id'
-            log "  Strategy: DELETE ALL staging images (workflow succeeded)"
+        local strategy_description
+        
+        # Build the filter based on cleanup context
+        local filter_conditions=""
+        if [[ -n "$CLEANUP_PR_NUMBER" ]]; then
+            # Target specific PR number
+            filter_conditions='
+                (.metadata.container.tags[]? | test("^pr-'"$CLEANUP_PR_NUMBER"'$")) or
+                (.metadata.container.tags[]? | test("^sha256-.*pr-'"$CLEANUP_PR_NUMBER"'"))'
+            strategy_description="TARGET PR #$CLEANUP_PR_NUMBER packages only"
+            log "🎯 Targeting specific PR #$CLEANUP_PR_NUMBER packages"
         else
-            # Keep last 5 staging versions on failure (for debugging)
-            versions_query='
-            [.[] | 
-             select(
+            # Fallback to broader pattern (legacy behavior for unknown contexts)
+            filter_conditions='
                 (.metadata.container.tags[]? | test("^pr-[0-9]+")) or
                 (.metadata.container.tags[]? | test("-staging$")) or
-                (.metadata.container.tags[]? | test("^pr-"))
-             )] |
-            sort_by(.created_at) | reverse | .[5:] | .[].id'
-            log "  Strategy: Keep last 5 staging versions (workflow failed)"
+                (.metadata.container.tags[]? | test("^pr-")) or
+                (.metadata.container.tags[]? | test("^sha256-"))'
+            strategy_description="TARGET ALL staging packages (broad pattern)"
+            log "⚠️ Using broad staging pattern - no specific PR context"
+        fi
+        
+        if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
+            # Delete ALL matching staging images on success
+            versions_query='.[] | select('"$filter_conditions"') | .id'
+            log "  Strategy: DELETE ALL $strategy_description (workflow succeeded)"
+        else
+            # Keep last 5 matching staging versions on failure (for debugging)
+            versions_query='[.[] | select('"$filter_conditions"')] | sort_by(.created_at) | reverse | .[5:] | .[].id'
+            log "  Strategy: Keep last 5 of $strategy_description (workflow failed)"
         fi
         
         # Make API call to get package versions
@@ -364,20 +448,42 @@ cleanup_staging_docker() {
         
         if [[ "$version_count" -gt 0 ]]; then
             log "🔍 Sample version details:"
-            gh api "${endpoint}/versions" --jq '.[:3] | .[] | "  - ID: \(.id), Tags: \(.metadata.container.tags // [] | join(", ")), Created: \(.created_at)"' 2>/dev/null || log "  (Failed to get details)"
+            echo "$version_response" | jq -r '.[:3] | .[] | "  - ID: \(.id), Tags: \(.metadata.container.tags // [] | join(", ")), Created: \(.created_at)"' 2>/dev/null || log "  (Failed to get details)"
+            
+            # Show current staging versions specifically for debugging using same filter
+            local current_staging
+            current_staging=$(echo "$version_response" | jq -r '.[] | select('"$filter_conditions"') | "  - Staging: ID=\(.id), Tags=[\(.metadata.container.tags | join(","))], Created=\(.created_at)"' 2>/dev/null || echo "")
+            if [[ -n "$current_staging" ]]; then
+                log "🔍 Current staging versions matching filter:"
+                echo "$current_staging"
+            else
+                log "🔍 No staging versions found matching current filter"
+            fi
         fi
         
         local versions
-        versions=$(gh api \
-            --method GET \
-            "${endpoint}/versions" \
-            --jq "$versions_query" \
-            2>/dev/null || echo "")
+        log "🔍 Applying staging filter query..."
+        versions=$(echo "$version_response" | jq -r "$versions_query" 2>&1)
+        local jq_exit_code=$?
+        
+        if [[ $jq_exit_code -ne 0 ]]; then
+            log "❌ JQ filter failed (exit code: $jq_exit_code)"
+            log "❌ JQ error: $versions"
+            log "❌ Query was: $versions_query"
+            versions=""
+        else
+            log "✅ JQ filter applied successfully"
+        fi
             
         # Count non-empty lines safely
         local staging_count=0
-        if [[ -n "$versions" ]]; then
-            staging_count=$(echo "$versions" | grep -c . 2>/dev/null || echo "0")
+        if [[ -n "$versions" && "$versions" != "" ]]; then
+            # Remove any trailing whitespace and count non-empty lines
+            local cleaned_versions
+            cleaned_versions=$(echo "$versions" | sed '/^[[:space:]]*$/d')
+            if [[ -n "$cleaned_versions" ]]; then
+                staging_count=$(echo "$cleaned_versions" | grep -c . 2>/dev/null || echo "0")
+            fi
         fi
         
         log "🔍 Staging versions after filtering: $staging_count versions"
@@ -394,17 +500,16 @@ cleanup_staging_docker() {
         log "🗑️ Attempting to delete $staging_count staging versions..."
         
         while IFS= read -r version_id; do
-            if [[ -n "$version_id" ]]; then
-                log "🔍 Deleting version ID: $version_id"
-                if gh api \
-                    --method DELETE \
-                    "${endpoint}/versions/$version_id" \
-                    2>/dev/null; then
+            if [[ -n "$version_id" && "$version_id" != "null" ]]; then
+                log "🔍 Deleting Docker version ID: $version_id"
+                local delete_result
+                if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
                     ((package_deleted++))
                     ((total_deleted++))
                     log "✅ Deleted Docker version: $version_id"
                 else
                     log "⚠️ Failed to delete Docker version: $version_id"
+                    log "   Delete error: $delete_result"
                 fi
             fi
         done <<< "$versions"
@@ -431,18 +536,21 @@ cleanup_staging_npm() {
     local total_deleted=0
     
     # Try to find the npm package using different naming patterns
+    # Based on testing, the working pattern is just the base package name without URL encoding the scope
     local package_patterns=(
-        "$scoped_package"        # URL-encoded scoped package
-        "$base_package"          # Base package name
+        "$base_package"          # Base package name (verified working in testing)
+        "$scoped_package"        # URL-encoded scoped package  
         "${scope}/${base_package}"  # Scoped package with slash
     )
     
     local endpoint
     for pattern in "${package_patterns[@]}"; do
         log "🔍 Trying npm package pattern: $pattern"
-        if endpoint=$(find_package_endpoint "npm" "$pattern"); then
+        if endpoint=$(find_package_endpoint "npm" "$pattern" 2>/dev/null); then
             log "📍 Found staging npm package: $pattern at $endpoint"
             break
+        else
+            log "   npm package pattern not found: $pattern"
         fi
     done
     
@@ -461,16 +569,32 @@ cleanup_staging_npm() {
         gh api "${endpoint}/versions" --jq '.[:3] | .[] | "  - ID: \(.id), Name: \(.name), Created: \(.created_at)"' 2>/dev/null || log "  (Failed to get details)"
     fi
     
-    # Get versions based on workflow outcome - filter staging versions (contain -pr.)
+    # Get versions based on workflow outcome and cleanup context - filter staging versions (contain -pr.)
     local versions_query
-    if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
-        # Delete ALL staging versions on success (versions containing -pr.)
-        versions_query='.[] | select(.name | test("-pr\\.")) | .id'
-        log "  Strategy: DELETE ALL staging versions (workflow succeeded)"
+    local strategy_description
+    
+    # Build the filter based on cleanup context
+    local name_filter
+    if [[ -n "$CLEANUP_PR_NUMBER" ]]; then
+        # Target specific PR number: e.g. -pr.42.123
+        name_filter='(.name | test("-pr\\.'$CLEANUP_PR_NUMBER'\\.\\d+$"))'
+        strategy_description="TARGET PR #$CLEANUP_PR_NUMBER npm packages only"
+        log "🎯 Targeting specific PR #$CLEANUP_PR_NUMBER npm packages"
     else
-        # Keep last 5 staging versions on failure
-        versions_query='[.[] | select(.name | test("-pr\\."))] | sort_by(.created_at) | reverse | .[5:] | .[].id'
-        log "  Strategy: Keep last 5 staging versions (workflow failed)"
+        # Fallback to broader pattern (legacy behavior)
+        name_filter='(.name | test("-pr\\."))'
+        strategy_description="TARGET ALL staging npm packages (broad pattern)"
+        log "⚠️ Using broad npm staging pattern - no specific PR context"
+    fi
+    
+    if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
+        # Delete ALL matching staging versions on success
+        versions_query='.[] | select('$name_filter') | .id'
+        log "  Strategy: DELETE ALL $strategy_description (workflow succeeded)"
+    else
+        # Keep last 5 matching staging versions on failure
+        versions_query='[.[] | select('$name_filter')] | sort_by(.created_at) | reverse | .[5:] | .[].id'
+        log "  Strategy: Keep last 5 of $strategy_description (workflow failed)"
     fi
     
     local versions
@@ -493,15 +617,15 @@ cleanup_staging_npm() {
     fi
     
     while IFS= read -r version_id; do
-        if [[ -n "$version_id" ]]; then
-            if gh api \
-                --method DELETE \
-                "${endpoint}/versions/$version_id" \
-                2>/dev/null; then
+        if [[ -n "$version_id" && "$version_id" != "null" ]]; then
+            log "🔍 Deleting npm version ID: $version_id"
+            local delete_result
+            if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
                 ((total_deleted++))
                 log "✅ Deleted npm version: $version_id"
             else
                 log "⚠️ Failed to delete npm version: $version_id"
+                log "   Delete error: $delete_result"
             fi
         fi
     done <<< "$versions"
@@ -517,10 +641,14 @@ cleanup_staging_maven() {
     local total_deleted=0
     
     # Find the Maven package using dynamic endpoint detection
+    # Based on testing, the full package name format works
     local endpoint
-    if ! endpoint=$(find_package_endpoint "maven" "$package_name"); then
-        log "ℹ️ No staging Maven packages found"
+    log "🔍 Searching for Maven package: $package_name"
+    if ! endpoint=$(find_package_endpoint "maven" "$package_name" 2>/dev/null); then
+        log "ℹ️ No staging Maven packages found with name: $package_name"
         return 0
+    else
+        log "📍 Found staging Maven package: $package_name at $endpoint"
     fi
         
     # Debug: First show basic info about Maven versions
@@ -533,16 +661,32 @@ cleanup_staging_maven() {
         gh api "${endpoint}/versions" --jq '.[:3] | .[] | "  - ID: \(.id), Name: \(.name), Created: \(.created_at)"' 2>/dev/null || log "  (Failed to get details)"
     fi
     
-    # Get versions based on workflow outcome - filter staging versions (contain -pr.)
+    # Get versions based on workflow outcome and cleanup context - filter staging versions (contain -pr.)
     local versions_query
-    if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
-        # Delete ALL staging versions on success (versions containing -pr.)
-        versions_query='.[] | select(.name | test("-pr\\.")) | .id'
-        log "  Strategy: DELETE ALL staging versions (workflow succeeded)"
+    local strategy_description
+    
+    # Build the filter based on cleanup context
+    local name_filter
+    if [[ -n "$CLEANUP_PR_NUMBER" ]]; then
+        # Target specific PR number: e.g. -pr.42.123
+        name_filter='(.name | test("-pr\\.'$CLEANUP_PR_NUMBER'\\.\\d+$"))'
+        strategy_description="TARGET PR #$CLEANUP_PR_NUMBER Maven packages only"
+        log "🎯 Targeting specific PR #$CLEANUP_PR_NUMBER Maven packages"
     else
-        # Keep last 5 staging versions on failure
-        versions_query='[.[] | select(.name | test("-pr\\."))] | sort_by(.created_at) | reverse | .[5:] | .[].id'
-        log "  Strategy: Keep last 5 staging versions (workflow failed)"
+        # Fallback to broader pattern (legacy behavior)
+        name_filter='(.name | test("-pr\\."))'
+        strategy_description="TARGET ALL staging Maven packages (broad pattern)"
+        log "⚠️ Using broad Maven staging pattern - no specific PR context"
+    fi
+    
+    if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
+        # Delete ALL matching staging versions on success
+        versions_query='.[] | select('$name_filter') | .id'
+        log "  Strategy: DELETE ALL $strategy_description (workflow succeeded)"
+    else
+        # Keep last 5 matching staging versions on failure
+        versions_query='[.[] | select('$name_filter')] | sort_by(.created_at) | reverse | .[5:] | .[].id'
+        log "  Strategy: Keep last 5 of $strategy_description (workflow failed)"
     fi
     
     local versions
@@ -565,15 +709,15 @@ cleanup_staging_maven() {
     fi
     
     while IFS= read -r version_id; do
-        if [[ -n "$version_id" ]]; then
-            if gh api \
-                --method DELETE \
-                "${endpoint}/versions/$version_id" \
-                2>/dev/null; then
+        if [[ -n "$version_id" && "$version_id" != "null" ]]; then
+            log "🔍 Deleting Maven version ID: $version_id"
+            local delete_result
+            if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
                 ((total_deleted++))
                 log "✅ Deleted Maven version: $version_id"
             else
                 log "⚠️ Failed to delete Maven version: $version_id"
+                log "   Delete error: $delete_result"
             fi
         fi
     done <<< "$versions"
@@ -587,6 +731,18 @@ perform_staging_cleanup() {
     log "📋 Cleanup scope: ONLY GitHub Packages staging artifacts"
     log "🎯 Workflow outcome: $WORKFLOW_OUTCOME"
     log "🏢 Repository owner: $REPOSITORY_OWNER"
+    log "🎯 Cleanup context: $CLEANUP_CONTEXT"
+    if [[ -n "$CLEANUP_PR_NUMBER" ]]; then
+        log "🔍 Targeting PR: #$CLEANUP_PR_NUMBER"
+        log "📋 Package patterns:"
+        log "  - Docker tags: pr-${CLEANUP_PR_NUMBER}, sha256-*pr-${CLEANUP_PR_NUMBER}"
+        log "  - npm/Maven versions: *-pr.${CLEANUP_PR_NUMBER}.*"
+    else
+        log "⚠️ Using broad staging patterns (all PRs)"
+        log "📋 Package patterns:"
+        log "  - Docker tags: pr-*, sha256-*, *-staging"
+        log "  - npm/Maven versions: *-pr.*"
+    fi
     log ""
     
     case "$WORKFLOW_OUTCOME" in
@@ -636,6 +792,9 @@ main() {
     # Validate inputs and GitHub CLI
     validate_inputs
     validate_github_cli
+    
+    # Determine cleanup scope based on context
+    determine_cleanup_scope
     
     # Perform staging cleanup
     perform_staging_cleanup

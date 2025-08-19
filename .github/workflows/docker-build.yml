@@ -94,6 +94,12 @@ on:
       test-credentials-digest:
         description: 'Test credentials service image digest'
         value: ${{ jobs.build-push-docker-images.outputs.test-credentials-digest }}
+      webauthn-context-tag:
+        description: 'WebAuthn server explicit SHA context tag for precise cleanup targeting'
+        value: ${{ jobs.build-push-docker-images.outputs.webauthn-context-tag }}
+      test-credentials-context-tag:
+        description: 'Test credentials service explicit SHA context tag for precise cleanup targeting'
+        value: ${{ jobs.build-push-docker-images.outputs.test-credentials-context-tag }}
 
 env:
   JAVA_VERSION: ${{ inputs.java-version }}
@@ -121,6 +127,8 @@ jobs:
       webauthn-server-digest: ${{ steps.docker-push.outputs.digest }}
       test-credentials-image: ${{ steps.docker-test-credentials-meta.outputs.tags }}
       test-credentials-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
+      webauthn-context-tag: ${{ steps.webauthn-sha-tagging.outputs.webauthn-context-tag }}
+      test-credentials-context-tag: ${{ steps.test-credentials-sha-tagging.outputs.test-credentials-context-tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -240,6 +248,48 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
+      # STEP 4A: Create explicit SHA tags with PR/branch context for precise cleanup targeting
+      - name: Create explicit SHA tags for WebAuthn Server
+        if: steps.docker-push.outcome == 'success'
+        run: |
+          echo "🏷️ Creating explicit SHA tags with PR/branch context for precise cleanup targeting..."
+          
+          # Extract short SHA from image digest
+          DIGEST="${{ steps.docker-push.outputs.digest }}"
+          SHORT_SHA=$(echo "$DIGEST" | cut -c8-15)
+          echo "📋 WebAuthn Server Digest: $DIGEST"
+          echo "📋 Short SHA: $SHORT_SHA"
+          
+          # Determine context tag based on GitHub event
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number }}"
+            echo "🎯 PR Context: Creating tag $CONTEXT_TAG"
+          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            CONTEXT_TAG="sha256-${SHORT_SHA}-main-${{ github.run_number }}"
+            echo "🎯 Main Branch Context: Creating tag $CONTEXT_TAG"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CONTEXT_TAG="sha256-${SHORT_SHA}-manual-$(date +%s)"
+            echo "🎯 Manual Trigger Context: Creating tag $CONTEXT_TAG"
+          else
+            CONTEXT_TAG="sha256-${SHORT_SHA}-branch-${{ github.ref_name }}-${{ github.run_number }}"
+            echo "🎯 Branch Context: Creating tag $CONTEXT_TAG"
+          fi
+          
+          # Get the full image name from the existing tags
+          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}"
+          
+          # Tag the image with the context-specific SHA tag
+          echo "🏷️ Tagging image with explicit SHA tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
+          docker buildx imagetools create "$FULL_IMAGE_NAME@$DIGEST" --tag "$FULL_IMAGE_NAME:$CONTEXT_TAG"
+          
+          echo "✅ Explicit SHA tag created successfully"
+          echo "📋 Tag: $CONTEXT_TAG"
+          echo "🔗 Full tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
+          
+          # Store context tag for cleanup script reference
+          echo "webauthn-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
+        id: webauthn-sha-tagging
+
       - name: Generate artifact attestation for WebAuthn Server
         if: steps.docker-push.outcome == 'success'
         uses: actions/attest-build-provenance@v2
@@ -262,6 +312,48 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
+
+      # STEP 4B: Create explicit SHA tags for Test Credentials Service
+      - name: Create explicit SHA tags for Test Credentials Service
+        if: steps.docker-test-credentials-push.outcome == 'success'
+        run: |
+          echo "🏷️ Creating explicit SHA tags with PR/branch context for Test Credentials Service..."
+          
+          # Extract short SHA from image digest
+          DIGEST="${{ steps.docker-test-credentials-push.outputs.digest }}"
+          SHORT_SHA=$(echo "$DIGEST" | cut -c8-15)
+          echo "📋 Test Credentials Digest: $DIGEST"
+          echo "📋 Short SHA: $SHORT_SHA"
+          
+          # Determine context tag based on GitHub event (same logic as WebAuthn Server)
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            CONTEXT_TAG="sha256-${SHORT_SHA}-pr-${{ github.event.pull_request.number }}"
+            echo "🎯 PR Context: Creating tag $CONTEXT_TAG"
+          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            CONTEXT_TAG="sha256-${SHORT_SHA}-main-${{ github.run_number }}"
+            echo "🎯 Main Branch Context: Creating tag $CONTEXT_TAG"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            CONTEXT_TAG="sha256-${SHORT_SHA}-manual-$(date +%s)"
+            echo "🎯 Manual Trigger Context: Creating tag $CONTEXT_TAG"
+          else
+            CONTEXT_TAG="sha256-${SHORT_SHA}-branch-${{ github.ref_name }}-${{ github.run_number }}"
+            echo "🎯 Branch Context: Creating tag $CONTEXT_TAG"
+          fi
+          
+          # Get the full image name from the existing tags
+          FULL_IMAGE_NAME="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}"
+          
+          # Tag the image with the context-specific SHA tag
+          echo "🏷️ Tagging image with explicit SHA tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
+          docker buildx imagetools create "$FULL_IMAGE_NAME@$DIGEST" --tag "$FULL_IMAGE_NAME:$CONTEXT_TAG"
+          
+          echo "✅ Explicit SHA tag created successfully"
+          echo "📋 Tag: $CONTEXT_TAG"
+          echo "🔗 Full tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
+          
+          # Store context tag for cleanup script reference
+          echo "test-credentials-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
+        id: test-credentials-sha-tagging
 
       - name: Generate artifact attestation for Test Credentials Service
         if: steps.docker-test-credentials-push.outcome == 'success'
@@ -310,11 +402,18 @@ jobs:
           if [[ "${{ steps.docker-push.outputs.digest }}" != "" ]]; then
             echo "    🔍 Digest: ${{ steps.docker-push.outputs.digest }}"
           fi
+          if [[ "${{ steps.webauthn-sha-tagging.outputs.webauthn-context-tag }}" != "" ]]; then
+            echo "    🏷️  Context Tag: ${{ steps.webauthn-sha-tagging.outputs.webauthn-context-tag }}"
+          fi
           echo "  📦 Test Credentials: ${{ steps.docker-test-credentials-meta.outputs.tags }}"
           if [[ "${{ steps.docker-test-credentials-push.outputs.digest }}" != "" ]]; then
             echo "    🔍 Digest: ${{ steps.docker-test-credentials-push.outputs.digest }}"
           fi
+          if [[ "${{ steps.test-credentials-sha-tagging.outputs.test-credentials-context-tag }}" != "" ]]; then
+            echo "    🏷️  Context Tag: ${{ steps.test-credentials-sha-tagging.outputs.test-credentials-context-tag }}"
+          fi
           echo "  🏗️  Images built: ${{ steps.build-status.outputs.images-built }}"
           echo "  🚀 Images pushed: ${{ steps.push-status.outputs.images-pushed }}"
+          echo "  🎯 Explicit SHA Tagging: Enabled for precise cleanup targeting"
           echo "  🔒 Security scanning: Moved to parallel workflow for optimal performance"
           echo "  ⚡ Performance: ~50% faster execution with parallel security scanning"

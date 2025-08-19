@@ -290,17 +290,17 @@ jobs:
       #          echo "webauthn-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
       #        id: webauthn-sha-tagging
       #
-      #      - name: Generate artifact attestation for WebAuthn Server
-      #        id: webauthn-attestation
-      #        if: steps.docker-push.outcome == 'success'
-      #        uses: actions/attest-build-provenance@v2
-      #        continue-on-error: true  # Don't fail build on GitHub attestation service issues
-      #        with:
-      #          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
-      #          subject-digest: ${{ steps.docker-push.outputs.digest }}
-      #          push-to-registry: true
-      #        env:
-      #          ACTIONS_STEP_DEBUG: true
+      - name: Generate artifact attestation for WebAuthn Server
+        id: webauthn-attestation
+        if: steps.docker-push.outcome == 'success'
+        uses: actions/attest-build-provenance@v2
+        continue-on-error: true  # Don't fail build on GitHub attestation service issues
+        with:
+          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
+          subject-digest: ${{ steps.docker-push.outputs.digest }}
+          push-to-registry: true
+        env:
+          ACTIONS_STEP_DEBUG: true
       #
       #      # STEP 4A2: Tag any attestation-generated digests for WebAuthn Server
       #      - name: Tag attestation-generated digests for WebAuthn Server
@@ -416,17 +416,17 @@ jobs:
       #          echo "test-credentials-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
       #        id: test-credentials-sha-tagging
       #
-      #      - name: Generate artifact attestation for Test Credentials Service
-      #        id: test-credentials-attestation
-      #        if: steps.docker-test-credentials-push.outcome == 'success'
-      #        uses: actions/attest-build-provenance@v2
-      #        continue-on-error: true  # Don't fail build on GitHub attestation service issues
-      #        with:
-      #          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
-      #          subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
-      #          push-to-registry: true
-      #        env:
-      #          ACTIONS_STEP_DEBUG: true
+      - name: Generate artifact attestation for Test Credentials Service
+        id: test-credentials-attestation
+        if: steps.docker-test-credentials-push.outcome == 'success'
+        uses: actions/attest-build-provenance@v2
+        continue-on-error: true  # Don't fail build on GitHub attestation service issues
+        with:
+          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
+          subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
+          push-to-registry: true
+        env:
+          ACTIONS_STEP_DEBUG: true
       #
       #      # STEP 4B2: Tag any attestation-generated digests for Test Credentials Service
       #      - name: Tag attestation-generated digests for Test Credentials Service

@@ -20,6 +20,10 @@
 # USAGE:
 #   ./cleanup-staging-packages.sh [success|failure] [repository_owner]
 #
+# MANUAL TESTING MODE (for debugging deletion issues):
+#   ./cleanup-staging-packages.sh test [endpoint] [version_id]
+#   Example: ./cleanup-staging-packages.sh test "/users/username/packages/container/webauthn-server" "490951546"
+#
 # ENVIRONMENT VARIABLES:
 #   GH_TOKEN - GitHub token with packages:write permission (required)
 #   GITHUB_REPOSITORY_OWNER - Repository owner (if not provided as argument)
@@ -41,12 +45,37 @@
 #   0 - Success (cleanup completed or skipped)
 #   1 - Error occurred during cleanup
 #
+# DEBUGGING DELETION FAILURES:
+# If cleanup fails during deletion, use manual testing mode to diagnose:
+#   1. Run script in discovery mode to find packages and version IDs
+#   2. Use manual testing mode to test deletion of specific version
+#   3. Check token permissions (packages:write required)
+#   4. Verify API endpoint format and authentication
+#
 
 set -euo pipefail
 
-# Configuration
-WORKFLOW_OUTCOME="${1:-success}"
-REPOSITORY_OWNER="${2:-${GITHUB_REPOSITORY_OWNER:-}}"
+# Check for manual testing mode first
+if [[ "${1:-}" == "test" ]]; then
+    MANUAL_TEST_MODE=true
+    TEST_ENDPOINT="${2:-}"
+    TEST_VERSION_ID="${3:-}"
+    
+    if [[ -z "$TEST_ENDPOINT" || -z "$TEST_VERSION_ID" ]]; then
+        echo "❌ Error: Manual test mode requires endpoint and version ID"
+        echo "Usage: $0 test [endpoint] [version_id]"
+        echo "Example: $0 test \"/users/username/packages/container/webauthn-server\" \"490951546\""
+        exit 1
+    fi
+else
+    MANUAL_TEST_MODE=false
+fi
+
+# Configuration for normal mode
+if [[ "$MANUAL_TEST_MODE" == "false" ]]; then
+    WORKFLOW_OUTCOME="${1:-success}"
+    REPOSITORY_OWNER="${2:-${GITHUB_REPOSITORY_OWNER:-}}"
+fi
 
 # Central configuration file path
 CONFIG_FILE="${CONFIG_FILE:-config/publishing-config.yml}"
@@ -230,6 +259,56 @@ validate_inputs() {
     log "  Repository owner: $REPOSITORY_OWNER"
 }
 
+# Function to manually test deletion of a specific version ID (for debugging)
+test_manual_deletion() {
+    local endpoint="$1"
+    local version_id="$2"
+    
+    log "🧪 MANUAL DELETION TEST MODE"
+    log "🧪 Testing deletion of version ID: $version_id"
+    log "🧪 Using endpoint: $endpoint"
+    
+    # Show detailed information about this version before deletion
+    log "🔍 Getting version details before deletion..."
+    local version_details
+    if version_details=$(gh api "${endpoint}/versions/${version_id}" 2>&1); then
+        log "📋 Version details:"
+        echo "$version_details" | jq '.' 2>/dev/null || log "Raw response: $version_details"
+    else
+        log "❌ Could not retrieve version details: $version_details"
+        return 1
+    fi
+    
+    # Test the deletion
+    log "🧪 Attempting manual deletion..."
+    local delete_result
+    local delete_exit_code
+    
+    if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
+        delete_exit_code=0
+        log "✅ MANUAL DELETION SUCCESSFUL"
+        log "✅ Response: $delete_result"
+    else
+        delete_exit_code=$?
+        log "❌ MANUAL DELETION FAILED"
+        log "❌ Exit code: $delete_exit_code"
+        log "❌ Error response: $delete_result"
+        
+        # Provide detailed error analysis
+        if [[ "$delete_result" =~ "404" ]]; then
+            log "💡 Analysis: Version not found - may have been deleted already"
+        elif [[ "$delete_result" =~ "403" ]]; then
+            log "💡 Analysis: Permission denied - token lacks packages:write permission"
+        elif [[ "$delete_result" =~ "401" ]]; then
+            log "💡 Analysis: Unauthorized - token authentication issue"
+        else
+            log "💡 Analysis: See error response above for details"
+        fi
+    fi
+    
+    return $delete_exit_code
+}
+
 # Function to validate GitHub CLI and authentication
 validate_github_cli() {
     log "🔍 Validating GitHub CLI setup..."
@@ -239,14 +318,34 @@ validate_github_cli() {
         exit 1
     fi
     
+    # Get detailed auth status for debugging
+    local auth_status
+    auth_status=$(gh auth status 2>&1 || echo "Auth check failed")
+    log "🔍 GitHub CLI auth status: $auth_status"
+    
     if ! gh auth status &> /dev/null; then
         log "❌ Error: GitHub CLI is not authenticated"
+        log "❌ Please run 'gh auth login' or set GH_TOKEN environment variable"
         exit 1
     fi
     
     if [[ -z "${GH_TOKEN:-}" ]]; then
         log "⚠️ Warning: GH_TOKEN environment variable not set"
         log "Using default gh authentication"
+    else
+        log "✅ GH_TOKEN environment variable is set"
+    fi
+    
+    # Test GitHub API access with packages scope
+    log "🔍 Testing GitHub API access for packages..."
+    local test_result
+    if test_result=$(gh api /user 2>&1); then
+        local username
+        username=$(echo "$test_result" | jq -r '.login' 2>/dev/null || echo "unknown")
+        log "✅ GitHub API access confirmed for user: $username"
+    else
+        log "❌ GitHub API test failed: $test_result"
+        log "❌ This may indicate insufficient token permissions"
     fi
     
     log "✅ GitHub CLI authentication validated"
@@ -503,16 +602,53 @@ cleanup_staging_docker() {
         
         while IFS= read -r version_id; do
             if [[ -n "$version_id" && "$version_id" != "null" ]]; then
-                log "🔍 Deleting Docker version ID: $version_id"
+                log "🔍 Attempting to delete Docker version ID: $version_id"
+                log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+                
+                # Validate GitHub token permissions before deletion
+                local auth_check
+                auth_check=$(gh auth status 2>&1 || echo "Auth failed")
+                log "🔍 Auth status: $(echo "$auth_check" | head -n 1)"
+                
                 local delete_result
+                local delete_exit_code
+                
+                # Attempt deletion with comprehensive error capture
+                log "🔍 Executing: gh api --method DELETE ${endpoint}/versions/$version_id"
                 if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
+                    delete_exit_code=0
                     ((package_deleted++))
                     ((total_deleted++))
-                    log "✅ Deleted Docker version: $version_id"
+                    log "✅ Successfully deleted Docker version: $version_id"
+                    log "✅ Delete response: $delete_result"
                 else
-                    log "⚠️ Failed to delete Docker version: $version_id"
-                    log "   Delete error: $delete_result"
+                    delete_exit_code=$?
+                    log "❌ Failed to delete Docker version: $version_id"
+                    log "❌ Exit code: $delete_exit_code"
+                    log "❌ Full error response: $delete_result"
+                    
+                    # Enhanced error analysis
+                    if [[ "$delete_result" =~ "404" ]]; then
+                        log "❌ Error type: Version not found (404) - may have been deleted already"
+                    elif [[ "$delete_result" =~ "403" ]]; then
+                        log "❌ Error type: Permission denied (403) - check token permissions"
+                        log "❌ Required permissions: packages:write for GitHub Packages"
+                    elif [[ "$delete_result" =~ "401" ]]; then
+                        log "❌ Error type: Unauthorized (401) - check token authentication"
+                    elif [[ "$delete_result" =~ "422" ]]; then
+                        log "❌ Error type: Unprocessable entity (422) - invalid request format"
+                    elif [[ "$delete_result" =~ "500" ]] || [[ "$delete_result" =~ "502" ]] || [[ "$delete_result" =~ "503" ]]; then
+                        log "❌ Error type: Server error - GitHub API may be temporarily unavailable"
+                        log "🔄 Consider retry with exponential backoff"
+                    else
+                        log "❌ Error type: Unknown - full response logged above"
+                    fi
+                    
+                    # Continue with other versions instead of failing completely
+                    log "⚠️ Continuing with remaining versions despite this failure"
                 fi
+            else
+                log "⚠️ Skipping invalid version ID: '$version_id'"
             fi
         done <<< "$versions"
         
@@ -620,15 +756,27 @@ cleanup_staging_npm() {
     
     while IFS= read -r version_id; do
         if [[ -n "$version_id" && "$version_id" != "null" ]]; then
-            log "🔍 Deleting npm version ID: $version_id"
+            log "🔍 Attempting to delete npm version ID: $version_id"
+            log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+            
             local delete_result
+            local delete_exit_code
+            
             if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
+                delete_exit_code=0
                 ((total_deleted++))
-                log "✅ Deleted npm version: $version_id"
+                log "✅ Successfully deleted npm version: $version_id"
             else
-                log "⚠️ Failed to delete npm version: $version_id"
-                log "   Delete error: $delete_result"
+                delete_exit_code=$?
+                log "❌ Failed to delete npm version: $version_id"
+                log "❌ Exit code: $delete_exit_code"
+                log "❌ Error response: $delete_result"
+                
+                # Continue with other versions
+                log "⚠️ Continuing with remaining versions despite this failure"
             fi
+        else
+            log "⚠️ Skipping invalid npm version ID: '$version_id'"
         fi
     done <<< "$versions"
     
@@ -712,15 +860,27 @@ cleanup_staging_maven() {
     
     while IFS= read -r version_id; do
         if [[ -n "$version_id" && "$version_id" != "null" ]]; then
-            log "🔍 Deleting Maven version ID: $version_id"
+            log "🔍 Attempting to delete Maven version ID: $version_id"
+            log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+            
             local delete_result
+            local delete_exit_code
+            
             if delete_result=$(gh api --method DELETE "${endpoint}/versions/$version_id" 2>&1); then
+                delete_exit_code=0
                 ((total_deleted++))
-                log "✅ Deleted Maven version: $version_id"
+                log "✅ Successfully deleted Maven version: $version_id"
             else
-                log "⚠️ Failed to delete Maven version: $version_id"
-                log "   Delete error: $delete_result"
+                delete_exit_code=$?
+                log "❌ Failed to delete Maven version: $version_id"
+                log "❌ Exit code: $delete_exit_code"
+                log "❌ Error response: $delete_result"
+                
+                # Continue with other versions
+                log "⚠️ Continuing with remaining versions despite this failure"
             fi
+        else
+            log "⚠️ Skipping invalid Maven version ID: '$version_id'"
         fi
     done <<< "$versions"
     
@@ -785,6 +945,21 @@ check_preserve_override() {
 main() {
     log "🚀 GitHub Packages Staging Cleanup Script Starting"
     
+    # Handle manual testing mode
+    if [[ "$MANUAL_TEST_MODE" == "true" ]]; then
+        log "🧪 Running in MANUAL TESTING MODE"
+        validate_github_cli
+        test_manual_deletion "$TEST_ENDPOINT" "$TEST_VERSION_ID"
+        local test_result=$?
+        if [[ $test_result -eq 0 ]]; then
+            log "✅ Manual deletion test completed successfully"
+        else
+            log "❌ Manual deletion test failed"
+        fi
+        exit $test_result
+    fi
+    
+    # Normal cleanup mode
     # Check for emergency override first
     check_preserve_override
     
@@ -804,8 +979,8 @@ main() {
     log "✅ Staging cleanup script completed successfully"
 }
 
-# Trap errors for better debugging
-trap 'log "❌ Error occurred at line $LINENO"' ERR
+# Enhanced error trapping for better debugging
+trap 'log "❌ Error occurred at line $LINENO in function ${FUNCNAME[1]:-main}"; log "❌ Last command: $BASH_COMMAND"; log "❌ Exit code: $?"' ERR
 
 # Run main function
 main

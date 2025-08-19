@@ -221,8 +221,12 @@ jobs:
     needs: [ build-and-test, e2e-tests, security-scanning, report-pipeline-status ]
     if: always()
     permissions:
-      contents: read     # Read repository code and git history
-      packages: write    # Delete GitHub Packages staging artifacts
+      contents: read          # Read repository code and git history
+      packages: write         # Delete GitHub Packages staging artifacts
+      pull-requests: write    # Comment on PRs with cleanup results (if needed)
+      issues: write          # Update issues with cleanup status (if needed)
+      id-token: write         # OIDC authentication with package registries
+      attestations: write     # Generate attestations for package operations
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

@@ -374,21 +374,28 @@ cleanup_staging_docker() {
             --jq "$versions_query" \
             2>/dev/null || echo "")
             
-        # Count non-empty lines
+        # Count non-empty lines safely
         local staging_count=0
         if [[ -n "$versions" ]]; then
-            staging_count=$(echo "$versions" | grep -c . || echo "0")
+            staging_count=$(echo "$versions" | grep -c . 2>/dev/null || echo "0")
         fi
         
         log "🔍 Staging versions after filtering: $staging_count versions"
+        if [[ "$staging_count" -gt 0 ]]; then
+            log "🔍 Version IDs to delete: $(echo "$versions" | tr '\n' ' ')"
+        fi
+        
         if [[ "$staging_count" -eq 0 ]]; then
             log "ℹ️ No staging versions to clean up for $package"
             continue
         fi
         
         local package_deleted=0
+        log "🗑️ Attempting to delete $staging_count staging versions..."
+        
         while IFS= read -r version_id; do
             if [[ -n "$version_id" ]]; then
+                log "🔍 Deleting version ID: $version_id"
                 if gh api \
                     --method DELETE \
                     "${endpoint}/versions/$version_id" \
@@ -401,6 +408,12 @@ cleanup_staging_docker() {
                 fi
             fi
         done <<< "$versions"
+        
+        # Ensure the loop completed successfully
+        local loop_exit_code=$?
+        if [[ $loop_exit_code -ne 0 ]]; then
+            log "⚠️ Version deletion loop had issues (exit code: $loop_exit_code)"
+        fi
         
         log "📊 $package: deleted $package_deleted staging versions"
     done

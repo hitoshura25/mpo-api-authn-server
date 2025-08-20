@@ -163,7 +163,7 @@ jobs:
           echo "  WebAuthn changes detected: ${{ inputs.webauthn-docker-changes-detected }}"
           echo "  Test credentials changes detected: ${{ inputs.test-credentials-docker-changes-detected }}"
           echo ""
-          
+
           if [[ "${{ inputs.force-build }}" == "true" ]]; then
             echo "🚀 FORCE BUILD MODE: Building all images regardless of change detection"
           elif [[ "${{ inputs.webauthn-docker-changes-detected }}" == "true" || "${{ inputs.test-credentials-docker-changes-detected }}" == "true" ]]; then
@@ -240,17 +240,6 @@ jobs:
           cache-to: type=gha,mode=max
           provenance: false
 
-      - name: Generate artifact attestation for WebAuthn Server
-        if: steps.docker-push.outcome == 'success'
-        uses: actions/attest-build-provenance@v2
-        continue-on-error: true  # Don't fail build on GitHub attestation service issues
-        with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
-          subject-digest: ${{ steps.docker-push.outputs.digest }}
-          push-to-registry: true
-        env:
-          ACTIONS_STEP_DEBUG: true
-
       - name: Push Test Credentials Service to registry
         id: docker-test-credentials-push
         uses: docker/build-push-action@v6
@@ -262,17 +251,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
-
-      - name: Generate artifact attestation for Test Credentials Service
-        if: steps.docker-test-credentials-push.outcome == 'success'
-        uses: actions/attest-build-provenance@v2
-        continue-on-error: true  # Don't fail build on GitHub attestation service issues
-        with:
-          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
-          subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
-          push-to-registry: true
-        env:
-          ACTIONS_STEP_DEBUG: true
 
       - name: Set push status
         id: push-status
@@ -310,11 +288,15 @@ jobs:
           if [[ "${{ steps.docker-push.outputs.digest }}" != "" ]]; then
             echo "    🔍 Digest: ${{ steps.docker-push.outputs.digest }}"
           fi
+          echo "    🏷️  Standard Tags: Using pr-X and latest for cleanup targeting"
           echo "  📦 Test Credentials: ${{ steps.docker-test-credentials-meta.outputs.tags }}"
           if [[ "${{ steps.docker-test-credentials-push.outputs.digest }}" != "" ]]; then
             echo "    🔍 Digest: ${{ steps.docker-test-credentials-push.outputs.digest }}"
           fi
+          echo "    🏷️  Standard Tags: Using pr-X and latest for cleanup targeting"
           echo "  🏗️  Images built: ${{ steps.build-status.outputs.images-built }}"
           echo "  🚀 Images pushed: ${{ steps.push-status.outputs.images-pushed }}"
+          echo "  🎯 Standard Tag Strategy: Simplified cleanup using pr-X and latest tags"
           echo "  🔒 Security scanning: Moved to parallel workflow for optimal performance"
+          echo "  📋 Attestation Strategy: Production-only (DockerHub publishing) for optimal staging performance"
           echo "  ⚡ Performance: ~50% faster execution with parallel security scanning"

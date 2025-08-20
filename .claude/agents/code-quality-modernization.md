@@ -38,6 +38,13 @@ Systematic code quality improvements and modernization for the WebAuthn codebase
 - **Resource management**: Proper handling of cryptographic resources
 - **Performance optimization**: Async patterns for WebAuthn operations
 
+### 5. Gradle Configuration Cache Compatibility
+- **Task.project violation detection**: Identify and fix `project.` accessors in execution blocks
+- **Path configuration patterns**: Move all path resolution to configuration time using `layout.projectDirectory`
+- **Task output declarations**: Ensure generated files are properly declared as outputs for caching
+- **Template processing compatibility**: Apply configuration cache patterns to OpenAPI client generation
+- **Validation automation**: Use `scripts/core/validate-gradle-config-cache.sh` for systematic checking
+
 ## Project Context
 
 ### Current Architecture
@@ -70,8 +77,44 @@ Systematic code quality improvements and modernization for the WebAuthn codebase
 - **Documentation updates**: Update coding standards as patterns are established
 - **Team alignment**: Ensure consistent application across future development
 
+## Critical Anti-Patterns to Fix
+
+### Gradle Configuration Cache Violations
+```kotlin
+// ❌ WRONG - Task.project access in execution block
+doLast {
+    val outputPath = project.layout.buildDirectory.dir("output").get().asFile
+    val templateFile = File(project.rootDir, "template.kts")
+}
+
+// ✅ CORRECT - Configuration time path setup
+val outputDir = layout.buildDirectory.dir("output")
+val templateFile = layout.projectDirectory.file("template.kts")
+doLast {
+    val outputPath = outputDir.get().asFile
+    val templateFileObj = templateFile.asFile
+}
+```
+
+### Generated File Output Declaration
+```kotlin
+// ❌ WRONG - Generated file not declared as output
+doLast {
+    File(project.rootDir, "generated.kts").writeText(content)
+}
+
+// ✅ CORRECT - Declare generated files as outputs
+val generatedFile = layout.projectDirectory.file("generated.kts")
+outputs.file(generatedFile)
+doLast {
+    generatedFile.asFile.writeText(content)
+}
+```
+
 ## Success Metrics
 - **Zero Detekt violations** across all modules
 - **Consistent functional error handling** throughout codebase
 - **Explicit imports only** - no wildcard imports
 - **100% test coverage** maintained during refactoring
+- **Zero configuration cache warnings** in Gradle builds
+- **Proper task output declarations** for all generated files

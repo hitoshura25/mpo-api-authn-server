@@ -11,8 +11,9 @@
 - [**Planned**: FOSS Security Implementation](./improvements/planned/foss-security-implementation.md) - Security tooling modernization 📋
 
 ## 🛠️ Development
-- [Client Library Publishing](./development/client-library-publishing.md) - Publishing workflows and automation
+- [Client Library Publishing](./development/workflows/client-library-publishing.md) - Publishing workflows and automation
 - [Client Library Staging](./development/client-library-staging.md) - Staging→production patterns
+- [Gradle Configuration Cache Compatibility](./development/gradle-configuration-cache-compatibility.md) - Critical patterns for custom Gradle tasks
 - [Coding Standards](./development/coding-standards.md) - Code quality guidelines
 - [Scripts Usage](./development/scripts-usage.md) - Development script documentation
 
@@ -74,8 +75,9 @@ graph TD
 
 ### **Contributing & Development**
 1. [Coding Standards](./development/coding-standards.md) - Code quality
-2. [Security Guidelines](./security/) - Security best practices  
-3. [Improvement Planning](./improvements/) - Future work coordination
+2. [Gradle Configuration Cache Patterns](./development/gradle-configuration-cache-compatibility.md) - Essential for custom tasks
+3. [Security Guidelines](./security/) - Security best practices  
+4. [Improvement Planning](./improvements/) - Future work coordination
 
 ---
 

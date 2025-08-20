@@ -16,7 +16,7 @@
 #
 # TRIGGERS:
 # - Pull requests to main branch
-# - Pushes to main branch  
+# - Pushes to main branch
 # - Manual dispatch with force options (UI)
 #
 # MANUAL FORCE OPTIONS:
@@ -192,7 +192,7 @@ jobs:
           # Determine overall pipeline success for staging cleanup
           PIPELINE_SUCCESS=false
           WORKFLOW_OUTCOME="failure"
-          
+
           # Pipeline is successful if build-and-test succeeded and either:
           # 1. No Docker images were built (fast path)
           # 2. Docker images were built AND security scanning AND E2E tests passed
@@ -207,10 +207,10 @@ jobs:
               WORKFLOW_OUTCOME="success"
             fi
           fi
-          
+
           echo "pipeline-success=$PIPELINE_SUCCESS" >> $GITHUB_OUTPUT
           echo "workflow-outcome=$WORKFLOW_OUTCOME" >> $GITHUB_OUTPUT
-          
+
           echo "📊 Workflow outcome for staging cleanup: $WORKFLOW_OUTCOME"
           echo "🎯 Pipeline success status: $PIPELINE_SUCCESS"
 
@@ -221,8 +221,8 @@ jobs:
     needs: [ build-and-test, e2e-tests, security-scanning, report-pipeline-status ]
     if: always()
     permissions:
-      contents: read     # Read repository code and git history
-      packages: write    # Delete GitHub Packages staging artifacts
+      contents: read          # Read repository code and git history
+      packages: write         # Package access (GitHub Actions tokens cannot have admin permission)
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -243,8 +243,11 @@ jobs:
       - name: Smart staging cleanup
         if: steps.check-preserve.outputs.preserve-override != 'true'
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.PACKAGE_ADMIN_TOKEN }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
           DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
           DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
         run: |
@@ -252,7 +255,7 @@ jobs:
           echo "📋 Cleanup scope: ONLY GitHub Packages staging artifacts"
           echo "🎯 Workflow outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
           echo ""
-          
+
           case "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" in
             "success")
               echo "✅ Workflow succeeded - performing COMPLETE staging cleanup"
@@ -264,7 +267,7 @@ jobs:
               ;;
           esac
           echo ""
-          
+
           # Execute staging cleanup script
           chmod +x scripts/docker/cleanup-staging-packages.sh
           scripts/docker/cleanup-staging-packages.sh "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" "${{ github.repository_owner }}"
@@ -285,7 +288,7 @@ jobs:
           echo "  Workflow Outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
           echo "  Pipeline Success: ${{ needs.report-pipeline-status.outputs.pipeline-success }}"
           echo ""
-          
+
           if [[ "${{ steps.check-preserve.outputs.preserve-override }}" == "true" ]]; then
             echo "🚨 Cleanup skipped due to emergency override"
           elif [[ "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" == "success" ]]; then

@@ -71,6 +71,35 @@ import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
 
 ## Gradle Build Standards
 
+### 🚨 Configuration Cache Compatibility (CRITICAL)
+
+**ALL custom Gradle tasks MUST be compatible with Gradle's configuration cache feature.**
+
+This is not optional - configuration cache violations break build performance for all developers and cause silent failures in CI/CD workflows.
+
+#### Immediate Rejection Criteria
+Any code review containing these patterns must be rejected immediately:
+- `project.rootDir`, `project.buildDir`, `project.version` in `doLast`/`doFirst` blocks  
+- `Task.project` accessor usage
+- `project.findProperty()` calls inside execution blocks
+- Direct `file()` calls with project properties in execution phase
+
+#### Mandatory Code Review Process
+- **Before Review**: Use `docs/development/gradle-task-code-review-checklist.md` for ALL Gradle task changes
+- **Testing Required**: All tasks must pass configuration cache compatibility tests:
+  ```bash
+  ./gradlew [task-name] --configuration-cache --info
+  ./gradlew [task-name] --configuration-cache --info  # Verify cache reuse
+  ```
+- **Documentation**: See `docs/development/gradle-configuration-cache-compatibility.md` for complete patterns
+
+#### Why This Matters
+- **Performance**: Configuration cache provides 50-90% build time improvements
+- **Reliability**: Violations cause silent failures in template processing and client generation
+- **Team Impact**: One developer's violation affects ALL developers' build performance
+
+---
+
 ### Version Management
 
 **All dependency versions must be referenced via variables** to ensure consistency and ease of maintenance.
@@ -215,9 +244,22 @@ These standards are automatically enforced via:
 
 Manual enforcement:
 - ✅ Applied to all new code
-- ✅ Verified during code reviews  
+- ✅ Verified during code reviews using **mandatory checklists**:
+  - **Gradle Task Changes**: `docs/development/gradle-task-code-review-checklist.md`
+  - **General Code Review**: Standard import/style review
 - ✅ Used when refactoring existing code
 - ✅ **CRITICAL**: Always test builds after removing imports to verify they weren't actually used
+- ✅ **Configuration Cache Testing**: ALL Gradle task modifications must pass `--configuration-cache` tests
+
+### Code Review Requirements
+
+**For ANY Gradle task development or modification:**
+1. **Use the checklist**: Follow `docs/development/gradle-task-code-review-checklist.md` systematically
+2. **Run automated tests**: Configuration cache compatibility tests are mandatory
+3. **Verify documentation**: Ensure any new patterns are documented
+4. **Test integration**: Verify task works with existing publishing workflows
+
+**Review rejection criteria**: Any violation of configuration cache compatibility patterns results in immediate review rejection.
 
 ### Important Note on Unused Imports
 

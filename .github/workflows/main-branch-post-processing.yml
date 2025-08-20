@@ -249,6 +249,8 @@ jobs:
       )
     permissions:
       contents: read
+      attestations: write  # Required for production attestation generation
+      id-token: write     # Required for Sigstore signing
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -282,9 +284,55 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
 
       - name: Publish to DockerHub
+        id: dockerhub-publish
         run: |
           chmod +x scripts/docker/publish-dockerhub.sh
           scripts/docker/publish-dockerhub.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}"
+
+      # Production attestations: Get digests and generate signed provenance for DockerHub images
+      - name: Get DockerHub image digests for attestation
+        id: get-digests
+        if: steps.dockerhub-publish.outcome == 'success'
+        run: |
+          echo "📋 Getting DockerHub image digests for attestation..."
+          
+          if [[ "${{ needs.detect-changes.outputs.webauthn-server-changed }}" == "true" ]]; then
+            # Get the digest of the DockerHub WebAuthn Server image
+            WEBAUTHN_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.DOCKERHUB_SERVER_REPO }}:latest | cut -d'@' -f2)
+            echo "📋 WebAuthn Server DockerHub digest: $WEBAUTHN_DIGEST"
+            echo "webauthn-digest=$WEBAUTHN_DIGEST" >> $GITHUB_OUTPUT
+          fi
+          
+          if [[ "${{ needs.detect-changes.outputs.test-credentials-changed }}" == "true" ]]; then
+            # Get the digest of the DockerHub Test Credentials image  
+            TEST_CREDENTIALS_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest | cut -d'@' -f2)
+            echo "📋 Test Credentials DockerHub digest: $TEST_CREDENTIALS_DIGEST"
+            echo "test-credentials-digest=$TEST_CREDENTIALS_DIGEST" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate production attestation for WebAuthn Server
+        id: webauthn-production-attestation
+        if: needs.detect-changes.outputs.webauthn-server-changed == 'true' && steps.dockerhub-publish.outcome == 'success'
+        uses: actions/attest-build-provenance@v2
+        continue-on-error: true  # Don't fail workflow on GitHub attestation service issues
+        with:
+          subject-name: ${{ env.DOCKERHUB_SERVER_REPO }}
+          subject-digest: ${{ steps.get-digests.outputs.webauthn-digest }}
+          push-to-registry: true
+        env:
+          ACTIONS_STEP_DEBUG: true
+
+      - name: Generate production attestation for Test Credentials Service
+        id: test-credentials-production-attestation
+        if: needs.detect-changes.outputs.test-credentials-changed == 'true' && steps.dockerhub-publish.outcome == 'success'
+        uses: actions/attest-build-provenance@v2
+        continue-on-error: true  # Don't fail workflow on GitHub attestation service issues
+        with:
+          subject-name: ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}
+          subject-digest: ${{ steps.get-digests.outputs.test-credentials-digest }}
+          push-to-registry: true
+        env:
+          ACTIONS_STEP_DEBUG: true
 
       - name: Update WebAuthn Server DockerHub description
         if: needs.detect-changes.outputs.webauthn-server-changed == 'true'

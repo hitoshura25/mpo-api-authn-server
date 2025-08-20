@@ -11,29 +11,14 @@ java {
     withSourcesJar()
 }
 
-// Configure version from parent project or environment
-val clientVersion =
-    if (project.hasProperty("clientVersion")) {
-        project.property("clientVersion") as String
-    } else {
-        System.getenv("CLIENT_VERSION") ?: "1.0.0-SNAPSHOT"
-    }
+// Configure version from environment variables (properties not needed for non-publishing configuration)
+val clientVersion = System.getenv("CLIENT_VERSION") ?: "1.0.0-SNAPSHOT"
 
-// Configure artifact ID from parent project or environment
-val androidArtifactId =
-    if (project.hasProperty("androidArtifactId")) {
-        project.property("androidArtifactId") as String
-    } else {
-        System.getenv("ANDROID_ARTIFACT_ID") ?: "mpo-webauthn-android-client"
-    }
+// Configure artifact ID from environment variables
+val androidArtifactId = System.getenv("ANDROID_ARTIFACT_ID") ?: "mpo-webauthn-android-client"
 
-// Configure group ID from parent project or environment
-val androidGroupId =
-    if (project.hasProperty("androidGroupId")) {
-        project.property("androidGroupId") as String
-    } else {
-        System.getenv("ANDROID_GROUP_ID") ?: "io.github.hitoshura25"
-    }
+// Configure group ID from environment variables  
+val androidGroupId = System.getenv("ANDROID_GROUP_ID") ?: "io.github.hitoshura25"
 
 version = clientVersion
 
@@ -125,21 +110,35 @@ publishing {
         // Repository configuration from central publishing config via environment variables
         val repositoryUrl = System.getenv("ANDROID_REPOSITORY_URL")
             ?: throw GradleException("ANDROID_REPOSITORY_URL environment variable is required")
-        val repositoryUsernameEnv = System.getenv("ANDROID_REPOSITORY_USERNAME_ENV")
-            ?: throw GradleException("ANDROID_REPOSITORY_USERNAME_ENV environment variable is required")
-        val repositoryPasswordEnv = System.getenv("ANDROID_REPOSITORY_PASSWORD_ENV")
-            ?: throw GradleException("ANDROID_REPOSITORY_PASSWORD_ENV environment variable is required")
 
         maven {
             name = "PublishingRepository"
             url = uri(repositoryUrl)
             credentials {
-                // Property names are hardcoded based on repository name "PublishingRepository"
-                // Use property-based credentials first, then fall back to environment variables
+                // Gradle automatically looks for properties named: {repositoryName}Username and {repositoryName}Password
+                // For repository name "PublishingRepository", it expects:
+                // - PublishingRepositoryUsername  
+                // - PublishingRepositoryPassword
+                //
+                // These properties can be provided via environment variables using the
+                // ORG_GRADLE_PROJECT_ prefix pattern for configuration cache compatibility:
+                // - ORG_GRADLE_PROJECT_PublishingRepositoryUsername
+                // - ORG_GRADLE_PROJECT_PublishingRepositoryPassword
+                //
+                // Gradle will automatically convert these env vars to project properties.
+                // We use explicit environment variable fallback for better error reporting.
                 username = project.findProperty("PublishingRepositoryUsername") as String?
-                    ?: System.getenv(repositoryUsernameEnv)
+                    ?: System.getenv("PUBLISHING_REPOSITORY_USERNAME")
+                    ?: throw GradleException(
+                        "Publishing repository username is required. Set via ORG_GRADLE_PROJECT_PublishingRepositoryUsername environment variable " +
+                        "or PUBLISHING_REPOSITORY_USERNAME for direct environment variable access."
+                    )
                 password = project.findProperty("PublishingRepositoryPassword") as String?
-                    ?: System.getenv(repositoryPasswordEnv)
+                    ?: System.getenv("PUBLISHING_REPOSITORY_PASSWORD")
+                    ?: throw GradleException(
+                        "Publishing repository password is required. Set via ORG_GRADLE_PROJECT_PublishingRepositoryPassword environment variable " +
+                        "or PUBLISHING_REPOSITORY_PASSWORD for direct environment variable access."
+                    )
             }
         }
     }
@@ -147,15 +146,9 @@ publishing {
 
 // Signing configuration for Maven Central (production only)
 signing {
-    val publishType =
-        project.findProperty("publishType") as String?
-            ?: System.getenv("PUBLISH_TYPE") ?: "staging"
-    val signingKey =
-        project.findProperty("signingKey") as String?
-            ?: System.getenv("SIGNING_KEY")
-    val signingPassword =
-        project.findProperty("signingPassword") as String?
-            ?: System.getenv("SIGNING_PASSWORD")
+    val publishType = System.getenv("PUBLISH_TYPE") ?: "staging"
+    val signingKey = System.getenv("SIGNING_KEY")
+    val signingPassword = System.getenv("SIGNING_PASSWORD")
 
     // Only sign for production publishing and if we have the required properties
     if (publishType == "production" && signingKey != null && signingPassword != null) {

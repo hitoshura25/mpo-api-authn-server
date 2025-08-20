@@ -18,6 +18,7 @@ Specialized agent for managing the staging→production client library publishin
 - **TypeScript client library**: Manage `typescript-client-library/` submodule with npm publishing
 - **Submodule coordination**: Synchronize generation and publishing across both platforms
 - **Build integration**: Coordinate with Gradle/npm build systems for seamless publishing
+- **Configuration cache compatibility**: Ensure all Gradle tasks follow configuration cache patterns (see code-quality-modernization agent for specific patterns)
 
 ### 2. Publishing Workflow Orchestration
 

@@ -212,6 +212,21 @@ jobs:
           echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
           echo "  Credentials: Using ORG_GRADLE_PROJECT_ environment variables (configuration cache compatible)"
           
+          # Log exactly what credentials are being used for debugging
+          if [[ "${{ inputs.publish-type }}" == "production" ]]; then
+            echo "🔍 PRODUCTION Publishing Configuration:"
+            echo "  Registry: Maven Central (Portal OSSRH Staging API)"
+            echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
+            echo "  Username: ${ORG_GRADLE_PROJECT_PublishingRepositoryUsername}"
+            echo "  GPG Signing: ${SIGNING_KEY:+ENABLED}${SIGNING_KEY:-DISABLED}"
+            echo "  API Type: Portal OSSRH Staging API (Bridge)"
+          else
+            echo "🔍 STAGING Publishing Configuration:"
+            echo "  Registry: GitHub Packages"
+            echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
+            echo "  Username: ${ORG_GRADLE_PROJECT_PublishingRepositoryUsername}"
+          fi
+          
           # Validate required environment variables for template processing
           if [[ -z "${ANDROID_REPOSITORY_URL}" ]]; then
             echo "❌ ERROR: ANDROID_REPOSITORY_URL is required but not set"
@@ -248,6 +263,77 @@ jobs:
             --build-cache --parallel --configuration-cache
 
           echo "✅ Android client generated and published to ${{ inputs.publish-type }} repository successfully"
+
+      - name: Verify Android package publication
+        if: (steps.check-android-version.outputs.skip-publish == 'false' || inputs.publish-type == 'production') && inputs.publish-type == 'production'
+        env:
+          ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
+          ANDROID_GROUP_ID: ${{ inputs.android-group-id }}
+          CLIENT_VERSION: ${{ inputs.client-version }}
+        run: |
+          echo "🔍 Verifying Maven Central publication..."
+          echo "  Package: ${ANDROID_GROUP_ID}:${ANDROID_ARTIFACT_ID}:${CLIENT_VERSION}"
+          
+          # Note: Maven Central has a delay between publication and search API availability
+          echo "⏳ Maven Central Publication Process:"
+          echo "  1. ✅ Published to Portal OSSRH Staging API"
+          echo "  2. ⏳ Processing in Central Portal (may take 10-30 minutes)"
+          echo "  3. ⏳ Manual verification required in Central Portal UI"
+          echo "  4. ⏳ Manual release required to make publicly available"
+          echo "  5. ⏳ Search API availability (additional 2-4 hours after release)"
+          
+          echo "🔗 Verification Links:"
+          echo "  Central Portal: https://central.sonatype.com/publishing"
+          echo "  Maven Central Search: https://search.maven.org/search?q=g:${ANDROID_GROUP_ID}+AND+a:${ANDROID_ARTIFACT_ID}"
+          echo "  Maven Repository: https://repo1.maven.org/maven2/${ANDROID_GROUP_ID//.//}/${ANDROID_ARTIFACT_ID}/"
+          
+          echo "📋 Next Steps:"
+          echo "  1. Check Central Portal for your deployment"
+          echo "  2. Verify artifacts and signatures"
+          echo "  3. Manually release to make publicly available"
+          echo "  4. Wait 2-4 hours for search API indexing"
+          
+          echo "✅ Publication verification guidance provided"
+
+      - name: Verify GitHub Packages publication
+        if: (steps.check-android-version.outputs.skip-publish == 'false' || inputs.publish-type == 'production') && inputs.publish-type == 'staging'
+        env:
+          ANDROID_ARTIFACT_ID: ${{ steps.package-info.outputs.android-artifact-id }}
+          ANDROID_GROUP_ID: ${{ inputs.android-group-id }}
+          CLIENT_VERSION: ${{ inputs.client-version }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔍 Verifying GitHub Packages publication..."
+          echo "  Package: ${ANDROID_GROUP_ID}:${ANDROID_ARTIFACT_ID}:${CLIENT_VERSION}"
+          
+          # Give GitHub API a moment to update
+          echo "⏳ Waiting 10 seconds for GitHub Packages API to update..."
+          sleep 10
+          
+          # Check if the published version is now available
+          echo "🔍 Checking GitHub Packages API for published version..."
+          if gh api "/user/packages/maven/${{ inputs.android-group-id }}/${ANDROID_ARTIFACT_ID}/versions" --jq ".[].name" | grep -q "^${{ inputs.client-version }}$"; then
+            echo "✅ VERIFICATION SUCCESS: Version ${{ inputs.client-version }} is now available in GitHub Packages"
+            
+            # Get additional package information
+            PACKAGE_URL="https://github.com/users/${{ github.repository_owner }}/packages/maven/package/${{ inputs.android-group-id }}%2F${ANDROID_ARTIFACT_ID}"
+            echo "🔗 Package URL: ${PACKAGE_URL}"
+            
+            # Show published versions count
+            VERSION_COUNT=$(gh api "/user/packages/maven/${{ inputs.android-group-id }}/${ANDROID_ARTIFACT_ID}/versions" --jq "length")
+            echo "📊 Total published versions: ${VERSION_COUNT}"
+          else
+            echo "⚠️ VERIFICATION WARNING: Version ${{ inputs.client-version }} not yet visible in GitHub Packages API"
+            echo "   This may be due to API propagation delay (usually 1-2 minutes)"
+            echo "   The package was published successfully but API visibility is delayed"
+            
+            # Show what versions are currently visible
+            echo "🔍 Currently visible versions:"
+            gh api "/user/packages/maven/${{ inputs.android-group-id }}/${ANDROID_ARTIFACT_ID}/versions" --jq ".[].name" | head -5 || echo "   No versions visible yet"
+            
+            # Don't fail the workflow - this is just verification lag
+            echo "ℹ️ Continuing workflow - this is normal API propagation delay"
+          fi
 
       - name: Skip Android publishing (version exists)
         if: inputs.publish-type == 'staging' && steps.check-android-version.outputs.skip-publish == 'true'

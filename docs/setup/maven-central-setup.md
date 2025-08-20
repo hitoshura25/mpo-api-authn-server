@@ -275,3 +275,22 @@ If you previously set up Maven Central publishing with the legacy OSSRH system:
 - **Better UI**: Modern Central Portal interface
 - **Faster processing**: Improved publishing pipeline
 - **Enhanced security**: Token-based authentication
+
+## 2025 Publishing Analysis & Improvements
+
+For detailed analysis of the current publishing setup and recommendations for modern Maven Central publishing in 2025, see:
+
+📋 **[Maven Central Publishing Analysis & Recommendations (2025)](maven-central-publishing-analysis-2025.md)**
+
+This analysis covers:
+- Current configuration assessment
+- 2025 Maven Central landscape changes
+- Implemented improvements (enhanced logging, verification)
+- Migration roadmap to modern Portal API
+- Actionable recommendations by phase
+
+### Recent Improvements ✅
+- **Enhanced Diagnostic Logging**: Detailed publishing configuration visibility
+- **Post-Publishing Verification**: Automated GitHub Packages verification, guided Maven Central verification
+- **Error Prevention**: Better validation and clear error messages
+- **API Type Detection**: Automatic identification of publishing target type

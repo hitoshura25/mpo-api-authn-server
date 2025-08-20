@@ -127,18 +127,28 @@ publishing {
                 //
                 // Gradle will automatically convert these env vars to project properties.
                 // We use explicit environment variable fallback for better error reporting.
-                username = project.findProperty("PublishingRepositoryUsername") as String?
+                val repoUsername = project.findProperty("PublishingRepositoryUsername") as String?
                     ?: System.getenv("PUBLISHING_REPOSITORY_USERNAME")
                     ?: throw GradleException(
                         "Publishing repository username is required. Set via ORG_GRADLE_PROJECT_PublishingRepositoryUsername environment variable " +
                         "or PUBLISHING_REPOSITORY_USERNAME for direct environment variable access."
                     )
-                password = project.findProperty("PublishingRepositoryPassword") as String?
+                val repoPassword = project.findProperty("PublishingRepositoryPassword") as String?
                     ?: System.getenv("PUBLISHING_REPOSITORY_PASSWORD")
                     ?: throw GradleException(
                         "Publishing repository password is required. Set via ORG_GRADLE_PROJECT_PublishingRepositoryPassword environment variable " +
                         "or PUBLISHING_REPOSITORY_PASSWORD for direct environment variable access."
                     )
+                
+                username = repoUsername
+                password = repoPassword
+                
+                // Log repository configuration for debugging (without sensitive credentials)
+                logger.lifecycle("📊 Publishing Repository Configuration:")
+                logger.lifecycle("  Repository URL: $repositoryUrl")
+                logger.lifecycle("  Username: ${repoUsername.take(4)}...")
+                logger.lifecycle("  API Type: ${if (repositoryUrl.contains("ossrh-staging-api")) "Portal OSSRH Staging API (Bridge)" else if (repositoryUrl.contains("maven.pkg.github.com")) "GitHub Packages" else "Other Maven Repository"}")
+                logger.lifecycle("  Credentials Source: ${if (project.hasProperty("PublishingRepositoryUsername")) "Gradle Properties" else "Environment Variables"}")
             }
         }
     }
@@ -150,9 +160,29 @@ signing {
     val signingKey = System.getenv("SIGNING_KEY")
     val signingPassword = System.getenv("SIGNING_PASSWORD")
 
+    // Log signing configuration for debugging
+    logger.lifecycle("🔐 GPG Signing Configuration:")
+    logger.lifecycle("  Publish Type: $publishType")
+    logger.lifecycle("  Signing Key Available: ${if (signingKey != null) "YES" else "NO"}")
+    logger.lifecycle("  Signing Password Available: ${if (signingPassword != null) "YES" else "NO"}")
+    
     // Only sign for production publishing and if we have the required properties
-    if (publishType == "production" && signingKey != null && signingPassword != null) {
-        useInMemoryPgpKeys(signingKey, signingPassword)
-        sign(publishing.publications["maven"])
+    if (publishType == "production") {
+        if (signingKey != null && signingPassword != null) {
+            logger.lifecycle("  🔒 GPG signing ENABLED for production publishing")
+            logger.lifecycle("  📝 All artifacts will be signed (JAR, sources, javadoc, POM)")
+            useInMemoryPgpKeys(signingKey, signingPassword)
+            sign(publishing.publications["maven"])
+        } else {
+            logger.error("❌ PRODUCTION PUBLISHING ERROR: GPG signing credentials missing!")
+            logger.error("   SIGNING_KEY: ${if (signingKey != null) "provided" else "MISSING"}")
+            logger.error("   SIGNING_PASSWORD: ${if (signingPassword != null) "provided" else "MISSING"}")
+            throw GradleException(
+                "GPG signing is required for production publishing to Maven Central. " +
+                "Please ensure SIGNING_KEY and SIGNING_PASSWORD environment variables are set."
+            )
+        }
+    } else {
+        logger.lifecycle("  ℹ️  GPG signing DISABLED for staging publishing (not required for GitHub Packages)")
     }
 }

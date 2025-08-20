@@ -396,8 +396,51 @@ delete_docker_version() {
         return 1
     fi
     
+    # First, check if this is the last tagged version to avoid the error
+    local total_tagged_versions
+    total_tagged_versions=$(gh api "${endpoint}/versions" --jq '[.[] | select(.metadata.container.tags | length > 0)] | length' 2>/dev/null || echo "unknown")
+    
+    if [[ "$total_tagged_versions" == "1" ]]; then
+        log "🔍 Detected last tagged version - will delete entire package instead of individual version"
+        log "🔄 GitHub API restriction: Cannot delete last tagged version, must delete package"
+        
+        # Extract package path from endpoint for package deletion
+        local package_path
+        if [[ "$endpoint" =~ /users/([^/]+)/packages/container/([^/]+)$ ]]; then
+            local owner="${BASH_REMATCH[1]}"
+            local extracted_package_name="${BASH_REMATCH[2]}"
+            package_path="/users/$owner/packages/container/$extracted_package_name"
+            log "🔍 Detected package path: $package_path"
+            
+            # Attempt to delete the entire package
+            log "🗑️ Attempting to delete entire package: $extracted_package_name"
+            local package_delete_result
+            local package_delete_exit_code
+            
+            set +e
+            package_delete_result=$(gh api --method DELETE "$package_path" 2>&1)
+            package_delete_exit_code=$?
+            set -e
+            
+            if [[ $package_delete_exit_code -eq 0 ]]; then
+                log "✅ Successfully deleted entire package: $extracted_package_name"
+                log "✅ Package delete response: $package_delete_result"
+                return 0
+            else
+                log "❌ Failed to delete entire package: $extracted_package_name"
+                log "❌ Package delete exit code: $package_delete_exit_code"
+                log "❌ Package delete error: $package_delete_result"
+                return 1
+            fi
+        else
+            log "❌ Could not extract package information from endpoint: $endpoint"
+            return 1
+        fi
+    fi
+    
     log "🔍 Attempting to delete Docker version ID: $version_id (package: $package_name)"
     log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+    log "🔍 Total tagged versions in package: $total_tagged_versions"
     
     # Temporarily disable error exit for this operation
     set +e
@@ -431,6 +474,31 @@ delete_docker_version() {
             log "❌ Error type: Unauthorized (401) - check token authentication"
         elif [[ "$delete_result" =~ "422" ]]; then
             log "❌ Error type: Unprocessable entity (422) - invalid request format"
+        elif [[ "$delete_result" =~ "400" ]]; then
+            log "❌ Error type: Bad request (400) - may be last tagged version or other constraint"
+            # Fallback: attempt package deletion if version count detection failed
+            if [[ "$total_tagged_versions" == "unknown" ]]; then
+                log "🔄 Attempting package deletion as fallback for 400 error"
+                local package_path
+                if [[ "$endpoint" =~ /users/([^/]+)/packages/container/([^/]+)$ ]]; then
+                    local owner="${BASH_REMATCH[1]}"
+                    local extracted_package_name="${BASH_REMATCH[2]}"
+                    package_path="/users/$owner/packages/container/$extracted_package_name"
+                    
+                    set +e
+                    local fallback_result
+                    fallback_result=$(gh api --method DELETE "$package_path" 2>&1)
+                    local fallback_exit_code=$?
+                    set -e
+                    
+                    if [[ $fallback_exit_code -eq 0 ]]; then
+                        log "✅ Fallback package deletion succeeded: $extracted_package_name"
+                        return 0
+                    else
+                        log "❌ Fallback package deletion failed: $fallback_result"
+                    fi
+                fi
+            fi
         elif [[ "$delete_result" =~ "500" ]] || [[ "$delete_result" =~ "502" ]] || [[ "$delete_result" =~ "503" ]]; then
             log "❌ Error type: Server error - GitHub API may be temporarily unavailable"
             log "🔄 Consider retry with exponential backoff"
@@ -642,8 +710,49 @@ delete_npm_version() {
         return 1
     fi
     
+    # First, check if this is the last version to avoid the error
+    local total_versions
+    total_versions=$(gh api "${endpoint}/versions" --jq 'length' 2>/dev/null || echo "unknown")
+    
+    if [[ "$total_versions" == "1" ]]; then
+        log "🔍 Detected last npm version - will delete entire package instead of individual version"
+        log "🔄 GitHub API restriction: Cannot delete last version, must delete package"
+        
+        # Extract package path from endpoint for package deletion
+        local package_path
+        if [[ "$endpoint" =~ (/user/packages/npm/[^/]+)$ ]]; then
+            package_path="${BASH_REMATCH[1]}"
+            log "🔍 Detected npm package path: $package_path"
+            
+            # Attempt to delete the entire npm package
+            log "🗑️ Attempting to delete entire npm package"
+            local package_delete_result
+            local package_delete_exit_code
+            
+            set +e
+            package_delete_result=$(gh api --method DELETE "$package_path" 2>&1)
+            package_delete_exit_code=$?
+            set -e
+            
+            if [[ $package_delete_exit_code -eq 0 ]]; then
+                log "✅ Successfully deleted entire npm package"
+                log "✅ npm package delete response: $package_delete_result"
+                return 0
+            else
+                log "❌ Failed to delete entire npm package"
+                log "❌ npm package delete exit code: $package_delete_exit_code"
+                log "❌ npm package delete error: $package_delete_result"
+                return 1
+            fi
+        else
+            log "❌ Could not extract npm package information from endpoint: $endpoint"
+            return 1
+        fi
+    fi
+    
     log "🔍 Attempting to delete npm version ID: $version_id"
     log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+    log "🔍 Total versions in package: $total_versions"
     
     # Temporarily disable error exit for this operation
     set +e
@@ -663,6 +772,33 @@ delete_npm_version() {
         log "❌ Failed to delete npm version: $version_id"
         log "❌ Exit code: $delete_exit_code"
         log "❌ Error response: $delete_result"
+        
+        # Handle 400 errors with fallback to package deletion
+        if [[ "$delete_result" =~ "400" ]]; then
+            log "❌ Error type: Bad request (400) - may be last version or other constraint"
+            # Fallback: attempt package deletion if version count detection failed
+            if [[ "$total_versions" == "unknown" ]]; then
+                log "🔄 Attempting package deletion as fallback for 400 error"
+                local package_path
+                if [[ "$endpoint" =~ (/user/packages/npm/[^/]+)$ ]]; then
+                    package_path="${BASH_REMATCH[1]}"
+                    
+                    set +e
+                    local fallback_result
+                    fallback_result=$(gh api --method DELETE "$package_path" 2>&1)
+                    local fallback_exit_code=$?
+                    set -e
+                    
+                    if [[ $fallback_exit_code -eq 0 ]]; then
+                        log "✅ Fallback npm package deletion succeeded"
+                        return 0
+                    else
+                        log "❌ Fallback npm package deletion failed: $fallback_result"
+                    fi
+                fi
+            fi
+        fi
+        
         return 1
     fi
 }
@@ -790,8 +926,49 @@ delete_maven_version() {
         return 1
     fi
     
+    # First, check if this is the last version to avoid the error
+    local total_versions
+    total_versions=$(gh api "${endpoint}/versions" --jq 'length' 2>/dev/null || echo "unknown")
+    
+    if [[ "$total_versions" == "1" ]]; then
+        log "🔍 Detected last Maven version - will delete entire package instead of individual version"
+        log "🔄 GitHub API restriction: Cannot delete last version, must delete package"
+        
+        # Extract package path from endpoint for package deletion
+        local package_path
+        if [[ "$endpoint" =~ (/user/packages/maven/[^/]+)$ ]]; then
+            package_path="${BASH_REMATCH[1]}"
+            log "🔍 Detected Maven package path: $package_path"
+            
+            # Attempt to delete the entire Maven package
+            log "🗑️ Attempting to delete entire Maven package"
+            local package_delete_result
+            local package_delete_exit_code
+            
+            set +e
+            package_delete_result=$(gh api --method DELETE "$package_path" 2>&1)
+            package_delete_exit_code=$?
+            set -e
+            
+            if [[ $package_delete_exit_code -eq 0 ]]; then
+                log "✅ Successfully deleted entire Maven package"
+                log "✅ Maven package delete response: $package_delete_result"
+                return 0
+            else
+                log "❌ Failed to delete entire Maven package"
+                log "❌ Maven package delete exit code: $package_delete_exit_code"
+                log "❌ Maven package delete error: $package_delete_result"
+                return 1
+            fi
+        else
+            log "❌ Could not extract Maven package information from endpoint: $endpoint"
+            return 1
+        fi
+    fi
+    
     log "🔍 Attempting to delete Maven version ID: $version_id"
     log "🔍 DELETE endpoint: ${endpoint}/versions/$version_id"
+    log "🔍 Total versions in package: $total_versions"
     
     # Temporarily disable error exit for this operation
     set +e
@@ -811,6 +988,33 @@ delete_maven_version() {
         log "❌ Failed to delete Maven version: $version_id"
         log "❌ Exit code: $delete_exit_code"
         log "❌ Error response: $delete_result"
+        
+        # Handle 400 errors with fallback to package deletion
+        if [[ "$delete_result" =~ "400" ]]; then
+            log "❌ Error type: Bad request (400) - may be last version or other constraint"
+            # Fallback: attempt package deletion if version count detection failed
+            if [[ "$total_versions" == "unknown" ]]; then
+                log "🔄 Attempting package deletion as fallback for 400 error"
+                local package_path
+                if [[ "$endpoint" =~ (/user/packages/maven/[^/]+)$ ]]; then
+                    package_path="${BASH_REMATCH[1]}"
+                    
+                    set +e
+                    local fallback_result
+                    fallback_result=$(gh api --method DELETE "$package_path" 2>&1)
+                    local fallback_exit_code=$?
+                    set -e
+                    
+                    if [[ $fallback_exit_code -eq 0 ]]; then
+                        log "✅ Fallback Maven package deletion succeeded"
+                        return 0
+                    else
+                        log "❌ Fallback Maven package deletion failed: $fallback_result"
+                    fi
+                fi
+            fi
+        fi
+        
         return 1
     fi
 }

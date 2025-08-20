@@ -286,9 +286,8 @@ jobs:
           echo "📋 Tag: $CONTEXT_TAG"
           echo "🔗 Full tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
 
-          # Store context tag for cleanup script reference and attestation subject validation
+          # Store context tag for cleanup script reference
           echo "webauthn-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
-          echo "webauthn-attestation-subject=$FULL_IMAGE_NAME:$CONTEXT_TAG" >> $GITHUB_OUTPUT
         id: webauthn-sha-tagging
       - name: Generate artifact attestation for WebAuthn Server
         id: webauthn-attestation
@@ -296,7 +295,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         continue-on-error: true  # Don't fail build on GitHub attestation service issues
         with:
-          subject-name: ${{ steps.webauthn-sha-tagging.outputs.webauthn-attestation-subject }}
+          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}
           subject-digest: ${{ steps.docker-push.outputs.digest }}
           push-to-registry: true
         env:
@@ -352,9 +351,8 @@ jobs:
           echo "📋 Tag: $CONTEXT_TAG"
           echo "🔗 Full tag: $FULL_IMAGE_NAME:$CONTEXT_TAG"
 
-          # Store context tag for cleanup script reference and attestation subject validation
+          # Store context tag for cleanup script reference
           echo "test-credentials-context-tag=$CONTEXT_TAG" >> $GITHUB_OUTPUT
-          echo "test-credentials-attestation-subject=$FULL_IMAGE_NAME:$CONTEXT_TAG" >> $GITHUB_OUTPUT
         id: test-credentials-sha-tagging
       - name: Generate artifact attestation for Test Credentials Service
         id: test-credentials-attestation
@@ -362,7 +360,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         continue-on-error: true  # Don't fail build on GitHub attestation service issues
         with:
-          subject-name: ${{ steps.test-credentials-sha-tagging.outputs.test-credentials-attestation-subject }}
+          subject-name: ${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}
           subject-digest: ${{ steps.docker-test-credentials-push.outputs.digest }}
           push-to-registry: true
         env:

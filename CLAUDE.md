@@ -568,6 +568,11 @@ job-name:
      ```
    - **⚡ PERFORMANCE IMPACT**: Configuration cache violations destroy build performance for ALL developers
    - **🔄 CODE REVIEW REQUIREMENT**: Use checklist for ALL Gradle task modifications
+   - **🚨 VANNIKTECH MAVEN PUBLISH PLUGIN LIMITATION**: 
+     - **Maven Central publishing**: INCOMPATIBLE with configuration cache (see [gradle/gradle#22779](https://github.com/gradle/gradle/issues/22779))
+     - **Solution**: Use `--no-configuration-cache` for production publishing to Maven Central
+     - **GitHub Packages**: Configuration cache COMPATIBLE (staging publishing works normally)
+     - **Pattern**: Conditional configuration cache based on publish type in workflows
 
 ### 🔍 CRITICAL: Script Integration & Testing Patterns
 

@@ -26,6 +26,12 @@
 #   - GitHub Packages: Uses GITHUB_TOKEN (automatic)
 #   - Maven Central: Uses Central Portal with automatic release (vanniktech plugin)
 #   - Minimal permissions: contents:read, packages:write
+#
+# GRADLE CONFIGURATION CACHE:
+#   - STAGING (GitHub Packages): Configuration cache ENABLED for all tasks
+#   - PRODUCTION (Maven Central): Configuration cache DISABLED for publish task only
+#   - Reason: vanniktech plugin incompatible with config cache for Maven Central
+#   - See: https://github.com/gradle/gradle/issues/22779
 
 name: Android Client Publishing
 
@@ -270,8 +276,19 @@ jobs:
             echo "📦 STAGING: Publishing to GitHub Packages"
           fi
           
-          ./gradlew :android-client-library:publish \
-            --build-cache --parallel --configuration-cache
+          # Conditional configuration cache usage:
+          # - STAGING (GitHub Packages): Configuration cache ENABLED (vanniktech not used for Maven Central features)
+          # - PRODUCTION (Maven Central): Configuration cache DISABLED (vanniktech incompatible with config cache)
+          if [[ "${{ inputs.publish-type }}" == "production" ]]; then
+            echo "🚀 PRODUCTION: Disabling configuration cache due to vanniktech Maven Central incompatibility"
+            echo "   ℹ️ See: https://github.com/gradle/gradle/issues/22779"
+            ./gradlew :android-client-library:publish \
+              --build-cache --parallel --no-configuration-cache
+          else
+            echo "📦 STAGING: Using configuration cache (GitHub Packages compatible)"
+            ./gradlew :android-client-library:publish \
+              --build-cache --parallel --configuration-cache
+          fi
 
           echo "✅ Android client generated and published to ${{ inputs.publish-type }} repository successfully"
 

@@ -89,8 +89,8 @@ jobs:
   publish-typescript:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      packages: write    # Required for GitHub Packages publishing
+      contents: write   # Required for creating GitHub releases (production) and reading code
+      packages: write   # Required for GitHub Packages publishing
       id-token: write   # Required for npm provenance in production
     outputs:
       published: ${{ steps.publish-result.outputs.published }}
@@ -383,6 +383,57 @@ jobs:
             echo "skipped=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Create GitHub Release for TypeScript Client (production only)
+        if: inputs.publish-type == 'production' && steps.publish-result.outputs.published == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "npm-client-v${{ inputs.client-version }}"
+          name: "npm Client v${{ inputs.client-version }}"
+          body: |
+            ## npm Client Library v${{ inputs.client-version }}
+
+            Generated TypeScript/JavaScript client library for MPO WebAuthn API.
+
+            ### Installation
+
+            ```bash
+            npm install ${{ steps.package-info.outputs.package-name }}
+            ```
+
+            ### Usage
+
+            ```typescript
+            import { AuthenticationApi, RegistrationApi, Configuration } from '${{ steps.package-info.outputs.package-name }}';
+
+            const config = new Configuration({
+              basePath: 'https://your-webauthn-server.com'
+            });
+
+            const authApi = new AuthenticationApi(config);
+            const regApi = new RegistrationApi(config);
+            ```
+
+            ### Features
+            - TypeScript support with full type definitions
+            - ESM and CommonJS module support
+            - WebAuthn registration and authentication
+            - Compatible with modern browsers and Node.js
+
+            ### Changes
+            - Generated from OpenAPI specification
+            - Supports WebAuthn registration and authentication flows
+            - Full TypeScript type safety
+            - Published to npm registry
+
+            ### Documentation
+            - [API Documentation](https://github.com/${{ github.repository }}/blob/main/docs/setup/client-generation.md)
+            - [Integration Examples](https://github.com/${{ github.repository }}/blob/main/web-test-client/README.md)
+
+            ### Published Package
+            - **npm**: ${{ steps.package-info.outputs.package-full-name }}
+          draft: false
+          prerelease: false
+
       - name: TypeScript publishing summary
         run: |
           echo "🎯 TypeScript Client Publishing Results:"
@@ -391,3 +442,6 @@ jobs:
           echo "  Published: ${{ steps.publish-result.outputs.published }}"
           echo "  Skipped: ${{ steps.publish-result.outputs.skipped }}"
           echo "  Publish type: ${{ inputs.publish-type }}"
+          if [[ "${{ inputs.publish-type }}" == "production" && "${{ steps.publish-result.outputs.published }}" == "true" ]]; then
+            echo "  GitHub Release: Created with tag npm-client-v${{ inputs.client-version }}"
+          fi

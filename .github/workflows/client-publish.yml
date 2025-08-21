@@ -272,7 +272,7 @@ jobs:
     needs: [ validate-inputs, setup-config ]
     if: needs.validate-inputs.outputs.validated == 'true'
     permissions:
-      contents: read
+      contents: write   # Required for creating GitHub releases (production only)
       packages: write    # Required for GitHub Packages publishing
       id-token: write   # Required for npm provenance in production
     with:
@@ -294,7 +294,7 @@ jobs:
     needs: [ validate-inputs, setup-config ]
     if: needs.validate-inputs.outputs.validated == 'true'
     permissions:
-      contents: read
+      contents: write   # Required for creating GitHub releases (production only)
       packages: write   # Required for GitHub Packages publishing
     with:
       publish-type: ${{ inputs.publish-type }}

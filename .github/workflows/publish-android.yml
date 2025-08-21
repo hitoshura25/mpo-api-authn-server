@@ -221,19 +221,17 @@ jobs:
           echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
           echo "  Credentials: Using ORG_GRADLE_PROJECT_ environment variables (configuration cache compatible)"
           
-          # Log exactly what credentials are being used for debugging
+          # Log publishing configuration (without sensitive information)
           if [[ "${{ inputs.publish-type }}" == "production" ]]; then
             echo "🔍 PRODUCTION Publishing Configuration:"
             echo "  Registry: Maven Central (Portal OSSRH Staging API)"
             echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
-            echo "  Username: ${ORG_GRADLE_PROJECT_PublishingRepositoryUsername}"
             echo "  GPG Signing: ${ORG_GRADLE_PROJECT_signingInMemoryKey:+ENABLED}${ORG_GRADLE_PROJECT_signingInMemoryKey:-DISABLED}"
             echo "  API Type: Portal OSSRH Staging API (Bridge)"
           else
             echo "🔍 STAGING Publishing Configuration:"
             echo "  Registry: GitHub Packages"
             echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
-            echo "  Username: ${ORG_GRADLE_PROJECT_PublishingRepositoryUsername}"
           fi
           
           # Validate required environment variables for template processing
@@ -251,7 +249,6 @@ jobs:
           echo "🔍 These env vars become Gradle project properties automatically:"
           echo "  ORG_GRADLE_PROJECT_PublishingRepositoryUsername -> project.findProperty('PublishingRepositoryUsername')"
           echo "  ORG_GRADLE_PROJECT_PublishingRepositoryPassword -> project.findProperty('PublishingRepositoryPassword')"
-          echo "🔍 Username: ${ORG_GRADLE_PROJECT_PublishingRepositoryUsername}"
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
             --build-cache --parallel --configuration-cache
           
@@ -274,7 +271,6 @@ jobs:
             echo "   ✅ No manual release steps required"
             echo "   ✅ Packages will be automatically available on Maven Central"
             echo "   🔐 GPG Signing: ${ORG_GRADLE_PROJECT_signingInMemoryKey:+CONFIGURED}${ORG_GRADLE_PROJECT_signingInMemoryKey:-NOT_CONFIGURED}"
-            echo "   🔑 Key Length: ${#ORG_GRADLE_PROJECT_signingInMemoryKey} chars"
           else
             echo "📦 STAGING: Publishing to GitHub Packages"
             echo "   🔐 GPG Signing: DISABLED (staging mode)"

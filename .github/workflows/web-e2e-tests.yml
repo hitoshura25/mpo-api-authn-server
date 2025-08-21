@@ -195,7 +195,7 @@ jobs:
         run: |
           echo "🔨 Building TypeScript web client bundles..."
           echo "📋 Current .npmrc configuration:"
-          cat .npmrc
+          grep -v "_authToken" .npmrc || echo "  (authentication configured separately)"
 
           # Verify package installation before build
           echo "🔍 Verifying staging package availability..."

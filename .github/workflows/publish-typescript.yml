@@ -240,9 +240,9 @@ jobs:
           # Use extracted registry hostname (shared logic from setup-auth step)
           echo "//${{ steps.setup-auth.outputs.registry-host }}/:_authToken=${NODE_AUTH_TOKEN}" >> .npmrc
           
-          # Verify .npmrc configuration
+          # Verify .npmrc configuration (without exposing tokens)
           echo "📋 Current .npmrc configuration:"
-          cat .npmrc
+          grep -v "_authToken" .npmrc || echo "  (authentication configured separately)"
 
           echo "📋 Updated package.json:"
           cat package.json | jq '.name, .version, .publishConfig'
@@ -279,7 +279,6 @@ jobs:
           if ! npm whoami --registry="${{ steps.package-info.outputs.npm-registry }}"; then
             echo "❌ Authentication failed for ${{ steps.package-info.outputs.npm-registry }}"
             echo "🔍 Debugging authentication setup..."
-            echo "NODE_AUTH_TOKEN length: ${#NODE_AUTH_TOKEN}"
             echo "Registry: ${{ steps.package-info.outputs.npm-registry }}"
             echo "Registry host: ${{ steps.setup-auth.outputs.registry-host }}"
             exit 1
@@ -354,7 +353,6 @@ jobs:
           if ! npm whoami; then
             echo "❌ Authentication failed for npm registry"
             echo "🔍 Debugging authentication setup..."
-            echo "NODE_AUTH_TOKEN length: ${#NODE_AUTH_TOKEN}"
             echo "Registry: ${{ steps.package-info.outputs.npm-registry }}"
             echo "Registry host: ${{ steps.setup-auth.outputs.registry-host }}"
             exit 1

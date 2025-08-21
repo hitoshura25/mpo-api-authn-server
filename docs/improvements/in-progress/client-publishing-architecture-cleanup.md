@@ -12,7 +12,7 @@
 - [x] Phase 4: TypeScript Workflow Simplification *(Completed 2025-08-16)*
 - [x] Phase 5: Testing & Validation *(Completed 2025-08-16)*
 - [x] Phase 6: Documentation Updates *(Completed 2025-08-16)*
-- [ ] Phase 7: Docker Publishing Workflow Cleanup *(Next - 2025-08-21)*
+- [x] Phase 7: Docker Publishing Workflow Cleanup *(Completed 2025-08-21)*
 
 ## Project Overview
 
@@ -653,3 +653,105 @@ jobs:
 - [x] Central configuration loading logic validated with yq
 - [x] Job dependency chains verified for all publishing workflows
 - [x] Input/output mapping confirmed between orchestrator and platform workflows
+
+### Phase 7: Docker Publishing Workflow Cleanup ✅ *(Completed 2025-08-21)*
+
+#### Completed Tasks
+- [x] **Security Enhancement**: Removed insecure yq downloads from 3 workflow files (e2e-tests.yml, build-and-test.yml, web-e2e-tests.yml)
+- [x] **Docker Registry Centralization**: Fixed hardcoded `DOCKER_REGISTRY: ghcr.io` in android-e2e-tests.yml to use central configuration
+- [x] **Workflow Architecture Consistency**: Added setup-config job to android-e2e-tests.yml matching pattern used in other E2E workflows
+- [x] **Job Dependency Updates**: Updated both validate-android-images and run-android-tests jobs to properly depend on setup-config
+- [x] **Configuration Integration**: All Docker registry references now use `${{ needs.setup-config.outputs.docker-registry }}`
+
+#### Technical Implementation
+
+**Security Fixes Applied**:
+```yaml
+# Before (insecure external download)
+- name: Install yq for YAML processing
+  run: |
+    sudo wget -qO /usr/local/bin/yq https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+    sudo chmod +x /usr/local/bin/yq
+
+# After (use pre-installed yq)  
+- name: Load configuration from central config file
+  run: |
+    # Use pre-installed yq on GitHub runners
+    CONFIG_FILE="${{ env.PUBLISHING_CONFIG_FILE }}"
+```
+
+**Docker Configuration Centralization**:
+```yaml
+# Before (android-e2e-tests.yml - hardcoded registry)
+env:
+  DOCKER_REGISTRY: ghcr.io  # Hardcoded value
+
+jobs:
+  validate-android-images:
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+
+# After (android-e2e-tests.yml - centralized configuration)
+env:
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
+
+jobs:
+  setup-config:
+    outputs:
+      docker-registry: ${{ steps.config.outputs.docker-registry }}
+    steps:
+      - name: Load configuration from central config file
+        run: |
+          DOCKER_REGISTRY=$(yq '.docker.registry.url' "$CONFIG_FILE")
+          echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
+
+  validate-android-images:
+    needs: setup-config
+    steps:
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ needs.setup-config.outputs.docker-registry }}
+```
+
+**Job Dependency Chain Updates**:
+- **validate-android-images**: `needs: setup-config` (added dependency)
+- **run-android-tests**: `needs: [setup-config, validate-android-images]` (added setup-config to existing dependency)
+
+#### Benefits Achieved
+
+**Security Improvements**:
+- **Eliminated External Downloads**: Removed 3 instances of insecure `wget` downloading yq from external sources
+- **Pre-installed Tool Usage**: Now uses GitHub-provided yq installation (more secure and reliable)
+
+**Configuration Consistency**:
+- **100% Docker Registry Centralization**: All workflows now source Docker registry from `config/publishing-config.yml`
+- **Unified Pattern**: android-e2e-tests.yml now follows same configuration loading pattern as web-e2e-tests.yml and e2e-tests.yml
+- **Single Point of Maintenance**: Docker registry changes only require updating one configuration file
+
+**Architecture Improvements**:
+- **Consistent Setup Jobs**: All E2E workflows now have setup-config jobs that load central configuration
+- **Proper Dependency Chains**: All jobs correctly depend on configuration setup before executing Docker operations
+- **Maintainable Workflows**: Standardized pattern makes it easier to add new workflows or modify existing ones
+
+#### Validation Results
+- [x] **YAML Syntax Validation**: All 4 modified workflow files validated successfully with yq
+- [x] **Configuration Compatibility**: Confirmed `config/publishing-config.yml` contains required `docker.registry.url: "ghcr.io"`
+- [x] **Job Dependency Verification**: Tested dependency chain flows correctly (setup-config → validate-android-images → run-android-tests)
+- [x] **Backward Compatibility**: All workflows use identical Docker registry value (`ghcr.io`) - no functional changes to build behavior
+
+#### Files Modified
+- **.github/workflows/e2e-tests.yml**: Removed insecure yq download (security fix)
+- **.github/workflows/build-and-test.yml**: Removed insecure yq download (security fix)  
+- **.github/workflows/web-e2e-tests.yml**: Removed insecure yq download (security fix)
+- **.github/workflows/android-e2e-tests.yml**: Added setup-config job and centralized Docker registry configuration
+
+#### Integration with Previous Phases
+Phase 7 complements the centralized configuration architecture established in previous phases:
+- **Extends Phase 2**: Uses the same `config/publishing-config.yml` and yq loading patterns
+- **Follows Phase 3**: Implements identical setup-config job pattern used for Android template optimization
+- **Matches Phase 4**: Uses same configuration distribution strategy as TypeScript workflow simplification
+- **Leverages Phase 5**: Utilizes the testing framework to validate workflow changes
+
+**Result**: Complete architecture consistency across all client publishing and E2E testing workflows with enhanced security and maintainability.

@@ -13,6 +13,7 @@
 - [x] Phase 5: Testing & Validation *(Completed 2025-08-16)*
 - [x] Phase 6: Documentation Updates *(Completed 2025-08-16)*
 - [x] Phase 7: Docker Publishing Workflow Cleanup *(Completed 2025-08-21)*
+- [ ] Phase 8: Docker Image Lifecycle Coordination *(Next - 2025-08-21)*
 
 ## Project Overview
 
@@ -755,3 +756,400 @@ Phase 7 complements the centralized configuration architecture established in pr
 - **Leverages Phase 5**: Utilizes the testing framework to validate workflow changes
 
 **Result**: Complete architecture consistency across all client publishing and E2E testing workflows with enhanced security and maintainability.
+
+### Phase 8: Docker Image Lifecycle Coordination *(Next - 2025-08-21)*
+
+#### Problem Statement
+
+**Critical Issue**: The current Docker publishing architecture has a fundamental timing conflict that prevents successful production DockerHub publishing:
+
+1. **Current Broken Flow**:
+   ```
+   main-ci-cd.yml: Build → Stage to GHCR → Cleanup (deletes images) → Complete
+   main-branch-post-processing.yml: Triggered AFTER → Tries to pull from GHCR → FAILS (images deleted)
+   ```
+
+2. **Root Cause**: The cleanup process (`cleanup-staging-packages.sh`) runs as the final step of `main-ci-cd.yml`, removing staging Docker images from GHCR before the production publishing workflow (`main-branch-post-processing.yml`) can access them.
+
+3. **Impact**: 
+   - **0% DockerHub Publishing Success Rate** - Images are never available when needed
+   - **Resource Waste** - Images built and immediately deleted before use
+   - **Incomplete Production Pipeline** - Main branch changes don't result in DockerHub updates
+
+#### Current Architecture Analysis
+
+**Workflow Sequence Problem**:
+```mermaid
+sequenceDiagram
+    participant PR as Pull Request
+    participant CI as main-ci-cd.yml
+    participant GHCR as GitHub Registry
+    participant POST as main-branch-post-processing.yml
+    participant DH as DockerHub
+    
+    Note over CI: On main branch push
+    CI->>GHCR: 1. Build & push staging images
+    CI->>GHCR: 2. Run E2E tests with images
+    CI->>GHCR: 3. ❌ CLEANUP: Delete staging images
+    CI->>POST: 4. Trigger post-processing
+    
+    Note over POST: Production publishing
+    POST->>GHCR: 5. ❌ FAIL: Try to pull deleted images
+    POST->>DH: 6. ❌ FAIL: Cannot push to DockerHub
+```
+
+**Key Conflicts Identified**:
+- **Timing**: Cleanup happens immediately after CI, before post-processing starts
+- **Communication**: No coordination mechanism between workflows
+- **Resource Management**: No distinction between images needed for production vs cleanup
+
+#### Proposed Solution Architecture
+
+**Two-Phase Cleanup Strategy**:
+
+```mermaid
+flowchart TD
+    A[main-ci-cd.yml starts] --> B{Branch type?}
+    
+    B -->|Pull Request| C[Build → Stage → Test → Cleanup]
+    C --> D[Complete - Images cleaned]
+    
+    B -->|Main Branch| E[Build → Stage → Test → Skip Cleanup]
+    E --> F[Complete - Images preserved]
+    F --> G[main-branch-post-processing.yml]
+    G --> H[Pull from GHCR → Publish to DockerHub]
+    H --> I[Post-Publishing Cleanup]
+    I --> J[Complete - Images cleaned]
+```
+
+**Solution Benefits**:
+- ✅ **100% DockerHub Success**: Images available when needed
+- ✅ **Zero PR Impact**: Maintains immediate cleanup for pull requests
+- ✅ **Resource Efficient**: Images used for both staging and production
+- ✅ **Self-Healing**: Backup cleanup ensures no orphaned images
+
+#### Implementation Plan
+
+##### **Task 8.1: Conditional Cleanup Logic** *(2 days)*
+
+**Objective**: Modify main-ci-cd.yml to skip cleanup on main branch builds
+
+**Implementation Steps**:
+
+1. **Find current cleanup location**:
+   ```bash
+   grep -n "cleanup-staging-packages.sh" .github/workflows/main-ci-cd.yml
+   ```
+   Look for section similar to:
+   ```yaml
+   - name: Cleanup staging packages
+     if: always()
+     run: ./scripts/docker/cleanup-staging-packages.sh success ${{ github.repository_owner }}
+   ```
+
+**Changes Required**:
+
+1. **Update main-ci-cd.yml cleanup step**:
+   ```yaml
+   # Before (always runs cleanup)
+   - name: Cleanup staging packages
+     if: always()
+     run: ./scripts/docker/cleanup-staging-packages.sh success ${{ github.repository_owner }}
+
+   # After (conditional cleanup)
+   - name: Cleanup staging packages  
+     if: always() && github.ref_name != 'main'
+     env:
+       SKIP_MAIN_BRANCH: "true"
+       CLEANUP_REASON: "PR build complete - staging images no longer needed"
+     run: ./scripts/docker/cleanup-staging-packages.sh success ${{ github.repository_owner }}
+
+   - name: Preserve images for production publishing
+     if: always() && github.ref_name == 'main'
+     run: |
+       echo "🏭 Main branch build - preserving staging images for DockerHub publishing"
+       echo "Images preserved: ${{ env.WEBAUTHN_SERVER_IMAGE }}, ${{ env.TEST_CREDENTIALS_IMAGE }}"
+       echo "Post-processing workflow will handle cleanup after DockerHub publishing"
+   ```
+
+2. **Update cleanup script conditional logic**:
+   - Add environment variable check for main branch preservation
+   - Enhance logging to show why cleanup was skipped
+
+**Validation**:
+- PR builds continue immediate cleanup (existing behavior)
+- Main branch builds preserve images with clear logging
+
+##### **Task 8.2: Post-Publishing Cleanup** *(2 days)*
+
+**Objective**: Add cleanup step to main-branch-post-processing.yml after DockerHub publishing
+
+**Implementation Steps**:
+
+1. **Find DockerHub publishing jobs**:
+   ```bash
+   grep -n "dockerhub\|docker.*publish" .github/workflows/main-branch-post-processing.yml
+   ```
+   Identify job names like `publish-webauthn-dockerhub`, `publish-test-credentials-dockerhub`
+
+**Changes Required**:
+
+1. **Add post-DockerHub cleanup job**:
+   ```yaml
+   # New job in main-branch-post-processing.yml
+   cleanup-after-dockerhub-publishing:
+     runs-on: ubuntu-latest
+     needs: [setup-config, publish-webauthn-dockerhub, publish-test-credentials-dockerhub]
+     if: always()  # Run cleanup even if DockerHub publishing fails
+     steps:
+       - name: Checkout code
+         uses: actions/checkout@v4
+         
+       - name: Cleanup staging images after production publishing
+         env:
+           CLEANUP_REASON: "Production DockerHub publishing complete"
+           POST_PUBLISHING_CLEANUP: "true"
+         run: |
+           echo "🧹 Post-publishing cleanup - removing staging images"
+           ./scripts/docker/cleanup-staging-packages.sh success ${{ github.repository_owner }}
+   ```
+
+2. **Update cleanup script for post-publishing mode**:
+   - Add logging to distinguish post-publishing cleanup
+   - Include success metrics and image identification
+
+**Validation**:
+- Cleanup runs after all DockerHub publishing attempts
+- Images removed regardless of publishing success/failure
+- Clear logging shows post-publishing cleanup execution
+
+##### **Task 8.3: Enhanced Monitoring & Logging** *(1 day)*
+
+**Objective**: Add comprehensive logging and monitoring for image lifecycle coordination
+
+**Changes Required**:
+
+1. **Image lifecycle tracking**:
+   ```bash
+   # Add to both workflows
+   echo "📊 Docker Image Lifecycle Tracking:"
+   echo "  Workflow: ${{ github.workflow }}"
+   echo "  Branch: ${{ github.ref_name }}"
+   echo "  Event: ${{ github.event_name }}"
+   echo "  Images: $WEBAUTHN_SERVER_IMAGE, $TEST_CREDENTIALS_IMAGE"
+   echo "  Cleanup Mode: $CLEANUP_MODE"
+   echo "  Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+   ```
+
+2. **Coordination verification**:
+   - Log when images are preserved vs cleaned up
+   - Add image existence checks before DockerHub publishing
+   - Include timing information for debugging
+
+**Validation**:
+- Clear audit trail of image lifecycle decisions
+- Easy debugging when issues occur
+- Metrics for monitoring cleanup coordination success
+
+##### **Task 8.4: Comprehensive Testing Framework** *(2 days)*
+
+**Objective**: Create testing framework to validate image lifecycle coordination
+
+**Test Scenarios**:
+
+1. **Pull Request Workflow Test**:
+   ```bash
+   # Test: PR builds should cleanup immediately
+   ./scripts/testing/test-pr-image-lifecycle.sh
+   # Expected: Images built, tested, cleaned up immediately
+   ```
+
+2. **Main Branch Workflow Test**:
+   ```bash
+   # Test: Main builds should preserve for DockerHub
+   ./scripts/testing/test-main-branch-image-lifecycle.sh  
+   # Expected: Images built, preserved, DockerHub published, then cleaned
+   ```
+
+3. **Coordination Failure Tests**:
+   ```bash
+   # Test: Cleanup resilience when DockerHub fails
+   ./scripts/testing/test-dockerhub-failure-cleanup.sh
+   # Expected: Cleanup still runs even if DockerHub publishing fails
+   ```
+
+**Test Framework Components**:
+- Mock GitHub Actions environment variables
+- Simulated workflow execution scenarios
+- Image existence verification utilities
+- Cleanup verification and timing tests
+
+##### **Task 8.5: Documentation & Process Updates** *(1 day)*
+
+**Objective**: Update all relevant documentation and troubleshooting guides
+
+**Documentation Updates**:
+
+1. **Architecture Documentation**:
+   - Update workflow sequence diagrams
+   - Document new image lifecycle coordination
+   - Add troubleshooting guide for image availability issues
+
+2. **Developer Guidance**:
+   - Update `docs/development/workflows/` with new coordination patterns
+   - Add debugging steps for DockerHub publishing failures
+   - Document monitoring and logging changes
+
+3. **Operational Procedures**:
+   - Update any deployment documentation
+   - Add metrics and monitoring guidance
+   - Document rollback procedures if needed
+
+#### Success Metrics
+
+**Quantitative Goals**:
+- **DockerHub Publishing Success**: Increase from 0% to 100% for main branch builds  
+- **PR Build Performance**: Maintain <30 second cleanup time (no regression)
+- **Resource Efficiency**: Zero orphaned staging images (measured daily)
+- **Workflow Reliability**: 100% coordination success between CI and post-processing
+
+**Qualitative Goals**:
+- **Clear Image Lifecycle**: Visible audit trail of all image lifecycle decisions
+- **Maintainable Architecture**: Simple conditional logic easy to understand and debug
+- **Zero Breaking Changes**: Existing PR workflows completely unchanged
+- **Self-Healing System**: Automatic cleanup even when coordination fails
+
+#### Risk Assessment & Mitigation
+
+**High Risk**:
+- **Coordination Failure**: Post-processing workflow doesn't run, images never cleaned up
+  - **Mitigation**: Add backup cleanup job with time-based triggers
+  - **Monitoring**: Daily cleanup verification and alerting
+
+**Medium Risk**:
+- **Conditional Logic Errors**: Wrong branch detection leads to incorrect cleanup behavior
+  - **Mitigation**: Extensive testing with branch simulation
+  - **Monitoring**: Log analysis and branch-specific success tracking
+
+**Low Risk**:
+- **Increased Storage Usage**: Temporary increase in GHCR storage during coordination window
+  - **Mitigation**: Coordination window typically <10 minutes, minimal cost impact
+  - **Monitoring**: Storage usage tracking and optimization
+
+#### Dependencies & Prerequisites
+
+**Technical Prerequisites**:
+- Existing `cleanup-staging-packages.sh` script functionality
+- Current main-ci-cd.yml and main-branch-post-processing.yml workflows
+- GitHub Container Registry and DockerHub access
+
+**External Dependencies**:
+- GitHub Actions workflow execution reliability
+- GHCR and DockerHub service availability
+- No changes required to existing secret management or permissions
+
+#### Future Considerations
+
+**Potential Extensions**:
+- **Multi-Stage Coordination**: Support for multiple production targets (DockerHub, AWS ECR, etc.)
+- **Advanced Image Tagging**: More sophisticated tagging strategies for different lifecycle stages
+- **Automated Rollback**: Automatic restoration of previous images if DockerHub publishing fails
+- **Cost Optimization**: Further optimization of storage costs during coordination windows
+
+**Migration Path for Other Projects**:
+This coordination pattern can serve as a template for other multi-workflow projects requiring staged resource management with production publishing.
+
+#### Implementation Timeline
+
+**Week 1: Core Implementation**
+- Day 1-2: Task 8.1 - Conditional cleanup logic
+- Day 3-4: Task 8.2 - Post-publishing cleanup
+- Day 5: Task 8.3 - Enhanced monitoring
+
+**Week 2: Validation & Documentation**  
+- Day 1-2: Task 8.4 - Comprehensive testing
+- Day 3: Task 8.5 - Documentation updates
+- Day 4-5: End-to-end validation and refinement
+
+**Total Effort**: 1-2 weeks with immediate DockerHub publishing functionality restoration.
+
+---
+
+## Phase 8 Quick Start Guide
+
+**🎯 Goal**: Fix DockerHub publishing by implementing conditional Docker image cleanup
+
+### 30-Second Problem Summary
+1. **main-ci-cd.yml** builds Docker images → pushes to GHCR → **cleans up images** → completes
+2. **main-branch-post-processing.yml** triggers after → tries to pull images for DockerHub → **FAILS (deleted)**
+3. **Result**: 0% DockerHub publishing success rate
+
+### Immediate Implementation Steps (30 minutes)
+
+#### Step 1: Implement Conditional Cleanup (15 min)
+Find and replace cleanup section in `.github/workflows/main-ci-cd.yml`:
+
+```bash
+# Find current cleanup location
+grep -n "cleanup-staging-packages.sh" .github/workflows/main-ci-cd.yml
+```
+
+Replace with conditional cleanup:
+```yaml
+# OLD (remove this)
+- name: Cleanup staging packages
+  if: always()
+  run: ./scripts/docker/cleanup-staging-packages.sh success ${{ github.repository_owner }}
+
+# NEW (add this)
+- name: Cleanup staging packages (PR builds only)
+  if: always() && github.ref_name != 'main'
+  env:
+    CLEANUP_REASON: "PR build complete - staging images no longer needed"
+  run: ./scripts/docker/cleanup-staging-packages.sh success ${{ github.repository_owner }}
+
+- name: Preserve images for production publishing (main branch)
+  if: always() && github.ref_name == 'main'
+  run: |
+    echo "🏭 Main branch build - preserving staging images for DockerHub publishing"
+    echo "Images preserved: ${{ env.WEBAUTHN_SERVER_IMAGE }}, ${{ env.TEST_CREDENTIALS_IMAGE }}"
+    echo "Post-processing workflow will handle cleanup after DockerHub publishing"
+```
+
+#### Step 2: Add Post-Publishing Cleanup (15 min)
+Add cleanup job to `.github/workflows/main-branch-post-processing.yml`:
+
+```yaml
+# Add this job at the end of main-branch-post-processing.yml
+cleanup-after-dockerhub-publishing:
+  runs-on: ubuntu-latest
+  needs: [setup-config, REPLACE_WITH_ACTUAL_DOCKERHUB_JOB_NAMES]
+  if: always()
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Cleanup staging images after production publishing
+      env:
+        CLEANUP_REASON: "Production DockerHub publishing complete"
+        POST_PUBLISHING_CLEANUP: "true"
+      run: |
+        echo "🧹 Post-publishing cleanup - removing staging images"
+        ./scripts/docker/cleanup-staging-packages.sh success ${{ github.repository_owner }}
+```
+
+#### Emergency Rollback (2 min)
+If something breaks, revert Step 1:
+```yaml
+# Restore original - cleanup always runs
+- name: Cleanup staging packages
+  if: always()
+  run: ./scripts/docker/cleanup-staging-packages.sh success ${{ github.repository_owner }}
+```
+
+### Success Indicators
+- ✅ PR builds show "PR build complete" and cleanup runs
+- ✅ Main builds show "preserving staging images" and skip cleanup  
+- ✅ DockerHub publishing succeeds using preserved images
+- ✅ Post-publishing cleanup removes staging images
+- ✅ No orphaned images remain in GHCR

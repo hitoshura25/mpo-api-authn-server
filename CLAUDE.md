@@ -3,7 +3,12 @@
 ## Current Work (In Progress)
 
 ### Active Tasks
-- No active tasks at this time - all major features completed
+- **Phase 8: Docker Image Lifecycle Coordination** *(Ready for Implementation - 2025-08-21)*
+  - **Critical Issue**: Docker images built in `main-ci-cd.yml` are cleaned up before `main-branch-post-processing.yml` can use them for DockerHub publishing (0% success rate)
+  - **Solution**: Implement conditional cleanup - skip cleanup on main branch builds, add post-publishing cleanup
+  - **Documentation**: `docs/improvements/in-progress/client-publishing-architecture-cleanup.md` (lines 760+ for full plan, lines 1078+ for quick start)
+  - **Impact**: Will restore DockerHub publishing functionality from 0% to 100% success rate
+  - **Risk**: Low - minimal conditional logic changes with easy rollback
 
 ### Completed Major Refactors
 - **OpenAPI Client Library Architecture**: ✅ **COMPLETED** - Successfully refactored from file-copying to Docker-inspired staging→production workflow using GitHub Packages. Implemented dedicated client library submodules (`android-client-library/`, `typescript-client-library/`) with automated publishing workflows.
@@ -837,6 +842,7 @@ env:
 ## Completed Work Summary
 
 ### Major Achievements ✅
+- **Client Library Publishing Architecture Cleanup (PHASES 1-7 COMPLETED)**: Successfully centralized all client publishing configuration to `config/publishing-config.yml`. Eliminated ~35 lines of hardcoded repository logic in Android templates, simplified TypeScript workflows, enhanced security by removing insecure yq downloads, and achieved 100% Docker registry centralization across all E2E workflows. All 7 phases completed with comprehensive testing framework.
 - **OpenAPI Client Library Architecture Refactoring (COMPLETED)**: Successfully implemented Docker-inspired staging→production workflow replacing file-copying approach. Created dedicated submodules (`android-client-library/`, `typescript-client-library/`) with callable publishing workflows (`client-publish.yml`, `publish-android.yml`, `publish-typescript.yml`). E2E tests now consume staging packages for validation before production publishing. Eliminated complex file copying in favor of standard package management.
 - **Enhanced Workflow Change Detection**: Implemented granular workflow change detection with component mapping, replacing unsafe "fast-path all workflow changes" with targeted validation levels (orchestration=full, unit-test=tests-only, docker=build-only, infrastructure=minimal)
 - **Docker Build Workflow Consolidation**: Consolidated redundant docker-build.yml from 3 separate jobs (build→scan→push with 3x image rebuilds) into single efficient job, eliminating 60-70% build redundancy while maintaining security-first approach and all functionality

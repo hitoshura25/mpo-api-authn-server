@@ -569,18 +569,19 @@ cleanup_staging_docker() {
             log "🎯 Targeting specific PR #$CLEANUP_PR_NUMBER packages"
             log "🎯 Using explicit SHA tags: sha256-*-pr-$CLEANUP_PR_NUMBER (no time-based guessing)"
         else
-            # Fallback to broader staging pattern (legacy behavior for unknown contexts)
-            # Updated to use explicit SHA tag patterns to avoid accidental deletion of non-staging images
+            # Fallback to broader staging pattern (legacy behavior for unknown contexts)  
+            # Include 'latest' tag which is used by main branch builds to GitHub Packages (staging)
             filter_conditions='
                 (.metadata.container.tags[]? | test("^pr-[0-9]+$")) or
                 (.metadata.container.tags[]? | test("-staging$")) or
+                (.metadata.container.tags[]? | test("^latest$")) or
                 (.metadata.container.tags[]? | test("^sha256-[a-f0-9]+-pr-[0-9]+$")) or
                 (.metadata.container.tags[]? | test("^sha256-[a-f0-9]+-main-[0-9]+$")) or
                 (.metadata.container.tags[]? | test("^sha256-[a-f0-9]+-manual-[0-9]+$")) or
                 (.metadata.container.tags[]? | test("^sha256-[a-f0-9]+-branch-.+-[0-9]+$"))'
-            strategy_description="TARGET ALL staging packages (explicit SHA pattern)"
+            strategy_description="TARGET ALL staging packages (includes latest for main branch)"
             log "⚠️ Using broad staging pattern - no specific PR context"
-            log "🎯 Targeting explicit SHA tags: sha256-*-{pr|main|manual|branch}-* patterns only"
+            log "🎯 Targeting: pr-*, latest, *-staging, sha256-*-{pr|main|manual|branch}-* patterns"
         fi
         
         if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
@@ -857,10 +858,12 @@ cleanup_staging_npm() {
         strategy_description="TARGET PR #$CLEANUP_PR_NUMBER npm packages only"
         log "🎯 Targeting specific PR #$CLEANUP_PR_NUMBER npm packages"
     else
-        # Fallback to broader pattern (legacy behavior)
-        name_filter='(.name | test("-pr\\."))'
-        strategy_description="TARGET ALL staging npm packages (broad pattern)"
-        log "⚠️ Using broad npm staging pattern - no specific PR context"
+        # Fallback to broader pattern - includes staging suffix AND main branch versions  
+        # Main branch publishes to GitHub Packages with production version numbers (staging context)
+        # This targets: 1) PR versions (-pr.) 2) Staging suffix (-staging) 3) Any version (main branch to GitHub Packages)
+        name_filter='(.name | test("-pr\\.") or test("-staging$") or true)'
+        strategy_description="TARGET ALL staging npm packages (includes main branch versions to GitHub Packages)"
+        log "⚠️ Using broad npm staging pattern - includes main branch versions published to GitHub Packages"
     fi
     
     if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
@@ -1058,10 +1061,12 @@ cleanup_staging_maven() {
         strategy_description="TARGET PR #$CLEANUP_PR_NUMBER Maven packages only"
         log "🎯 Targeting specific PR #$CLEANUP_PR_NUMBER Maven packages"
     else
-        # Fallback to broader pattern (legacy behavior)
-        name_filter='(.name | test("-pr\\."))'
-        strategy_description="TARGET ALL staging Maven packages (broad pattern)"
-        log "⚠️ Using broad Maven staging pattern - no specific PR context"
+        # Fallback to broader pattern - includes staging suffix AND main branch versions
+        # Main branch publishes to GitHub Packages with production version numbers (staging context)
+        # This targets: 1) PR versions (-pr.) 2) Staging suffix (-staging) 3) Any version (main branch to GitHub Packages)
+        name_filter='(.name | test("-pr\\.") or test("-staging$") or true)'
+        strategy_description="TARGET ALL staging Maven packages (includes main branch versions to GitHub Packages)"
+        log "⚠️ Using broad Maven staging pattern - includes main branch versions published to GitHub Packages"
     fi
     
     if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then

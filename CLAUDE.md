@@ -15,9 +15,8 @@
 - **OpenAPI Client Library Architecture**: Docker-inspired staging→production workflow using GitHub Packages with dedicated client library submodules.
 
 ### Planned Major Refactors
-- **Consolidated CI/CD Publishing** *(Enhanced 2025-08-21)* - Merge `main-ci-cd.yml` and `main-branch-post-processing.yml` into unified workflow. Eliminate 23% processing delays, achieve 100% DockerHub publishing success, reduce workflow complexity by 40%. Builds on Phase 8 Docker lifecycle coordination. See `docs/improvements/planned/consolidated-ci-publishing.md`.
+- **Client Publishing Architecture Phases 8-10** *(Consolidated Plan 2025-08-21)* - Complete CI/CD optimization in three phases: Phase 8 (Docker Image Lifecycle Coordination), Phase 9 (Consolidated CI/CD Publishing), Phase 10 (Independent Component Processing). Expected outcomes: 100% DockerHub publishing success, 23% faster main branch processing, 40-60% faster builds for single-component changes. See `docs/improvements/in-progress/client-publishing-architecture-cleanup.md` (Phases 8-10).
 - **iOS Test Client Implementation** *(Enhanced 2025-08-21)* - Complete iOS E2E testing ecosystem with Swift client library generation, SwiftUI test application, and CI integration. Extends testing coverage to iOS platform with AuthenticationServices WebAuthn integration. Timeline: 8-10 weeks. See `docs/improvements/planned/ios-test-client-implementation.md`.
-- **Workflow Optimization: Independent Component Processing** *(After Phase 8)* - Transform monolithic workflow into parallel, component-independent system. Separate webauthn-server and test-credentials-service builds, implement OpenAPI change detection for conditional client generation. Expected 40-60% faster builds for single-component changes. See `docs/improvements/planned/workflow-optimization-independent-components.md`.
 - **FOSS Security Implementation**: Replace AI-dependent security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP). See `docs/improvements/planned/foss-security-implementation.md` for complete plan.
 
 ## Project Overview

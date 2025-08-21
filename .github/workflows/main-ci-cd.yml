@@ -86,10 +86,10 @@ jobs:
       needs.build-and-test.outputs.docker_images_built == 'true'
     uses: ./.github/workflows/e2e-tests.yml
     permissions:
-      contents: read          # Read repository code
+      contents: write         # Required for GitHub release creation in client publishing
       packages: write          # Pull/Push Docker images from GHCR and client lib packages
       pull-requests: write    # Comment on PRs with test results
-      id-token: write
+      id-token: write         # Required for npm publishing
     with:
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}

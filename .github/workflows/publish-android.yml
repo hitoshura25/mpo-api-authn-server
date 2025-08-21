@@ -80,10 +80,10 @@ on:
         description: 'Central Portal password for Maven Central publishing'
         required: false
       SIGNING_KEY:
-        description: 'GPG private key for signing Maven Central artifacts'
+        description: 'GPG private key (ASCII-armored) for signing Maven Central artifacts (production only)'
         required: false
       SIGNING_PASSWORD:
-        description: 'GPG private key password for signing'
+        description: 'GPG private key password for signing (production only)'
         required: false
     outputs:
       published:
@@ -202,10 +202,11 @@ jobs:
           ORG_GRADLE_PROJECT_PublishingRepositoryUsername: ${{ inputs.publish-type == 'staging' && github.actor || secrets.CENTRAL_PORTAL_USERNAME }}
           ORG_GRADLE_PROJECT_PublishingRepositoryPassword: ${{ inputs.publish-type == 'staging' && secrets.GITHUB_TOKEN || secrets.CENTRAL_PORTAL_PASSWORD }}
           # Maven Central credentials (production only)
-          CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
-          CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
-          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
-          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+          # GPG signing configuration for vanniktech plugin (production only)
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_PASSWORD }}
         run: |
           echo "📱 Generating and publishing Android client to ${{ inputs.publish-type }} repository (from central config)..."
           echo "  Group ID: ${ANDROID_GROUP_ID}"
@@ -220,7 +221,7 @@ jobs:
             echo "  Registry: Maven Central (Portal OSSRH Staging API)"
             echo "  Repository URL: ${ANDROID_REPOSITORY_URL}"
             echo "  Username: ${ORG_GRADLE_PROJECT_PublishingRepositoryUsername}"
-            echo "  GPG Signing: ${SIGNING_KEY:+ENABLED}${SIGNING_KEY:-DISABLED}"
+            echo "  GPG Signing: ${ORG_GRADLE_PROJECT_signingInMemoryKey:+ENABLED}${ORG_GRADLE_PROJECT_signingInMemoryKey:-DISABLED}"
             echo "  API Type: Portal OSSRH Staging API (Bridge)"
           else
             echo "🔍 STAGING Publishing Configuration:"
@@ -266,8 +267,11 @@ jobs:
             echo "🚀 PRODUCTION: Using vanniktech plugin with automaticRelease=true for Maven Central"
             echo "   ✅ No manual release steps required"
             echo "   ✅ Packages will be automatically available on Maven Central"
+            echo "   🔐 GPG Signing: ${ORG_GRADLE_PROJECT_signingInMemoryKey:+CONFIGURED}${ORG_GRADLE_PROJECT_signingInMemoryKey:-NOT_CONFIGURED}"
+            echo "   🔑 Key Length: ${#ORG_GRADLE_PROJECT_signingInMemoryKey} chars"
           else
             echo "📦 STAGING: Publishing to GitHub Packages"
+            echo "   🔐 GPG Signing: DISABLED (staging mode)"
           fi
           
           ./gradlew :android-client-library:publish \

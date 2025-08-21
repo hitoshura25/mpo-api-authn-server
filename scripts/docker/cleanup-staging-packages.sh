@@ -199,10 +199,13 @@ determine_cleanup_scope() {
         recent_pr_from_merge=$(git log -1 --pretty=%s | grep -oE '#[0-9]+' | head -1 | tr -d '#' || echo "")
         
         if [[ -n "$recent_pr_from_merge" ]]; then
-            CLEANUP_PR_NUMBER="$recent_pr_from_merge"
-            log "✅ Context: Main branch (recent merge from PR #${recent_pr_from_merge}) - will target pr-${recent_pr_from_merge} packages"
+            # Use explicit value for main branch cleanup - this triggers ALL staging package cleanup
+            # including both the merged PR packages AND the main branch packages that were just published
+            CLEANUP_PR_NUMBER="MAIN_BRANCH"
+            log "✅ Context: Main branch (recent merge from PR #${recent_pr_from_merge}) - will target ALL staging packages including main branch"
         else
-            log "⚠️ Context: Main branch (no recent PR detected) - will use broad staging pattern for safety"
+            CLEANUP_PR_NUMBER="MAIN_BRANCH"
+            log "⚠️ Context: Main branch (no recent PR detected) - will target ALL staging packages"
         fi
     else
         # Unknown context - use broad staging pattern but log the issue
@@ -559,7 +562,7 @@ cleanup_staging_docker() {
         
         # Build the filter based on cleanup context
         local filter_conditions=""
-        if [[ -n "$CLEANUP_PR_NUMBER" ]]; then
+        if [[ -n "$CLEANUP_PR_NUMBER" && "$CLEANUP_PR_NUMBER" != "MAIN_BRANCH" ]]; then
             # Target specific PR number with explicit SHA tags (no time-based guessing)
             # Uses explicit SHA tags created by Docker build workflow: sha256-{short-sha}-pr-{number}
             filter_conditions='
@@ -852,7 +855,7 @@ cleanup_staging_npm() {
     
     # Build the filter based on cleanup context
     local name_filter
-    if [[ -n "$CLEANUP_PR_NUMBER" ]]; then
+    if [[ -n "$CLEANUP_PR_NUMBER" && "$CLEANUP_PR_NUMBER" != "MAIN_BRANCH" ]]; then
         # Target specific PR number: e.g. -pr.42.123
         name_filter='(.name | test("-pr\\.'$CLEANUP_PR_NUMBER'\\.\\d+$"))'
         strategy_description="TARGET PR #$CLEANUP_PR_NUMBER npm packages only"
@@ -1055,7 +1058,7 @@ cleanup_staging_maven() {
     
     # Build the filter based on cleanup context
     local name_filter
-    if [[ -n "$CLEANUP_PR_NUMBER" ]]; then
+    if [[ -n "$CLEANUP_PR_NUMBER" && "$CLEANUP_PR_NUMBER" != "MAIN_BRANCH" ]]; then
         # Target specific PR number: e.g. -pr.42.123
         name_filter='(.name | test("-pr\\.'$CLEANUP_PR_NUMBER'\\.\\d+$"))'
         strategy_description="TARGET PR #$CLEANUP_PR_NUMBER Maven packages only"
@@ -1127,16 +1130,21 @@ perform_staging_cleanup() {
     log "🎯 Workflow outcome: $WORKFLOW_OUTCOME"
     log "🏢 Repository owner: $REPOSITORY_OWNER"
     log "🎯 Cleanup context: $CLEANUP_CONTEXT"
-    if [[ -n "$CLEANUP_PR_NUMBER" ]]; then
+    if [[ -n "$CLEANUP_PR_NUMBER" && "$CLEANUP_PR_NUMBER" != "MAIN_BRANCH" ]]; then
         log "🔍 Targeting PR: #$CLEANUP_PR_NUMBER"
         log "📋 Package patterns:"
         log "  - Docker tags: pr-${CLEANUP_PR_NUMBER}, sha256-*-pr-${CLEANUP_PR_NUMBER}"
         log "  - npm/Maven versions: *-pr.${CLEANUP_PR_NUMBER}.*"
-    else
-        log "⚠️ Using broad staging patterns (all PRs)"
+    elif [[ "$CLEANUP_PR_NUMBER" == "MAIN_BRANCH" ]]; then
+        log "🔍 Targeting: MAIN BRANCH (all staging packages)"
         log "📋 Package patterns:"
-        log "  - Docker tags: pr-*, sha256-*-{pr|main|manual|branch}-*, *-staging"
-        log "  - npm/Maven versions: *-pr.*"
+        log "  - Docker tags: pr-*, latest, sha256-*-{pr|main|manual|branch}-*, *-staging"
+        log "  - npm/Maven versions: *-pr.*, *-staging, main branch versions"
+    else
+        log "⚠️ Using broad staging patterns (fallback)"
+        log "📋 Package patterns:"
+        log "  - Docker tags: pr-*, latest, sha256-*-{pr|main|manual|branch}-*, *-staging"
+        log "  - npm/Maven versions: *-pr.*, *-staging, main branch versions"
     fi
     log ""
     

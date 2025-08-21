@@ -359,4 +359,4 @@ env:
 
 - **GitHub Packages**: Used for staging packages and Android production
 - **npm Registry**: Used for TypeScript production packages
-- **Authentication**: GITHUB_TOKEN for GitHub Packages, NPM_TOKEN for npm
+- **Authentication**: GITHUB_TOKEN for GitHub Packages, NPM_PUBLISH_TOKEN for npm

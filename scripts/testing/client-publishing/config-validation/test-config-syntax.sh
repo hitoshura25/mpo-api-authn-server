@@ -170,7 +170,7 @@ repositories:
     npm:
       registry: "https://npm.pkg.github.com"
       credentials:
-        tokenEnv: "NPM_TOKEN"
+        tokenEnv: "NPM_PUBLISH_TOKEN"
 
 naming:
   staging:

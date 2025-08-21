@@ -24,7 +24,7 @@
 #
 # SECURITY:
 #   - GitHub Packages: Uses GITHUB_TOKEN (automatic)
-#   - npm production: Uses NPM_TOKEN (secret)
+#   - npm production: Uses NPM_PUBLISH_TOKEN (secret)
 #   - Minimal permissions: contents:read, packages:write, id-token:write
 
 name: TypeScript Client Publishing
@@ -68,7 +68,7 @@ on:
       GRADLE_ENCRYPTION_KEY:
         description: 'Gradle build cache encryption key'
         required: true
-      NPM_TOKEN:
+      NPM_PUBLISH_TOKEN:
         description: 'npm publishing token (required for production publishing)'
         required: false
     outputs:
@@ -209,8 +209,8 @@ jobs:
             echo "auth-token=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
             echo "📋 Using GITHUB_TOKEN for authentication"
           else
-            echo "auth-token=${{ secrets.NPM_TOKEN }}" >> $GITHUB_OUTPUT
-            echo "📋 Using NPM_TOKEN for authentication"
+            echo "auth-token=${{ secrets.NPM_PUBLISH_TOKEN }}" >> $GITHUB_OUTPUT
+            echo "📋 Using NPM_PUBLISH_TOKEN for authentication"
           fi
           
           # Extract registry hostname for reuse (shared logic)

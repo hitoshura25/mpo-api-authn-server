@@ -416,7 +416,7 @@ jobs:
       npm-scope: "${{ needs.setup-config.outputs.npm-scope }}"
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
       CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
       CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}

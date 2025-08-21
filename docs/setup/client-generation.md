@@ -246,7 +246,7 @@ env:
 ## Security Considerations
 
 - **GitHub Packages Authentication**: Uses GITHUB_TOKEN for package access
-- **npm Publishing**: Uses NPM_TOKEN secret for production publishing
+- **npm Publishing**: Uses NPM_PUBLISH_TOKEN secret for production publishing
 - **Version Validation**: Enhanced regex validation prevents malformed versions
 - **Package Signing**: npm packages include provenance attestations
 

@@ -38,7 +38,7 @@ repositories:
     npm:
       registry: "https://registry.npmjs.org"
       credentials:
-        tokenEnv: "NPM_TOKEN"
+        tokenEnv: "NPM_PUBLISH_TOKEN"
 
 naming:
   staging:
@@ -212,7 +212,7 @@ GITHUB_ACTOR=test-user
 GITHUB_TOKEN=mock-github-token
 ANDROID_PUBLISH_USER=staging-user
 ANDROID_PUBLISH_TOKEN=staging-token
-NPM_TOKEN=staging-npm-token
+NPM_PUBLISH_TOKEN=staging-npm-token
 EOF
             ;;
         "production_complete")
@@ -222,7 +222,7 @@ GITHUB_ACTOR=test-user
 GITHUB_TOKEN=mock-github-token
 CENTRAL_PORTAL_USERNAME=central-user
 CENTRAL_PORTAL_PASSWORD=central-password
-NPM_TOKEN=production-npm-token
+NPM_PUBLISH_TOKEN=production-npm-token
 SIGNING_KEY=mock-signing-key
 SIGNING_PASSWORD=mock-signing-password
 EOF

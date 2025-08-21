@@ -58,7 +58,7 @@ on:
       GRADLE_ENCRYPTION_KEY:
         description: 'Gradle build cache encryption key'
         required: true
-      NPM_TOKEN:
+      NPM_PUBLISH_TOKEN:
         description: 'npm publishing token (required for production publishing)'
         required: false
       CENTRAL_PORTAL_USERNAME:
@@ -286,7 +286,7 @@ jobs:
       android-group-id: ${{ needs.setup-config.outputs.android-group-id }}  # Needed for Gradle generation
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+      NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
 
   # Job 4: Android client generation and publishing (parallel)
   publish-android:

@@ -113,7 +113,7 @@ test_staging_workflow_simulation() {
     fi
     
     # Test 1d: Environment variable availability
-    local required_staging_vars=("ANDROID_PUBLISH_USER" "ANDROID_PUBLISH_TOKEN" "NPM_TOKEN")
+    local required_staging_vars=("ANDROID_PUBLISH_USER" "ANDROID_PUBLISH_TOKEN" "NPM_PUBLISH_TOKEN")
     
     for var in "${required_staging_vars[@]}"; do
         if [[ -z "${!var:-}" ]]; then
@@ -271,7 +271,7 @@ test_production_workflow_simulation() {
     fi
     
     # Test 2d: Environment variable availability
-    local required_prod_vars=("CENTRAL_PORTAL_USERNAME" "CENTRAL_PORTAL_PASSWORD" "NPM_TOKEN" "SIGNING_KEY" "SIGNING_PASSWORD")
+    local required_prod_vars=("CENTRAL_PORTAL_USERNAME" "CENTRAL_PORTAL_PASSWORD" "NPM_PUBLISH_TOKEN" "SIGNING_KEY" "SIGNING_PASSWORD")
     
     for var in "${required_prod_vars[@]}"; do
         if [[ -z "${!var:-}" ]]; then

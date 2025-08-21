@@ -54,7 +54,7 @@ Repository: https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server
 ```yaml
 # GitHub repository secrets
 GITHUB_TOKEN: # Already exists - for GitHub Packages
-NPM_TOKEN:    # Required for npm publishing (production)
+NPM_PUBLISH_TOKEN:    # Required for npm publishing (production)
 
 # Environment variables for local testing
 ANDROID_PUBLISH_USER: ${GITHUB_ACTOR}
@@ -139,7 +139,7 @@ repositories {
 - [x] Test staging client generation (staging package names verified)
 - [x] Test production client generation (production package names verified)
 - [ ] Test staging package publishing (requires GITHUB_TOKEN)
-- [ ] Test production package publishing (requires NPM_TOKEN)
+- [ ] Test production package publishing (requires NPM_PUBLISH_TOKEN)
 - [ ] Validate end-to-end workflow with actual publishing
 
 ### Phase 3: Test Client Migration ✅
@@ -191,7 +191,7 @@ repositories {
 
 # Status: Ready for testing (requires tokens)
 # - GITHUB_TOKEN needed for staging publishing
-# - NPM_TOKEN needed for production publishing  
+# - NPM_PUBLISH_TOKEN needed for production publishing  
 ```
 
 ### ✅ Workflow Configuration Complete

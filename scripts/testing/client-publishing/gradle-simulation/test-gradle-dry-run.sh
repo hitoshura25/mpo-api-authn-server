@@ -111,7 +111,7 @@ test_gradle_env_var_validation() {
     setup_test_environment_vars "staging_complete"
     
     # Verify required environment variables are set
-    local required_vars=("ANDROID_PUBLISH_USER" "ANDROID_PUBLISH_TOKEN" "NPM_TOKEN")
+    local required_vars=("ANDROID_PUBLISH_USER" "ANDROID_PUBLISH_TOKEN" "NPM_PUBLISH_TOKEN")
     
     for var in "${required_vars[@]}"; do
         if [[ -z "${!var:-}" ]]; then
@@ -126,7 +126,7 @@ test_gradle_env_var_validation() {
     cleanup_mock_env
     setup_test_environment_vars "production_complete"
     
-    local prod_required_vars=("CENTRAL_PORTAL_USERNAME" "CENTRAL_PORTAL_PASSWORD" "NPM_TOKEN" "SIGNING_KEY" "SIGNING_PASSWORD")
+    local prod_required_vars=("CENTRAL_PORTAL_USERNAME" "CENTRAL_PORTAL_PASSWORD" "NPM_PUBLISH_TOKEN" "SIGNING_KEY" "SIGNING_PASSWORD")
     
     for var in "${prod_required_vars[@]}"; do
         if [[ -z "${!var:-}" ]]; then

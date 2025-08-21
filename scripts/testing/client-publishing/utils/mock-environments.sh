@@ -31,7 +31,7 @@ setup_mock_staging_environment() {
     export ANDROID_PUBLISH_TOKEN="staging_android_token_abcdef123456"
     
     # npm staging credentials (can reuse GitHub token for GitHub Packages)
-    export NPM_TOKEN="npm_staging_token_fedcba098765"
+    export NPM_PUBLISH_TOKEN="npm_staging_token_fedcba098765"
     
     CURRENT_MOCK_ENV="$MOCK_ENV_STAGING"
     log_debug "Mock staging environment setup complete"
@@ -51,7 +51,7 @@ setup_mock_production_environment() {
     export CENTRAL_PORTAL_PASSWORD="central_portal_password_secure123"
     
     # npm production credentials (npmjs.org)
-    export NPM_TOKEN="npm_prod_token_secure_abcdef123456789"
+    export NPM_PUBLISH_TOKEN="npm_prod_token_secure_abcdef123456789"
     
     # Code signing credentials for production
     export SIGNING_KEY="mock_signing_key_base64_encoded_content"
@@ -74,7 +74,7 @@ setup_mock_missing_credentials_environment() {
     # Intentionally missing:
     # - ANDROID_PUBLISH_USER
     # - ANDROID_PUBLISH_TOKEN  
-    # - NPM_TOKEN (for staging)
+    # - NPM_PUBLISH_TOKEN (for staging)
     # - CENTRAL_PORTAL_USERNAME (for production)
     # - CENTRAL_PORTAL_PASSWORD (for production)
     # - SIGNING_KEY (for production)
@@ -96,7 +96,7 @@ setup_mock_invalid_environment() {
     # Invalid credential formats
     export ANDROID_PUBLISH_USER=""  # Empty username
     export ANDROID_PUBLISH_TOKEN="token with spaces"  # Invalid token format
-    export NPM_TOKEN="npm_token_with_invalid_chars@#$"  # Invalid characters
+    export NPM_PUBLISH_TOKEN="npm_token_with_invalid_chars@#$"  # Invalid characters
     
     CURRENT_MOCK_ENV="$MOCK_ENV_INVALID"
     log_debug "Mock invalid environment setup complete"
@@ -113,7 +113,7 @@ validate_mock_staging_environment() {
         "GITHUB_TOKEN"
         "ANDROID_PUBLISH_USER"
         "ANDROID_PUBLISH_TOKEN"
-        "NPM_TOKEN"
+        "NPM_PUBLISH_TOKEN"
     )
     
     local missing_vars=()
@@ -145,7 +145,7 @@ validate_mock_production_environment() {
         "GITHUB_REPOSITORY"
         "CENTRAL_PORTAL_USERNAME"
         "CENTRAL_PORTAL_PASSWORD"
-        "NPM_TOKEN"
+        "NPM_PUBLISH_TOKEN"
         "SIGNING_KEY"
         "SIGNING_PASSWORD"
     )
@@ -188,7 +188,7 @@ cleanup_mock_environment() {
     unset SIGNING_KEY SIGNING_PASSWORD SIGNING_KEY_ID
     
     # npm credentials (used by both environments)
-    unset NPM_TOKEN
+    unset NPM_PUBLISH_TOKEN
     
     CURRENT_MOCK_ENV=""
     log_debug "Mock environment cleanup complete"
@@ -277,7 +277,7 @@ list_mock_environment_variables() {
     local github_vars=("GITHUB_REPOSITORY" "GITHUB_ACTOR" "GITHUB_TOKEN" "GITHUB_RUN_NUMBER")
     local staging_vars=("ANDROID_PUBLISH_USER" "ANDROID_PUBLISH_TOKEN")
     local production_vars=("CENTRAL_PORTAL_USERNAME" "CENTRAL_PORTAL_PASSWORD" "SIGNING_KEY" "SIGNING_PASSWORD")
-    local common_vars=("NPM_TOKEN")
+    local common_vars=("NPM_PUBLISH_TOKEN")
     
     echo "GitHub Context:"
     for var in "${github_vars[@]}"; do

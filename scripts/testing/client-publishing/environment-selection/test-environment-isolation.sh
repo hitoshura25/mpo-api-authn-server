@@ -291,7 +291,7 @@ repositories:
     npm:
       registry: "https://registry.npmjs.org"
       credentials:
-        tokenEnv: "NPM_TOKEN"
+        tokenEnv: "NPM_PUBLISH_TOKEN"
         # This would be a boundary violation - don't include staging tokens
         # stagingTokenEnv: "GITHUB_TOKEN"  # This should not exist
 EOF

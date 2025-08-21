@@ -231,7 +231,7 @@ on:
       GRADLE_ENCRYPTION_KEY:
         description: 'Gradle build cache encryption key'
         required: true
-      NPM_TOKEN:
+      NPM_PUBLISH_TOKEN:
         description: 'npm publishing token'
         required: false  # Optional for staging-only workflows
     outputs:
@@ -242,7 +242,7 @@ job-name:
   uses: ./.github/workflows/publish-typescript.yml
   secrets:  # ✅ REQUIRED: Explicit secrets when defined in callable workflow
     GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
-    NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
   # ❌ WILL FAIL: secrets: inherit (doesn't work with explicitly defined secrets)
 ```
 

@@ -86,7 +86,7 @@ repositories:
     npm:
       registry: "https://npm.pkg.github.com"
       credentials:
-        tokenEnv: "NPM_TOKEN"
+        tokenEnv: "NPM_PUBLISH_TOKEN"
   production:
     android:
       url: "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
@@ -96,7 +96,7 @@ repositories:
     npm:
       registry: "https://registry.npmjs.org"
       credentials:
-        tokenEnv: "NPM_TOKEN"
+        tokenEnv: "NPM_PUBLISH_TOKEN"
 
 # Package Naming Templates
 naming:

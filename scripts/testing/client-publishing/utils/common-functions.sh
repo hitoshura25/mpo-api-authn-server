@@ -257,12 +257,12 @@ setup_mock_env() {
         "staging")
             export ANDROID_PUBLISH_USER="test-user"
             export ANDROID_PUBLISH_TOKEN="mock-token"
-            export NPM_TOKEN="mock-npm-token"
+            export NPM_PUBLISH_TOKEN="mock-npm-token"
             ;;
         "production")
             export CENTRAL_PORTAL_USERNAME="central-user"
             export CENTRAL_PORTAL_PASSWORD="central-pass"
-            export NPM_TOKEN="prod-npm-token"
+            export NPM_PUBLISH_TOKEN="prod-npm-token"
             export SIGNING_KEY="mock-signing-key"
             export SIGNING_PASSWORD="mock-signing-pass"
             ;;
@@ -273,7 +273,7 @@ setup_mock_env() {
 
 cleanup_mock_env() {
     unset GITHUB_REPOSITORY GITHUB_ACTOR GITHUB_TOKEN GITHUB_RUN_NUMBER
-    unset ANDROID_PUBLISH_USER ANDROID_PUBLISH_TOKEN NPM_TOKEN
+    unset ANDROID_PUBLISH_USER ANDROID_PUBLISH_TOKEN NPM_PUBLISH_TOKEN
     unset CENTRAL_PORTAL_USERNAME CENTRAL_PORTAL_PASSWORD
     unset SIGNING_KEY SIGNING_PASSWORD
     

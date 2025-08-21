@@ -71,7 +71,7 @@ echo "✅ Using pre-installed yq: $(yq --version)"
 **Original Complex Code**:
 ```yaml
 # COMPLEX - Repeated inline conditional logic
-NODE_AUTH_TOKEN: ${{ steps.package-info.outputs.credential-env == 'GITHUB_TOKEN' && secrets.GITHUB_TOKEN || secrets.NPM_TOKEN }}
+NODE_AUTH_TOKEN: ${{ steps.package-info.outputs.credential-env == 'GITHUB_TOKEN' && secrets.GITHUB_TOKEN || secrets.NPM_PUBLISH_TOKEN }}
 ```
 
 **Remediation**: 
@@ -86,8 +86,8 @@ NODE_AUTH_TOKEN: ${{ steps.package-info.outputs.credential-env == 'GITHUB_TOKEN'
       echo "auth-token=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
       echo "📋 Using GITHUB_TOKEN for authentication"
     else
-      echo "auth-token=${{ secrets.NPM_TOKEN }}" >> $GITHUB_OUTPUT
-      echo "📋 Using NPM_TOKEN for authentication"
+      echo "auth-token=${{ secrets.NPM_PUBLISH_TOKEN }}" >> $GITHUB_OUTPUT
+      echo "📋 Using NPM_PUBLISH_TOKEN for authentication"
     fi
 
 # Usage in both staging and production steps

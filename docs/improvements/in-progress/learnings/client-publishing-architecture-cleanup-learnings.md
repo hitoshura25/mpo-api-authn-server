@@ -41,7 +41,7 @@
 
 ### **GitHub Actions Secret Access Limitations**
 - **Challenge**: Cannot use dynamic secret access like `secrets[variable_name]` in GitHub Actions
-- **Solution**: Use conditional expressions `credential-env == 'GITHUB_TOKEN' && secrets.GITHUB_TOKEN || secrets.NPM_TOKEN`
+- **Solution**: Use conditional expressions `credential-env == 'GITHUB_TOKEN' && secrets.GITHUB_TOKEN || secrets.NPM_PUBLISH_TOKEN`
 - **Lesson**: GitHub Actions security model requires explicit secret references, not dynamic access
 
 ### **Backward Compatibility with Input Overrides**

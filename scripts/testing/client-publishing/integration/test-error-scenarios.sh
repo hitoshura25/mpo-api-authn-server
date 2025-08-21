@@ -80,7 +80,7 @@ test_missing_environment_variables() {
     # Test staging environment with missing variables
     setup_test_environment_vars "missing_credentials"
     
-    local required_staging_vars=("ANDROID_PUBLISH_USER" "ANDROID_PUBLISH_TOKEN" "NPM_TOKEN")
+    local required_staging_vars=("ANDROID_PUBLISH_USER" "ANDROID_PUBLISH_TOKEN" "NPM_PUBLISH_TOKEN")
     local missing_vars=()
     
     for var in "${required_staging_vars[@]}"; do

@@ -103,7 +103,7 @@ jobs:
   publish-android:
     runs-on: ubuntu-latest
     permissions:
-      contents: read
+      contents: write   # Required for creating GitHub releases (production) and reading code
       packages: write   # Required for GitHub Packages publishing
     outputs:
       published: ${{ steps.publish-result.outputs.published }}
@@ -367,6 +367,64 @@ jobs:
             echo "skipped=false" >> $GITHUB_OUTPUT
           fi
 
+      - name: Create GitHub Release for Android Client (production only)
+        if: inputs.publish-type == 'production' && steps.publish-result.outputs.published == 'true'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "android-client-v${{ inputs.client-version }}"
+          name: "Android Client v${{ inputs.client-version }}"
+          body: |
+            ## Android Client Library v${{ inputs.client-version }}
+
+            Generated Android client library for MPO WebAuthn API.
+
+            ### Installation
+
+            Add to your `build.gradle`:
+
+            ```gradle
+            repositories {
+                mavenCentral()
+            }
+
+            dependencies {
+                implementation '${{ steps.package-info.outputs.package-name }}:${{ inputs.client-version }}'
+            }
+            ```
+
+            ### Usage
+
+            ```kotlin
+            import ${{ inputs.android-group-id }}.client.api.*
+            import ${{ inputs.android-group-id }}.client.model.*
+
+            val config = Configuration(
+                basePath = "https://your-webauthn-server.com"
+            )
+            val authApi = AuthenticationApi(config)
+            val regApi = RegistrationApi(config)
+            ```
+
+            ### Features
+            - Full WebAuthn registration and authentication support
+            - Compatible with Android API 26+
+            - Type-safe Kotlin client
+            - Supports FIDO2/WebAuthn standards
+
+            ### Changes
+            - Generated from OpenAPI specification
+            - Supports WebAuthn registration and authentication flows
+            - Published to Maven Central with automatic release
+
+            ### Documentation
+            - [API Documentation](https://github.com/${{ github.repository }}/blob/main/docs/setup/client-generation.md)
+            - [Android Integration Guide](https://github.com/${{ github.repository }}/blob/main/android-test-client/README.md)
+
+            ### Published Package
+            - **Maven Central**: ${{ steps.package-info.outputs.package-full-name }}
+          draft: false
+          prerelease: false
+
       - name: Android publishing summary
         run: |
           echo "🎯 Android Client Publishing Results:"
@@ -375,3 +433,6 @@ jobs:
           echo "  Registry: ${{ inputs.publish-type == 'staging' && 'GitHub Packages' || 'Maven Central' }}"
           echo "  Published: ${{ steps.publish-result.outputs.published }}"
           echo "  Skipped: ${{ steps.publish-result.outputs.skipped }}"
+          if [[ "${{ inputs.publish-type }}" == "production" && "${{ steps.publish-result.outputs.published }}" == "true" ]]; then
+            echo "  GitHub Release: Created with tag android-client-v${{ inputs.client-version }}"
+          fi

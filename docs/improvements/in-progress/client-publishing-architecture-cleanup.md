@@ -12,6 +12,7 @@
 - [x] Phase 4: TypeScript Workflow Simplification *(Completed 2025-08-16)*
 - [x] Phase 5: Testing & Validation *(Completed 2025-08-16)*
 - [x] Phase 6: Documentation Updates *(Completed 2025-08-16)*
+- [ ] Phase 7: Docker Publishing Workflow Cleanup *(Next - 2025-08-21)*
 
 ## Project Overview
 

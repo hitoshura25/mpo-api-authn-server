@@ -10,6 +10,26 @@ packages:
     scope: "@vmenon25"
     basePackageName: "mpo-webauthn-client"
 
+# Docker Configuration
+docker:
+  registry:
+    url: "ghcr.io"
+    username: "${GITHUB_ACTOR}"  # Dynamic GitHub Actions username
+    password: "${GITHUB_TOKEN}"   # GitHub Actions token for authentication
+  images:
+    webauthn-server:
+      name: "hitoshura25/webauthn-server"
+      dockerhub: "hitoshura25/webauthn-server"
+      description: "WebAuthn authentication server built with Ktor and Yubico java-webauthn-server"
+      dockerfile: "./webauthn-server/Dockerfile"
+      readme: "./webauthn-server/README.md"
+    test-credentials-service:
+      name: "hitoshura25/webauthn-test-credentials-service" 
+      dockerhub: "hitoshura25/webauthn-test-credentials-service"
+      description: "WebAuthn test credentials service for cross-platform testing with FIDO2/WebAuthn"
+      dockerfile: "./webauthn-test-credentials-service/Dockerfile"
+      readme: "./webauthn-test-credentials-service/README.md"
+
 # Repository Configuration  
 repositories:
   staging:

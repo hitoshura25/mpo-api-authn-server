@@ -15,6 +15,7 @@
 - **OpenAPI Client Library Architecture**: Docker-inspired staging→production workflow using GitHub Packages with dedicated client library submodules.
 
 ### Planned Major Refactors
+- **Workflow Optimization: Independent Component Processing** *(After Phase 8)* - Transform monolithic workflow into parallel, component-independent system. Separate webauthn-server and test-credentials-service builds, implement OpenAPI change detection for conditional client generation. Expected 40-60% faster builds for single-component changes. See `docs/improvements/planned/workflow-optimization-independent-components.md`.
 - **FOSS Security Implementation**: Replace AI-dependent security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP). See `docs/improvements/planned/foss-security-implementation.md` for complete plan.
 
 ## Project Overview

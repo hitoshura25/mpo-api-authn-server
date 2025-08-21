@@ -1,7 +1,6 @@
 plugins {
     id("java-library")
-    id("maven-publish")
-    id("signing")
+    id("com.vanniktech.maven.publish") version "0.29.0"
 }
 
 java {
@@ -63,126 +62,74 @@ tasks.withType<Javadoc> {
     (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
 }
 
-publishing {
-    publications {
-        create<MavenPublication>("maven") {
-            groupId = androidGroupId
-            artifactId = androidArtifactId
-            version = clientVersion
-
-            from(components["java"])
-
-            pom {
-                name.set("MPO WebAuthn Android Client")
-                description.set(
-                    "Generated Android client library for MPO WebAuthn API - " +
-                        "FIDO2/WebAuthn authentication",
-                )
-                url.set("https://github.com/hitoshura25/mpo-api-authn-server")
-
-                licenses {
-                    license {
-                        name.set("MIT License")
-                        url.set("https://opensource.org/licenses/MIT")
-                    }
-                }
-
-                developers {
-                    developer {
-                        id.set("hitoshura25")
-                        name.set("Hitoshura")
-                        email.set("hitoshura25@users.noreply.github.com")
-                    }
-                }
-
-                scm {
-                    connection.set("scm:git:git://github.com/hitoshura25/mpo-api-authn-server.git")
-                    developerConnection.set(
-                        "scm:git:ssh://github.com:hitoshura25/mpo-api-authn-server.git",
-                    )
-                    url.set("https://github.com/hitoshura25/mpo-api-authn-server")
-                }
-            }
-        }
-    }
-
-    repositories {
-        // Repository configuration from central publishing config via environment variables
-        val repositoryUrl = System.getenv("ANDROID_REPOSITORY_URL")
-            ?: throw GradleException("ANDROID_REPOSITORY_URL environment variable is required")
-
-        maven {
-            name = "PublishingRepository"
-            url = uri(repositoryUrl)
-            credentials {
-                // Gradle automatically looks for properties named: {repositoryName}Username and {repositoryName}Password
-                // For repository name "PublishingRepository", it expects:
-                // - PublishingRepositoryUsername  
-                // - PublishingRepositoryPassword
-                //
-                // These properties can be provided via environment variables using the
-                // ORG_GRADLE_PROJECT_ prefix pattern for configuration cache compatibility:
-                // - ORG_GRADLE_PROJECT_PublishingRepositoryUsername
-                // - ORG_GRADLE_PROJECT_PublishingRepositoryPassword
-                //
-                // Gradle will automatically convert these env vars to project properties.
-                // We use explicit environment variable fallback for better error reporting.
-                val repoUsername = project.findProperty("PublishingRepositoryUsername") as String?
-                    ?: System.getenv("PUBLISHING_REPOSITORY_USERNAME")
-                    ?: throw GradleException(
-                        "Publishing repository username is required. Set via ORG_GRADLE_PROJECT_PublishingRepositoryUsername environment variable " +
-                        "or PUBLISHING_REPOSITORY_USERNAME for direct environment variable access."
-                    )
-                val repoPassword = project.findProperty("PublishingRepositoryPassword") as String?
-                    ?: System.getenv("PUBLISHING_REPOSITORY_PASSWORD")
-                    ?: throw GradleException(
-                        "Publishing repository password is required. Set via ORG_GRADLE_PROJECT_PublishingRepositoryPassword environment variable " +
-                        "or PUBLISHING_REPOSITORY_PASSWORD for direct environment variable access."
-                    )
-                
-                username = repoUsername
-                password = repoPassword
-                
-                // Log repository configuration for debugging (without sensitive credentials)
-                logger.lifecycle("📊 Publishing Repository Configuration:")
-                logger.lifecycle("  Repository URL: $repositoryUrl")
-                logger.lifecycle("  Username: ${repoUsername.take(4)}...")
-                logger.lifecycle("  API Type: ${if (repositoryUrl.contains("ossrh-staging-api")) "Portal OSSRH Staging API (Bridge)" else if (repositoryUrl.contains("maven.pkg.github.com")) "GitHub Packages" else "Other Maven Repository"}")
-                logger.lifecycle("  Credentials Source: ${if (project.hasProperty("PublishingRepositoryUsername")) "Gradle Properties" else "Environment Variables"}")
-            }
-        }
-    }
-}
-
-// Signing configuration for Maven Central (production only)
-signing {
+// Configure vanniktech maven publish plugin
+mavenPublishing {
     val publishType = System.getenv("PUBLISH_TYPE") ?: "staging"
-    val signingKey = System.getenv("SIGNING_KEY")
-    val signingPassword = System.getenv("SIGNING_PASSWORD")
-
-    // Log signing configuration for debugging
-    logger.lifecycle("🔐 GPG Signing Configuration:")
-    logger.lifecycle("  Publish Type: $publishType")
-    logger.lifecycle("  Signing Key Available: ${if (signingKey != null) "YES" else "NO"}")
-    logger.lifecycle("  Signing Password Available: ${if (signingPassword != null) "YES" else "NO"}")
     
-    // Only sign for production publishing and if we have the required properties
+    // Configure publishing target based on environment
     if (publishType == "production") {
-        if (signingKey != null && signingPassword != null) {
-            logger.lifecycle("  🔒 GPG signing ENABLED for production publishing")
-            logger.lifecycle("  📝 All artifacts will be signed (JAR, sources, javadoc, POM)")
-            useInMemoryPgpKeys(signingKey, signingPassword)
-            sign(publishing.publications["maven"])
-        } else {
-            logger.error("❌ PRODUCTION PUBLISHING ERROR: GPG signing credentials missing!")
-            logger.error("   SIGNING_KEY: ${if (signingKey != null) "provided" else "MISSING"}")
-            logger.error("   SIGNING_PASSWORD: ${if (signingPassword != null) "provided" else "MISSING"}")
-            throw GradleException(
-                "GPG signing is required for production publishing to Maven Central. " +
-                "Please ensure SIGNING_KEY and SIGNING_PASSWORD environment variables are set."
-            )
-        }
+        // Maven Central via Central Portal with automatic release
+        publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
+        signAllPublications()
+        
+        logger.lifecycle("🚀 PRODUCTION Publishing Configuration:")
+        logger.lifecycle("  Target: Maven Central (Central Portal)")
+        logger.lifecycle("  Automatic Release: ENABLED")
+        logger.lifecycle("  GPG Signing: ENABLED")
+        logger.lifecycle("  Manual Steps: NONE REQUIRED")
     } else {
-        logger.lifecycle("  ℹ️  GPG signing DISABLED for staging publishing (not required for GitHub Packages)")
+        // GitHub Packages for staging
+        publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.DEFAULT, automaticRelease = false)
+        
+        logger.lifecycle("📦 STAGING Publishing Configuration:")
+        logger.lifecycle("  Target: GitHub Packages")
+        logger.lifecycle("  Automatic Release: N/A")
+        logger.lifecycle("  GPG Signing: DISABLED")
+        
+        // Configure GitHub Packages repository manually for staging
+        publishing {
+            repositories {
+                maven {
+                    name = "GitHubPackages"
+                    url = uri(System.getenv("ANDROID_REPOSITORY_URL") 
+                        ?: "https://maven.pkg.github.com/${System.getenv("GITHUB_REPOSITORY") ?: "hitoshura25/mpo-api-authn-server"}")
+                    credentials {
+                        username = System.getenv("GITHUB_ACTOR") ?: "hitoshura25"
+                        password = System.getenv("GITHUB_TOKEN")
+                            ?: throw GradleException("GITHUB_TOKEN environment variable is required for staging publishing")
+                    }
+                }
+            }
+        }
+    }
+
+    coordinates(androidGroupId, androidArtifactId, clientVersion)
+    
+    pom {
+        name.set("MPO WebAuthn Android Client")
+        description.set("Generated Android client library for MPO WebAuthn API - FIDO2/WebAuthn authentication")
+        url.set(System.getenv("PROJECT_URL") ?: "https://github.com/${System.getenv("GITHUB_REPOSITORY") ?: "hitoshura25/mpo-api-authn-server"}")
+        
+        licenses {
+            license {
+                name.set("MIT License")
+                url.set("https://opensource.org/licenses/MIT")
+            }
+        }
+        
+        developers {
+            developer {
+                id.set("hitoshura25")
+                name.set("Hitoshura")
+                email.set("hitoshura25@users.noreply.github.com")
+            }
+        }
+        
+        scm {
+            val repoPath = System.getenv("GITHUB_REPOSITORY") ?: "hitoshura25/mpo-api-authn-server"
+            connection.set("scm:git:git://github.com/${repoPath}.git")
+            developerConnection.set("scm:git:ssh://github.com:${repoPath}.git")
+            url.set("https://github.com/${repoPath}")
+        }
     }
 }

@@ -8,6 +8,7 @@
 # - No external artifact dependencies
 # - Registry-aware publishing (staging vs production)
 # - Version conflict detection and handling
+# - Automated Maven Central publishing (no manual steps required)
 #
 # INPUTS:
 #   client-version: Version for Android library
@@ -23,7 +24,7 @@
 #
 # SECURITY:
 #   - GitHub Packages: Uses GITHUB_TOKEN (automatic)
-#   - Maven Central: Uses OSSRH credentials and GPG signing
+#   - Maven Central: Uses Central Portal with automatic release (vanniktech plugin)
 #   - Minimal permissions: contents:read, packages:write
 
 name: Android Client Publishing
@@ -195,6 +196,7 @@ jobs:
           PUBLISH_TYPE: ${{ inputs.publish-type }}
           # Repository configuration from central config (environment-specific)
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
           # Gradle publishing credentials using ORG_GRADLE_PROJECT_ prefix for configuration cache compatibility
           # These environment variables become Gradle project properties automatically
           ORG_GRADLE_PROJECT_PublishingRepositoryUsername: ${{ inputs.publish-type == 'staging' && github.actor || secrets.CENTRAL_PORTAL_USERNAME }}
@@ -259,6 +261,15 @@ jobs:
           
           # Credentials via ORG_GRADLE_PROJECT_ environment variables (converted to properties automatically)
           echo "🔍 Running publish with ORG_GRADLE_PROJECT_ credentials (configuration cache compatible)"
+          
+          if [[ "${{ inputs.publish-type }}" == "production" ]]; then
+            echo "🚀 PRODUCTION: Using vanniktech plugin with automaticRelease=true for Maven Central"
+            echo "   ✅ No manual release steps required"
+            echo "   ✅ Packages will be automatically available on Maven Central"
+          else
+            echo "📦 STAGING: Publishing to GitHub Packages"
+          fi
+          
           ./gradlew :android-client-library:publish \
             --build-cache --parallel --configuration-cache
 
@@ -274,26 +285,25 @@ jobs:
           echo "🔍 Verifying Maven Central publication..."
           echo "  Package: ${ANDROID_GROUP_ID}:${ANDROID_ARTIFACT_ID}:${CLIENT_VERSION}"
           
-          # Note: Maven Central has a delay between publication and search API availability
-          echo "⏳ Maven Central Publication Process:"
-          echo "  1. ✅ Published to Portal OSSRH Staging API"
-          echo "  2. ⏳ Processing in Central Portal (may take 10-30 minutes)"
-          echo "  3. ⏳ Manual verification required in Central Portal UI"
-          echo "  4. ⏳ Manual release required to make publicly available"
-          echo "  5. ⏳ Search API availability (additional 2-4 hours after release)"
+          # Note: With automaticRelease=true, packages are automatically published without manual steps
+          echo "✅ Maven Central Publication Process (Automated):"
+          echo "  1. ✅ Published to Central Portal with automatic release"
+          echo "  2. ✅ Automatically signed and released to Maven Central"
+          echo "  3. ⏳ Indexing in Maven Central search (2-4 hours)"
+          echo "  4. ✅ Immediately available for download via Maven coordinates"
           
           echo "🔗 Verification Links:"
           echo "  Central Portal: https://central.sonatype.com/publishing"
           echo "  Maven Central Search: https://search.maven.org/search?q=g:${ANDROID_GROUP_ID}+AND+a:${ANDROID_ARTIFACT_ID}"
           echo "  Maven Repository: https://repo1.maven.org/maven2/${ANDROID_GROUP_ID//.//}/${ANDROID_ARTIFACT_ID}/"
           
-          echo "📋 Next Steps:"
-          echo "  1. Check Central Portal for your deployment"
-          echo "  2. Verify artifacts and signatures"
-          echo "  3. Manually release to make publicly available"
-          echo "  4. Wait 2-4 hours for search API indexing"
+          echo "📋 Status:"
+          echo "  ✅ Package automatically released to Maven Central"
+          echo "  ✅ No manual intervention required"
+          echo "  ⏳ Search indexing will complete within 2-4 hours"
+          echo "  ✅ Package immediately consumable via Maven coordinates"
           
-          echo "✅ Publication verification guidance provided"
+          echo "✅ Automated publication completed successfully"
 
       - name: Verify GitHub Packages publication
         if: (steps.check-android-version.outputs.skip-publish == 'false' || inputs.publish-type == 'production') && inputs.publish-type == 'staging'

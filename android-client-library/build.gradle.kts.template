@@ -6,8 +6,8 @@ plugins {
 java {
     sourceCompatibility = JavaVersion.VERSION_1_8
     targetCompatibility = JavaVersion.VERSION_1_8
-    withJavadocJar()
-    withSourcesJar()
+    // Note: withJavadocJar() and withSourcesJar() removed to prevent conflicts with vanniktech plugin
+    // The vanniktech/gradle-maven-publish-plugin automatically generates these artifacts
 }
 
 // Configure version from environment variables (properties not needed for non-publishing configuration)

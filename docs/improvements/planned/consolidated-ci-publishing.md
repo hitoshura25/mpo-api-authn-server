@@ -31,7 +31,7 @@ The new workflow for a `main` branch push will be:
 
 1. **Build & Stage**: Build artifacts and push them to a staging area (GHCR/GitHub Packages).
 2. **Test**: Run E2E tests against the staged artifacts.
-3. **Promote**: If tests pass, a new job will pull the validated artifacts from staging, re-tag them, and push them to production registries.
+3. **Promote**: If tests pass, a new orchestrator job will call a series of granular, reusable workflows to publish the validated artifacts to production registries.
 4. **Cleanup**: Clean up the staging artifacts only after a successful production publish.
 
 ### New Workflow Architecture
@@ -44,58 +44,72 @@ graph TD
         B_Stage --> C_Test[E2E & Security Tests];
         
         C_Test --> D{Tests Passed?};
-        D -- Yes --> E[Promote to Production];
+        D -- Yes --> E_Orchestrator(publish-production Orchestrator);
         D -- No --> F[Stop];
         
-        E --> G[Cleanup Staging Artifacts];
+        subgraph "Production Publishing (Callable Workflows)"
+            E_Orchestrator --> E1[Call publish-docker.yml];
+            E_Orchestrator --> E2[Call client-publish.yml];
+        end
+
+        E_Orchestrator --> G[Cleanup Staging Artifacts];
     end
 
-    style E fill:#bbf7d0,stroke:#22c55e,stroke-width:2px
+    style E_Orchestrator fill:#bbf7d0,stroke:#22c55e,stroke-width:2px
 ```
 
 ## Implementation Plan
 
-### Phase 1: Consolidate Workflows (Weeks 1-2)
+### Phase 1: Create Callable Production Workflows (Week 1)
 
 #### Objective
 
-Merge the production publishing logic into `main-ci-cd.yml` and ensure it runs conditionally after E2E tests pass on the `main` branch.
+Create or adapt granular, callable workflows for production publishing tasks.
 
 #### Tasks
 
-1. **Create `publish-production` Job**:
+1. **Create `publish-docker.yml` Callable Workflow**:
+    - Create a new file: `.github/workflows/publish-docker.yml`.
+    - This workflow will be responsible for pulling a specified Docker image from GHCR, re-tagging it for production, and pushing it to Docker Hub.
+    - It will accept inputs like `image-name`, `staging-tag`, and `production-repo`.
+    - It will require secrets for Docker Hub credentials.
+2. **Adapt `client-publish.yml`**:
+    - Review the existing `.github/workflows/client-publish.yml`.
+    - Ensure it can be called from the new orchestrator job and that it correctly handles publishing to production npm/Maven registries.
+    - Verify it accepts all necessary parameters (e.g., `version`, `npm-token`).
+
+### Phase 2: Consolidate Main Workflow (Weeks 2-3)
+
+#### Objective
+
+Modify `main-ci-cd.yml` to act as an orchestrator that calls the new production workflows.
+
+#### Tasks
+
+1. **Create `publish-production` Orchestrator Job**:
     - In `main-ci-cd.yml`, create a new job named `publish-production`.
     - Set its `if` condition to `github.event_name == 'push' && github.ref == 'refs/heads/main'`.
     - Make it dependent on the successful completion of the `e2e-tests` and `security-scanning` jobs.
-2. **Migrate Publishing Logic**:
-    - Move all steps from the `publish-dockerhub` and `publish-client-libraries` jobs in `main-branch-post-processing.yml` into the new `publish-production` job.
-    - The logic should be adapted to pull the staged artifacts (e.g., Docker image tagged with the commit SHA from GHCR) and then re-tag and push them to production registries. This removes the need for the complex `detect-changes` logic.
-3. **Adapt Input Secrets**:
-    - Ensure the `main-ci-cd.yml` workflow has access to the necessary secrets for production publishing (e.g., `DOCKER_PASSWORD`, `NPM_PUBLISH_TOKEN`).
-
-### Phase 2: Adjust Cleanup and Finalize (Week 3)
-
-#### Objective
-
-Modify the cleanup logic to handle both pull request and `main` branch scenarios correctly, then remove the old workflow file.
-
-#### Tasks
-
-1. **Modify `smart-staging-cleanup` Job**:
-    - Rename the job to `final-cleanup` for clarity.
-    - Update its `if` condition to run `always()`.
-    - Add logic within the job to execute different cleanup strategies:
+2. **Call Production Workflows**:
+    - Within the `publish-production` job, add steps to call the reusable workflows:
+        - Call `.github/workflows/publish-docker.yml` for the `webauthn-server` and `test-credentials-service` images.
+        - Call `.github/workflows/client-publish.yml` for the Android and TypeScript client libraries.
+    - Pass the required inputs (image names from the `build-and-test` job outputs) and secrets to these callable workflows.
+3. **Modify `final-cleanup` Job**:
+    - The cleanup job should now depend on the `publish-production` job.
+    - Update its logic to execute different cleanup strategies:
         - **If `github.event_name == 'pull_request'`**: Clean up the staging artifacts as it does now.
         - **If `github.event_name == 'push'` and `needs.publish-production.result == 'success'`**: Clean up the staging artifacts.
         - **If `github.event_name == 'push'` and `needs.publish-production.result != 'success'`**: Skip cleanup to preserve the staging artifacts for debugging.
-2. **Remove Old Workflow**:
-    - After verifying the new consolidated workflow runs correctly on both PRs and `main` branch pushes, delete the `.github/workflows/main-branch-post-processing.yml` file.
-3. **Update Documentation**:
-    - Update any relevant documentation in the `docs/workflows` directory to reflect the new, streamlined CI/CD process.
+4. **Remove Old Workflow**:
+    - After verifying the new consolidated workflow runs correctly, delete the `.github/workflows/main-branch-post-processing.yml` file.
+5. **Update Documentation**:
+    - Update any relevant documentation to reflect the new, streamlined, and modular CI/CD process.
 
 ## Expected Benefits
 
 - **Guaranteed Pre-Release Testing**: Ensures no artifact reaches production without passing all E2E tests.
+- **Improved Readability & Maintainability**: Keeps the main workflow clean and delegates complex logic to specialized, reusable workflows.
 - **Faster Production Releases**: Artifacts will be published to production immediately after testing is complete, without waiting for a second workflow to trigger.
 - **Reduced Complexity**: A single workflow file will be easier to manage, understand, and maintain.
 - **Increased Efficiency**: Eliminates redundant change detection logic.

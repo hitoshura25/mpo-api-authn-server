@@ -216,7 +216,7 @@ jobs:
     needs: [ setup-config, validate-images, generate-version ]
     if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
     permissions:
-      contents: read
+      contents: write  # Required for creating GitHub releases (production only)
       packages: write  # Required for publishing to GitHub Packages
       id-token: write  # Required for npm publishing
     with:

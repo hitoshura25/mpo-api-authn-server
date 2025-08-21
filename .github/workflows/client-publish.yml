@@ -54,6 +54,25 @@ on:
         description: 'NPM package scope (optional - will use central config if not provided)'
         required: false
         type: string
+    secrets:
+      GRADLE_ENCRYPTION_KEY:
+        description: 'Gradle build cache encryption key'
+        required: true
+      NPM_TOKEN:
+        description: 'npm publishing token (required for production publishing)'
+        required: false
+      CENTRAL_PORTAL_USERNAME:
+        description: 'Maven Central Portal username'
+        required: false
+      CENTRAL_PORTAL_PASSWORD:
+        description: 'Maven Central Portal password'
+        required: false
+      SIGNING_KEY:
+        description: 'GPG signing key for Maven Central'
+        required: false
+      SIGNING_PASSWORD:
+        description: 'GPG signing key password'
+        required: false
     outputs:
       # Backward-compatible outputs for existing calling workflows
       typescript-package-name:

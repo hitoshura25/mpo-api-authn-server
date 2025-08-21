@@ -224,6 +224,8 @@ jobs:
       client-version: ${{ needs.generate-version.outputs.version }}
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'main' }}
       npm-scope: ${{ needs.setup-config.outputs.npm-scope }}
+    secrets:
+      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
   # Job 3: Call Web E2E tests workflow
   call-web-e2e-tests:

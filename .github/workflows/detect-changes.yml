@@ -1,0 +1,216 @@
+# Centralized Change Detection - Callable Workflow
+# 
+# Extracted from build-and-test.yml to eliminate duplication and provide
+# consistent change detection across all workflows using proven dorny/paths-filter patterns.
+#
+# USAGE:
+#   Uses dorny/paths-filter@v3 for reliable, maintained change detection
+#   Supports both PR context (against base branch) and push context (against previous commit)
+#
+# COMPONENT BOUNDARIES:
+#   - webauthn-server: webauthn-server/, webauthn-test-lib/ (shared dependency)
+#   - test-credentials-service: webauthn-test-credentials-service/, webauthn-test-lib/ (shared dependency) 
+#   - openapi-specification: OpenAPI files that trigger client regeneration
+#   - e2e-tests: E2E test files and configurations
+#   - workflows: GitHub Actions workflow files
+
+name: Detect Changes - Centralized
+
+on:
+  workflow_call:
+    outputs:
+      # Component change indicators for conditional execution
+      webauthn-server-changed:
+        description: 'Whether webauthn-server or shared dependencies changed'
+        value: ${{ jobs.detect-changes.outputs.webauthn-server-changed }}
+      test-credentials-service-changed:
+        description: 'Whether test-credentials-service or shared dependencies changed' 
+        value: ${{ jobs.detect-changes.outputs.test-credentials-service-changed }}
+      openapi-changed:
+        description: 'Whether OpenAPI specification changed (triggers client generation)'
+        value: ${{ jobs.detect-changes.outputs.openapi-changed }}
+      e2e-tests-changed:
+        description: 'Whether E2E test files changed'
+        value: ${{ jobs.detect-changes.outputs.e2e-tests-changed }}
+      workflows-changed:
+        description: 'Whether workflow files changed'
+        value: ${{ jobs.detect-changes.outputs.workflows-changed }}
+      
+      # Build decision outputs (compatible with build-and-test.yml)
+      should-run-docker-workflow:
+        description: 'Whether Docker workflow should be executed'
+        value: ${{ jobs.detect-changes.outputs.should-run-docker-workflow }}
+      should-run-e2e-workflow:
+        description: 'Whether E2E workflow should be executed'
+        value: ${{ jobs.detect-changes.outputs.should-run-e2e-workflow }}
+      should-run-tests-workflow:
+        description: 'Whether unit tests workflow should be executed'
+        value: ${{ jobs.detect-changes.outputs.should-run-tests-workflow }}
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      # Component change indicators
+      webauthn-server-changed: ${{ steps.decision-matrix.outputs.webauthn-server-changed }}
+      test-credentials-service-changed: ${{ steps.decision-matrix.outputs.test-credentials-service-changed }}
+      openapi-changed: ${{ steps.decision-matrix.outputs.openapi-changed }}
+      e2e-tests-changed: ${{ steps.decision-matrix.outputs.e2e-tests-changed }}
+      workflows-changed: ${{ steps.decision-matrix.outputs.workflows-changed }}
+      
+      # Build decision outputs (backward compatibility)
+      should-run-docker-workflow: ${{ steps.decision-matrix.outputs.should-run-docker-workflow }}
+      should-run-e2e-workflow: ${{ steps.decision-matrix.outputs.should-run-e2e-workflow }}
+      should-run-tests-workflow: ${{ steps.decision-matrix.outputs.should-run-tests-workflow }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Proven change detection using dorny/paths-filter (extracted from build-and-test.yml)
+      - name: Detect file changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            docs-changed:
+              - '**.md'
+              - 'docs/**'
+              - '!.github/workflows/**'
+            
+            # Workflow change detection  
+            orchestration-workflows:
+              - '.github/workflows/main-ci-cd.yml'
+              - '.github/workflows/build-and-test.yml'
+              - '.github/workflows/detect-changes.yml'
+            unit-test-workflows:
+              - '.github/workflows/unit-tests.yml'
+            docker-workflows:
+              - '.github/workflows/docker-build.yml'
+            e2e-workflows:
+              - '.github/workflows/e2e-tests.yml'
+              - '.github/workflows/web-e2e-tests.yml'
+              - '.github/workflows/android-e2e-tests.yml'
+            publishing-workflows:
+              - '.github/workflows/client-publish.yml'
+              - '.github/workflows/publish-*.yml'
+            
+            # Component-specific changes (webauthn-server + shared dependencies)
+            webauthn-server-tests:
+              - 'webauthn-server/src/**'
+              - 'webauthn-server/build.gradle.kts'
+              - 'webauthn-test-lib/**'
+              - 'settings.gradle.kts'
+              - 'build.gradle.kts'
+              - 'gradle.properties'
+              - 'gradle/**'
+            webauthn-server-docker:
+              - 'webauthn-server/src/main/**'
+              - 'webauthn-server/Dockerfile'
+              - 'webauthn-server/build.gradle.kts'
+              - 'webauthn-test-lib/src/main/**'
+              - 'settings.gradle.kts'
+              - 'build.gradle.kts'
+              - 'gradle.properties'
+            
+            # Component-specific changes (test-credentials-service + shared dependencies)
+            test-credentials-tests:
+              - 'webauthn-test-credentials-service/src/**'
+              - 'webauthn-test-credentials-service/build.gradle.kts'
+              - 'webauthn-test-lib/**'
+              - 'settings.gradle.kts'
+              - 'build.gradle.kts'
+              - 'gradle.properties'
+              - 'gradle/**'
+            test-credentials-docker:
+              - 'webauthn-test-credentials-service/src/main/**'
+              - 'webauthn-test-credentials-service/Dockerfile'
+              - 'webauthn-test-credentials-service/build.gradle.kts'
+              - 'webauthn-test-lib/src/main/**'
+              - 'settings.gradle.kts'
+              - 'build.gradle.kts'
+              - 'gradle.properties'
+            
+            # OpenAPI specification changes (triggers client generation)
+            openapi-changes:
+              - 'webauthn-server/src/main/resources/openapi/documentation.yaml'
+              - 'android-client-library/**'
+              - 'typescript-client-library/**'
+              - 'config/publishing-config.yml'
+            
+            # E2E test changes
+            e2e-test-changes:
+              - 'web-test-client/**'
+              - 'android-test-client/**'
+              - '.github/workflows/e2e-tests.yml'
+              - '.github/workflows/web-e2e-tests.yml'
+              - '.github/workflows/android-e2e-tests.yml'
+
+      - name: Print change detection results
+        run: |
+          echo "🔍 Change Detection Results:"
+          echo "webauthn-server-tests: ${{ steps.changes.outputs.webauthn-server-tests }}"
+          echo "webauthn-server-docker: ${{ steps.changes.outputs.webauthn-server-docker }}"
+          echo "test-credentials-tests: ${{ steps.changes.outputs.test-credentials-tests }}"
+          echo "test-credentials-docker: ${{ steps.changes.outputs.test-credentials-docker }}"
+          echo "openapi-changes: ${{ steps.changes.outputs.openapi-changes }}"
+          echo "e2e-test-changes: ${{ steps.changes.outputs.e2e-test-changes }}"
+          echo "orchestration-workflows: ${{ steps.changes.outputs.orchestration-workflows }}"
+
+      - name: Apply decision matrix logic
+        id: decision-matrix
+        run: |
+          # Component-level change detection (combining tests + docker patterns)
+          WEBAUTHN_SERVER_CHANGED="false"
+          if [[ "${{ steps.changes.outputs.webauthn-server-tests }}" == "true" || "${{ steps.changes.outputs.webauthn-server-docker }}" == "true" ]]; then
+            WEBAUTHN_SERVER_CHANGED="true"
+          fi
+          
+          TEST_CREDS_SERVICE_CHANGED="false"  
+          if [[ "${{ steps.changes.outputs.test-credentials-tests }}" == "true" || "${{ steps.changes.outputs.test-credentials-docker }}" == "true" ]]; then
+            TEST_CREDS_SERVICE_CHANGED="true"
+          fi
+          
+          OPENAPI_CHANGED="${{ steps.changes.outputs.openapi-changes }}"
+          E2E_TESTS_CHANGED="${{ steps.changes.outputs.e2e-test-changes }}"
+          
+          WORKFLOWS_CHANGED="false"
+          if [[ "${{ steps.changes.outputs.orchestration-workflows }}" == "true" || "${{ steps.changes.outputs.unit-test-workflows }}" == "true" || "${{ steps.changes.outputs.docker-workflows }}" == "true" || "${{ steps.changes.outputs.e2e-workflows }}" == "true" || "${{ steps.changes.outputs.publishing-workflows }}" == "true" ]]; then
+            WORKFLOWS_CHANGED="true" 
+          fi
+          
+          # Build decision logic (backward compatibility with build-and-test.yml)
+          SHOULD_RUN_DOCKER="false"
+          SHOULD_RUN_E2E="false"
+          SHOULD_RUN_TESTS="false"
+          
+          if [[ "$WEBAUTHN_SERVER_CHANGED" == "true" || "$TEST_CREDS_SERVICE_CHANGED" == "true" || "$WORKFLOWS_CHANGED" == "true" ]]; then
+            SHOULD_RUN_DOCKER="true"
+            SHOULD_RUN_E2E="true"
+            SHOULD_RUN_TESTS="true"
+          fi
+          
+          if [[ "$OPENAPI_CHANGED" == "true" || "$E2E_TESTS_CHANGED" == "true" ]]; then
+            SHOULD_RUN_E2E="true"
+          fi
+          
+          # Set outputs
+          echo "webauthn-server-changed=$WEBAUTHN_SERVER_CHANGED" >> $GITHUB_OUTPUT
+          echo "test-credentials-service-changed=$TEST_CREDS_SERVICE_CHANGED" >> $GITHUB_OUTPUT
+          echo "openapi-changed=$OPENAPI_CHANGED" >> $GITHUB_OUTPUT
+          echo "e2e-tests-changed=$E2E_TESTS_CHANGED" >> $GITHUB_OUTPUT
+          echo "workflows-changed=$WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
+          
+          echo "should-run-docker-workflow=$SHOULD_RUN_DOCKER" >> $GITHUB_OUTPUT
+          echo "should-run-e2e-workflow=$SHOULD_RUN_E2E" >> $GITHUB_OUTPUT
+          echo "should-run-tests-workflow=$SHOULD_RUN_TESTS" >> $GITHUB_OUTPUT
+          
+          echo "📊 Component Change Summary:"
+          echo "  webauthn-server: $WEBAUTHN_SERVER_CHANGED"
+          echo "  test-credentials-service: $TEST_CREDS_SERVICE_CHANGED"
+          echo "  openapi-specification: $OPENAPI_CHANGED"
+          echo "  e2e-tests: $E2E_TESTS_CHANGED"
+          echo "  workflows: $WORKFLOWS_CHANGED"
+          echo "🚀 Build Decisions:"
+          echo "  run-docker-workflow: $SHOULD_RUN_DOCKER"
+          echo "  run-e2e-workflow: $SHOULD_RUN_E2E"
+          echo "  run-tests-workflow: $SHOULD_RUN_TESTS"

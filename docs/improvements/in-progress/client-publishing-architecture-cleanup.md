@@ -1589,12 +1589,44 @@ Transform the monolithic workflow into an efficient, parallel, component-indepen
 
 #### Implementation Plan
 
-**Phase 10.1: Component Change Detection ✅ (Completed - 2025-08-22)**
+**Phase 10.1: Component Change Detection 🔄 (REVISED APPROACH - 2025-08-22)**
 
-- ✅ Implement file path pattern matching for component boundaries
-- ✅ Create OpenAPI specification diff algorithm for client library triggering
-- ✅ Add change detection logic to workflow with comprehensive testing
-- ✅ Comprehensive validation framework with 15+ test categories
+**CRITICAL ARCHITECTURE DECISION**: Reuse existing `dorny/paths-filter` from `build-and-test.yml` instead of custom scripting.
+
+**Rationale**: `build-and-test.yml` already has proven, maintained change detection using `dorny/paths-filter@v3` with:
+- ✅ Exact component boundaries we need (`webauthn-server-tests`, `test-credentials-tests`)
+- ✅ Shared dependency handling (`webauthn-test-lib/**` affects both services)
+- ✅ Sophisticated decision matrix logic already implemented
+- ✅ Production-tested and maintained by community
+
+**REVISED Implementation Plan**:
+- 🔄 **Extract `dorny/paths-filter` patterns** from `build-and-test.yml` (proven solution)
+- 🏗️ **Create centralized change detection**: Either extract to callable workflow OR integrate directly into `main-ci-cd.yml`
+- 📝 **Add OpenAPI-specific detection** for client generation triggering:
+  ```yaml
+  openapi-changes:
+    - 'webauthn-server/src/main/resources/openapi/documentation.yaml'
+    - 'android-client-library/**'
+    - 'typescript-client-library/**'
+  ```
+- 🔧 **Update `build-and-test.yml`** to consume centralized change detection (eliminate duplication)
+- ⚡ **Eliminate custom scripting complexity** in favor of proven approach
+
+**Implementation Options**:
+1. **Option A**: Create `detect-changes.yml` callable workflow, use in both `main-ci-cd.yml` and `build-and-test.yml`
+2. **Option B**: Move change detection directly to `main-ci-cd.yml`, have `build-and-test.yml` inherit results
+
+**Phase 10.1 Progress Update (2025-08-22)**:
+✅ **Created `detect-changes.yml` callable workflow** - Centralized change detection using proven `dorny/paths-filter` patterns
+🔄 **Next**: Update `main-ci-cd.yml` and `build-and-test.yml` to use callable workflow
+
+**For Fresh Claude Sessions**: 
+- **✅ COMPLETED**: `detect-changes.yml` callable workflow created with proven patterns
+- **🔄 NEXT STEPS**: 
+  1. Update `main-ci-cd.yml`: Add `detect-changes` job calling `./.github/workflows/detect-changes.yml`
+  2. Update `build-and-test.yml`: Replace local change detection with callable workflow
+  3. Implement conditional job execution using component-specific outputs
+- **Key Outputs Available**: `webauthn-server-changed`, `test-credentials-service-changed`, `openapi-changed`, `e2e-tests-changed`
 
 **Phase 10.2: Parallel Workflow Architecture (Weeks 2-3)**
 

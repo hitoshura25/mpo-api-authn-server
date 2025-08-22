@@ -69,9 +69,6 @@ on:
       DOCKER_PASSWORD:
         description: 'Docker Hub password'
         required: true
-      GITHUB_TOKEN:
-        description: 'GitHub token for registry access and release creation'
-        required: true
     outputs:
       docker-published:
         description: 'Whether any Docker images were published'

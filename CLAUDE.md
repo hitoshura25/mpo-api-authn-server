@@ -245,13 +245,13 @@ yq eval '.on.workflow_call.inputs' .github/workflows/callable-workflow.yml
 3. **Chain Dependencies**: Update job dependency chains if new outputs affect conditions
 
 #### **System Reserved Names to Avoid:**
-- **`GITHUB_TOKEN`**: Automatically available, cannot be explicitly defined in callable workflow secrets
+- **`GITHUB_TOKEN`**: Automatically available in all workflows, NEVER define in callable workflow secrets AND NEVER pass explicitly in secrets block of calling workflows
 - **GitHub Context Variables**: `github.*` properties are automatically available
 - **System Environment Variables**: Many system env vars are reserved and should not be overridden
 
 #### **Recently Fixed Critical Issues (August 2025):**
 1. **Missing Input Definitions**: `force-publish` added to `client-publish.yml` but missing from `publish-typescript.yml` and `publish-android.yml`
-2. **System Reserved Secret**: `GITHUB_TOKEN` cannot be explicitly defined in callable workflow secrets
+2. **GITHUB_TOKEN Double Error**: Cannot define `GITHUB_TOKEN` in callable workflow secrets AND cannot pass it explicitly in calling workflow secrets block
 3. **Input Type Mismatches**: Boolean inputs passed as strings causing validation failures
 
 #### **Validation Tools and Commands:**

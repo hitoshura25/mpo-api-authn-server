@@ -381,8 +381,8 @@ jobs:
 
             ### Published Images
 
-            ${{ needs.detect-changes.outputs.webauthn-server-changed == 'true' && format('- **WebAuthn Server**: `{0}:latest`', env.DOCKERHUB_SERVER_REPO) || '' }}
-            ${{ needs.detect-changes.outputs.test-credentials-changed == 'true' && format('- **Test Credentials Service**: `{0}:latest`', env.DOCKERHUB_TEST_CREDENTIALS_REPO) || '' }}
+            ${{ needs.detect-changes.outputs.webauthn-server-changed == 'true' && format('- **WebAuthn Server**: `{0}:latest`', needs.setup-config.outputs.dockerhub-server-repo) || '' }}
+            ${{ needs.detect-changes.outputs.test-credentials-changed == 'true' && format('- **Test Credentials Service**: `{0}:latest`', needs.setup-config.outputs.dockerhub-test-credentials-repo) || '' }}
 
             ### Usage
 

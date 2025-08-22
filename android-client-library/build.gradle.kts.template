@@ -78,13 +78,14 @@ mavenPublishing {
         logger.lifecycle("  GPG Signing: ENABLED")
         logger.lifecycle("  Manual Steps: NONE REQUIRED")
     } else {
-        // GitHub Packages for staging
-        publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.DEFAULT, automaticRelease = false)
+        // GitHub Packages for staging - do NOT use publishToMavenCentral()
+        // vanniktech publishToMavenCentral() is only for Maven Central/OSSRH, not GitHub Packages
         
         logger.lifecycle("📦 STAGING Publishing Configuration:")
         logger.lifecycle("  Target: GitHub Packages")
         logger.lifecycle("  Automatic Release: N/A")
         logger.lifecycle("  GPG Signing: DISABLED")
+        logger.lifecycle("  Publishing Method: Manual repository configuration")
         
         // Configure GitHub Packages repository manually for staging
         publishing {

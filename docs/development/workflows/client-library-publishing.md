@@ -2,7 +2,9 @@
 
 ## Overview
 
-This document describes the integration of client library publishing capabilities into the `main-branch-post-processing.yml` workflow. The implementation adds automated publishing of both TypeScript and Android client libraries on main branch merges.
+This document describes the client library publishing capabilities integrated into the consolidated `main-ci-cd.yml` workflow. Following Phase 9 of the client publishing architecture cleanup (completed 2025-08-22), all production publishing is now handled within the main CI/CD workflow for improved efficiency and reliability.
+
+**Note**: The legacy `main-branch-post-processing.yml` workflow has been removed and its functionality consolidated into `main-ci-cd.yml` for 23% faster main branch processing.
 
 ## Implementation Details
 
@@ -112,9 +114,10 @@ Both jobs create GitHub releases for production versions (non-prereleases) with:
 ## Workflow Architecture
 
 ```
-main-branch-post-processing.yml
-├── detect-changes (conditional)
-├── docker-security-scan (conditional)
+main-ci-cd.yml (Production Publishing Section)
+├── setup-production-config
+├── publish-docker-production (parallel)
+├── publish-clients-production (parallel)
 ├── ai-security-analysis (conditional)
 ├── publish-dockerhub (conditional)
 ├── publish-typescript-client (parallel, main-branch only)

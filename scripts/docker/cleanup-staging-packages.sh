@@ -562,7 +562,7 @@ cleanup_staging_docker() {
     if [[ "$DOCKER_CLEANUP_STRATEGY" == "preserve" ]]; then
         log "🚨 SKIPPING Docker image cleanup - preserving for production publishing"
         log "📦 Docker images preserved in GHCR for DockerHub publishing workflow"
-        log "🔄 main-branch-post-processing.yml will handle cleanup after publishing"
+        log "🔄 main-ci-cd.yml production publishing will handle cleanup after publishing"
         log ""
         log "📋 Images preserved:"
         log "  - ${DOCKER_REGISTRY:-ghcr.io}/${REPOSITORY_OWNER}/${DOCKER_WEBAUTHN_IMAGE_NAME}:latest"

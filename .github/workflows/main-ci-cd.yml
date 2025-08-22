@@ -116,11 +116,148 @@ jobs:
       skip-scan: false
     secrets: inherit
 
-  # Job 4: Report pipeline status
+  # Job 4: Setup configuration for production publishing (main branch only)
+  setup-production-config:
+    name: Setup Production Configuration
+    runs-on: ubuntu-latest
+    needs: [ build-and-test, e2e-tests, security-scanning ]
+    if: |
+      github.ref_name == 'main' &&
+      needs.build-and-test.result == 'success' &&
+      needs.e2e-tests.result == 'success' &&
+      needs.security-scanning.outputs.security-scan-passed == 'true'
+    outputs:
+      java-version: ${{ steps.config.outputs.java-version }}
+      docker-registry: ${{ steps.config.outputs.docker-registry }}
+      webauthn-image-name: ${{ steps.config.outputs.webauthn-image-name }}
+      test-credentials-image-name: ${{ steps.config.outputs.test-credentials-image-name }}
+      base-version: ${{ steps.config.outputs.base-version }}
+      npm-scope: ${{ steps.config.outputs.npm-scope }}
+      npm-package-name: ${{ steps.config.outputs.npm-package-name }}
+      client-version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history and tags for version continuity
+
+      - name: Load configuration from central config file
+        id: config
+        env:
+          PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
+          JAVA_VERSION: "21"
+          BASE_VERSION: "1.0"
+        run: |
+          echo "🔧 Loading production configuration from $PUBLISHING_CONFIG_FILE..."
+          
+          # Validate configuration file exists
+          if [ ! -f "$PUBLISHING_CONFIG_FILE" ]; then
+            echo "❌ Configuration file not found: $PUBLISHING_CONFIG_FILE"
+            exit 1
+          fi
+          
+          # Extract Docker configuration values
+          DOCKER_REGISTRY=$(yq '.docker.registry.url' "$PUBLISHING_CONFIG_FILE")
+          WEBAUTHN_IMAGE_NAME=$(yq '.docker.images.webauthn-server.name' "$PUBLISHING_CONFIG_FILE")
+          TEST_CREDENTIALS_IMAGE_NAME=$(yq '.docker.images.test-credentials-service.name' "$PUBLISHING_CONFIG_FILE")
+          
+          # Extract npm configuration
+          NPM_SCOPE=$(yq '.packages.typescript.scope.production' "$PUBLISHING_CONFIG_FILE")
+          NPM_PACKAGE_NAME=$(yq '.packages.typescript.basePackageName' "$PUBLISHING_CONFIG_FILE")
+          
+          # Validate required values are not null
+          if [ "$DOCKER_REGISTRY" = "null" ] || [ "$WEBAUTHN_IMAGE_NAME" = "null" ] || 
+             [ "$TEST_CREDENTIALS_IMAGE_NAME" = "null" ] || [ "$NPM_SCOPE" = "null" ] || 
+             [ "$NPM_PACKAGE_NAME" = "null" ]; then
+            echo "❌ Missing required configuration in $PUBLISHING_CONFIG_FILE"
+            echo "Registry: $DOCKER_REGISTRY"
+            echo "WebAuthn image: $WEBAUTHN_IMAGE_NAME"
+            echo "Test credentials image: $TEST_CREDENTIALS_IMAGE_NAME"
+            echo "NPM scope: $NPM_SCOPE"
+            echo "NPM package name: $NPM_PACKAGE_NAME"
+            exit 1
+          fi
+          
+          # Set outputs
+          echo "java-version=$JAVA_VERSION" >> $GITHUB_OUTPUT
+          echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
+          echo "webauthn-image-name=$WEBAUTHN_IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "test-credentials-image-name=$TEST_CREDENTIALS_IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "base-version=$BASE_VERSION" >> $GITHUB_OUTPUT
+          echo "npm-scope=$NPM_SCOPE" >> $GITHUB_OUTPUT
+          echo "npm-package-name=$NPM_PACKAGE_NAME" >> $GITHUB_OUTPUT
+          
+          echo "✅ Production configuration loaded successfully:"
+          echo "  Docker Registry: $DOCKER_REGISTRY"
+          echo "  WebAuthn Server: $WEBAUTHN_IMAGE_NAME"
+          echo "  Test Credentials: $TEST_CREDENTIALS_IMAGE_NAME"
+          echo "  NPM Scope: $NPM_SCOPE"
+          echo "  NPM Package: $NPM_PACKAGE_NAME"
+
+      - name: Generate production version
+        id: version
+        env:
+          BASE_VERSION: ${{ steps.config.outputs.base-version }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          echo "🎯 Generating production client version with centralized version manager"
+          ./scripts/core/version-manager.sh generate
+
+  # Job 5a: Publish Docker images to Docker Hub  
+  publish-docker-production:
+    name: Publish Docker Images to Docker Hub
+    needs: [ build-and-test, e2e-tests, security-scanning, setup-production-config ]
+    if: |
+      github.ref_name == 'main' &&
+      needs.setup-production-config.result == 'success'
+    uses: ./.github/workflows/publish-docker.yml
+    with:
+      docker-registry: ${{ needs.setup-production-config.outputs.docker-registry }}
+      webauthn-server-changed: "true"  # Always publish on main branch
+      test-credentials-changed: "true"  # Always publish on main branch
+      publish-from-main-ci: "true"
+      github-run-number: ${{ github.run_number }}
+    secrets:
+      DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+      DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    permissions:
+      contents: write     # Required for creating GitHub releases
+      attestations: write # Required for production attestation generation
+      id-token: write     # Required for Sigstore signing
+      packages: read      # Required for pulling from GHCR
+
+  # Job 5b: Publish client libraries in parallel
+  publish-clients-production:
+    name: Publish Client Libraries
+    needs: [ build-and-test, e2e-tests, security-scanning, setup-production-config ]
+    if: |
+      github.ref_name == 'main' &&
+      needs.setup-production-config.result == 'success'
+    uses: ./.github/workflows/client-publish.yml
+    with:
+      publish-type: "production"
+      client-version: ${{ needs.setup-production-config.outputs.client-version }}
+      workflow-identifier: "production"
+    permissions:
+      contents: write  # Required for creating GitHub releases and tags
+      packages: write  # Required for publishing to GitHub Packages
+      id-token: write  # Required for npm publishing
+    secrets:
+      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+      NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
+      CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
+      CENTRAL_PORTAL_PASSWORD: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+
+  # Job 6: Report pipeline status
   report-pipeline-status:
     name: Report Pipeline Status
     runs-on: ubuntu-latest
-    needs: [ build-and-test, e2e-tests, security-scanning ]
+    needs: [ build-and-test, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production ]
     if: always()
     outputs:
       pipeline-success: ${{ steps.determine-outcome.outputs.pipeline-success }}
@@ -133,6 +270,34 @@ jobs:
           echo "Docker Images Built: ${{ needs.build-and-test.outputs.docker_images_built }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
           echo "Security Scanning: ${{ needs.security-scanning.result }}"
+          
+          # Production publishing results (main branch only)
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            echo "📦 Production Publishing (Main Branch):"
+            echo "  Configuration Setup: ${{ needs.setup-production-config.result }}"
+            echo "  Docker Publishing: ${{ needs.publish-docker-production.result }}"
+            echo "  Client Publishing: ${{ needs.publish-clients-production.result }}"
+            
+            # Docker publishing results
+            if [[ "${{ needs.publish-docker-production.result }}" == "success" ]]; then
+              echo "  ✅ Docker Images Published: ${{ needs.publish-docker-production.outputs.docker-published }}"
+            elif [[ "${{ needs.publish-docker-production.result }}" == "failure" ]]; then
+              echo "  ❌ Docker publishing failed"
+            else
+              echo "  ⏸️ Docker publishing was skipped or cancelled"
+            fi
+            
+            # Client publishing results
+            if [[ "${{ needs.publish-clients-production.result }}" == "success" ]]; then
+              echo "  ✅ Client Libraries Published: TypeScript and Android"
+            elif [[ "${{ needs.publish-clients-production.result }}" == "failure" ]]; then
+              echo "  ❌ Client publishing failed"
+            else
+              echo "  ⏸️ Client publishing was skipped or cancelled"
+            fi
+          else
+            echo "📦 Production Publishing: Skipped (not main branch)"
+          fi
 
           # Check if build phase failed
           if [[ "${{ needs.build-and-test.result }}" != "success" ]]; then
@@ -181,6 +346,22 @@ jobs:
               echo "  ✅ Security scanning: No critical vulnerabilities"
               echo "  ✅ E2E testing: All integration tests successful"
               echo "  ⚡ Performance: Parallel execution optimized pipeline time"
+              
+              # Production publishing summary (main branch only)
+              if [[ "${{ github.ref_name }}" == "main" ]]; then
+                DOCKER_SUCCESS="${{ needs.publish-docker-production.result }}"
+                CLIENT_SUCCESS="${{ needs.publish-clients-production.result }}"
+                
+                if [[ "$DOCKER_SUCCESS" == "success" || "$CLIENT_SUCCESS" == "success" ]]; then
+                  echo "🚀 Production artifacts published successfully:"
+                  if [[ "$DOCKER_SUCCESS" == "success" ]]; then
+                    echo "  📦 Docker images published to Docker Hub"
+                  fi
+                  if [[ "$CLIENT_SUCCESS" == "success" ]]; then
+                    echo "  📚 Client libraries published to production registries"
+                  fi
+                fi
+              fi
             fi
           else
             echo "⚡ Fast path completed - no Docker builds needed (docs/workflow changes only)"
@@ -196,6 +377,7 @@ jobs:
           # Pipeline is successful if build-and-test succeeded and either:
           # 1. No Docker images were built (fast path)
           # 2. Docker images were built AND security scanning AND E2E tests passed
+          # 3. Main branch: All above + production publishing succeeded (if attempted)
           if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
             if [[ "${{ needs.build-and-test.outputs.docker_images_built }}" != "true" ]]; then
               # Fast path - no Docker builds
@@ -203,8 +385,31 @@ jobs:
               WORKFLOW_OUTCOME="success"
             elif [[ "${{ needs.security-scanning.outputs.security-scan-passed }}" == "true" && "${{ needs.e2e-tests.result }}" == "success" ]]; then
               # Full pipeline with Docker builds - all tests passed
-              PIPELINE_SUCCESS=true
-              WORKFLOW_OUTCOME="success"
+              if [[ "${{ github.ref_name }}" == "main" ]]; then
+                # Main branch - also check production publishing
+                DOCKER_SUCCESS="${{ needs.publish-docker-production.result }}"
+                CLIENT_SUCCESS="${{ needs.publish-clients-production.result }}"
+                CONFIG_SUCCESS="${{ needs.setup-production-config.result }}"
+                
+                if [[ "$CONFIG_SUCCESS" != "success" ]]; then
+                  # Production config failed, but tests passed - still consider success
+                  echo "⚠️ Production configuration failed, but core pipeline succeeded"
+                  PIPELINE_SUCCESS=true
+                  WORKFLOW_OUTCOME="success"
+                elif [[ "$DOCKER_SUCCESS" == "success" || "$CLIENT_SUCCESS" == "success" || ("$DOCKER_SUCCESS" == "skipped" && "$CLIENT_SUCCESS" == "skipped") ]]; then
+                  # At least one production publishing succeeded OR both were skipped
+                  PIPELINE_SUCCESS=true
+                  WORKFLOW_OUTCOME="success"
+                else
+                  # Both production publishing attempts failed
+                  echo "❌ All production publishing failed on main branch"
+                  echo "  Docker: $DOCKER_SUCCESS, Clients: $CLIENT_SUCCESS"
+                fi
+              else
+                # Non-main branch - standard success criteria
+                PIPELINE_SUCCESS=true
+                WORKFLOW_OUTCOME="success"
+              fi
             fi
           fi
 
@@ -214,12 +419,158 @@ jobs:
           echo "📊 Workflow outcome for staging cleanup: $WORKFLOW_OUTCOME"
           echo "🎯 Pipeline success status: $PIPELINE_SUCCESS"
 
-  # Job 5: Smart staging cleanup (final step)
-  smart-staging-cleanup:
-    name: Smart Staging Cleanup
+  # Job 7: Final cleanup after production publishing
+  final-cleanup:
+    name: Final Cleanup
     runs-on: ubuntu-latest
-    needs: [ build-and-test, e2e-tests, security-scanning, report-pipeline-status ]
-    if: always() && github.event_name == 'pull_request'
+    needs: [ build-and-test, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production, report-pipeline-status ]
+    if: always()
+    permissions:
+      contents: read          # Read repository code and git history
+      packages: write         # Package access for cleanup operations
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2  # Fetch recent commits to check for [preserve] keyword
+
+      - name: Check for emergency preserve override
+        id: check-preserve
+        run: |
+          # Check latest commit message for [preserve] keyword
+          if git log -1 --pretty=%s | grep -i '\[preserve\]' >/dev/null; then
+            echo "🚨 EMERGENCY OVERRIDE: [preserve] keyword found in commit message"
+            echo "preserve-override=true" >> $GITHUB_OUTPUT
+          else
+            echo "preserve-override=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Determine cleanup strategy
+        id: cleanup-strategy
+        run: |
+          echo "🧹 Determining cleanup strategy based on context..."
+          echo "📋 Context Analysis:"
+          echo "  Event: ${{ github.event_name }}"
+          echo "  Branch: ${{ github.ref_name }}"
+          echo "  Workflow outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
+          echo "  Emergency preserve: ${{ steps.check-preserve.outputs.preserve-override }}"
+          echo ""
+          
+          CLEANUP_TYPE="none"
+          CLEANUP_SCOPE="none"
+          
+          if [[ "${{ steps.check-preserve.outputs.preserve-override }}" == "true" ]]; then
+            echo "🚨 Emergency preserve override - skipping all cleanup"
+            CLEANUP_TYPE="preserve"
+          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "📦 Pull request cleanup - staging artifacts only"
+            CLEANUP_TYPE="staging"
+            CLEANUP_SCOPE="pr-artifacts"
+          elif [[ "${{ github.ref_name }}" == "main" && ("${{ needs.publish-docker-production.result }}" == "success" || "${{ needs.publish-clients-production.result }}" == "success") ]]; then
+            echo "🚀 Main branch with successful production publishing - GHCR cleanup"
+            CLEANUP_TYPE="production"
+            CLEANUP_SCOPE="ghcr-staging"
+          else
+            echo "⏭️ No cleanup needed for this context"
+          fi
+          
+          echo "cleanup-type=$CLEANUP_TYPE" >> $GITHUB_OUTPUT
+          echo "cleanup-scope=$CLEANUP_SCOPE" >> $GITHUB_OUTPUT
+          
+          echo "🎯 Cleanup Decision: $CLEANUP_TYPE ($CLEANUP_SCOPE)"
+
+      - name: Execute staging cleanup (PR only)
+        if: steps.cleanup-strategy.outputs.cleanup-type == 'staging'
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_ADMIN_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
+        run: |
+          echo "🧹 Starting smart staging cleanup for PR"
+          echo "📋 Cleanup scope: ONLY GitHub Packages staging artifacts"
+          echo "🎯 Workflow outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
+          echo ""
+
+          case "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" in
+            "success")
+              echo "✅ Workflow succeeded - performing COMPLETE staging cleanup"
+              echo "🗑️ Strategy: Delete ALL staging packages (validation complete, no longer needed)"
+              ;;
+            "failure")
+              echo "❌ Workflow failed - performing CONSERVATIVE staging cleanup"
+              echo "🔍 Strategy: Keep last 5 staging versions for debugging"
+              ;;
+          esac
+          echo ""
+
+          # Execute staging cleanup script
+          chmod +x scripts/docker/cleanup-staging-packages.sh
+          scripts/docker/cleanup-staging-packages.sh "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" "${{ github.repository_owner }}"
+
+      - name: Execute GHCR cleanup after production publishing (main branch only)
+        if: steps.cleanup-strategy.outputs.cleanup-type == 'production'
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_ADMIN_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_EVENT_NAME: "workflow_run"
+          GITHUB_REF_NAME: "main"
+          DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
+          FORCE_DOCKER_CLEANUP: "true"  # Override preservation logic for final cleanup
+        run: |
+          echo "🧹 Final GHCR cleanup after production publishing"
+          echo "📦 Phase 8: Docker Image Lifecycle Coordination - Final cleanup step"
+          echo "✅ Production publishing successful - performing final GHCR cleanup"
+          echo "🗑️ Removing preserved Docker images from GHCR after DockerHub publication"
+          echo ""
+
+          # Execute final cleanup script with force flag
+          chmod +x scripts/docker/cleanup-staging-packages.sh
+          scripts/docker/cleanup-staging-packages.sh "success" "${{ github.repository_owner }}"
+
+      - name: Report cleanup summary
+        if: always()
+        run: |
+          echo "📋 Final Cleanup Summary:"
+          echo "  Cleanup Type: ${{ steps.cleanup-strategy.outputs.cleanup-type }}"
+          echo "  Cleanup Scope: ${{ steps.cleanup-strategy.outputs.cleanup-scope }}"
+          echo "  Emergency Override: ${{ steps.check-preserve.outputs.preserve-override }}"
+          echo "  Workflow Outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
+          echo "  Pipeline Success: ${{ needs.report-pipeline-status.outputs.pipeline-success }}"
+          echo ""
+
+          case "${{ steps.cleanup-strategy.outputs.cleanup-type }}" in
+            "preserve")
+              echo "🚨 All cleanup skipped due to emergency override"
+              ;;
+            "staging")
+              if [[ "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" == "success" ]]; then
+                echo "🎉 Complete staging cleanup performed - all staging artifacts removed"
+                echo "✅ GitHub Packages staging cleanup completed successfully"
+              else
+                echo "🔍 Conservative staging cleanup performed - debugging artifacts preserved"
+                echo "⚠️  Some staging packages retained for investigation"
+              fi
+              ;;
+            "production")
+              echo "🚀 Production GHCR cleanup completed - staging images removed after DockerHub publication"
+              echo "✅ Docker Image Lifecycle Coordination: GHCR→DockerHub→Cleanup cycle completed"
+              ;;
+            "none")
+              echo "⏭️ No cleanup performed for this workflow context"
+              ;;
+          esac
+
+  # Job 8: Legacy staging cleanup job (for backward compatibility)
+  smart-staging-cleanup:
+    name: Smart Staging Cleanup (Legacy)
+    runs-on: ubuntu-latest
+    needs: [ final-cleanup ]
+    if: always() && github.event_name == 'pull_request' && needs.final-cleanup.result != 'success'
     permissions:
       contents: read          # Read repository code and git history
       packages: write         # Package access (GitHub Actions tokens cannot have admin permission)

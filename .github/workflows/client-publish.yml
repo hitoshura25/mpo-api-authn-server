@@ -20,6 +20,7 @@
 #   publish-type: 'staging' or 'production'
 #   client-version: Version for client libraries (e.g., 'pr-123.456' or '1.0.32')
 #   workflow-identifier: Workflow identifier (required for staging, ignored for production)
+#   force-publish: Force publishing even if version exists (optional, default: false)
 #
 # OUTPUTS:
 #   typescript-package-name: Full TypeScript package name published
@@ -49,6 +50,11 @@ on:
         description: 'Workflow identifier (for staging only)'
         required: false
         type: string
+      force-publish:
+        description: 'Force publishing even if version exists (optional, default: false)'
+        required: false
+        type: boolean
+        default: false
     secrets:
       GRADLE_ENCRYPTION_KEY:
         description: 'Gradle build cache encryption key'
@@ -69,7 +75,6 @@ on:
         description: 'GPG signing key password'
         required: false
     outputs:
-      # Backward-compatible outputs for existing calling workflows
       typescript-package-name:
         description: 'TypeScript package name published'
         value: ${{ jobs.aggregate-results.outputs.typescript-package-name }}
@@ -82,7 +87,12 @@ on:
       production-published:
         description: 'Whether production packages were published'
         value: ${{ jobs.aggregate-results.outputs.production-published }}
-      # New granular outputs for advanced monitoring
+      client-libraries-published:
+        description: 'Whether any client libraries were published'
+        value: ${{ jobs.aggregate-results.outputs.client-libraries-published }}
+      both-platforms-published:
+        description: 'Whether both TypeScript and Android were published'
+        value: ${{ jobs.aggregate-results.outputs.both-platforms-published }}
       typescript-published:
         description: 'Whether TypeScript package was actually published (not skipped)'
         value: ${{ jobs.aggregate-results.outputs.typescript-published }}
@@ -264,6 +274,7 @@ jobs:
       npm-credential-env: ${{ needs.setup-config.outputs.npm-credential-env }}
       npm-suffix: ${{ needs.setup-config.outputs.npm-suffix }}
       android-group-id: ${{ needs.setup-config.outputs.android-group-id }}  # Needed for Gradle generation
+      force-publish: ${{ inputs.force-publish }}
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
@@ -285,6 +296,7 @@ jobs:
       android-repository-url: ${{ needs.setup-config.outputs.android-repository-url }}
       # Credentials are hardcoded in publish-android.yml for simplicity
       android-suffix: ${{ needs.setup-config.outputs.android-suffix }}
+      force-publish: ${{ inputs.force-publish }}
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       CENTRAL_PORTAL_USERNAME: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
@@ -304,6 +316,9 @@ jobs:
       android-package-name: ${{ needs.publish-android.outputs.package-name }}
       staging-published: ${{ steps.aggregate-status.outputs.staging-published }}
       production-published: ${{ steps.aggregate-status.outputs.production-published }}
+      # Overall publishing status outputs
+      client-libraries-published: ${{ steps.aggregate-status.outputs.client-libraries-published }}
+      both-platforms-published: ${{ steps.aggregate-status.outputs.both-platforms-published }}
       # New granular outputs for advanced usage
       typescript-published: ${{ needs.publish-typescript.outputs.published }}
       typescript-skipped: ${{ needs.publish-typescript.outputs.skipped }}
@@ -352,6 +367,32 @@ jobs:
             fi
           fi
 
+          # Overall publishing status for both staging and production
+          TS_PUBLISHED_OR_SUCCESS="false"
+          ANDROID_PUBLISHED_OR_SUCCESS="false"
+          
+          if [[ "${{ needs.publish-typescript.result }}" == "success" ]]; then
+            TS_PUBLISHED_OR_SUCCESS="true"
+          fi
+          
+          if [[ "${{ needs.publish-android.result }}" == "success" ]]; then
+            ANDROID_PUBLISHED_OR_SUCCESS="true"
+          fi
+          
+          # Any client libraries published
+          if [[ "${TS_PUBLISHED_OR_SUCCESS}" == "true" || "${ANDROID_PUBLISHED_OR_SUCCESS}" == "true" ]]; then
+            echo "client-libraries-published=true" >> $GITHUB_OUTPUT
+          else
+            echo "client-libraries-published=false" >> $GITHUB_OUTPUT
+          fi
+          
+          # Both platforms published successfully
+          if [[ "${TS_PUBLISHED_OR_SUCCESS}" == "true" && "${ANDROID_PUBLISHED_OR_SUCCESS}" == "true" ]]; then
+            echo "both-platforms-published=true" >> $GITHUB_OUTPUT
+          else
+            echo "both-platforms-published=false" >> $GITHUB_OUTPUT
+          fi
+
       - name: Publishing summary
         run: |
           echo "🎯 Client Library Publishing Summary (Simplified Parallel Architecture):"
@@ -372,5 +413,8 @@ jobs:
           echo "  🎯 Overall Results:"
           echo "    Staging published: ${{ steps.aggregate-status.outputs.staging-published }}"
           echo "    Production published: ${{ steps.aggregate-status.outputs.production-published }}"
+          echo "    Client libraries published: ${{ steps.aggregate-status.outputs.client-libraries-published }}"
+          echo "    Both platforms published: ${{ steps.aggregate-status.outputs.both-platforms-published }}"
           echo ""
           echo "  ⚡ Performance: True parallel execution - no artifact sharing overhead"
+          echo "  🔧 Force publish mode: ${{ inputs.force-publish }}"

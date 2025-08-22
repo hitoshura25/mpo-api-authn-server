@@ -64,15 +64,15 @@ jobs:
     name: Detect Component Changes
     uses: ./.github/workflows/detect-changes.yml
 
-  # Job 2: Build and test with smart change detection
+  # Job 2: Build and test with centralized change detection
   build-and-test:
     name: Build & Test (Unit Tests + Docker Images)
     needs: detect-component-changes
     uses: ./.github/workflows/build-and-test.yml
     with:
       force-full-pipeline: ${{ inputs.force-full-pipeline || false }}
-      force-docker-build: ${{ inputs.force-docker-build || false }}
-      force-unit-tests: ${{ inputs.force-unit-tests || false }}
+      force-docker-build: ${{ inputs.force-docker-build || needs.detect-component-changes.outputs.should-run-docker-workflow == 'true' }}
+      force-unit-tests: ${{ inputs.force-unit-tests || needs.detect-component-changes.outputs.should-run-tests-workflow == 'true' }}
     permissions:
       contents: read          # Read repository code
       packages: write         # Push Docker images to GHCR
@@ -83,13 +83,14 @@ jobs:
       issues: write
     secrets: inherit
 
-  # Job 2: E2E tests using built Docker images
+  # Job 3: E2E tests using built Docker images with intelligent triggering
   e2e-tests:
     name: E2E Tests (Web + Android)
-    needs: build-and-test
+    needs: [detect-component-changes, build-and-test]
     if: |
       always() &&
-      needs.build-and-test.outputs.docker_images_built == 'true'
+      needs.build-and-test.outputs.docker_images_built == 'true' &&
+      needs.detect-component-changes.outputs.should-run-e2e-workflow == 'true'
     uses: ./.github/workflows/e2e-tests.yml
     permissions:
       contents: write         # Required for GitHub release creation in client publishing

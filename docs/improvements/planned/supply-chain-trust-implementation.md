@@ -55,6 +55,7 @@ This document contains a conversation about securing a software supply chain, fo
 >
 > - name: Publish and Sign Android Client
 >   # Similar steps for signing the JAR/AAR with Sigstore/GPG
+> ```
 > 
 > By doing this, you defeat the attack vectors you described:
 > Copied Manifest? Useless. The attacker can't generate a signature that ties back to your repository's identity.

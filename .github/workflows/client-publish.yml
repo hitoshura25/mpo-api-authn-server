@@ -114,7 +114,6 @@ jobs:
           echo "  Publish type: ${{ inputs.publish-type }}"
           echo "  Client version: ${{ inputs.client-version }}"
           echo "  Workflow identifier: ${{ inputs.workflow-identifier }}"
-          echo "  NPM scope: ${{ inputs.npm-scope }}"
 
           if [[ "${{ inputs.publish-type }}" != "staging" && "${{ inputs.publish-type }}" != "production" ]]; then
             echo "❌ Invalid publish-type: ${{ inputs.publish-type }}"
@@ -148,7 +147,7 @@ jobs:
   setup-config:
     runs-on: ubuntu-latest
     outputs:
-      # Package configuration outputs
+      # Package configuration outputs  
       npm-scope: ${{ steps.config.outputs.npm-scope }}
       npm-package-name: ${{ steps.config.outputs.npm-package-name }}
       android-group-id: ${{ steps.config.outputs.android-group-id }}
@@ -189,7 +188,6 @@ jobs:
           PUBLISH_TYPE="${{ inputs.publish-type }}"
           NPM_SCOPE=$(yq ".packages.typescript.scope.${PUBLISH_TYPE}" ${{ env.PUBLISHING_CONFIG_FILE }})
           
-          echo "ℹ️ Using npm-scope from central config for ${PUBLISH_TYPE} environment: ${NPM_SCOPE}"
           ANDROID_GROUP_ID=$(yq '.packages.android.groupId' ${{ env.PUBLISHING_CONFIG_FILE }})
           ANDROID_ARTIFACT_BASE_ID=$(yq '.packages.android.baseArtifactId' ${{ env.PUBLISHING_CONFIG_FILE }})
 

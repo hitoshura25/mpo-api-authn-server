@@ -59,7 +59,6 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event.workflow_run.conclusion == 'success'
     outputs:
-      npm-scope: ${{ steps.config.outputs.npm-scope }}
       npm-package-name: ${{ steps.config.outputs.npm-package-name }}
       docker-registry: ${{ steps.config.outputs.docker-registry }}
       docker-webauthn-image: ${{ steps.config.outputs.docker-webauthn-image }}
@@ -89,23 +88,20 @@ jobs:
           echo "✅ Using pre-installed yq: $(yq --version)"
 
           # Load package configuration (production environment)
-          NPM_SCOPE=$(yq '.packages.typescript.scope.production' ${{ env.PUBLISHING_CONFIG_FILE }})
           NPM_PACKAGE_NAME=$(yq '.packages.typescript.basePackageName' ${{ env.PUBLISHING_CONFIG_FILE }})
 
           # Validate required values are present
-          if [[ -z "$NPM_SCOPE" || "$NPM_PACKAGE_NAME" == "null" ]]; then
+          if [[ "$NPM_PACKAGE_NAME" == "null" ]]; then
             echo "❌ Missing required npm configuration:"
-            echo "  NPM_SCOPE: '${NPM_SCOPE}'"
             echo "  NPM_PACKAGE_NAME: '${NPM_PACKAGE_NAME}'"
             exit 1
           fi
 
           # Set outputs
-          echo "npm-scope=${NPM_SCOPE}" >> $GITHUB_OUTPUT
           echo "npm-package-name=${NPM_PACKAGE_NAME}" >> $GITHUB_OUTPUT
 
           echo "✅ Central configuration loaded successfully:"
-          echo "  NPM package: ${NPM_SCOPE}/${NPM_PACKAGE_NAME}"
+          echo "  NPM package name: ${NPM_PACKAGE_NAME} (scope determined by client-publish.yml)"
 
   # Job 2: Check if main CI built new Docker images (determines processing strategy)
   check-main-ci-images:
@@ -436,7 +432,6 @@ jobs:
       publish-type: "production"
       client-version: "${{ needs.generate-production-version.outputs.version }}"
       workflow-identifier: "production"
-      npm-scope: "${{ needs.setup-config.outputs.npm-scope }}"
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
       NPM_PUBLISH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}

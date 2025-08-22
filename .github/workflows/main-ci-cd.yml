@@ -62,31 +62,7 @@ jobs:
   # Job 1: Component change detection for independent processing optimization (Phase 10.1)
   detect-component-changes:
     name: Detect Component Changes
-    runs-on: ubuntu-latest
-    outputs:
-      webauthn-server-changed: ${{ steps.component-detection.outputs.webauthn-server-changed }}
-      test-credentials-service-changed: ${{ steps.component-detection.outputs.test-credentials-service-changed }}
-      openapi-changed: ${{ steps.component-detection.outputs.openapi-changed }}
-      e2e-tests-changed: ${{ steps.component-detection.outputs.e2e-tests-changed }}
-      infrastructure-changed: ${{ steps.component-detection.outputs.infrastructure-changed }}
-      client-generation-required: ${{ steps.component-detection.outputs.client-generation-required }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Fetch full history for accurate diff analysis
-
-      - name: Run component change detection
-        id: component-detection
-        run: |
-          echo "🔍 Phase 10.1: Component Change Detection for Independent Processing"
-          echo "Analyzing changes to determine which components require processing..."
-          
-          # Make script executable
-          chmod +x scripts/core/detect-component-changes.sh
-          
-          # Run detection script - it will automatically detect PR vs main branch context
-          ./scripts/core/detect-component-changes.sh
+    uses: ./.github/workflows/detect-changes.yml
 
   # Job 2: Build and test with smart change detection
   build-and-test:

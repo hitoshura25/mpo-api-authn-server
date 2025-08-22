@@ -298,7 +298,7 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 - Automated security gates and PR labeling
 - Complete security analysis consolidation
 
-**Docker Security & Publishing**: `main-branch-post-processing.yml`
+**Docker Security & Publishing**: `main-ci-cd.yml`
 
 - AI-enhanced Docker vulnerability scanning
 - Change detection to prevent unnecessary publishing

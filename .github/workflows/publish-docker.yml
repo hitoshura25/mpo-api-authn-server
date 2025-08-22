@@ -1,0 +1,388 @@
+# Docker Hub Production Publishing Workflow
+#
+# This callable workflow handles Docker Hub publishing with production attestation generation.
+# It consolidates Docker publishing logic as part of Phase 9 client publishing architecture cleanup,
+# replacing the legacy main-branch-post-processing.yml workflow.
+#
+# ARCHITECTURE:
+# Phase 1 - Configuration Setup:
+# 1. Load centralized configuration from config/publishing-config.yml
+# 2. Validate Docker registry authentication and environment variables
+#
+# Phase 2 - Change Detection & Publishing Strategy:
+# 3. Determine publishing strategy based on input parameters
+# 4. Conditional Docker Hub publishing based on change detection results
+# 5. Pull from GHCR → Re-tag → Push to Docker Hub with same tags
+#
+# Phase 3 - Production Attestation & Metadata:
+# 6. Generate production attestations for published images
+# 7. Update Docker Hub repository descriptions
+# 8. Create GitHub release with published image information
+#
+# INPUTS:
+#   docker-registry: Docker registry URL (e.g., "ghcr.io")
+#   webauthn-server-changed: Whether WebAuthn server image should be published
+#   test-credentials-changed: Whether test credentials service image should be published
+#   publish-from-main-ci: Whether images were built in main CI (vs fallback)
+#   github-run-number: GitHub run number for release tagging
+#
+# OUTPUTS:
+#   docker-published: Whether any Docker images were published
+#   webauthn-published: Whether WebAuthn server was published
+#   test-credentials-published: Whether test credentials service was published
+#   release-tag: GitHub release tag created (if any)
+#
+# SECRETS:
+#   DOCKER_USERNAME: Docker Hub username
+#   DOCKER_PASSWORD: Docker Hub password
+#   GITHUB_TOKEN: GitHub token for registry access and release creation
+
+name: Docker Hub Production Publishing
+
+on:
+  workflow_call:
+    inputs:
+      docker-registry:
+        description: 'Docker registry URL (e.g., ghcr.io)'
+        required: true
+        type: string
+      webauthn-server-changed:
+        description: 'Whether WebAuthn server image should be published'
+        required: true
+        type: string
+      test-credentials-changed:
+        description: 'Whether test credentials service image should be published'
+        required: true
+        type: string
+      publish-from-main-ci:
+        description: 'Whether images were built in main CI (vs fallback)'
+        required: true
+        type: string
+      github-run-number:
+        description: 'GitHub run number for release tagging'
+        required: true
+        type: string
+    secrets:
+      DOCKER_USERNAME:
+        description: 'Docker Hub username'
+        required: true
+      DOCKER_PASSWORD:
+        description: 'Docker Hub password'
+        required: true
+    outputs:
+      docker-published:
+        description: 'Whether any Docker images were published'
+        value: ${{ jobs.publish-dockerhub.outputs.docker-published }}
+      webauthn-published:
+        description: 'Whether WebAuthn server was published'
+        value: ${{ jobs.publish-dockerhub.outputs.webauthn-published }}
+      test-credentials-published:
+        description: 'Whether test credentials service was published'
+        value: ${{ jobs.publish-dockerhub.outputs.test-credentials-published }}
+      release-tag:
+        description: 'GitHub release tag created (if any)'
+        value: ${{ jobs.publish-dockerhub.outputs.release-tag }}
+
+env:
+  # Central configuration file path
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
+
+jobs:
+  # Job 1: Load centralized configuration
+  setup-config:
+    name: Load Docker publishing configuration
+    runs-on: ubuntu-latest
+    outputs:
+      docker-webauthn-image: ${{ steps.config.outputs.docker-webauthn-image }}
+      docker-test-credentials-image: ${{ steps.config.outputs.docker-test-credentials-image }}
+      dockerhub-server-repo: ${{ steps.config.outputs.dockerhub-server-repo }}
+      dockerhub-test-credentials-repo: ${{ steps.config.outputs.dockerhub-test-credentials-repo }}
+      webauthn-description: ${{ steps.config.outputs.webauthn-description }}
+      test-credentials-description: ${{ steps.config.outputs.test-credentials-description }}
+      webauthn-readme: ${{ steps.config.outputs.webauthn-readme }}
+      test-credentials-readme: ${{ steps.config.outputs.test-credentials-readme }}
+    steps:
+      - name: Checkout code for configuration
+        uses: actions/checkout@v4
+
+      - name: Load Docker publishing configuration
+        id: config
+        run: |
+          echo "🔧 Loading Docker publishing configuration from ${{ env.PUBLISHING_CONFIG_FILE }}..."
+          
+          # Validate configuration file exists
+          if [[ ! -f "${{ env.PUBLISHING_CONFIG_FILE }}" ]]; then
+            echo "❌ Configuration file not found: ${{ env.PUBLISHING_CONFIG_FILE }}"
+            exit 1
+          fi
+
+          # Verify yq is available (pre-installed on ubuntu-latest runners)
+          if ! command -v yq &> /dev/null; then
+            echo "❌ yq not found. Using pre-installed version on ubuntu-latest runners."
+            exit 1
+          fi
+          echo "✅ Using pre-installed yq: $(yq --version)"
+
+          # Load Docker configuration
+          DOCKER_WEBAUTHN_IMAGE=$(yq '.docker.images.webauthn-server.name' ${{ env.PUBLISHING_CONFIG_FILE }})
+          DOCKER_TEST_CREDENTIALS_IMAGE=$(yq '.docker.images.test-credentials-service.name' ${{ env.PUBLISHING_CONFIG_FILE }})
+          DOCKERHUB_SERVER_REPO=$(yq '.docker.images.webauthn-server.dockerhub' ${{ env.PUBLISHING_CONFIG_FILE }})
+          DOCKERHUB_TEST_CREDENTIALS_REPO=$(yq '.docker.images.test-credentials-service.dockerhub' ${{ env.PUBLISHING_CONFIG_FILE }})
+          
+          # Load metadata
+          WEBAUTHN_DESCRIPTION=$(yq '.docker.images.webauthn-server.description' ${{ env.PUBLISHING_CONFIG_FILE }})
+          TEST_CREDENTIALS_DESCRIPTION=$(yq '.docker.images.test-credentials-service.description' ${{ env.PUBLISHING_CONFIG_FILE }})
+          WEBAUTHN_README=$(yq '.docker.images.webauthn-server.readme' ${{ env.PUBLISHING_CONFIG_FILE }})
+          TEST_CREDENTIALS_README=$(yq '.docker.images.test-credentials-service.readme' ${{ env.PUBLISHING_CONFIG_FILE }})
+
+          # Validate required values are present
+          if [[ "$DOCKER_WEBAUTHN_IMAGE" == "null" || "$DOCKER_TEST_CREDENTIALS_IMAGE" == "null" || 
+                "$DOCKERHUB_SERVER_REPO" == "null" || "$DOCKERHUB_TEST_CREDENTIALS_REPO" == "null" ]]; then
+            echo "❌ Missing required Docker configuration:"
+            echo "  DOCKER_WEBAUTHN_IMAGE: '${DOCKER_WEBAUTHN_IMAGE}'"
+            echo "  DOCKER_TEST_CREDENTIALS_IMAGE: '${DOCKER_TEST_CREDENTIALS_IMAGE}'"
+            echo "  DOCKERHUB_SERVER_REPO: '${DOCKERHUB_SERVER_REPO}'"
+            echo "  DOCKERHUB_TEST_CREDENTIALS_REPO: '${DOCKERHUB_TEST_CREDENTIALS_REPO}'"
+            exit 1
+          fi
+
+          # Set outputs
+          echo "docker-webauthn-image=${DOCKER_WEBAUTHN_IMAGE}" >> $GITHUB_OUTPUT
+          echo "docker-test-credentials-image=${DOCKER_TEST_CREDENTIALS_IMAGE}" >> $GITHUB_OUTPUT
+          echo "dockerhub-server-repo=${DOCKERHUB_SERVER_REPO}" >> $GITHUB_OUTPUT
+          echo "dockerhub-test-credentials-repo=${DOCKERHUB_TEST_CREDENTIALS_REPO}" >> $GITHUB_OUTPUT
+          echo "webauthn-description=${WEBAUTHN_DESCRIPTION}" >> $GITHUB_OUTPUT
+          echo "test-credentials-description=${TEST_CREDENTIALS_DESCRIPTION}" >> $GITHUB_OUTPUT
+          echo "webauthn-readme=${WEBAUTHN_README}" >> $GITHUB_OUTPUT
+          echo "test-credentials-readme=${TEST_CREDENTIALS_README}" >> $GITHUB_OUTPUT
+
+          echo "✅ Docker publishing configuration loaded successfully:"
+          echo "  GHCR WebAuthn image: ${DOCKER_WEBAUTHN_IMAGE}"
+          echo "  GHCR Test Credentials image: ${DOCKER_TEST_CREDENTIALS_IMAGE}"
+          echo "  Docker Hub WebAuthn repo: ${DOCKERHUB_SERVER_REPO}"
+          echo "  Docker Hub Test Credentials repo: ${DOCKERHUB_TEST_CREDENTIALS_REPO}"
+
+  # Job 2: Publish to Docker Hub with production attestations
+  publish-dockerhub:
+    name: Publish to Docker Hub
+    runs-on: ubuntu-latest
+    needs: setup-config
+    # Only publish if at least one image has changes
+    if: inputs.webauthn-server-changed == 'true' || inputs.test-credentials-changed == 'true'
+    outputs:
+      docker-published: ${{ steps.publish-status.outputs.docker-published }}
+      webauthn-published: ${{ steps.publish-status.outputs.webauthn-published }}
+      test-credentials-published: ${{ steps.publish-status.outputs.test-credentials-published }}
+      release-tag: ${{ steps.github-release.outputs.release-tag }}
+    permissions:
+      contents: write     # Required for creating GitHub releases
+      attestations: write # Required for production attestation generation
+      id-token: write     # Required for Sigstore signing
+      packages: read      # Required for pulling from GHCR
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Docker Hub publishing strategy
+        run: |
+          echo "📦 DOCKER HUB PUBLISHING STRATEGY"
+          echo "  Publish from main CI: ${{ inputs.publish-from-main-ci }}"
+          echo "  WebAuthn server changed: ${{ inputs.webauthn-server-changed }}"
+          echo "  Test credentials changed: ${{ inputs.test-credentials-changed }}"
+          echo ""
+          
+          if [[ "${{ inputs.publish-from-main-ci }}" == "true" ]]; then
+            echo "✅ Publishing pre-validated images from main CI pipeline"
+            echo "🚀 Images were built and scanned in main CI → publishing to Docker Hub"
+          else
+            echo "🔄 Publishing fallback images from post-processing pipeline"
+            echo "⚠️ This path should be rare - main CI usually handles Docker builds"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ inputs.docker-registry }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Publish to Docker Hub
+        id: dockerhub-publish
+        env:
+          DOCKER_REGISTRY: ${{ inputs.docker-registry }}
+          DOCKER_IMAGE_NAME: ${{ needs.setup-config.outputs.docker-webauthn-image }}
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: ${{ needs.setup-config.outputs.docker-test-credentials-image }}
+          DOCKERHUB_SERVER_REPO: ${{ needs.setup-config.outputs.dockerhub-server-repo }}
+          DOCKERHUB_TEST_CREDENTIALS_REPO: ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}
+        run: |
+          echo "🚀 Starting Docker Hub publishing process..."
+          
+          # Make publish script executable
+          chmod +x scripts/docker/publish-dockerhub.sh
+          
+          # Execute Docker Hub publishing script
+          scripts/docker/publish-dockerhub.sh "${{ inputs.webauthn-server-changed }}" "${{ inputs.test-credentials-changed }}"
+
+      - name: Set publishing status outputs
+        id: publish-status
+        run: |
+          # Determine what was actually published
+          DOCKER_PUBLISHED="false"
+          WEBAUTHN_PUBLISHED="false"
+          TEST_CREDENTIALS_PUBLISHED="false"
+          
+          if [[ "${{ inputs.webauthn-server-changed }}" == "true" ]]; then
+            WEBAUTHN_PUBLISHED="true"
+            DOCKER_PUBLISHED="true"
+          fi
+          
+          if [[ "${{ inputs.test-credentials-changed }}" == "true" ]]; then
+            TEST_CREDENTIALS_PUBLISHED="true"
+            DOCKER_PUBLISHED="true"
+          fi
+          
+          echo "docker-published=${DOCKER_PUBLISHED}" >> $GITHUB_OUTPUT
+          echo "webauthn-published=${WEBAUTHN_PUBLISHED}" >> $GITHUB_OUTPUT
+          echo "test-credentials-published=${TEST_CREDENTIALS_PUBLISHED}" >> $GITHUB_OUTPUT
+          
+          echo "📊 Publishing Status Summary:"
+          echo "  Docker published: ${DOCKER_PUBLISHED}"
+          echo "  WebAuthn published: ${WEBAUTHN_PUBLISHED}"
+          echo "  Test credentials published: ${TEST_CREDENTIALS_PUBLISHED}"
+
+      # Production attestations: Get digests and generate signed provenance for Docker Hub images
+      - name: Get Docker Hub image digests for attestation
+        id: get-digests
+        if: steps.dockerhub-publish.outcome == 'success'
+        run: |
+          echo "📋 Getting Docker Hub image digests for attestation..."
+
+          if [[ "${{ inputs.webauthn-server-changed }}" == "true" ]]; then
+            # Get the digest of the Docker Hub WebAuthn Server image
+            WEBAUTHN_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ needs.setup-config.outputs.dockerhub-server-repo }}:latest | cut -d'@' -f2)
+            echo "📋 WebAuthn Server Docker Hub digest: $WEBAUTHN_DIGEST"
+            echo "webauthn-digest=$WEBAUTHN_DIGEST" >> $GITHUB_OUTPUT
+          fi
+
+          if [[ "${{ inputs.test-credentials-changed }}" == "true" ]]; then
+            # Get the digest of the Docker Hub Test Credentials image
+            TEST_CREDENTIALS_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}:latest | cut -d'@' -f2)
+            echo "📋 Test Credentials Docker Hub digest: $TEST_CREDENTIALS_DIGEST"
+            echo "test-credentials-digest=$TEST_CREDENTIALS_DIGEST" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate production attestation for WebAuthn Server
+        id: webauthn-production-attestation
+        if: inputs.webauthn-server-changed == 'true' && steps.dockerhub-publish.outcome == 'success'
+        uses: actions/attest-build-provenance@v2
+        continue-on-error: true  # Don't fail workflow on GitHub attestation service issues
+        with:
+          subject-name: ${{ needs.setup-config.outputs.dockerhub-server-repo }}
+          subject-digest: ${{ steps.get-digests.outputs.webauthn-digest }}
+          push-to-registry: true
+        env:
+          ACTIONS_STEP_DEBUG: true
+
+      - name: Generate production attestation for Test Credentials Service
+        id: test-credentials-production-attestation
+        if: inputs.test-credentials-changed == 'true' && steps.dockerhub-publish.outcome == 'success'
+        uses: actions/attest-build-provenance@v2
+        continue-on-error: true  # Don't fail workflow on GitHub attestation service issues
+        with:
+          subject-name: ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}
+          subject-digest: ${{ steps.get-digests.outputs.test-credentials-digest }}
+          push-to-registry: true
+        env:
+          ACTIONS_STEP_DEBUG: true
+
+      - name: Update WebAuthn Server Docker Hub description
+        if: inputs.webauthn-server-changed == 'true'
+        uses: peter-evans/dockerhub-description@v4
+        continue-on-error: true  # Don't fail workflow if description update fails
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: ${{ needs.setup-config.outputs.dockerhub-server-repo }}
+          short-description: ${{ needs.setup-config.outputs.webauthn-description }}
+          readme-filepath: ${{ needs.setup-config.outputs.webauthn-readme }}
+
+      - name: Update Test Credentials Service Docker Hub description
+        if: inputs.test-credentials-changed == 'true'
+        uses: peter-evans/dockerhub-description@v4
+        continue-on-error: true  # Don't fail workflow if description update fails
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}
+          short-description: ${{ needs.setup-config.outputs.test-credentials-description }}
+          readme-filepath: ${{ needs.setup-config.outputs.test-credentials-readme }}
+
+      # IMMEDIATE DOCKER RELEASE: Create GitHub release immediately after successful Docker Hub publish
+      # This ensures successful Docker publications are tracked even if other artifacts fail
+      - name: Create GitHub Release for Docker publication
+        id: github-release
+        if: steps.dockerhub-publish.outcome == 'success'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: "docker-v${{ inputs.github-run-number }}"
+          name: "Docker Images v${{ inputs.github-run-number }}"
+          body: |
+            ## Docker Images Publication
+
+            Successfully published Docker images to Docker Hub on $(date -u +"%Y-%m-%d %H:%M:%S UTC").
+
+            ### Published Images
+
+            ${{ inputs.webauthn-server-changed == 'true' && format('- **WebAuthn Server**: `{0}:latest`', needs.setup-config.outputs.dockerhub-server-repo) || '' }}
+            ${{ inputs.test-credentials-changed == 'true' && format('- **Test Credentials Service**: `{0}:latest`', needs.setup-config.outputs.dockerhub-test-credentials-repo) || '' }}
+
+            ### Usage
+
+            #### WebAuthn Server
+            ```bash
+            docker pull ${{ needs.setup-config.outputs.dockerhub-server-repo }}:latest
+            docker run -p 8080:8080 ${{ needs.setup-config.outputs.dockerhub-server-repo }}:latest
+            ```
+
+            #### Test Credentials Service
+            ```bash
+            docker pull ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}:latest
+            docker run -p 8081:8081 ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}:latest
+            ```
+
+            ### Features
+            - Production-ready WebAuthn authentication server
+            - Cross-platform test credentials service
+            - Security-scanned and attestation-signed images
+            - Full FIDO2/WebAuthn compliance
+
+            ### Documentation
+            - [WebAuthn Server README](https://github.com/${{ github.repository }}/blob/main/webauthn-server/README.md)
+            - [Test Credentials Service README](https://github.com/${{ github.repository }}/blob/main/webauthn-test-credentials-service/README.md)
+            - [Docker Setup Guide](https://github.com/${{ github.repository }}/blob/main/README.md#docker-setup)
+
+            ### Build Details
+            - **Workflow**: ${{ github.workflow }}
+            - **Run ID**: ${{ github.run_id }}
+            - **Status**: ✅ Docker publication successful
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set release tag output
+        run: |
+          if [[ "${{ steps.dockerhub-publish.outcome }}" == "success" ]]; then
+            echo "release-tag=docker-v${{ inputs.github-run-number }}" >> $GITHUB_OUTPUT
+          else
+            echo "release-tag=" >> $GITHUB_OUTPUT
+          fi

@@ -64,6 +64,11 @@ on:
         description: 'Android group ID (for Gradle generation parameters)'
         required: true
         type: string
+      force-publish:
+        description: 'Force publishing even if version exists (optional, default: false)'
+        required: false
+        type: boolean
+        default: false
     secrets:
       GRADLE_ENCRYPTION_KEY:
         description: 'Gradle build cache encryption key'

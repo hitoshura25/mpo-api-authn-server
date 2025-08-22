@@ -187,6 +187,87 @@ docker-registry: ${{ env.DOCKER_REGISTRY }}
 
 **Why This Matters**: These patterns prevent common publishing failures and ensure consistent configuration across all client library workflows.
 
+### 🔄 CRITICAL: Callable Workflow Input/Output Validation
+
+**MANDATORY validation process for callable workflow refactoring to prevent input/output mismatch errors.**
+
+#### **🚨 CRITICAL: Input/Output Contract Validation (Recurring Issue Pattern)**
+**ALWAYS validate that inputs passed to callable workflows match their definitions:**
+
+**Common Failure Pattern:**
+- Enhance orchestrator workflow (e.g., `client-publish.yml`) to pass new input (`force-publish`)
+- Forget to add corresponding input definition to called workflows (`publish-typescript.yml`, `publish-android.yml`)
+- Result: "Invalid input, X is not defined in the referenced workflow" errors
+
+#### **Mandatory Validation Checklist for Callable Workflow Changes:**
+
+**Before Any Callable Workflow Refactoring:**
+- [ ] **Map All Input Dependencies**: Document which workflows call which other workflows
+- [ ] **Input Contract Verification**: Ensure ALL inputs passed by callers are defined in callable workflows
+- [ ] **Output Contract Verification**: Ensure ALL outputs referenced by callers are defined in callable workflows  
+- [ ] **Secret Contract Verification**: Ensure ALL secrets passed are properly defined (excluding system secrets like `GITHUB_TOKEN`)
+- [ ] **Permission Alignment**: Verify calling workflows have necessary permissions for callable workflows
+
+#### **Systematic Validation Process:**
+
+**Step 1: Workflow Dependency Mapping**
+```bash
+# Find all callable workflow references
+grep -r "uses: .*\.yml" .github/workflows/
+# Document the calling relationships
+```
+
+**Step 2: Input/Output Contract Validation**
+```bash
+# For each callable workflow, validate inputs match callers
+# Example: If client-publish.yml passes force-publish to publish-typescript.yml
+grep -A 10 "force-publish" .github/workflows/client-publish.yml    # Caller
+grep -A 5 "force-publish" .github/workflows/publish-typescript.yml # Callable
+```
+
+**Step 3: Automated Syntax Validation**
+```bash
+# GitHub Actions will validate on push, but local validation prevents failed commits
+yq eval '.on.workflow_call.inputs' .github/workflows/callable-workflow.yml
+```
+
+#### **Input/Output Synchronization Patterns:**
+
+**When Adding New Inputs to Orchestrator:**
+1. **Add to Orchestrator**: Define input in orchestrator workflow (e.g., `client-publish.yml`)
+2. **Add to All Callees**: Add same input to ALL workflows called by orchestrator
+3. **Validate Contract**: Ensure input names, types, and requirements match exactly
+4. **Test Locally**: Push to feature branch and verify GitHub Actions validation passes
+
+**When Adding New Outputs:**
+1. **Define in Callable**: Add output to callable workflow
+2. **Reference in Caller**: Update calling workflow to use new output
+3. **Chain Dependencies**: Update job dependency chains if new outputs affect conditions
+
+#### **System Reserved Names to Avoid:**
+- **`GITHUB_TOKEN`**: Automatically available, cannot be explicitly defined in callable workflow secrets
+- **GitHub Context Variables**: `github.*` properties are automatically available
+- **System Environment Variables**: Many system env vars are reserved and should not be overridden
+
+#### **Recently Fixed Critical Issues (August 2025):**
+1. **Missing Input Definitions**: `force-publish` added to `client-publish.yml` but missing from `publish-typescript.yml` and `publish-android.yml`
+2. **System Reserved Secret**: `GITHUB_TOKEN` cannot be explicitly defined in callable workflow secrets
+3. **Input Type Mismatches**: Boolean inputs passed as strings causing validation failures
+
+#### **Validation Tools and Commands:**
+```bash
+# Validate workflow syntax
+find .github/workflows -name "*.yml" -exec yq eval . {} \; > /dev/null
+
+# Check for input/output mismatches
+grep -r "force-publish" .github/workflows/ | grep -E "(inputs|with):"
+
+# Find callable workflow relationships  
+grep -r "uses: ./.github/workflows/" .github/workflows/
+```
+
+**Why This Matters**: Callable workflow input/output mismatches are a recurring issue that cause GitHub Actions validation failures. Systematic validation prevents these errors and ensures smooth workflow refactoring.
+
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 
 **AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**

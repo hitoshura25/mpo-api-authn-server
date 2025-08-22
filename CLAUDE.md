@@ -253,6 +253,7 @@ yq eval '.on.workflow_call.inputs' .github/workflows/callable-workflow.yml
 1. **Missing Input Definitions**: `force-publish` added to `client-publish.yml` but missing from `publish-typescript.yml` and `publish-android.yml`
 2. **GITHUB_TOKEN Double Error**: Cannot define `GITHUB_TOKEN` in callable workflow secrets AND cannot pass it explicitly in calling workflow secrets block
 3. **Input Type Mismatches**: Boolean inputs passed as strings causing validation failures
+4. **E2E Cache Isolation**: Main branch E2E tests were using PR cache results - fixed by adding branch/event context to cache keys
 
 #### **Validation Tools and Commands:**
 ```bash
@@ -267,6 +268,52 @@ grep -r "uses: ./.github/workflows/" .github/workflows/
 ```
 
 **Why This Matters**: Callable workflow input/output mismatches are a recurring issue that cause GitHub Actions validation failures. Systematic validation prevents these errors and ensures smooth workflow refactoring.
+
+### 🧪 CRITICAL: E2E Test Caching Strategy
+
+**MANDATORY patterns for E2E test caching to prevent cache pollution between different execution contexts.**
+
+#### **🚨 CRITICAL: Branch/Event Context Isolation**
+**ALWAYS include branch and event context in E2E test cache keys to prevent cross-contamination:**
+
+**Problem Pattern:**
+- PR runs E2E tests and caches results with key: `web-e2e-results-{images}-{files}`
+- Main branch uses identical images/files → generates same cache key → skips E2E tests
+- Result: Main branch production deployment lacks fresh validation
+
+**Solution Pattern:**
+```bash
+# Generate context-aware cache keys
+if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+  CONTEXT_SUFFIX="pr-${{ github.event.pull_request.number }}"
+elif [[ "${{ github.ref_name }}" == "main" ]]; then
+  CONTEXT_SUFFIX="main"
+else
+  CONTEXT_SUFFIX="branch-${{ github.ref_name }}"
+fi
+
+# Cache key with context isolation
+CACHE_KEY="web-e2e-results-${IMAGES_HASH}-${FILES_HASH}-${CONTEXT_SUFFIX}"
+```
+
+#### **Cache Key Components for E2E Tests:**
+1. **Docker Images**: Hash of Docker image tags being tested
+2. **Test Files**: Hash of E2E test files and configuration
+3. **Branch Context**: PR number, main branch, or feature branch name
+4. **Event Context**: pull_request vs push vs workflow_dispatch
+
+#### **Benefits of Context Isolation:**
+- **Production Validation**: Main branch always gets fresh E2E validation
+- **PR Independence**: Each PR gets isolated cache without pollution
+- **Branch Isolation**: Feature branches don't interfere with main/PR caches
+- **Debugging**: Clear cache key patterns for troubleshooting
+
+#### **Cache Key Examples:**
+- **PR Run**: `web-e2e-results-{images}-{files}-pr-123`
+- **Main Branch**: `web-e2e-results-{images}-{files}-main`
+- **Feature Branch**: `web-e2e-results-{images}-{files}-branch-feat-new-feature`
+
+**Why This Matters**: E2E test cache pollution can cause main branch production deployments to skip validation, leading to undetected integration issues in production.
 
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 

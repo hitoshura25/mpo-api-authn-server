@@ -59,18 +59,9 @@ on:
         description: 'Android repository URL for selected environment'
         required: true
         type: string
-      android-username-env:
-        description: 'Environment variable name for repository username'
-        required: true
-        type: string
-      android-password-env:
-        description: 'Environment variable name for repository password'
-        required: true
-        type: string
-      # android-username-property and android-password-property removed  
-      # Repository name "PublishingRepository" requires specific Gradle property names:
-      # "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
-      # These are provided via ORG_GRADLE_PROJECT_ environment variables for cache compatibility
+      # Credentials are hardcoded in workflow for simplicity:
+      # - Staging: Uses github.actor and GITHUB_TOKEN  
+      # - Production: Uses CENTRAL_PORTAL_USERNAME and CENTRAL_PORTAL_PASSWORD secrets
       android-suffix:
         description: 'Suffix to append to artifact ID for selected environment'
         required: true
@@ -203,6 +194,9 @@ jobs:
           # Repository configuration from central config (environment-specific)
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
+          # GitHub token for staging authentication (expected by template)
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_ACTOR: ${{ github.actor }}
           # Gradle publishing credentials using ORG_GRADLE_PROJECT_ prefix for configuration cache compatibility
           # These environment variables become Gradle project properties automatically
           ORG_GRADLE_PROJECT_PublishingRepositoryUsername: ${{ inputs.publish-type == 'staging' && github.actor || secrets.CENTRAL_PORTAL_USERNAME }}

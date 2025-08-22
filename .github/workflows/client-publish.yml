@@ -158,9 +158,7 @@ jobs:
       npm-credential-env: ${{ steps.config.outputs.npm-credential-env }}
       npm-suffix: ${{ steps.config.outputs.npm-suffix }}
       android-repository-url: ${{ steps.config.outputs.android-repository-url }}
-      android-username-env: ${{ steps.config.outputs.android-username-env }}
-      android-password-env: ${{ steps.config.outputs.android-password-env }}
-      # android-username-property and android-password-property removed - hardcoded in template
+      # Android credentials are hardcoded in publish-android.yml for simplicity
       android-suffix: ${{ steps.config.outputs.android-suffix }}
     steps:
       - name: Checkout code for configuration
@@ -203,10 +201,7 @@ jobs:
           NPM_CREDENTIAL_ENV=$(yq ".repositories.${PUBLISH_TYPE}.npm.credentials.tokenEnv" ${{ env.PUBLISHING_CONFIG_FILE }})
           
           ANDROID_REPO_URL=$(yq ".repositories.${PUBLISH_TYPE}.android.url" ${{ env.PUBLISHING_CONFIG_FILE }})
-          ANDROID_USERNAME_ENV=$(yq ".repositories.${PUBLISH_TYPE}.android.credentials.usernameEnv" ${{ env.PUBLISHING_CONFIG_FILE }})
-          ANDROID_PASSWORD_ENV=$(yq ".repositories.${PUBLISH_TYPE}.android.credentials.passwordEnv" ${{ env.PUBLISHING_CONFIG_FILE }})
-          # Property names are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
-          # in the Android template since the repository name is hardcoded as "PublishingRepository"
+          # Android credentials are hardcoded in publish-android.yml for simplicity
           
           # Load package suffix configuration for selected environment
           NPM_SUFFIX=$(yq ".naming.${PUBLISH_TYPE}.npmSuffix" ${{ env.PUBLISHING_CONFIG_FILE }})
@@ -241,9 +236,7 @@ jobs:
           echo "npm-suffix=${NPM_SUFFIX}" >> $GITHUB_OUTPUT
           
           echo "android-repository-url=${ANDROID_REPO_URL}" >> $GITHUB_OUTPUT
-          echo "android-username-env=${ANDROID_USERNAME_ENV}" >> $GITHUB_OUTPUT
-          echo "android-password-env=${ANDROID_PASSWORD_ENV}" >> $GITHUB_OUTPUT
-          # android-username-property and android-password-property no longer needed - hardcoded in template
+          # Android credentials are hardcoded in publish-android.yml - no outputs needed
           echo "android-suffix=${ANDROID_SUFFIX}" >> $GITHUB_OUTPUT
 
           echo "✅ Central configuration loaded successfully for ${PUBLISH_TYPE} environment:"
@@ -253,8 +246,7 @@ jobs:
           echo "  Android package: ${ANDROID_GROUP_ID}:${ANDROID_ARTIFACT_BASE_ID}"
           echo "  Android repository: ${ANDROID_REPO_URL}"
           echo "  Android suffix: '${ANDROID_SUFFIX}'"
-          echo "  Android username property: PublishingRepositoryUsername (hardcoded)"
-          echo "  Android password property: PublishingRepositoryPassword (hardcoded)"
+          echo "  Android credentials: Hardcoded in publish-android.yml (github.actor + GITHUB_TOKEN for staging, Central Portal secrets for production)"
 
   # Job 3: TypeScript client generation and publishing (parallel)
   publish-typescript:
@@ -293,9 +285,7 @@ jobs:
       android-artifact-base-id: ${{ needs.setup-config.outputs.android-artifact-base-id }}
       # Environment-specific repository configuration from central config
       android-repository-url: ${{ needs.setup-config.outputs.android-repository-url }}
-      android-username-env: ${{ needs.setup-config.outputs.android-username-env }}
-      android-password-env: ${{ needs.setup-config.outputs.android-password-env }}
-      # android-username-property and android-password-property removed - hardcoded in template
+      # Credentials are hardcoded in publish-android.yml for simplicity
       android-suffix: ${{ needs.setup-config.outputs.android-suffix }}
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}

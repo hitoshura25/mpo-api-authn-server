@@ -179,7 +179,7 @@ jobs:
   # Job 3: Validate Docker images are available
   validate-images:
     runs-on: ubuntu-latest
-    needs: check-e2e-cache
+    needs: [ setup-config, check-e2e-cache ]
     outputs:
       webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
       test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}

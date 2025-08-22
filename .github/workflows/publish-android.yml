@@ -194,13 +194,11 @@ jobs:
           # Repository configuration from central config (environment-specific)
           ANDROID_REPOSITORY_URL: ${{ inputs.android-repository-url }}
           GITHUB_REPOSITORY: ${{ github.repository }}
-          # GitHub token for staging authentication (expected by template)
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_ACTOR: ${{ github.actor }}
           # Gradle publishing credentials using ORG_GRADLE_PROJECT_ prefix for configuration cache compatibility
           # These environment variables become Gradle project properties automatically
-          ORG_GRADLE_PROJECT_PublishingRepositoryUsername: ${{ inputs.publish-type == 'staging' && github.actor || secrets.CENTRAL_PORTAL_USERNAME }}
-          ORG_GRADLE_PROJECT_PublishingRepositoryPassword: ${{ inputs.publish-type == 'staging' && secrets.GITHUB_TOKEN || secrets.CENTRAL_PORTAL_PASSWORD }}
+          # Staging: GitHubPackages repository credentials
+          ORG_GRADLE_PROJECT_GitHubPackagesUsername: ${{ github.actor }}
+          ORG_GRADLE_PROJECT_GitHubPackagesPassword: ${{ secrets.GITHUB_TOKEN }}
           # Maven Central credentials (production only)
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.CENTRAL_PORTAL_USERNAME }}
           ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.CENTRAL_PORTAL_PASSWORD }}
@@ -241,8 +239,8 @@ jobs:
           echo "🔍 Publish type: ${{ inputs.publish-type }}"
           echo "🔍 Selected credentials: ${{ inputs.publish-type == 'staging' && 'GitHub (github.actor + GITHUB_TOKEN)' || 'Maven Central (CENTRAL_PORTAL credentials)' }}"
           echo "🔍 These env vars become Gradle project properties automatically:"
-          echo "  ORG_GRADLE_PROJECT_PublishingRepositoryUsername -> project.findProperty('PublishingRepositoryUsername')"
-          echo "  ORG_GRADLE_PROJECT_PublishingRepositoryPassword -> project.findProperty('PublishingRepositoryPassword')"
+          echo "  ORG_GRADLE_PROJECT_GitHubPackagesUsername -> project.findProperty('GitHubPackagesUsername')"
+          echo "  ORG_GRADLE_PROJECT_GitHubPackagesPassword -> project.findProperty('GitHubPackagesPassword')"
           ./gradlew generateAndroidClient copyAndroidClientToSubmodule \
             --build-cache --parallel --configuration-cache
           

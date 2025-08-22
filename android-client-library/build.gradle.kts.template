@@ -94,11 +94,7 @@ mavenPublishing {
                     name = "GitHubPackages"
                     url = uri(System.getenv("ANDROID_REPOSITORY_URL") 
                         ?: "https://maven.pkg.github.com/${System.getenv("GITHUB_REPOSITORY") ?: "hitoshura25/mpo-api-authn-server"}")
-                    credentials {
-                        username = System.getenv("GITHUB_ACTOR") ?: "hitoshura25"
-                        password = System.getenv("GITHUB_TOKEN")
-                            ?: throw GradleException("GITHUB_TOKEN environment variable is required for staging publishing")
-                    }
+                    // Credentials automatically loaded from ORG_GRADLE_PROJECT_GitHubPackagesUsername/Password env vars
                 }
             }
         }

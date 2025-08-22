@@ -144,6 +144,54 @@ secrets:
 - **❌ NEVER use `actions/github-script` with external file requires** - Use direct Node.js execution
 - **✅ Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped**
 
+### 🏗️ CRITICAL: Android Publishing & Docker Registry Patterns
+
+**MANDATORY patterns for Android publishing and Docker registry references to prevent configuration failures.**
+
+#### **🚨 CRITICAL: vanniktech Maven Publish Plugin GitHub Packages Configuration**
+For Android client library publishing to GitHub Packages, ALWAYS use this exact pattern:
+```gradle
+publishing {
+    repositories {
+        maven {
+            name = "GitHubPackages"
+            url = uri(System.getenv("ANDROID_REPOSITORY_URL"))
+            credentials(PasswordCredentials::class)  // ✅ MANDATORY for vanniktech plugin
+        }
+    }
+}
+```
+
+**Critical Requirements:**
+- **ALWAYS include `credentials(PasswordCredentials::class)`** - Required by vanniktech plugin for GitHub Packages
+- **NEVER rely on automatic credential resolution** - Explicit credentials block is mandatory
+- **Environment Variables**: Use `ORG_GRADLE_PROJECT_GitHubPackagesUsername` and `ORG_GRADLE_PROJECT_GitHubPackagesPassword`
+- **Reference**: [vanniktech GitHub Packages Documentation](https://vanniktech.github.io/gradle-maven-publish-plugin/other/#github-packages-example)
+
+#### **🚨 CRITICAL: Docker Registry Reference Pattern**
+**ALWAYS use job outputs for Docker registry references, NEVER environment variables:**
+```yaml
+# ✅ CORRECT: Use job output from setup-config
+docker-registry: ${{ needs.setup-config.outputs.docker-registry }}
+
+# ❌ WRONG: Environment variables not available in callable workflow context
+docker-registry: ${{ env.DOCKER_REGISTRY }}
+```
+
+**Root Cause**: Environment variables are not accessible in callable workflow contexts. Setup-config jobs MUST convert env vars to outputs first.
+
+#### **Android Credential Configuration Best Practices:**
+- **Repository Name Matching**: Credential env var names MUST match repository name (e.g., `GitHubPackages` → `GitHubPackagesUsername`)
+- **Gradle Property Pattern**: Use `ORG_GRADLE_PROJECT_` prefix for automatic Gradle property injection
+- **Staging vs Production**: GitHub Packages for staging, Maven Central for production (with `--no-configuration-cache`)
+
+#### **Recently Fixed Critical Issues (August 2025):**
+1. **Missing `credentials(PasswordCredentials::class)`**: Android publishing failed without explicit credentials block
+2. **Wrong Docker Registry Reference**: web-e2e-tests.yml used `${{ env.DOCKER_REGISTRY }}` instead of job output
+3. **Credential Name Mismatch**: Repository "GitHubPackages" required matching environment variable names
+
+**Why This Matters**: These patterns prevent common publishing failures and ensure consistent configuration across all client library workflows.
+
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 
 **AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**

@@ -16,8 +16,7 @@ packages:
 docker:
   registry:
     url: "ghcr.io"
-    username: "${GITHUB_ACTOR}"  # Dynamic GitHub Actions username
-    password: "${GITHUB_TOKEN}"   # GitHub Actions token for authentication
+    # Credentials: Uses github.actor and GITHUB_TOKEN (hardcoded in workflows for simplicity)
   images:
     webauthn-server:
       name: "hitoshura25/webauthn-server"

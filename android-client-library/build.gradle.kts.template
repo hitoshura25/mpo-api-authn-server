@@ -16,7 +16,7 @@ val clientVersion = System.getenv("CLIENT_VERSION") ?: "1.0.0-SNAPSHOT"
 // Configure artifact ID from environment variables
 val androidArtifactId = System.getenv("ANDROID_ARTIFACT_ID") ?: "mpo-webauthn-android-client"
 
-// Configure group ID from environment variables  
+// Configure group ID from environment variables
 val androidGroupId = System.getenv("ANDROID_GROUP_ID") ?: "io.github.hitoshura25"
 
 version = clientVersion
@@ -57,7 +57,7 @@ tasks.withType<Javadoc> {
         "implNote:a:Implementation Note:",
         "since:a:Since:"
     )
-    
+
     // Suppress warnings for missing @param and @return tags in generated code
     (options as StandardJavadocDocletOptions).addStringOption("Xdoclint:none", "-quiet")
 }
@@ -65,13 +65,13 @@ tasks.withType<Javadoc> {
 // Configure vanniktech maven publish plugin
 mavenPublishing {
     val publishType = System.getenv("PUBLISH_TYPE") ?: "staging"
-    
+
     // Configure publishing target based on environment
     if (publishType == "production") {
         // Maven Central via Central Portal with automatic release
         publishToMavenCentral(com.vanniktech.maven.publish.SonatypeHost.CENTRAL_PORTAL, automaticRelease = true)
         signAllPublications()
-        
+
         logger.lifecycle("🚀 PRODUCTION Publishing Configuration:")
         logger.lifecycle("  Target: Maven Central (Central Portal)")
         logger.lifecycle("  Automatic Release: ENABLED")
@@ -80,40 +80,40 @@ mavenPublishing {
     } else {
         // GitHub Packages for staging - do NOT use publishToMavenCentral()
         // vanniktech publishToMavenCentral() is only for Maven Central/OSSRH, not GitHub Packages
-        
+
         logger.lifecycle("📦 STAGING Publishing Configuration:")
         logger.lifecycle("  Target: GitHub Packages")
         logger.lifecycle("  Automatic Release: N/A")
         logger.lifecycle("  GPG Signing: DISABLED")
         logger.lifecycle("  Publishing Method: Manual repository configuration")
-        
+
         // Configure GitHub Packages repository manually for staging
         publishing {
             repositories {
                 maven {
                     name = "GitHubPackages"
-                    url = uri(System.getenv("ANDROID_REPOSITORY_URL") 
+                    url = uri(System.getenv("ANDROID_REPOSITORY_URL")
                         ?: "https://maven.pkg.github.com/${System.getenv("GITHUB_REPOSITORY") ?: "hitoshura25/mpo-api-authn-server"}")
-                    // Credentials automatically loaded from ORG_GRADLE_PROJECT_GitHubPackagesUsername/Password env vars
+                    credentials(PasswordCredentials::class)
                 }
             }
         }
     }
 
     coordinates(androidGroupId, androidArtifactId, clientVersion)
-    
+
     pom {
         name.set("MPO WebAuthn Android Client")
         description.set("Generated Android client library for MPO WebAuthn API - FIDO2/WebAuthn authentication")
         url.set(System.getenv("PROJECT_URL") ?: "https://github.com/${System.getenv("GITHUB_REPOSITORY") ?: "hitoshura25/mpo-api-authn-server"}")
-        
+
         licenses {
             license {
                 name.set("MIT License")
                 url.set("https://opensource.org/licenses/MIT")
             }
         }
-        
+
         developers {
             developer {
                 id.set("hitoshura25")
@@ -121,7 +121,7 @@ mavenPublishing {
                 email.set("hitoshura25@users.noreply.github.com")
             }
         }
-        
+
         scm {
             val repoPath = System.getenv("GITHUB_REPOSITORY") ?: "hitoshura25/mpo-api-authn-server"
             connection.set("scm:git:git://github.com/${repoPath}.git")

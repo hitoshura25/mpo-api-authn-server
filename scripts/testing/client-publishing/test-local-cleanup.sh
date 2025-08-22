@@ -109,7 +109,7 @@ load_central_config() {
     ANDROID_GROUP_ID="${ANDROID_GROUP_ID:-$(yq eval '.packages.android.groupId' "$CONFIG_FILE")}"
     ANDROID_BASE_ARTIFACT_ID="${ANDROID_BASE_ARTIFACT_ID:-$(yq eval '.packages.android.baseArtifactId' "$CONFIG_FILE")}"
     
-    TYPESCRIPT_SCOPE="${TYPESCRIPT_SCOPE:-$(yq eval '.packages.typescript.scope' "$CONFIG_FILE")}"
+    TYPESCRIPT_SCOPE="${TYPESCRIPT_SCOPE:-$(yq eval '.packages.typescript.scope.staging' "$CONFIG_FILE")}"
     TYPESCRIPT_BASE_PACKAGE_NAME="${TYPESCRIPT_BASE_PACKAGE_NAME:-$(yq eval '.packages.typescript.basePackageName' "$CONFIG_FILE")}"
     
     ANDROID_STAGING_SUFFIX="${ANDROID_STAGING_SUFFIX:-$(yq eval '.naming.staging.androidSuffix' "$CONFIG_FILE")}"

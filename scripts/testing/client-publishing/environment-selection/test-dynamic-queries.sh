@@ -178,8 +178,10 @@ test_package_naming_extraction() {
     local base_android_artifact
     base_android_artifact=$(yq eval '.packages.android.baseArtifactId' "$CONFIG_FILE")
     
-    local base_npm_scope
-    base_npm_scope=$(yq eval '.packages.typescript.scope' "$CONFIG_FILE")
+    # Test both staging and production npm scopes
+    local staging_npm_scope production_npm_scope
+    staging_npm_scope=$(yq eval '.packages.typescript.scope.staging' "$CONFIG_FILE")
+    production_npm_scope=$(yq eval '.packages.typescript.scope.production' "$CONFIG_FILE")
     
     local base_npm_package
     base_npm_package=$(yq eval '.packages.typescript.basePackageName' "$CONFIG_FILE")

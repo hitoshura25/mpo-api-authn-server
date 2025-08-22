@@ -88,8 +88,8 @@ jobs:
           fi
           echo "✅ Using pre-installed yq: $(yq --version)"
 
-          # Load package configuration
-          NPM_SCOPE=$(yq '.packages.typescript.scope' ${{ env.PUBLISHING_CONFIG_FILE }})
+          # Load package configuration (production environment)
+          NPM_SCOPE=$(yq '.packages.typescript.scope.production' ${{ env.PUBLISHING_CONFIG_FILE }})
           NPM_PACKAGE_NAME=$(yq '.packages.typescript.basePackageName' ${{ env.PUBLISHING_CONFIG_FILE }})
 
           # Validate required values are present

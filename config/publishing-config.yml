@@ -7,7 +7,9 @@ packages:
     groupId: "io.github.hitoshura25"
     baseArtifactId: "mpo-webauthn-android-client"
   typescript:
-    scope: "@vmenon25"
+    scope:
+      staging: "@hitoshura25"
+      production: "@vmenon25"
     basePackageName: "mpo-webauthn-client"
 
 # Docker Configuration

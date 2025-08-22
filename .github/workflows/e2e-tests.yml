@@ -81,8 +81,8 @@ jobs:
             exit 1
           fi
 
-          # Extract configuration values
-          NPM_SCOPE=$(yq '.packages.typescript.scope' "$CONFIG_FILE")
+          # Extract configuration values (E2E tests use staging environment)
+          NPM_SCOPE=$(yq '.packages.typescript.scope.staging' "$CONFIG_FILE")
           DOCKER_REGISTRY=$(yq '.docker.registry.url' "$CONFIG_FILE")
 
           # Validate required values are not null

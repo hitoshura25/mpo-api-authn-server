@@ -26,6 +26,8 @@ declare -a REQUIRED_PATHS=(
     ".packages.android.baseArtifactId"
     ".packages.typescript"
     ".packages.typescript.scope"
+    ".packages.typescript.scope.staging"
+    ".packages.typescript.scope.production"
     ".packages.typescript.basePackageName"
     ".repositories"
     ".repositories.staging"
@@ -101,6 +103,7 @@ test_configuration_types() {
         ".packages"
         ".packages.android"
         ".packages.typescript"
+        ".packages.typescript.scope"
         ".repositories"
         ".repositories.staging"
         ".repositories.staging.android"
@@ -131,7 +134,8 @@ test_configuration_types() {
     local string_paths=(
         ".packages.android.groupId"
         ".packages.android.baseArtifactId"
-        ".packages.typescript.scope"
+        ".packages.typescript.scope.staging"
+        ".packages.typescript.scope.production"
         ".packages.typescript.basePackageName"
         ".repositories.staging.android.url"
         ".repositories.staging.android.credentials.usernameEnv"
@@ -274,15 +278,25 @@ test_package_naming_conventions() {
         return 1
     fi
     
-    # TypeScript scope should start with @
-    local typescript_scope
-    typescript_scope=$(load_config_value ".packages.typescript.scope" "$CONFIG_FILE")
+    # TypeScript scopes should start with @ for both environments
+    local staging_scope production_scope
+    staging_scope=$(load_config_value ".packages.typescript.scope.staging" "$CONFIG_FILE")
+    production_scope=$(load_config_value ".packages.typescript.scope.production" "$CONFIG_FILE")
     
-    if [[ ! "$typescript_scope" =~ ^@[a-z0-9-]+$ ]]; then
-        log_error "Invalid TypeScript scope format: $typescript_scope"
-        log_error "Should start with @ and contain lowercase letters, numbers, hyphens"
-        return 1
-    fi
+    for scope_name in "staging" "production"; do
+        local scope_value
+        if [[ "$scope_name" == "staging" ]]; then
+            scope_value="$staging_scope"
+        else
+            scope_value="$production_scope"
+        fi
+        
+        if [[ ! "$scope_value" =~ ^@[a-z0-9-]+$ ]]; then
+            log_error "Invalid TypeScript $scope_name scope format: $scope_value"
+            log_error "Should start with @ and contain lowercase letters, numbers, hyphens"
+            return 1
+        fi
+    done
     
     # TypeScript package name should be valid npm package name
     local typescript_package

@@ -26,7 +26,8 @@ test_required_fields_completeness() {
     local critical_fields=(
         ".packages.android.groupId"
         ".packages.android.baseArtifactId"
-        ".packages.typescript.scope"
+        ".packages.typescript.scope.staging"
+        ".packages.typescript.scope.production"
         ".packages.typescript.basePackageName"
         ".repositories.staging.android.url"
         ".repositories.staging.android.credentials.usernameEnv"

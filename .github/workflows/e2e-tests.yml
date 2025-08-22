@@ -62,7 +62,6 @@ jobs:
     outputs:
       java-version: ${{ steps.config.outputs.java-version }}
       android-api-version: ${{ steps.config.outputs.android-api-version }}
-      npm-scope: ${{ steps.config.outputs.npm-scope }}
       docker-registry: ${{ steps.config.outputs.docker-registry }}
     steps:
       - name: Checkout code
@@ -81,14 +80,12 @@ jobs:
             exit 1
           fi
 
-          # Extract configuration values
-          NPM_SCOPE=$(yq '.packages.typescript.scope' "$CONFIG_FILE")
+          # Extract configuration values (E2E tests use staging environment)
           DOCKER_REGISTRY=$(yq '.docker.registry.url' "$CONFIG_FILE")
 
           # Validate required values are not null
-          if [ "$NPM_SCOPE" = "null" ] || [ "$DOCKER_REGISTRY" = "null" ]; then
+          if [ "$DOCKER_REGISTRY" = "null" ]; then
             echo "❌ Missing required configuration in $CONFIG_FILE"
-            echo "NPM scope: $NPM_SCOPE"
             echo "Docker registry: $DOCKER_REGISTRY"
             exit 1
           fi
@@ -96,11 +93,9 @@ jobs:
           # Set outputs (mix of central config and environment variables)
           echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
           echo "android-api-version=${{ env.ANDROID_API_VERSION }}" >> $GITHUB_OUTPUT
-          echo "npm-scope=$NPM_SCOPE" >> $GITHUB_OUTPUT
           echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
 
           echo "✅ Configuration loaded successfully:"
-          echo "  NPM scope: $NPM_SCOPE (from central config)"
           echo "  Docker registry: $DOCKER_REGISTRY (from central config)"
           echo "  Java version: ${{ env.JAVA_VERSION }} (from environment)"
 
@@ -179,7 +174,7 @@ jobs:
   # Job 3: Validate Docker images are available
   validate-images:
     runs-on: ubuntu-latest
-    needs: check-e2e-cache
+    needs: [ setup-config, check-e2e-cache ]
     outputs:
       webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
       test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}
@@ -187,7 +182,7 @@ jobs:
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: ${{ needs.setup-config.outputs.docker-registry }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -255,7 +250,6 @@ jobs:
       publish-type: "staging"
       client-version: ${{ needs.generate-version.outputs.version }}
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'main' }}
-      npm-scope: ${{ needs.setup-config.outputs.npm-scope }}
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 

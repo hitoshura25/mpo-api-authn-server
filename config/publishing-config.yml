@@ -7,15 +7,16 @@ packages:
     groupId: "io.github.hitoshura25"
     baseArtifactId: "mpo-webauthn-android-client"
   typescript:
-    scope: "@vmenon25"
+    scope:
+      staging: "@hitoshura25"
+      production: "@vmenon25"
     basePackageName: "mpo-webauthn-client"
 
 # Docker Configuration
 docker:
   registry:
     url: "ghcr.io"
-    username: "${GITHUB_ACTOR}"  # Dynamic GitHub Actions username
-    password: "${GITHUB_TOKEN}"   # GitHub Actions token for authentication
+    # Credentials: Uses github.actor and GITHUB_TOKEN (hardcoded in workflows for simplicity)
   images:
     webauthn-server:
       name: "hitoshura25/webauthn-server"
@@ -35,11 +36,7 @@ repositories:
   staging:
     android:
       url: "https://maven.pkg.github.com/hitoshura25/mpo-api-authn-server"
-      credentials:
-        usernameEnv: "ANDROID_PUBLISH_USER"
-        passwordEnv: "ANDROID_PUBLISH_TOKEN"
-        # Property names are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
-        # in the Android template since the repository name is hardcoded as "PublishingRepository"
+      # Credentials: Uses github.actor and GITHUB_TOKEN (hardcoded in workflow for simplicity)
     npm:
       registry: "https://npm.pkg.github.com"
       credentials:
@@ -47,11 +44,7 @@ repositories:
   production:
     android:
       url: "https://ossrh-staging-api.central.sonatype.com/service/local/staging/deploy/maven2/"
-      credentials:
-        usernameEnv: "CENTRAL_PORTAL_USERNAME" 
-        passwordEnv: "CENTRAL_PORTAL_PASSWORD"
-        # Property names are hardcoded as "PublishingRepositoryUsername" and "PublishingRepositoryPassword"
-        # in the Android template since the repository name is hardcoded as "PublishingRepository"
+      # Credentials: Uses CENTRAL_PORTAL_USERNAME and CENTRAL_PORTAL_PASSWORD (hardcoded in workflow)
     npm:
       registry: "https://registry.npmjs.org"
       credentials:

@@ -77,9 +77,7 @@ on:
 env:
   ANDROID_API_VERSION: "29"
   JAVA_VERSION: "21"
-  DOCKER_REGISTRY: ghcr.io
-  DOCKER_IMAGE_NAME: hitoshura25/webauthn-server
-  DOCKER_TEST_CREDENTIALS_IMAGE_NAME: hitoshura25/webauthn-test-credentials-service
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
 
 jobs:
   # Job 1: Detect what changed to determine execution strategy
@@ -497,7 +495,7 @@ jobs:
             echo "    This should not happen - all cases should be covered"
           fi
 
-  # Job 2: Setup configuration for callable workflows (convert env vars to job outputs)
+  # Job 2: Setup configuration for callable workflows (load from central config)
   setup-config:
     runs-on: ubuntu-latest
     outputs:
@@ -506,13 +504,49 @@ jobs:
       webauthn-image-name: ${{ steps.config.outputs.webauthn-image-name }}
       test-credentials-image-name: ${{ steps.config.outputs.test-credentials-image-name }}
     steps:
-      - name: Setup configuration outputs
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Load configuration from central config file
         id: config
         run: |
+          echo "🔧 Loading Docker configuration from ${{ env.PUBLISHING_CONFIG_FILE }}..."
+          
+          # Use pre-installed yq on GitHub runners
+          
+          # Load configuration
+          CONFIG_FILE="${{ env.PUBLISHING_CONFIG_FILE }}"
+          
+          # Validate configuration file exists
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ Configuration file not found: $CONFIG_FILE"
+            exit 1
+          fi
+          
+          # Extract Docker configuration values
+          DOCKER_REGISTRY=$(yq '.docker.registry.url' "$CONFIG_FILE")
+          WEBAUTHN_IMAGE_NAME=$(yq '.docker.images.webauthn-server.name' "$CONFIG_FILE")
+          TEST_CREDENTIALS_IMAGE_NAME=$(yq '.docker.images.test-credentials-service.name' "$CONFIG_FILE")
+          
+          # Validate required values are not null
+          if [ "$DOCKER_REGISTRY" = "null" ] || [ "$WEBAUTHN_IMAGE_NAME" = "null" ] || [ "$TEST_CREDENTIALS_IMAGE_NAME" = "null" ]; then
+            echo "❌ Missing required Docker configuration in $CONFIG_FILE"
+            echo "Registry: $DOCKER_REGISTRY"
+            echo "WebAuthn image: $WEBAUTHN_IMAGE_NAME"  
+            echo "Test credentials image: $TEST_CREDENTIALS_IMAGE_NAME"
+            exit 1
+          fi
+          
+          # Set outputs
           echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
-          echo "docker-registry=${{ env.DOCKER_REGISTRY }}" >> $GITHUB_OUTPUT
-          echo "webauthn-image-name=${{ env.DOCKER_IMAGE_NAME }}" >> $GITHUB_OUTPUT
-          echo "test-credentials-image-name=${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}" >> $GITHUB_OUTPUT
+          echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
+          echo "webauthn-image-name=$WEBAUTHN_IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "test-credentials-image-name=$TEST_CREDENTIALS_IMAGE_NAME" >> $GITHUB_OUTPUT
+          
+          echo "✅ Docker configuration loaded successfully:"
+          echo "  Registry: $DOCKER_REGISTRY"
+          echo "  WebAuthn Server: $WEBAUTHN_IMAGE_NAME"
+          echo "  Test Credentials: $TEST_CREDENTIALS_IMAGE_NAME"
 
   # Job 3: Run unit tests using callable workflow
   run-unit-tests:

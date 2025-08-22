@@ -48,13 +48,12 @@ on:
 env:
   ANDROID_API_VERSION: "29"
   JAVA_VERSION: "21"
-  DOCKER_REGISTRY: ghcr.io
-  # Use workflow inputs directly  
+  # Use workflow inputs directly
   WORKFLOW_IDENTIFIER: ${{ github.event.pull_request.number || github.run_number || 'main' }}
   WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn_server_image }}
   TEST_CREDENTIALS_IMAGE: ${{ inputs.test_credentials_image }}
   BASE_VERSION: "1.0"
-  NPM_SCOPE: "@hitoshura25"
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
 
 jobs:
   # Job 1: Setup configuration for callable workflows (convert env vars to job outputs)
@@ -64,13 +63,46 @@ jobs:
       java-version: ${{ steps.config.outputs.java-version }}
       android-api-version: ${{ steps.config.outputs.android-api-version }}
       npm-scope: ${{ steps.config.outputs.npm-scope }}
+      docker-registry: ${{ steps.config.outputs.docker-registry }}
     steps:
-      - name: Setup configuration outputs
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Load configuration from central config file
         id: config
         run: |
+          echo "🔧 Loading configuration from ${{ env.PUBLISHING_CONFIG_FILE }}..."
+
+          # Load configuration (yq is pre-installed on GitHub runners)
+          CONFIG_FILE="${{ env.PUBLISHING_CONFIG_FILE }}"
+
+          # Validate configuration file exists
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ Configuration file not found: $CONFIG_FILE"
+            exit 1
+          fi
+
+          # Extract configuration values
+          NPM_SCOPE=$(yq '.packages.typescript.scope' "$CONFIG_FILE")
+          DOCKER_REGISTRY=$(yq '.docker.registry.url' "$CONFIG_FILE")
+
+          # Validate required values are not null
+          if [ "$NPM_SCOPE" = "null" ] || [ "$DOCKER_REGISTRY" = "null" ]; then
+            echo "❌ Missing required configuration in $CONFIG_FILE"
+            echo "NPM scope: $NPM_SCOPE"
+            echo "Docker registry: $DOCKER_REGISTRY"
+            exit 1
+          fi
+
+          # Set outputs (mix of central config and environment variables)
           echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
           echo "android-api-version=${{ env.ANDROID_API_VERSION }}" >> $GITHUB_OUTPUT
-          echo "npm-scope=${{ env.NPM_SCOPE }}" >> $GITHUB_OUTPUT
+          echo "npm-scope=$NPM_SCOPE" >> $GITHUB_OUTPUT
+          echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
+
+          echo "✅ Configuration loaded successfully:"
+          echo "  NPM scope: $NPM_SCOPE (from central config)"
+          echo "  Docker registry: $DOCKER_REGISTRY (from central config)"
+          echo "  Java version: ${{ env.JAVA_VERSION }} (from environment)"
 
   # Job 2: Check E2E test cache to avoid redundant runs
   check-e2e-cache:
@@ -93,22 +125,22 @@ jobs:
           # Extract image tags for cache key (use full tag, not digest)
           WEBAUTHN_IMAGE_TAG="${{ inputs.webauthn_server_image }}"
           TEST_CREDS_IMAGE_TAG="${{ inputs.test_credentials_image }}"
-          
+
           # Create hash-friendly versions of image tags (replace problematic characters)
           WEBAUTHN_TAG_HASH=$(echo "$WEBAUTHN_IMAGE_TAG" | sed 's|[:/]|-|g')
           TEST_CREDS_TAG_HASH=$(echo "$TEST_CREDS_IMAGE_TAG" | sed 's|[:/]|-|g')
-          
+
           # Generate hash of E2E test files and configurations
           WEB_FILES_HASH=$(find web-test-client .github/workflows/web-e2e-tests.yml -type f -exec sha256sum {} \; 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-files")
           ANDROID_FILES_HASH=$(find android-test-client .github/workflows/android-e2e-tests.yml -type f -exec sha256sum {} \; 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-files")
-          
+
           # Create platform-specific cache keys
           WEB_CACHE_KEY="web-e2e-results-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}-${WEB_FILES_HASH}"
           ANDROID_CACHE_KEY="android-e2e-results-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}-${ANDROID_FILES_HASH}"
-          
+
           echo "web-key=${WEB_CACHE_KEY}" >> $GITHUB_OUTPUT
           echo "android-key=${ANDROID_CACHE_KEY}" >> $GITHUB_OUTPUT
-          
+
           echo "🔑 Cache Keys Generated:"
           echo "  Web E2E: ${WEB_CACHE_KEY}"
           echo "  Android E2E: ${ANDROID_CACHE_KEY}"
@@ -127,7 +159,7 @@ jobs:
           lookup-only: true
 
       - name: Check Android E2E cache
-        id: android-cache  
+        id: android-cache
         uses: actions/cache@v4
         with:
           key: ${{ steps.cache-keys.outputs.android-key }}

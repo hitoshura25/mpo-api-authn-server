@@ -219,7 +219,7 @@ jobs:
     name: Smart Staging Cleanup
     runs-on: ubuntu-latest
     needs: [ build-and-test, e2e-tests, security-scanning, report-pipeline-status ]
-    if: always()
+    if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read          # Read repository code and git history
       packages: write         # Package access (GitHub Actions tokens cannot have admin permission)

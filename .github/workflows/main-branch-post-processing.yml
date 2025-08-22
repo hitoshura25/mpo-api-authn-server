@@ -42,12 +42,6 @@ on:
     types: [ completed ]
 
 env:
-  DOCKER_REGISTRY: ghcr.io
-  DOCKER_IMAGE_NAME: hitoshura25/webauthn-server
-  DOCKER_TEST_CREDENTIALS_IMAGE_NAME: hitoshura25/webauthn-test-credentials-service
-  DOCKERHUB_SERVER_REPO: hitoshura25/webauthn-server
-  DOCKERHUB_TEST_CREDENTIALS_REPO: hitoshura25/webauthn-test-credentials-service
-
   # Client Library Publishing Configuration
   BASE_VERSION: "1.0"
   PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
@@ -67,6 +61,11 @@ jobs:
     outputs:
       npm-scope: ${{ steps.config.outputs.npm-scope }}
       npm-package-name: ${{ steps.config.outputs.npm-package-name }}
+      docker-registry: ${{ steps.config.outputs.docker-registry }}
+      docker-webauthn-image: ${{ steps.config.outputs.docker-webauthn-image }}
+      docker-test-credentials-image: ${{ steps.config.outputs.docker-test-credentials-image }}
+      dockerhub-server-repo: ${{ steps.config.outputs.dockerhub-server-repo }}
+      dockerhub-test-credentials-repo: ${{ steps.config.outputs.dockerhub-test-credentials-repo }}
     steps:
       - name: Checkout code for configuration
         uses: actions/checkout@v4
@@ -169,7 +168,7 @@ jobs:
   detect-changes:
     name: Detect DockerHub publishing needs (fallback)
     runs-on: ubuntu-latest
-    needs: check-main-ci-images
+    needs: [ setup-config, check-main-ci-images ]
     if: |
       github.event.workflow_run.conclusion == 'success' &&
       needs.check-main-ci-images.outputs.skip-all-docker-processing == 'false'
@@ -202,12 +201,20 @@ jobs:
 
       - name: Check WebAuthn Server changes
         id: check-server
+        env:
+          DOCKER_REGISTRY: ${{ needs.setup-config.outputs.docker-registry }}
+          DOCKER_IMAGE_NAME: ${{ needs.setup-config.outputs.docker-webauthn-image }}
+          DOCKERHUB_SERVER_REPO: ${{ needs.setup-config.outputs.dockerhub-server-repo }}
         run: |
           chmod +x scripts/docker/detect-changes.sh
           scripts/docker/detect-changes.sh webauthn-server
 
       - name: Check Test Credentials Service changes
         id: check-test-credentials
+        env:
+          DOCKER_REGISTRY: ${{ needs.setup-config.outputs.docker-registry }}
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: ${{ needs.setup-config.outputs.docker-test-credentials-image }}
+          DOCKERHUB_TEST_CREDENTIALS_REPO: ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}
         run: |
           chmod +x scripts/docker/detect-changes.sh
           scripts/docker/detect-changes.sh test-credentials
@@ -240,7 +247,7 @@ jobs:
   publish-dockerhub:
     name: Publish to DockerHub
     runs-on: ubuntu-latest
-    needs: [ check-main-ci-images, detect-changes ]
+    needs: [ setup-config, check-main-ci-images, detect-changes ]
     if: |
       always() &&
       (
@@ -285,6 +292,12 @@ jobs:
 
       - name: Publish to DockerHub
         id: dockerhub-publish
+        env:
+          DOCKER_REGISTRY: ${{ needs.setup-config.outputs.docker-registry }}
+          DOCKER_IMAGE_NAME: ${{ needs.setup-config.outputs.docker-webauthn-image }}
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: ${{ needs.setup-config.outputs.docker-test-credentials-image }}
+          DOCKERHUB_SERVER_REPO: ${{ needs.setup-config.outputs.dockerhub-server-repo }}
+          DOCKERHUB_TEST_CREDENTIALS_REPO: ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}
         run: |
           chmod +x scripts/docker/publish-dockerhub.sh
           scripts/docker/publish-dockerhub.sh "${{ needs.detect-changes.outputs.webauthn-server-changed }}" "${{ needs.detect-changes.outputs.test-credentials-changed }}"
@@ -298,14 +311,14 @@ jobs:
 
           if [[ "${{ needs.detect-changes.outputs.webauthn-server-changed }}" == "true" ]]; then
             # Get the digest of the DockerHub WebAuthn Server image
-            WEBAUTHN_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.DOCKERHUB_SERVER_REPO }}:latest | cut -d'@' -f2)
+            WEBAUTHN_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ needs.setup-config.outputs.dockerhub-server-repo }}:latest | cut -d'@' -f2)
             echo "📋 WebAuthn Server DockerHub digest: $WEBAUTHN_DIGEST"
             echo "webauthn-digest=$WEBAUTHN_DIGEST" >> $GITHUB_OUTPUT
           fi
 
           if [[ "${{ needs.detect-changes.outputs.test-credentials-changed }}" == "true" ]]; then
             # Get the digest of the DockerHub Test Credentials image
-            TEST_CREDENTIALS_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest | cut -d'@' -f2)
+            TEST_CREDENTIALS_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}:latest | cut -d'@' -f2)
             echo "📋 Test Credentials DockerHub digest: $TEST_CREDENTIALS_DIGEST"
             echo "test-credentials-digest=$TEST_CREDENTIALS_DIGEST" >> $GITHUB_OUTPUT
           fi
@@ -316,7 +329,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         continue-on-error: true  # Don't fail workflow on GitHub attestation service issues
         with:
-          subject-name: ${{ env.DOCKERHUB_SERVER_REPO }}
+          subject-name: ${{ needs.setup-config.outputs.dockerhub-server-repo }}
           subject-digest: ${{ steps.get-digests.outputs.webauthn-digest }}
           push-to-registry: true
         env:
@@ -328,7 +341,7 @@ jobs:
         uses: actions/attest-build-provenance@v2
         continue-on-error: true  # Don't fail workflow on GitHub attestation service issues
         with:
-          subject-name: ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}
+          subject-name: ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}
           subject-digest: ${{ steps.get-digests.outputs.test-credentials-digest }}
           push-to-registry: true
         env:
@@ -341,7 +354,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: ${{ env.DOCKERHUB_SERVER_REPO }}
+          repository: ${{ needs.setup-config.outputs.dockerhub-server-repo }}
           short-description: 'WebAuthn authentication server built with Ktor and Yubico java-webauthn-server'
           readme-filepath: ./webauthn-server/README.md
 
@@ -352,7 +365,7 @@ jobs:
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-          repository: ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}
+          repository: ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}
           short-description: 'WebAuthn test credentials service for cross-platform testing with FIDO2/WebAuthn'
           readme-filepath: ./webauthn-test-credentials-service/README.md
 
@@ -378,14 +391,14 @@ jobs:
 
             #### WebAuthn Server
             ```bash
-            docker pull ${{ env.DOCKERHUB_SERVER_REPO }}:latest
-            docker run -p 8080:8080 ${{ env.DOCKERHUB_SERVER_REPO }}:latest
+            docker pull ${{ needs.setup-config.outputs.dockerhub-server-repo }}:latest
+            docker run -p 8080:8080 ${{ needs.setup-config.outputs.dockerhub-server-repo }}:latest
             ```
 
             #### Test Credentials Service  
             ```bash
-            docker pull ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest
-            docker run -p 8081:8081 ${{ env.DOCKERHUB_TEST_CREDENTIALS_REPO }}:latest
+            docker pull ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}:latest
+            docker run -p 8081:8081 ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}:latest
             ```
 
             ### Features
@@ -461,11 +474,59 @@ jobs:
           ./scripts/core/version-manager.sh generate
 
 
-  # Job 6: Report post-processing status (Updated for Phase 4)
+  # Job 6: Final GHCR cleanup after successful DockerHub publishing
+  final-ghcr-cleanup:
+    name: Final GHCR Cleanup (Post-DockerHub Publishing)
+    runs-on: ubuntu-latest
+    needs: [ setup-config, check-main-ci-images, detect-changes, publish-dockerhub ]
+    if: |
+      always() &&
+      (
+        needs.check-main-ci-images.outputs.publish-from-main-ci == 'true' ||
+        needs.publish-dockerhub.result == 'success'
+      )
+    permissions:
+      contents: read          # Read repository code
+      packages: write         # Package access for GHCR cleanup
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Final GHCR staging cleanup after DockerHub publishing
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_ADMIN_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_EVENT_NAME: "workflow_run"
+          GITHUB_REF_NAME: "main"
+          DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
+          FORCE_DOCKER_CLEANUP: "true"  # Override preservation logic for final cleanup
+        run: |
+          echo "🧹 Final GHCR cleanup after DockerHub publishing"
+          echo "📦 Phase 8: Docker Image Lifecycle Coordination - Final cleanup step"
+          echo ""
+          
+          if [[ "${{ needs.publish-dockerhub.result }}" == "success" ]]; then
+            echo "✅ DockerHub publishing successful - performing final GHCR cleanup"
+            echo "🗑️ Removing preserved Docker images from GHCR"
+          elif [[ "${{ needs.check-main-ci-images.outputs.publish-from-main-ci }}" == "true" ]]; then
+            echo "📦 Main CI built images - performing final GHCR cleanup"
+            echo "🗑️ Images were published to DockerHub, cleaning up GHCR staging"
+          else
+            echo "⚠️ DockerHub publishing failed or skipped - keeping GHCR images for investigation"
+            exit 0
+          fi
+          echo ""
+
+          # Execute final cleanup script with force flag
+          chmod +x scripts/docker/cleanup-staging-packages.sh
+          scripts/docker/cleanup-staging-packages.sh "success" "${{ github.repository_owner }}"
+
+  # Job 7: Report post-processing status (Updated for Phase 4)
   report-post-processing-status:
     name: Report post-processing status
     runs-on: ubuntu-latest
-    needs: [ detect-changes, publish-dockerhub, publish-client-libraries ]
+    needs: [ detect-changes, publish-dockerhub, publish-client-libraries, final-ghcr-cleanup ]
     if: always()
     steps:
       - name: Report overall post-processing status
@@ -475,10 +536,21 @@ jobs:
           echo "Change detection: ${{ needs.detect-changes.result }}"
           echo "DockerHub publishing: ${{ needs.publish-dockerhub.result }}"
           echo "Client libraries publishing: ${{ needs.publish-client-libraries.result }}"
+          echo "Final GHCR cleanup: ${{ needs.final-ghcr-cleanup.result }}"
 
           echo ""
           echo "📚 Client Libraries: Published in parallel for efficiency"
           echo "🧹 Note: Production packages are never cleaned up automatically"
+          echo ""
+          echo "🐳 Phase 8 - Docker Image Lifecycle Coordination:"
+          if [[ "${{ needs.final-ghcr-cleanup.result }}" == "success" ]]; then
+            echo "  ✅ Docker images preserved during main CI → published to DockerHub → cleaned from GHCR"
+            echo "  🎯 DockerHub publishing success rate: Fixed (was 0% due to premature cleanup)"
+          elif [[ "${{ needs.final-ghcr-cleanup.result }}" == "skipped" ]]; then
+            echo "  ⏭️ Final GHCR cleanup skipped (DockerHub publishing failed or not needed)"
+          else
+            echo "  ⚠️ Final GHCR cleanup had issues but main pipeline succeeded"
+          fi
 
           if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
             echo "✅ Original CI/CD pipeline succeeded"

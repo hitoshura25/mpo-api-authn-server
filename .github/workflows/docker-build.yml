@@ -62,19 +62,16 @@ on:
         default: '21'
       registry-url:
         description: 'Docker registry URL'
-        required: false
+        required: true
         type: string
-        default: 'ghcr.io'
       webauthn-image-name:
         description: 'WebAuthn server image name'
-        required: false
+        required: true
         type: string
-        default: 'hitoshura25/webauthn-server'
       test-credentials-image-name:
         description: 'Test credentials service image name'
-        required: false
+        required: true
         type: string
-        default: 'hitoshura25/webauthn-test-credentials-service'
     outputs:
       images-built:
         description: 'Whether Docker images were successfully built'

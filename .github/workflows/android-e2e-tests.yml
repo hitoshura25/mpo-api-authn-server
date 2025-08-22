@@ -68,15 +68,54 @@ on:
         value: android-e2e-test-reports-${{ inputs.workflow-identifier }}
 
 env:
-  DOCKER_REGISTRY: ghcr.io
   WEBAUTHN_SERVER_IMAGE: ${{ inputs.webauthn-server-image }}
   TEST_CREDENTIALS_IMAGE: ${{ inputs.test-credentials-image }}
   ANDROID_API_VERSION: ${{ inputs.android-api-version }}
+  PUBLISHING_CONFIG_FILE: "config/publishing-config.yml"
 
 jobs:
+  # Setup configuration for Docker registry
+  setup-config:
+    runs-on: ubuntu-latest
+    outputs:
+      docker-registry: ${{ steps.config.outputs.docker-registry }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Load configuration from central config file
+        id: config
+        run: |
+          echo "🔧 Loading configuration from ${{ env.PUBLISHING_CONFIG_FILE }}..."
+
+          # Use pre-installed yq on GitHub runners
+          CONFIG_FILE="${{ env.PUBLISHING_CONFIG_FILE }}"
+
+          # Validate configuration file exists
+          if [ ! -f "$CONFIG_FILE" ]; then
+            echo "❌ Configuration file not found: $CONFIG_FILE"
+            exit 1
+          fi
+
+          # Extract Docker registry
+          DOCKER_REGISTRY=$(yq '.docker.registry.url' "$CONFIG_FILE")
+          
+          # Validate required values are not null
+          if [ "$DOCKER_REGISTRY" = "null" ]; then
+            echo "❌ Missing Docker registry configuration in $CONFIG_FILE"
+            echo "Docker registry: $DOCKER_REGISTRY"
+            exit 1
+          fi
+
+          # Set outputs
+          echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
+          
+          echo "✅ Configuration loaded successfully:"
+          echo "  Docker registry: $DOCKER_REGISTRY (from central config)"
+
   # Docker image validation for Android testing
   validate-android-images:
     runs-on: ubuntu-latest
+    needs: setup-config
     outputs:
       webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
       test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}
@@ -84,7 +123,7 @@ jobs:
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: ${{ needs.setup-config.outputs.docker-registry }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
@@ -115,7 +154,7 @@ jobs:
   # Main Android E2E testing job
   run-android-tests:
     runs-on: ubuntu-latest
-    needs: validate-android-images
+    needs: [setup-config, validate-android-images]
     if: needs.validate-android-images.outputs.webauthn-server-ready == 'true' && needs.validate-android-images.outputs.test-credentials-ready == 'true'
     outputs:
       tests-passed: ${{ steps.android-test-execution.outputs.tests-passed }}
@@ -160,7 +199,7 @@ jobs:
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.DOCKER_REGISTRY }}
+          registry: ${{ needs.setup-config.outputs.docker-registry }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 

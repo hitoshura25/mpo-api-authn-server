@@ -474,11 +474,59 @@ jobs:
           ./scripts/core/version-manager.sh generate
 
 
-  # Job 6: Report post-processing status (Updated for Phase 4)
+  # Job 6: Final GHCR cleanup after successful DockerHub publishing
+  final-ghcr-cleanup:
+    name: Final GHCR Cleanup (Post-DockerHub Publishing)
+    runs-on: ubuntu-latest
+    needs: [ setup-config, check-main-ci-images, detect-changes, publish-dockerhub ]
+    if: |
+      always() &&
+      (
+        needs.check-main-ci-images.outputs.publish-from-main-ci == 'true' ||
+        needs.publish-dockerhub.result == 'success'
+      )
+    permissions:
+      contents: read          # Read repository code
+      packages: write         # Package access for GHCR cleanup
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Final GHCR staging cleanup after DockerHub publishing
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_ADMIN_TOKEN }}
+          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+          GITHUB_EVENT_NAME: "workflow_run"
+          GITHUB_REF_NAME: "main"
+          DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
+          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
+          FORCE_DOCKER_CLEANUP: "true"  # Override preservation logic for final cleanup
+        run: |
+          echo "🧹 Final GHCR cleanup after DockerHub publishing"
+          echo "📦 Phase 8: Docker Image Lifecycle Coordination - Final cleanup step"
+          echo ""
+          
+          if [[ "${{ needs.publish-dockerhub.result }}" == "success" ]]; then
+            echo "✅ DockerHub publishing successful - performing final GHCR cleanup"
+            echo "🗑️ Removing preserved Docker images from GHCR"
+          elif [[ "${{ needs.check-main-ci-images.outputs.publish-from-main-ci }}" == "true" ]]; then
+            echo "📦 Main CI built images - performing final GHCR cleanup"
+            echo "🗑️ Images were published to DockerHub, cleaning up GHCR staging"
+          else
+            echo "⚠️ DockerHub publishing failed or skipped - keeping GHCR images for investigation"
+            exit 0
+          fi
+          echo ""
+
+          # Execute final cleanup script with force flag
+          chmod +x scripts/docker/cleanup-staging-packages.sh
+          scripts/docker/cleanup-staging-packages.sh "success" "${{ github.repository_owner }}"
+
+  # Job 7: Report post-processing status (Updated for Phase 4)
   report-post-processing-status:
     name: Report post-processing status
     runs-on: ubuntu-latest
-    needs: [ detect-changes, publish-dockerhub, publish-client-libraries ]
+    needs: [ detect-changes, publish-dockerhub, publish-client-libraries, final-ghcr-cleanup ]
     if: always()
     steps:
       - name: Report overall post-processing status
@@ -488,10 +536,21 @@ jobs:
           echo "Change detection: ${{ needs.detect-changes.result }}"
           echo "DockerHub publishing: ${{ needs.publish-dockerhub.result }}"
           echo "Client libraries publishing: ${{ needs.publish-client-libraries.result }}"
+          echo "Final GHCR cleanup: ${{ needs.final-ghcr-cleanup.result }}"
 
           echo ""
           echo "📚 Client Libraries: Published in parallel for efficiency"
           echo "🧹 Note: Production packages are never cleaned up automatically"
+          echo ""
+          echo "🐳 Phase 8 - Docker Image Lifecycle Coordination:"
+          if [[ "${{ needs.final-ghcr-cleanup.result }}" == "success" ]]; then
+            echo "  ✅ Docker images preserved during main CI → published to DockerHub → cleaned from GHCR"
+            echo "  🎯 DockerHub publishing success rate: Fixed (was 0% due to premature cleanup)"
+          elif [[ "${{ needs.final-ghcr-cleanup.result }}" == "skipped" ]]; then
+            echo "  ⏭️ Final GHCR cleanup skipped (DockerHub publishing failed or not needed)"
+          else
+            echo "  ⚠️ Final GHCR cleanup had issues but main pipeline succeeded"
+          fi
 
           if [[ "${{ github.event.workflow_run.conclusion }}" == "success" ]]; then
             echo "✅ Original CI/CD pipeline succeeded"

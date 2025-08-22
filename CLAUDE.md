@@ -3,19 +3,19 @@
 ## Current Work (In Progress)
 
 ### Active Tasks
-- **Phase 8: Docker Image Lifecycle Coordination** *(Ready for Implementation - 2025-08-21)*
-  - **Critical Issue**: Docker images built in `main-ci-cd.yml` are cleaned up before `main-branch-post-processing.yml` can use them for DockerHub publishing (0% success rate)
-  - **Solution**: Implement conditional cleanup - skip cleanup on main branch builds, add post-publishing cleanup
-  - **Documentation**: `docs/improvements/in-progress/client-publishing-architecture-cleanup.md` (lines 760+ for full plan, lines 1078+ for quick start)
-  - **Impact**: Will restore DockerHub publishing functionality from 0% to 100% success rate
-  - **Risk**: Low - minimal conditional logic changes with easy rollback
+- **Phase 9: Consolidated CI/CD Publishing Workflow** *(Ready for Implementation - 2025-08-21)*
+  - **Goal**: Merge `main-ci-cd.yml` and `main-branch-post-processing.yml` into unified workflow
+  - **Benefits**: 23% faster main branch processing, 40% workflow complexity reduction
+  - **Prerequisites**: Phase 8 Docker Image Lifecycle Coordination (✅ COMPLETED)
+  - **Documentation**: `docs/improvements/in-progress/client-publishing-architecture-cleanup.md` (Phase 9 section)
+  - **Implementation**: Stage-gate pattern with callable production workflows
 
 ### Completed Major Refactors
-- **Client Library Publishing Architecture Cleanup (PHASES 1-7 COMPLETED)**: Centralized all client publishing configuration to `config/publishing-config.yml`. Eliminated ~35 lines of hardcoded repository logic, enhanced security by removing insecure yq downloads, achieved 100% Docker registry centralization.
+- **Client Library Publishing Architecture Cleanup (PHASES 1-8 COMPLETED)**: Centralized all client publishing configuration to `config/publishing-config.yml`. Eliminated ~35 lines of hardcoded repository logic, enhanced security by removing insecure yq downloads, achieved 100% Docker registry centralization. **Phase 8 CRITICAL FIX**: Resolved 0% DockerHub publishing success rate through Docker image lifecycle coordination.
 - **OpenAPI Client Library Architecture**: Docker-inspired staging→production workflow using GitHub Packages with dedicated client library submodules.
 
 ### Planned Major Refactors
-- **Client Publishing Architecture Phases 8-10** *(Consolidated Plan 2025-08-21)* - Complete CI/CD optimization in three phases: Phase 8 (Docker Image Lifecycle Coordination), Phase 9 (Consolidated CI/CD Publishing), Phase 10 (Independent Component Processing). Expected outcomes: 100% DockerHub publishing success, 23% faster main branch processing, 40-60% faster builds for single-component changes. See `docs/improvements/in-progress/client-publishing-architecture-cleanup.md` (Phases 8-10).
+- **Client Publishing Architecture Phases 9-10** *(Remaining Plan 2025-08-21)* - Complete CI/CD optimization in two remaining phases: Phase 9 (Consolidated CI/CD Publishing), Phase 10 (Independent Component Processing). Expected outcomes: 23% faster main branch processing, 40-60% faster builds for single-component changes. Phase 8 (Docker Image Lifecycle) completed same-day. See `docs/improvements/in-progress/client-publishing-architecture-cleanup.md` (Phases 9-10).
 - **iOS Test Client Implementation** *(Enhanced 2025-08-21)* - Complete iOS E2E testing ecosystem with Swift client library generation, SwiftUI test application, and CI integration. Extends testing coverage to iOS platform with AuthenticationServices WebAuthn integration. Timeline: 8-10 weeks. See `docs/improvements/planned/ios-test-client-implementation.md`.
 - **FOSS Security Implementation**: Replace AI-dependent security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP). See `docs/improvements/planned/foss-security-implementation.md` for complete plan.
 

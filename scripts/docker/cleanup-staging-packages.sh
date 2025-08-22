@@ -96,6 +96,9 @@ load_central_config() {
     DOCKER_WEBAUTHN_IMAGE_NAME="${DOCKER_WEBAUTHN_IMAGE_NAME:-webauthn-server}"
     DOCKER_TEST_CREDENTIALS_IMAGE_NAME="${DOCKER_TEST_CREDENTIALS_IMAGE_NAME:-webauthn-test-credentials-service}"
     
+    # Docker registry for image preservation logging (defaults to GitHub Container Registry)
+    DOCKER_REGISTRY="${DOCKER_REGISTRY:-ghcr.io}"
+    
     # Construct full package names
     ANDROID_STAGING_PACKAGE="${ANDROID_GROUP_ID}.${ANDROID_BASE_ARTIFACT_ID}${ANDROID_STAGING_SUFFIX}"
     NPM_STAGING_PACKAGE_NAME="${TYPESCRIPT_BASE_PACKAGE_NAME}${NPM_STAGING_SUFFIX}"
@@ -511,9 +514,63 @@ delete_docker_version() {
     fi
 }
 
+# Function to determine Docker cleanup strategy based on branch and context
+determine_docker_cleanup_strategy() {
+    local ref_name="${GITHUB_REF_NAME:-}"
+    local force_cleanup="${FORCE_DOCKER_CLEANUP:-false}"
+    
+    log "🔍 Determining Docker cleanup strategy:"
+    log "  Branch/Ref: ${ref_name:-'NOT_SET'}"
+    log "  Workflow Context: $CLEANUP_CONTEXT"
+    log "  Force Cleanup: $force_cleanup"
+    
+    # Force override: Used by post-processing workflow after DockerHub publishing
+    if [[ "$force_cleanup" == "true" ]]; then
+        DOCKER_CLEANUP_STRATEGY="standard"
+        log "🔄 FORCE CLEANUP: Post-processing override - cleaning up preserved images"
+        log "✅ Final cleanup after DockerHub publishing completed"
+        export DOCKER_CLEANUP_STRATEGY
+        return 0
+    fi
+    
+    # CRITICAL: Main branch Docker image preservation for production publishing
+    if [[ "$ref_name" == "main" && "$CLEANUP_CONTEXT" == "main" ]]; then
+        DOCKER_CLEANUP_STRATEGY="preserve"
+        log "🚨 MAIN BRANCH: Preserving Docker images for production publishing"
+        log "📦 Images will be preserved until DockerHub publishing completes"
+        log "🔄 Post-processing workflow will handle final cleanup"
+        export DOCKER_CLEANUP_STRATEGY
+        return 0
+    fi
+    
+    # All other contexts: standard cleanup
+    DOCKER_CLEANUP_STRATEGY="standard"
+    log "✅ STANDARD CLEANUP: Docker images will be cleaned up immediately"
+    log "📋 Context: PR builds, non-main branches, unknown contexts"
+    export DOCKER_CLEANUP_STRATEGY
+    return 0
+}
+
 # Function to clean up staging Docker images from GHCR
 cleanup_staging_docker() {
     log "🐳 Cleaning up staging Docker images from GHCR..."
+    
+    # Determine cleanup strategy first
+    determine_docker_cleanup_strategy
+    
+    # Check if Docker cleanup should be skipped
+    if [[ "$DOCKER_CLEANUP_STRATEGY" == "preserve" ]]; then
+        log "🚨 SKIPPING Docker image cleanup - preserving for production publishing"
+        log "📦 Docker images preserved in GHCR for DockerHub publishing workflow"
+        log "🔄 main-branch-post-processing.yml will handle cleanup after publishing"
+        log ""
+        log "📋 Images preserved:"
+        log "  - ${DOCKER_REGISTRY:-ghcr.io}/${REPOSITORY_OWNER}/${DOCKER_WEBAUTHN_IMAGE_NAME}:latest"
+        log "  - ${DOCKER_REGISTRY:-ghcr.io}/${REPOSITORY_OWNER}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
+        return 0
+    fi
+    
+    log "🧹 Performing standard Docker cleanup strategy"
     
     local packages=("$DOCKER_WEBAUTHN_IMAGE_NAME" "$DOCKER_TEST_CREDENTIALS_IMAGE_NAME")
     local total_deleted=0
@@ -1192,9 +1249,23 @@ perform_staging_cleanup() {
     log ""
     if [[ "$overall_success" == "true" ]]; then
         log "🎉 GitHub Packages staging cleanup completed successfully"
+        
+        # Report Docker preservation status for main branch builds
+        if [[ "${DOCKER_CLEANUP_STRATEGY:-}" == "preserve" ]]; then
+            log "🚨 DOCKER IMAGES PRESERVED: Main branch build detected"
+            log "📦 Docker images left in GHCR for DockerHub publishing workflow"
+            log "🔄 Post-processing workflow will complete final cleanup"
+        else
+            log "🗑️ All staging packages cleaned up (standard cleanup)"
+        fi
     else
         log "⚠️ GitHub Packages staging cleanup completed with $cleanup_errors phase(s) having issues"
         log "📋 Script completed successfully despite individual deletion failures"
+        
+        # Report Docker preservation status even with some failures
+        if [[ "${DOCKER_CLEANUP_STRATEGY:-}" == "preserve" ]]; then
+            log "🚨 DOCKER IMAGES PRESERVED: Main branch build (despite other cleanup issues)"
+        fi
     fi
 }
 

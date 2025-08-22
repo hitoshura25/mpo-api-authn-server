@@ -178,6 +178,7 @@ jobs:
       any-changes: ${{ steps.summary.outputs.any-changes }}
     permissions:
       contents: read
+      packages: read
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -395,7 +396,7 @@ jobs:
             docker run -p 8080:8080 ${{ needs.setup-config.outputs.dockerhub-server-repo }}:latest
             ```
 
-            #### Test Credentials Service  
+            #### Test Credentials Service
             ```bash
             docker pull ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}:latest
             docker run -p 8081:8081 ${{ needs.setup-config.outputs.dockerhub-test-credentials-repo }}:latest
@@ -505,7 +506,7 @@ jobs:
           echo "🧹 Final GHCR cleanup after DockerHub publishing"
           echo "📦 Phase 8: Docker Image Lifecycle Coordination - Final cleanup step"
           echo ""
-          
+
           if [[ "${{ needs.publish-dockerhub.result }}" == "success" ]]; then
             echo "✅ DockerHub publishing successful - performing final GHCR cleanup"
             echo "🗑️ Removing preserved Docker images from GHCR"

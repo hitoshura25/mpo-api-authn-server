@@ -93,24 +93,71 @@ jobs:
       issues: write
     secrets: inherit
 
-  # Job 3: E2E tests using built Docker images with smart component-based triggering
+  # Job 3: Generate version for staging client libraries
+  generate-staging-version:
+    name: Generate Staging Version
+    runs-on: ubuntu-latest
+    needs: [detect-component-changes]
+    if: |
+      needs.detect-component-changes.outputs.openapi-changed == 'true' ||
+      needs.detect-component-changes.outputs.webauthn-server-changed == 'true'
+    outputs:
+      version: ${{ steps.generate-version.outputs.version }}
+      is-prerelease: ${{ steps.generate-version.outputs.is-prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history and tags for version continuity
+
+      - name: Generate staging client version
+        id: generate-version
+        env:
+          BASE_VERSION: "1.0"
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          echo "🎯 Generating staging client version with centralized version manager"
+          ./scripts/core/version-manager.sh generate
+
+  # Job 4: Client library publishing (parallel with build-and-test for optimal performance)
+  publish-client-libraries:
+    name: Publish Client Libraries (Staging)
+    needs: [detect-component-changes, generate-staging-version]
+    if: |
+      needs.detect-component-changes.outputs.openapi-changed == 'true' ||
+      needs.detect-component-changes.outputs.webauthn-server-changed == 'true'
+    uses: ./.github/workflows/client-publish.yml
+    permissions:
+      contents: write  # Required for creating GitHub releases and tags
+      packages: write  # Required for publishing to GitHub Packages
+      id-token: write  # Required for npm publishing
+    with:
+      publish-type: "staging"
+      client-version: ${{ needs.generate-staging-version.outputs.version }}
+      workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
+    secrets:
+      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+  # Job 5: E2E tests using built Docker images with smart component-based triggering (waits for both build AND client publishing)
   e2e-tests:
     name: E2E Tests (Web + Android)
-    needs: [detect-component-changes, build-and-test]
+    needs: [detect-component-changes, build-and-test, publish-client-libraries]
     if: |
       always() &&
-      needs.build-and-test.outputs.docker_images_built == 'true' &&
       (
-        needs.detect-component-changes.outputs.should-run-e2e-workflow == 'true' ||
-        needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
-        needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' ||
-        needs.detect-component-changes.outputs.openapi-changed == 'true' ||
-        needs.detect-component-changes.outputs.e2e-tests-changed == 'true'
-      )
+        (needs.detect-component-changes.outputs.webauthn-server-changed == 'true' && needs.build-and-test.result == 'success') ||
+        (needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' && needs.build-and-test.result == 'success') ||
+        (needs.detect-component-changes.outputs.openapi-changed == 'true' && needs.publish-client-libraries.result == 'success') ||
+        (needs.detect-component-changes.outputs.e2e-tests-changed == 'true' && (needs.build-and-test.result == 'success' || needs.build-and-test.result == 'skipped'))
+      ) &&
+      needs.build-and-test.outputs.docker_images_built == 'true'
     uses: ./.github/workflows/e2e-tests.yml
     permissions:
-      contents: write         # Required for GitHub release creation in client publishing
-      packages: write          # Pull/Push Docker images from GHCR and client lib packages
+      contents: write         # Required for GitHub release creation
+      packages: write          # Pull/Push Docker images from GHCR
       pull-requests: write    # Comment on PRs with test results
       id-token: write         # Required for npm publishing
     with:
@@ -124,7 +171,7 @@ jobs:
       e2e-tests-changed: ${{ needs.detect-component-changes.outputs.e2e-tests-changed }}
     secrets: inherit
 
-  # Job 4: Security scanning using built Docker images (parallel with E2E tests)
+  # Job 6: Security scanning using built Docker images (parallel with E2E tests)  
   security-scanning:
     name: Security Scanning (Docker Images)
     needs: [detect-component-changes, build-and-test]
@@ -149,11 +196,11 @@ jobs:
       skip-scan: false
     secrets: inherit
 
-  # Job 5: Setup configuration for production publishing (main branch only)
+  # Job 7: Setup configuration for production publishing (main branch only)
   setup-production-config:
     name: Setup Production Configuration
     runs-on: ubuntu-latest
-    needs: [ detect-component-changes, build-and-test, e2e-tests, security-scanning ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning ]
     if: |
       always() &&
       github.ref_name == 'main' &&
@@ -244,10 +291,10 @@ jobs:
           echo "🎯 Generating production client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
-  # Job 6a: Publish Docker images to Docker Hub (conditional on component changes)
+  # Job 8a: Publish Docker images to Docker Hub (conditional on component changes)
   publish-docker-production:
     name: Publish Docker Images to Docker Hub
-    needs: [ detect-component-changes, build-and-test, e2e-tests, security-scanning, setup-production-config ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config ]
     if: |
       always() &&
       github.ref_name == 'main' &&
@@ -272,10 +319,10 @@ jobs:
       id-token: write     # Required for Sigstore signing
       packages: read      # Required for pulling from GHCR
 
-  # Job 6b: Publish client libraries in parallel (conditional on OpenAPI changes)
+  # Job 8b: Publish client libraries in parallel (conditional on OpenAPI changes)
   publish-clients-production:
     name: Publish Client Libraries
-    needs: [ detect-component-changes, build-and-test, e2e-tests, security-scanning, setup-production-config ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config ]
     if: |
       always() &&
       github.ref_name == 'main' &&
@@ -301,11 +348,11 @@ jobs:
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
 
-  # Job 7: Report pipeline status with component-aware result analysis
+  # Job 9: Report pipeline status with component-aware result analysis
   report-pipeline-status:
     name: Report Pipeline Status
     runs-on: ubuntu-latest
-    needs: [ detect-component-changes, build-and-test, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production ]
     if: always()
     outputs:
       pipeline-success: ${{ steps.determine-outcome.outputs.pipeline-success }}
@@ -475,11 +522,11 @@ jobs:
           echo "📊 Workflow outcome for staging cleanup: $WORKFLOW_OUTCOME"
           echo "🎯 Pipeline success status: $PIPELINE_SUCCESS"
 
-  # Job 8: Final cleanup after production publishing (component-aware)
+  # Job 10: Final cleanup after production publishing (component-aware)
   final-cleanup:
     name: Final Cleanup
     runs-on: ubuntu-latest
-    needs: [ detect-component-changes, build-and-test, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production, report-pipeline-status ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production, report-pipeline-status ]
     if: always()
     permissions:
       contents: read          # Read repository code and git history

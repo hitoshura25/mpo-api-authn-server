@@ -1561,11 +1561,66 @@ Phase 9 builds directly on Phase 8's conditional cleanup logic:
 - Maintains callable workflow architecture achieving 54% size reduction
 - Compatible with planned Phase 10 independent component processing
 
-### Phase 10: Independent Component Processing & Optimization ✅ *(Completed - 2025-08-22)*
+### Phase 10: Independent Component Processing & Optimization 🟡 *(Implementation Issues Identified - 2025-08-22)*
 
-#### Implementation Summary
+#### ⚠️ CRITICAL ARCHITECTURE ISSUES IDENTIFIED
 
-Successfully implemented Independent Component Processing & Optimization achieving **40-95% performance improvements** across different change scenarios through intelligent component-aware processing and parallel execution optimization.
+**PHASE 10 IMPLEMENTATION MISSED THE CORE OPTIMIZATION GOALS** - Current implementation focused on caching/conditional logic but missed the fundamental architectural improvements needed.
+
+#### 🚨 **IMMEDIATE ACTION REQUIRED FOR NEXT CLAUDE SESSION**
+
+**Two Critical Issues Identified**:
+
+1. **DUPLICATE CHANGE DETECTION** ❌
+   - `main-ci-cd.yml` calls `detect-changes.yml`
+   - `build-and-test.yml` ALSO calls `detect-changes.yml` 
+   - **Fix Required**: Remove duplicate from `build-and-test.yml`, use outputs from main workflow
+
+2. **CLIENT LIBRARY PUBLISHING BOTTLENECK** ❌
+   - Current: `main-ci-cd → build-and-test → e2e-tests → publish-client-libraries → THEN E2E tests`
+   - **Should be**: `main-ci-cd → [build-and-test, publish-client-libraries] → e2e-tests`
+   - **Fix Required**: Move `publish-client-libraries` OUT of `e2e-tests.yml` into `main-ci-cd.yml` as independent parallel job
+
+#### 🎯 **CORRECT PHASE 10 ARCHITECTURE IMPLEMENTATION PLAN**
+
+**Next Claude Session Should Implement**:
+```mermaid
+graph TD
+    A[detect-component-changes] --> B[build-and-test]
+    A --> C[publish-client-libraries] 
+    B --> D[e2e-tests]
+    C --> D
+    B --> E[security-scanning]
+    D --> F[production-publishing]
+```
+
+**🔗 CRITICAL E2E DEPENDENCY LOGIC**:
+E2E tests must wait for ALL required components to be ready:
+- **Docker Images**: If webauthn-server OR test-credentials-service changed → wait for `build-and-test` (Docker builds)
+- **Client Libraries**: If OpenAPI changed → wait for `publish-client-libraries` (new client libraries)  
+- **Test Clients**: If web-test-client OR android-test-client changed → run E2E tests (already covered)
+- **Independent Changes**: If only docs/workflows changed → skip E2E tests entirely
+
+**Conditional Execution Logic**:
+```yaml
+e2e-tests:
+  needs: [detect-component-changes, build-and-test, publish-client-libraries]  
+  if: |
+    (needs.detect-component-changes.outputs.webauthn-server-changed == 'true' && needs.build-and-test.result == 'success') ||
+    (needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' && needs.build-and-test.result == 'success') ||  
+    (needs.detect-component-changes.outputs.openapi-changed == 'true' && needs.publish-client-libraries.result == 'success') ||
+    needs.detect-component-changes.outputs.e2e-tests-changed == 'true'
+```
+
+**Specific Changes Required**:
+1. **Move `publish-client-libraries` job** from `e2e-tests.yml` to `main-ci-cd.yml` as independent parallel job
+2. **Remove duplicate `detect-changes.yml`** call from `build-and-test.yml` - use outputs from main workflow  
+3. **Update E2E dependency logic** to wait for required components based on what changed
+4. **Enable true parallel execution**: Client publishing + Docker builds happen simultaneously when both needed
+
+**Performance Impact**: This will deliver the **REAL** Phase 10 benefits - client libraries published immediately when OpenAPI changes, not after entire build+E2E setup pipeline.
+
+#### Current Implementation Status
 
 #### Key Achievements
 

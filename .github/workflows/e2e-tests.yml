@@ -133,8 +133,6 @@ jobs:
       skip-android-e2e: ${{ steps.determine-scope.outputs.skip-android-e2e }}
       should-run-web-e2e: ${{ steps.determine-scope.outputs.should-run-web-e2e }}
       should-run-android-e2e: ${{ steps.determine-scope.outputs.should-run-android-e2e }}
-      test-execution-strategy: ${{ steps.determine-scope.outputs.test-execution-strategy }}
-      docker-image-strategy: ${{ steps.docker-strategy.outputs.image-strategy }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -214,30 +212,25 @@ jobs:
           SHOULD_RUN_ANDROID="false"
           SKIP_WEB="true"
           SKIP_ANDROID="true"
-          TEST_STRATEGY="none"
-          
           # Component-specific E2E test triggering logic
           SERVER_CHANGED="${{ inputs.webauthn-server-changed }}"
           CREDS_CHANGED="${{ inputs.test-credentials-service-changed }}"
           API_CHANGED="${{ inputs.openapi-changed }}"
           E2E_CHANGED="${{ inputs.e2e-tests-changed }}"
           
-          # Determine test execution strategy based on component changes
+          # Determine which tests to run based on component changes
           if [[ "$SERVER_CHANGED" == "true" || "$CREDS_CHANGED" == "true" ]]; then
             # Server components changed: Full E2E test suite required
-            TEST_STRATEGY="full-suite"
             SHOULD_RUN_WEB="true"
             SHOULD_RUN_ANDROID="true"
             echo "🔧 Server components changed - requiring full E2E test suite"
           elif [[ "$API_CHANGED" == "true" ]]; then
             # OpenAPI changed: Focus on client integration tests
-            TEST_STRATEGY="client-integration"
             SHOULD_RUN_WEB="true"
             SHOULD_RUN_ANDROID="true"
             echo "🔄 OpenAPI changed - focusing on client integration validation"
           elif [[ "$E2E_CHANGED" == "true" ]]; then
             # Only E2E tests changed: Run specific test suites that changed
-            TEST_STRATEGY="selective"
             # Check which E2E test files changed to determine scope
             if find web-test-client -name "*.spec.ts" -o -name "*.test.ts" -newer .git/FETCH_HEAD 2>/dev/null | grep -q .; then
               SHOULD_RUN_WEB="true"
@@ -273,48 +266,16 @@ jobs:
           echo "should-run-android-e2e=$SHOULD_RUN_ANDROID" >> $GITHUB_OUTPUT
           echo "skip-web-e2e=$SKIP_WEB" >> $GITHUB_OUTPUT
           echo "skip-android-e2e=$SKIP_ANDROID" >> $GITHUB_OUTPUT
-          echo "test-execution-strategy=$TEST_STRATEGY" >> $GITHUB_OUTPUT
           
           echo ""
           echo "🎯 E2E Test Execution Plan:"
-          echo "  Strategy: $TEST_STRATEGY"
           echo "  Web E2E: $SHOULD_RUN_WEB (will skip: $SKIP_WEB, cache hit: ${{ steps.web-cache.outputs.cache-hit }})"
           echo "  Android E2E: $SHOULD_RUN_ANDROID (will skip: $SKIP_ANDROID, cache hit: ${{ steps.android-cache.outputs.cache-hit }})"
       
-      - name: Docker image strategy for independent component builds
-        id: docker-strategy
-        run: |
-          echo "🐳 Determining Docker image coordination strategy..."
-          
-          # Analyze which Docker images are needed based on component changes
-          SERVER_CHANGED="${{ inputs.webauthn-server-changed }}"
-          CREDS_CHANGED="${{ inputs.test-credentials-service-changed }}"
-          
-          IMAGE_STRATEGY="use-provided"
-          
-          if [[ "$SERVER_CHANGED" == "true" && "$CREDS_CHANGED" == "true" ]]; then
-            IMAGE_STRATEGY="both-fresh"
-            echo "🔄 Both server components changed - using fresh builds from independent workflows"
-          elif [[ "$SERVER_CHANGED" == "true" ]]; then
-            IMAGE_STRATEGY="server-fresh-creds-stable"
-            echo "🔄 Server changed - using fresh server image, stable credentials image"
-          elif [[ "$CREDS_CHANGED" == "true" ]]; then
-            IMAGE_STRATEGY="server-stable-creds-fresh"
-            echo "🔄 Credentials service changed - using fresh credentials image, stable server image"
-          else
-            IMAGE_STRATEGY="both-stable"
-            echo "✅ No server changes - using provided stable images"
-          fi
-          
-          echo "image-strategy=$IMAGE_STRATEGY" >> $GITHUB_OUTPUT
-          echo "🎯 Image Strategy: $IMAGE_STRATEGY"
-          
       - name: Component-aware execution and cache summary
         run: |
-          echo "📊 Enhanced E2E Test Strategy Summary (Phase 10.3):"
+          echo "📊 E2E Test Strategy Summary:"
           echo "📋 Component Analysis:"
-          echo "  Test Strategy: ${{ steps.determine-scope.outputs.test-execution-strategy }}"
-          echo "  Image Strategy: ${{ steps.docker-strategy.outputs.image-strategy }}"
           echo "  Component triggers: Server=${{ inputs.webauthn-server-changed }}, Creds=${{ inputs.test-credentials-service-changed }}, API=${{ inputs.openapi-changed }}, E2E=${{ inputs.e2e-tests-changed }}"
           echo ""
           echo "💾 Cache Optimization:"
@@ -428,8 +389,6 @@ jobs:
       typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
       client-version: ${{ needs.generate-version.outputs.version }}
       cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-web }}
-      test-execution-strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}
-      docker-image-strategy: ${{ needs.analyze-e2e-requirements.outputs.docker-image-strategy }}
 
   # Job 7: Enhanced Android E2E tests with parallel execution optimization
   call-android-e2e-tests:
@@ -451,8 +410,6 @@ jobs:
       android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}
       client-version: ${{ needs.generate-version.outputs.version }}
       cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-android }}
-      test-execution-strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}
-      docker-image-strategy: ${{ needs.analyze-e2e-requirements.outputs.docker-image-strategy }}
 
   # Job 8: Handle cached Web E2E results with enhanced component awareness
   web-e2e-cached:
@@ -478,7 +435,6 @@ jobs:
         run: |
           echo "✅ Web E2E tests skipped - using cached results"
           echo "Cache key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-web }}"
-          echo "Test strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}"
           echo "Previous test run was successful for identical conditions"
           if [ -f web-e2e-results.json ]; then
             echo "📊 Cached test results available"
@@ -509,7 +465,6 @@ jobs:
         run: |
           echo "✅ Android E2E tests skipped - using cached results"
           echo "Cache key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-android }}"
-          echo "Test strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}"
           echo "Previous test run was successful for identical conditions"
           if [ -f android-e2e-results.json ]; then
             echo "📊 Cached test results available"
@@ -531,8 +486,6 @@ jobs:
         run: |
           echo "📊 Analyzing cross-platform E2E test coordination results..."
           echo "📋 Execution Analysis:"
-          echo "  Strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}"
-          echo "  Docker Strategy: ${{ needs.analyze-e2e-requirements.outputs.docker-image-strategy }}"
           echo ""
           
           # Determine if tests ran in parallel
@@ -567,9 +520,7 @@ jobs:
           PERFORMANCE_SUMMARY="{"
           PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"web_executed\": $WEB_EXECUTED,"
           PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"android_executed\": $ANDROID_EXECUTED,"
-          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"parallel_execution\": $PARALLEL_EXECUTION,"
-          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"strategy\": \"${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}\","
-          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"docker_strategy\": \"${{ needs.analyze-e2e-requirements.outputs.docker-image-strategy }}\""
+          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"parallel_execution\": $PARALLEL_EXECUTION"
           PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY}"
           
           echo "overall-success=$OVERALL_SUCCESS" >> $GITHUB_OUTPUT

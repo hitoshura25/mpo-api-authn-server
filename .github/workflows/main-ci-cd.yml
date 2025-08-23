@@ -169,6 +169,9 @@ jobs:
       test-credentials-service-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
       openapi-changed: ${{ needs.detect-component-changes.outputs.openapi-changed }}
       e2e-tests-changed: ${{ needs.detect-component-changes.outputs.e2e-tests-changed }}
+      # Pass granular E2E change flags for platform-specific triggering
+      web-e2e-test-files-changed: ${{ needs.detect-component-changes.outputs.web-e2e-test-files-changed }}
+      android-e2e-test-files-changed: ${{ needs.detect-component-changes.outputs.android-e2e-test-files-changed }}
     secrets: inherit
 
   # Job 6: Security scanning using built Docker images (parallel with E2E tests)  

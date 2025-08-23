@@ -65,6 +65,17 @@ on:
         required: false
         default: 'false'
         type: string
+      # Granular E2E change inputs for platform-specific triggering
+      web-e2e-test-files-changed:
+        description: 'Whether web E2E test files changed'
+        required: false
+        default: 'false'
+        type: string
+      android-e2e-test-files-changed:
+        description: 'Whether Android E2E test files changed'
+        required: false
+        default: 'false'
+        type: string
 
 env:
   ANDROID_API_VERSION: "29"
@@ -148,9 +159,13 @@ jobs:
           WEBAUTHN_TAG_HASH=$(echo "$WEBAUTHN_IMAGE_TAG" | sed 's|[:/]|-|g')
           TEST_CREDS_TAG_HASH=$(echo "$TEST_CREDS_IMAGE_TAG" | sed 's|[:/]|-|g')
 
-          # Generate hash of E2E test files and configurations
-          WEB_FILES_HASH=$(find web-test-client .github/workflows/web-e2e-tests.yml -type f -exec sha256sum {} \; 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-files")
-          ANDROID_FILES_HASH=$(find android-test-client .github/workflows/android-e2e-tests.yml -type f -exec sha256sum {} \; 2>/dev/null | sha256sum | cut -d' ' -f1 || echo "no-files")
+          # Use dorny-based change detection results for cache keys (eliminating manual file hashing)
+          WEB_FILES_CHANGED="${{ inputs.web-e2e-test-files-changed }}"
+          ANDROID_FILES_CHANGED="${{ inputs.android-e2e-test-files-changed }}"
+          
+          # Create cache discriminator based on change detection
+          WEB_CACHE_DISCRIMINATOR=$(echo "${WEB_FILES_CHANGED}-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}" | sha256sum | cut -d' ' -f1)
+          ANDROID_CACHE_DISCRIMINATOR=$(echo "${ANDROID_FILES_CHANGED}-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}" | sha256sum | cut -d' ' -f1)
 
           # Generate branch/event context for cache key isolation
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
@@ -161,20 +176,23 @@ jobs:
             CONTEXT_SUFFIX="branch-${{ github.ref_name }}"
           fi
 
-          # Create platform-specific cache keys with branch/event context
-          WEB_CACHE_KEY="web-e2e-results-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}-${WEB_FILES_HASH}-${CONTEXT_SUFFIX}"
-          ANDROID_CACHE_KEY="android-e2e-results-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}-${ANDROID_FILES_HASH}-${CONTEXT_SUFFIX}"
+          # Create platform-specific cache keys with dorny-based discriminator
+          WEB_CACHE_KEY="web-e2e-results-${WEB_CACHE_DISCRIMINATOR}-${CONTEXT_SUFFIX}"
+          ANDROID_CACHE_KEY="android-e2e-results-${ANDROID_CACHE_DISCRIMINATOR}-${CONTEXT_SUFFIX}"
 
           echo "web-key=${WEB_CACHE_KEY}" >> $GITHUB_OUTPUT
           echo "android-key=${ANDROID_CACHE_KEY}" >> $GITHUB_OUTPUT
 
-          echo "🔑 Cache Keys Generated:"
+          echo "🔑 Cache Keys Generated (Dorny-Based):"
           echo "  Web E2E: ${WEB_CACHE_KEY}"
           echo "  Android E2E: ${ANDROID_CACHE_KEY}"
           echo "🏷️  Image Tags:"
           echo "  WebAuthn: ${WEBAUTHN_IMAGE_TAG} → ${WEBAUTHN_TAG_HASH}"
-          echo "🎯 Context: ${CONTEXT_SUFFIX}"
           echo "  Test Creds: ${TEST_CREDS_IMAGE_TAG} → ${TEST_CREDS_TAG_HASH}"
+          echo "🎯 Change Detection:"
+          echo "  Web E2E Files Changed: ${WEB_FILES_CHANGED}"
+          echo "  Android E2E Files Changed: ${ANDROID_FILES_CHANGED}"
+          echo "  Context: ${CONTEXT_SUFFIX}"
 
       - name: Check Web E2E cache
         id: web-cache
@@ -230,13 +248,12 @@ jobs:
             SHOULD_RUN_ANDROID="true"
             echo "🔄 OpenAPI changed - focusing on client integration validation"
           elif [[ "$E2E_CHANGED" == "true" ]]; then
-            # Only E2E tests changed: Run specific test suites that changed
-            # Check which E2E test files changed to determine scope
-            if find web-test-client -name "*.spec.ts" -o -name "*.test.ts" -newer .git/FETCH_HEAD 2>/dev/null | grep -q .; then
+            # Only E2E tests changed: Use centralized dorny/paths-filter results
+            if [[ "${{ inputs.web-e2e-test-files-changed }}" == "true" ]]; then
               SHOULD_RUN_WEB="true"
               echo "📱 Web E2E test files changed - including web tests"
             fi
-            if find android-test-client -name "*.kt" -newer .git/FETCH_HEAD 2>/dev/null | grep -q .; then
+            if [[ "${{ inputs.android-e2e-test-files-changed }}" == "true" ]]; then
               SHOULD_RUN_ANDROID="true"
               echo "🤖 Android E2E test files changed - including Android tests"
             fi

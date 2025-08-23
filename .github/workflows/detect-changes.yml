@@ -36,6 +36,14 @@ on:
         description: 'Whether workflow files changed'
         value: ${{ jobs.detect-changes.outputs.workflows-changed }}
       
+      # Granular E2E test change detection for platform-specific triggering
+      web-e2e-test-files-changed:
+        description: 'Whether web E2E test files changed'
+        value: ${{ jobs.detect-changes.outputs.web-e2e-test-files-changed }}
+      android-e2e-test-files-changed:
+        description: 'Whether Android E2E test files changed'
+        value: ${{ jobs.detect-changes.outputs.android-e2e-test-files-changed }}
+      
       # Build decision outputs (compatible with build-and-test.yml)
       should-run-docker-workflow:
         description: 'Whether Docker workflow should be executed'
@@ -57,6 +65,10 @@ jobs:
       openapi-changed: ${{ steps.decision-matrix.outputs.openapi-changed }}
       e2e-tests-changed: ${{ steps.decision-matrix.outputs.e2e-tests-changed }}
       workflows-changed: ${{ steps.decision-matrix.outputs.workflows-changed }}
+      
+      # Granular E2E test change detection outputs
+      web-e2e-test-files-changed: ${{ steps.decision-matrix.outputs.web-e2e-test-files-changed }}
+      android-e2e-test-files-changed: ${{ steps.decision-matrix.outputs.android-e2e-test-files-changed }}
       
       # Build decision outputs (backward compatibility)
       should-run-docker-workflow: ${{ steps.decision-matrix.outputs.should-run-docker-workflow }}
@@ -137,12 +149,30 @@ jobs:
               - 'typescript-client-library/**'
               - 'config/publishing-config.yml'
             
-            # E2E test changes
+            # E2E test changes (granular patterns for platform-specific detection)
             e2e-test-changes:
               - 'web-test-client/**'
               - 'android-test-client/**'
               - '.github/workflows/e2e-tests.yml'
               - '.github/workflows/web-e2e-tests.yml'
+              - '.github/workflows/android-e2e-tests.yml'
+            
+            # Granular E2E patterns for platform-specific triggering
+            web-e2e-test-files:
+              - 'web-test-client/tests/**'
+              - 'web-test-client/**/*.spec.ts'
+              - 'web-test-client/**/*.test.ts'
+              - 'web-test-client/src/**'
+              - 'web-test-client/package.json'
+              - 'web-test-client/tsconfig.json'
+              - 'web-test-client/webpack.config.js'
+              - '.github/workflows/web-e2e-tests.yml'
+            
+            android-e2e-test-files:
+              - 'android-test-client/**/*.kt'
+              - 'android-test-client/app/src/**'
+              - 'android-test-client/app/build.gradle.kts'
+              - 'android-test-client/settings.gradle.kts'
               - '.github/workflows/android-e2e-tests.yml'
 
       - name: Print change detection results
@@ -154,6 +184,8 @@ jobs:
           echo "test-credentials-docker: ${{ steps.changes.outputs.test-credentials-docker }}"
           echo "openapi-changes: ${{ steps.changes.outputs.openapi-changes }}"
           echo "e2e-test-changes: ${{ steps.changes.outputs.e2e-test-changes }}"
+          echo "web-e2e-test-files: ${{ steps.changes.outputs.web-e2e-test-files }}"
+          echo "android-e2e-test-files: ${{ steps.changes.outputs.android-e2e-test-files }}"
           echo "orchestration-workflows: ${{ steps.changes.outputs.orchestration-workflows }}"
 
       - name: Apply decision matrix logic
@@ -172,6 +204,10 @@ jobs:
           
           OPENAPI_CHANGED="${{ steps.changes.outputs.openapi-changes }}"
           E2E_TESTS_CHANGED="${{ steps.changes.outputs.e2e-test-changes }}"
+          
+          # Granular E2E pattern detection
+          WEB_E2E_FILES_CHANGED="${{ steps.changes.outputs.web-e2e-test-files }}"
+          ANDROID_E2E_FILES_CHANGED="${{ steps.changes.outputs.android-e2e-test-files }}"
           
           WORKFLOWS_CHANGED="false"
           if [[ "${{ steps.changes.outputs.orchestration-workflows }}" == "true" || "${{ steps.changes.outputs.unit-test-workflows }}" == "true" || "${{ steps.changes.outputs.docker-workflows }}" == "true" || "${{ steps.changes.outputs.e2e-workflows }}" == "true" || "${{ steps.changes.outputs.publishing-workflows }}" == "true" ]]; then
@@ -200,6 +236,10 @@ jobs:
           echo "e2e-tests-changed=$E2E_TESTS_CHANGED" >> $GITHUB_OUTPUT
           echo "workflows-changed=$WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
           
+          # Granular E2E outputs
+          echo "web-e2e-test-files-changed=$WEB_E2E_FILES_CHANGED" >> $GITHUB_OUTPUT
+          echo "android-e2e-test-files-changed=$ANDROID_E2E_FILES_CHANGED" >> $GITHUB_OUTPUT
+          
           echo "should-run-docker-workflow=$SHOULD_RUN_DOCKER" >> $GITHUB_OUTPUT
           echo "should-run-e2e-workflow=$SHOULD_RUN_E2E" >> $GITHUB_OUTPUT
           echo "should-run-tests-workflow=$SHOULD_RUN_TESTS" >> $GITHUB_OUTPUT
@@ -209,6 +249,8 @@ jobs:
           echo "  test-credentials-service: $TEST_CREDS_SERVICE_CHANGED"
           echo "  openapi-specification: $OPENAPI_CHANGED"
           echo "  e2e-tests: $E2E_TESTS_CHANGED"
+          echo "  web-e2e-test-files: $WEB_E2E_FILES_CHANGED"
+          echo "  android-e2e-test-files: $ANDROID_E2E_FILES_CHANGED"
           echo "  workflows: $WORKFLOWS_CHANGED"
           echo "🚀 Build Decisions:"
           echo "  run-docker-workflow: $SHOULD_RUN_DOCKER"

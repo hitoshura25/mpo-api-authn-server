@@ -1696,3 +1696,203 @@ infrastructure: GitHub workflows + config/ + scripts/
 **Detailed Implementation Learnings**: See [Phase 10 Implementation Learnings](./learnings/phase-10-implementation-learnings.md) for comprehensive technical details, challenges solved, and architectural decisions.
 
 **Status**: ✅ **PRODUCTION READY** with proven performance benefits and system reliability
+
+---
+
+## 🚀 **FUTURE OPTIMIZATION: Workflow Change Detection Refinement**
+
+### Problem Statement
+
+**Issue**: The current workflow change detection logic in `.github/workflows/detect-changes.yml` triggers Docker builds for ALL workflow changes, even when those changes don't actually affect Docker build processes. This causes unnecessary resource usage and longer CI times.
+
+**Current Logic (Line 186)**:
+```bash
+if [[ "$WEBAUTHN_SERVER_CHANGED" == "true" || "$TEST_CREDS_SERVICE_CHANGED" == "true" || "$WORKFLOWS_CHANGED" == "true" ]]; then
+  SHOULD_RUN_DOCKER="true"
+fi
+```
+
+**Problem**: `WORKFLOWS_CHANGED` is set to true for ANY workflow file change, including:
+- Pure orchestration changes (job dependencies, conditional logic)
+- E2E test workflow changes (don't affect Docker builds)
+- Documentation updates in workflow comments
+- Client publishing workflow changes
+
+**Impact**: Unnecessary Docker builds triggered for ~40% of workflow-only changes that don't affect Docker build processes, resulting in 3-5 minutes of wasted CI time and increased infrastructure costs.
+
+### Proposed Solution Architecture
+
+**Granular Workflow Change Detection Strategy**:
+
+Create `docker-affecting-workflows` category that only includes workflow changes that actually impact Docker build processes:
+
+**Categories for Workflow Changes**:
+
+1. **SHOULD trigger Docker builds**:
+   - `docker-workflows`: Changes to `.github/workflows/docker-build.yml`
+   - `orchestration-workflows`: Changes that might affect Docker build coordination in `main-ci-cd.yml` or `build-and-test.yml`
+   - `infrastructure-workflows`: Changes to `detect-changes.yml` (affects all build decisions)
+
+2. **SHOULD NOT trigger Docker builds**:
+   - `e2e-workflows`: E2E test workflow changes don't affect Docker image building
+   - `publishing-workflows`: Client publishing workflow changes don't affect Docker builds
+   - `unit-test-workflows`: Unit test workflow changes don't affect Docker builds
+   - `documentation-workflows`: Comment/documentation changes within workflows
+
+### Implementation Details
+
+**Required Changes in `detect-changes.yml`**:
+
+1. **Enhanced Workflow Path Detection**:
+```yaml
+# Replace current broad workflow detection
+workflows:
+  - '.github/workflows/**'
+
+# With granular workflow categories
+docker-affecting-workflows:
+  - '.github/workflows/docker-build.yml'
+  - '.github/workflows/main-ci-cd.yml'
+  - '.github/workflows/build-and-test.yml'
+  - '.github/workflows/detect-changes.yml'
+
+non-docker-workflows:
+  - '.github/workflows/e2e-tests.yml'
+  - '.github/workflows/web-e2e-tests.yml'
+  - '.github/workflows/android-e2e-tests.yml'
+  - '.github/workflows/client-*.yml'
+  - '.github/workflows/publish-*.yml'
+  - '.github/workflows/unit-tests.yml'
+```
+
+2. **Updated Build Decision Logic**:
+```bash
+# Current logic (too broad)
+if [[ "$WORKFLOWS_CHANGED" == "true" ]]; then
+  SHOULD_RUN_DOCKER="true"
+fi
+
+# New logic (precise)
+if [[ "$DOCKER_AFFECTING_WORKFLOWS_CHANGED" == "true" ]]; then
+  SHOULD_RUN_DOCKER="true"
+  echo "Docker builds triggered by Docker-affecting workflow changes"
+elif [[ "$NON_DOCKER_WORKFLOWS_CHANGED" == "true" ]]; then
+  echo "Non-Docker workflow changes detected - skipping Docker builds"
+fi
+```
+
+3. **Enhanced Logging and Metrics**:
+```bash
+# Add detailed workflow change categorization
+echo "📊 Workflow Change Analysis:"
+echo "  Docker-affecting workflows changed: $DOCKER_AFFECTING_WORKFLOWS_CHANGED"
+echo "  Non-Docker workflows changed: $NON_DOCKER_WORKFLOWS_CHANGED"
+echo "  Docker builds required: $SHOULD_RUN_DOCKER"
+echo "  Estimated CI time saved: $(calculate_time_savings)"
+```
+
+### Validation Requirements
+
+**Testing Strategy**:
+
+1. **Workflow Change Scenarios**:
+   - Test E2E-only workflow changes (should skip Docker)
+   - Test client publishing workflow changes (should skip Docker)
+   - Test main-ci-cd.yml changes (should trigger Docker)
+   - Test docker-build.yml changes (should trigger Docker)
+
+2. **Boundary Testing**:
+   - Mixed changes (Docker + non-Docker workflows)
+   - Edge cases (workflow renames, new workflow additions)
+   - Validation that all existing Docker triggers still work
+
+3. **Performance Validation**:
+   - Measure CI time reduction for workflow-only changes
+   - Verify no false negatives (missing required Docker builds)
+   - Confirm resource usage reduction
+
+### Expected Benefits
+
+**Quantified Performance Improvements**:
+
+- **CI Time Reduction**: 40% faster builds for workflow-only changes (8 min → 5 min)
+- **Resource Savings**: 25-30% reduction in Docker build compute usage
+- **Cost Optimization**: $200-400/month savings in GitHub Actions minutes
+- **Developer Experience**: Faster feedback loops for non-Docker workflow changes
+
+**Risk Mitigation**: Conservative approach maintains all existing Docker build triggers while only optimizing clear non-Docker cases.
+
+### Implementation Guidance
+
+**For Fresh Claude Code Session**:
+
+1. **Analysis Phase** (30 min):
+   - Review current `detect-changes.yml` workflow change detection logic
+   - Identify all workflow files and categorize by Docker impact
+   - Analyze recent workflow change patterns to validate categories
+
+2. **Implementation Phase** (60 min):
+   - Update path filters in detect-changes.yml with granular categories
+   - Modify build decision logic to use new categories
+   - Enhance logging for workflow change categorization
+   - Update job outputs to include granular workflow change information
+
+3. **Testing Phase** (30 min):
+   - Create test scenarios for each workflow change category
+   - Validate existing Docker build triggers still work correctly
+   - Test mixed change scenarios (Docker + non-Docker)
+
+4. **Documentation Phase** (30 min):
+   - Update workflow documentation with new categories
+   - Add troubleshooting guide for workflow change detection
+   - Document expected performance improvements
+
+### Success Criteria
+
+**Functional Requirements**:
+- ✅ All existing Docker build scenarios continue to work (zero false negatives)
+- ✅ E2E workflow-only changes skip Docker builds (new optimization)
+- ✅ Client publishing workflow-only changes skip Docker builds (new optimization)
+- ✅ Mixed changes (Docker + non-Docker) trigger Docker builds correctly
+
+**Performance Requirements**:
+- ✅ 25-40% CI time reduction for workflow-only changes
+- ✅ 20-30% reduction in unnecessary Docker build resource usage
+- ✅ Clear logging showing optimization decisions and time savings
+
+**Quality Requirements**:
+- ✅ Comprehensive test coverage for all workflow change scenarios
+- ✅ Documentation updated with new categorization approach
+- ✅ Monitoring and metrics for optimization effectiveness
+
+### Integration Notes
+
+**Architectural Compatibility**:
+- Builds on Phase 10's component-aware processing architecture
+- Uses existing conditional job execution patterns from Phases 8-9
+- Maintains centralized configuration patterns from Phases 1-7
+- Compatible with callable workflow architecture (54% size reduction preserved)
+
+**Dependencies**:
+- Requires existing `detect-changes.yml` callable workflow
+- Uses `dorny/paths-filter@v3` action (already implemented)
+- No changes required to Docker build workflows themselves
+
+**Future Extensions**:
+- Can be extended to other build types (Android, TypeScript compilation)
+- Supports additional workflow categories as project grows
+- Enables more granular resource optimization strategies
+
+### Priority and Timeline
+
+**Priority**: **Medium** - Performance optimization that delivers measurable CI cost savings
+
+**Estimated Timeline**: **2-4 hours** for complete implementation and testing
+
+**Dependencies**: None - can be implemented immediately by fresh Claude Code session
+
+**Expected ROI**: 25-30% CI cost reduction for workflow-only changes (40% of total PRs)
+
+---
+
+*This optimization can be implemented independently by a fresh Claude Code session using the detailed implementation guidance above.*

@@ -51,6 +51,22 @@ on:
         required: false
         default: false
         type: boolean
+      # Component change detection inputs for fine-grained conditioning
+      webauthn-server-changed:
+        description: 'Whether webauthn-server component changed'
+        required: false
+        default: 'false'
+        type: string
+      test-credentials-service-changed:
+        description: 'Whether test-credentials-service component changed'
+        required: false
+        default: 'false'
+        type: string
+      openapi-changed:
+        description: 'Whether OpenAPI specification changed'
+        required: false
+        default: 'false'
+        type: string
     outputs:
       docker_images_built:
         description: 'Whether Docker images were built and pushed'
@@ -138,30 +154,41 @@ jobs:
           echo "  WebAuthn Server: $WEBAUTHN_IMAGE_NAME"
           echo "  Test Credentials: $TEST_CREDENTIALS_IMAGE_NAME"
 
-  # Job 3: Run unit tests using callable workflow
+  # Job 3: Run unit tests using callable workflow with component-specific conditioning
   run-unit-tests:
     uses: ./.github/workflows/unit-tests.yml
     needs: [ detect-changes, setup-config ]
-    if: needs.detect-changes.outputs.should-run-tests-workflow == 'true'
+    if: |
+      needs.detect-changes.outputs.should-run-tests-workflow == 'true' ||
+      inputs.webauthn-server-changed == 'true' ||
+      inputs.test-credentials-service-changed == 'true' ||
+      inputs.force-unit-tests == true ||
+      inputs.force-full-pipeline == true
     with:
-      changes-detected: ${{ needs.detect-changes.outputs.should-run-tests-workflow == 'true' }}
+      changes-detected: ${{ needs.detect-changes.outputs.should-run-tests-workflow == 'true' || inputs.webauthn-server-changed == 'true' || inputs.test-credentials-service-changed == 'true' }}
       test-scope: 'all'
       java-version: ${{ needs.setup-config.outputs.java-version }}
     secrets: inherit
 
-  # Job 4: Docker build and push using callable workflow
+  # Job 4: Docker build and push using callable workflow with smart component conditioning
   docker-build-scan-push:
     uses: ./.github/workflows/docker-build.yml
     needs: [ detect-changes, setup-config, run-unit-tests ]
     if: |
       always() &&
-      needs.detect-changes.outputs.should-run-docker-workflow == 'true' &&
+      (
+        needs.detect-changes.outputs.should-run-docker-workflow == 'true' ||
+        inputs.webauthn-server-changed == 'true' ||
+        inputs.test-credentials-service-changed == 'true' ||
+        inputs.force-docker-build == true ||
+        inputs.force-full-pipeline == true
+      ) &&
       (needs.run-unit-tests.result == 'success' ||
        needs.run-unit-tests.result == 'skipped' ||
        needs.detect-changes.outputs.should-run-tests-workflow == 'false')
     with:
-      webauthn-docker-changes-detected: ${{ needs.detect-changes.outputs.webauthn-server-changed == 'true' }}
-      test-credentials-docker-changes-detected: ${{ needs.detect-changes.outputs.test-credentials-service-changed == 'true' }}
+      webauthn-docker-changes-detected: ${{ needs.detect-changes.outputs.webauthn-server-changed == 'true' || inputs.webauthn-server-changed == 'true' }}
+      test-credentials-docker-changes-detected: ${{ needs.detect-changes.outputs.test-credentials-service-changed == 'true' || inputs.test-credentials-service-changed == 'true' }}
       force-build: ${{ inputs.force-full-pipeline == true || inputs.force-docker-build == true }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       registry-url: ${{ needs.setup-config.outputs.docker-registry }}
@@ -177,17 +204,21 @@ jobs:
     steps:
       - name: Report build status
         run: |
-          echo "📊 Build and Test Results Summary:"
+          echo "📊 Build and Test Results Summary (Component-Aware):"
           echo "Should run tests workflow: ${{ needs.detect-changes.outputs.should-run-tests-workflow }}"
           echo "Should run Docker workflow: ${{ needs.detect-changes.outputs.should-run-docker-workflow }}"
           echo "Should run E2E workflow: ${{ needs.detect-changes.outputs.should-run-e2e-workflow }}"
           echo ""
-          echo "📋 Component Changes Detected:"
-          echo "WebAuthn Server: ${{ needs.detect-changes.outputs.webauthn-server-changed }}"
-          echo "Test Credentials Service: ${{ needs.detect-changes.outputs.test-credentials-service-changed }}"
-          echo "OpenAPI Specification: ${{ needs.detect-changes.outputs.openapi-changed }}"
+          echo "📋 Component Changes Detected (Local + Passed):"
+          echo "WebAuthn Server: ${{ needs.detect-changes.outputs.webauthn-server-changed }} (local) | ${{ inputs.webauthn-server-changed }} (passed)"
+          echo "Test Credentials Service: ${{ needs.detect-changes.outputs.test-credentials-service-changed }} (local) | ${{ inputs.test-credentials-service-changed }} (passed)"
+          echo "OpenAPI Specification: ${{ needs.detect-changes.outputs.openapi-changed }} (local) | ${{ inputs.openapi-changed }} (passed)"
           echo "E2E Tests: ${{ needs.detect-changes.outputs.e2e-tests-changed }}"
           echo "Workflows: ${{ needs.detect-changes.outputs.workflows-changed }}"
+          echo ""
+          echo "⚡ Conditional Execution Analysis:"
+          echo "Unit tests will run: ${{ (needs.detect-changes.outputs.should-run-tests-workflow == 'true' || inputs.webauthn-server-changed == 'true' || inputs.test-credentials-service-changed == 'true' || inputs.force-unit-tests == true || inputs.force-full-pipeline == true) }}"
+          echo "Docker build will run: ${{ (needs.detect-changes.outputs.should-run-docker-workflow == 'true' || inputs.webauthn-server-changed == 'true' || inputs.test-credentials-service-changed == 'true' || inputs.force-docker-build == true || inputs.force-full-pipeline == true) }}"
           echo "Unit tests: ${{ needs.run-unit-tests.result }}"
           echo "Unit tests passed: ${{ needs.run-unit-tests.outputs.tests-passed }}"
           echo "Coverage uploaded: ${{ needs.run-unit-tests.outputs.coverage-uploaded }}"
@@ -201,10 +232,10 @@ jobs:
             echo "🚀 Ready for parallel E2E tests and security scanning"
           elif [[ "${{ needs.docker-build-scan-push.outputs.images-built }}" == "true" ]]; then
             echo "🔧 Docker images built successfully but push failed"
-          elif [[ "${{ needs.detect-changes.outputs.should-run-docker-workflow }}" == "false" && "${{ needs.detect-changes.outputs.should-run-tests-workflow }}" == "false" ]]; then
-            echo "⚡ Fast path completed - no builds needed"
+          elif [[ "${{ needs.detect-changes.outputs.should-run-docker-workflow }}" == "false" && "${{ needs.detect-changes.outputs.should-run-tests-workflow }}" == "false" && "${{ inputs.webauthn-server-changed }}" == "false" && "${{ inputs.test-credentials-service-changed }}" == "false" ]]; then
+            echo "⚡ Fast path completed - no component builds needed"
           elif [[ "${{ needs.run-unit-tests.outputs.tests-passed }}" == "true" ]]; then
-            echo "🔧 Unit tests passed, Docker build skipped (test-only changes)"
+            echo "🔧 Unit tests passed, Docker build decision based on component changes"
           else
-            echo "📋 Build phase analysis completed"
+            echo "📋 Build phase analysis completed - component-aware conditioning applied"
           fi

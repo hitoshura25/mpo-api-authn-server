@@ -44,6 +44,27 @@ on:
         required: false
         type: string
         default: ''
+      # Component change detection inputs for smart E2E triggering
+      webauthn-server-changed:
+        description: 'Whether webauthn-server component changed'
+        required: false
+        default: 'false'
+        type: string
+      test-credentials-service-changed:
+        description: 'Whether test-credentials-service component changed'
+        required: false
+        default: 'false'
+        type: string
+      openapi-changed:
+        description: 'Whether OpenAPI specification changed'
+        required: false
+        default: 'false'
+        type: string
+      e2e-tests-changed:
+        description: 'Whether E2E test files changed'
+        required: false
+        default: 'false'
+        type: string
 
 env:
   ANDROID_API_VERSION: "29"
@@ -99,8 +120,8 @@ jobs:
           echo "  Docker registry: $DOCKER_REGISTRY (from central config)"
           echo "  Java version: ${{ env.JAVA_VERSION }} (from environment)"
 
-  # Job 2: Check E2E test cache to avoid redundant runs
-  check-e2e-cache:
+  # Job 2: Component-aware E2E test orchestration with intelligent scope determination
+  analyze-e2e-requirements:
     runs-on: ubuntu-latest
     needs: setup-config
     outputs:
@@ -108,8 +129,12 @@ jobs:
       android-cache-hit: ${{ steps.android-cache.outputs.cache-hit }}
       cache-key-web: ${{ steps.cache-keys.outputs.web-key }}
       cache-key-android: ${{ steps.cache-keys.outputs.android-key }}
-      skip-web-e2e: ${{ steps.web-cache.outputs.cache-hit == 'true' }}
-      skip-android-e2e: ${{ steps.android-cache.outputs.cache-hit == 'true' }}
+      skip-web-e2e: ${{ steps.determine-scope.outputs.skip-web-e2e }}
+      skip-android-e2e: ${{ steps.determine-scope.outputs.skip-android-e2e }}
+      should-run-web-e2e: ${{ steps.determine-scope.outputs.should-run-web-e2e }}
+      should-run-android-e2e: ${{ steps.determine-scope.outputs.should-run-android-e2e }}
+      test-execution-strategy: ${{ steps.determine-scope.outputs.test-execution-strategy }}
+      docker-image-strategy: ${{ steps.docker-strategy.outputs.image-strategy }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -173,18 +198,138 @@ jobs:
             android-e2e-results.json
           lookup-only: true
 
-      - name: Cache check summary
+      - name: Intelligent E2E test scope determination with component awareness
+        id: determine-scope
         run: |
-          echo "📊 E2E Cache Check Results:"
+          echo "🔍 Analyzing component changes for intelligent E2E test orchestration..."
+          echo "📋 Component Changes:"
+          echo "  WebAuthn Server: ${{ inputs.webauthn-server-changed }}"
+          echo "  Test Credentials Service: ${{ inputs.test-credentials-service-changed }}"
+          echo "  OpenAPI Specification: ${{ inputs.openapi-changed }}"
+          echo "  E2E Tests: ${{ inputs.e2e-tests-changed }}"
+          echo ""
+          
+          # Initialize variables
+          SHOULD_RUN_WEB="false"
+          SHOULD_RUN_ANDROID="false"
+          SKIP_WEB="true"
+          SKIP_ANDROID="true"
+          TEST_STRATEGY="none"
+          
+          # Component-specific E2E test triggering logic
+          SERVER_CHANGED="${{ inputs.webauthn-server-changed }}"
+          CREDS_CHANGED="${{ inputs.test-credentials-service-changed }}"
+          API_CHANGED="${{ inputs.openapi-changed }}"
+          E2E_CHANGED="${{ inputs.e2e-tests-changed }}"
+          
+          # Determine test execution strategy based on component changes
+          if [[ "$SERVER_CHANGED" == "true" || "$CREDS_CHANGED" == "true" ]]; then
+            # Server components changed: Full E2E test suite required
+            TEST_STRATEGY="full-suite"
+            SHOULD_RUN_WEB="true"
+            SHOULD_RUN_ANDROID="true"
+            echo "🔧 Server components changed - requiring full E2E test suite"
+          elif [[ "$API_CHANGED" == "true" ]]; then
+            # OpenAPI changed: Focus on client integration tests
+            TEST_STRATEGY="client-integration"
+            SHOULD_RUN_WEB="true"
+            SHOULD_RUN_ANDROID="true"
+            echo "🔄 OpenAPI changed - focusing on client integration validation"
+          elif [[ "$E2E_CHANGED" == "true" ]]; then
+            # Only E2E tests changed: Run specific test suites that changed
+            TEST_STRATEGY="selective"
+            # Check which E2E test files changed to determine scope
+            if find web-test-client -name "*.spec.ts" -o -name "*.test.ts" -newer .git/FETCH_HEAD 2>/dev/null | grep -q .; then
+              SHOULD_RUN_WEB="true"
+              echo "📱 Web E2E test files changed - including web tests"
+            fi
+            if find android-test-client -name "*.kt" -newer .git/FETCH_HEAD 2>/dev/null | grep -q .; then
+              SHOULD_RUN_ANDROID="true"
+              echo "🤖 Android E2E test files changed - including Android tests"
+            fi
+          else
+            echo "ℹ️ No components requiring E2E tests changed"
+          fi
+          
+          # Apply cache optimization (skip if cache hit and no forced execution)
+          if [[ "$SHOULD_RUN_WEB" == "true" ]]; then
+            if [[ "${{ steps.web-cache.outputs.cache-hit }}" != "true" ]]; then
+              SKIP_WEB="false"
+            else
+              echo "💾 Web E2E cache hit - can skip execution"
+            fi
+          fi
+          
+          if [[ "$SHOULD_RUN_ANDROID" == "true" ]]; then
+            if [[ "${{ steps.android-cache.outputs.cache-hit }}" != "true" ]]; then
+              SKIP_ANDROID="false"
+            else
+              echo "💾 Android E2E cache hit - can skip execution"
+            fi
+          fi
+          
+          # Set outputs
+          echo "should-run-web-e2e=$SHOULD_RUN_WEB" >> $GITHUB_OUTPUT
+          echo "should-run-android-e2e=$SHOULD_RUN_ANDROID" >> $GITHUB_OUTPUT
+          echo "skip-web-e2e=$SKIP_WEB" >> $GITHUB_OUTPUT
+          echo "skip-android-e2e=$SKIP_ANDROID" >> $GITHUB_OUTPUT
+          echo "test-execution-strategy=$TEST_STRATEGY" >> $GITHUB_OUTPUT
+          
+          echo ""
+          echo "🎯 E2E Test Execution Plan:"
+          echo "  Strategy: $TEST_STRATEGY"
+          echo "  Web E2E: $SHOULD_RUN_WEB (will skip: $SKIP_WEB, cache hit: ${{ steps.web-cache.outputs.cache-hit }})"
+          echo "  Android E2E: $SHOULD_RUN_ANDROID (will skip: $SKIP_ANDROID, cache hit: ${{ steps.android-cache.outputs.cache-hit }})"
+      
+      - name: Docker image strategy for independent component builds
+        id: docker-strategy
+        run: |
+          echo "🐳 Determining Docker image coordination strategy..."
+          
+          # Analyze which Docker images are needed based on component changes
+          SERVER_CHANGED="${{ inputs.webauthn-server-changed }}"
+          CREDS_CHANGED="${{ inputs.test-credentials-service-changed }}"
+          
+          IMAGE_STRATEGY="use-provided"
+          
+          if [[ "$SERVER_CHANGED" == "true" && "$CREDS_CHANGED" == "true" ]]; then
+            IMAGE_STRATEGY="both-fresh"
+            echo "🔄 Both server components changed - using fresh builds from independent workflows"
+          elif [[ "$SERVER_CHANGED" == "true" ]]; then
+            IMAGE_STRATEGY="server-fresh-creds-stable"
+            echo "🔄 Server changed - using fresh server image, stable credentials image"
+          elif [[ "$CREDS_CHANGED" == "true" ]]; then
+            IMAGE_STRATEGY="server-stable-creds-fresh"
+            echo "🔄 Credentials service changed - using fresh credentials image, stable server image"
+          else
+            IMAGE_STRATEGY="both-stable"
+            echo "✅ No server changes - using provided stable images"
+          fi
+          
+          echo "image-strategy=$IMAGE_STRATEGY" >> $GITHUB_OUTPUT
+          echo "🎯 Image Strategy: $IMAGE_STRATEGY"
+          
+      - name: Component-aware execution and cache summary
+        run: |
+          echo "📊 Enhanced E2E Test Strategy Summary (Phase 10.3):"
+          echo "📋 Component Analysis:"
+          echo "  Test Strategy: ${{ steps.determine-scope.outputs.test-execution-strategy }}"
+          echo "  Image Strategy: ${{ steps.docker-strategy.outputs.image-strategy }}"
+          echo "  Component triggers: Server=${{ inputs.webauthn-server-changed }}, Creds=${{ inputs.test-credentials-service-changed }}, API=${{ inputs.openapi-changed }}, E2E=${{ inputs.e2e-tests-changed }}"
+          echo ""
+          echo "💾 Cache Optimization:"
           echo "  Web E2E cache hit: ${{ steps.web-cache.outputs.cache-hit }}"
           echo "  Android E2E cache hit: ${{ steps.android-cache.outputs.cache-hit }}"
-          echo "  Web E2E will be: ${{ steps.web-cache.outputs.cache-hit == 'true' && 'SKIPPED (cached)' || 'RUN' }}"
-          echo "  Android E2E will be: ${{ steps.android-cache.outputs.cache-hit == 'true' && 'SKIPPED (cached)' || 'RUN' }}"
+          echo ""
+          echo "🏃 Final Execution Plan:"
+          echo "  Web E2E: ${{ steps.determine-scope.outputs.skip-web-e2e == 'false' && 'RUN' || 'SKIP' }} (needed: ${{ steps.determine-scope.outputs.should-run-web-e2e }})"
+          echo "  Android E2E: ${{ steps.determine-scope.outputs.skip-android-e2e == 'false' && 'RUN' || 'SKIP' }} (needed: ${{ steps.determine-scope.outputs.should-run-android-e2e }})"
+          echo "  Parallel Execution: ${{ (steps.determine-scope.outputs.skip-web-e2e == 'false' && steps.determine-scope.outputs.skip-android-e2e == 'false') && 'YES' || 'NO' }}"
 
-  # Job 3: Validate Docker images are available
+  # Job 3: Validate Docker images are available with enhanced coordination
   validate-images:
     runs-on: ubuntu-latest
-    needs: [ setup-config, check-e2e-cache ]
+    needs: [ setup-config, analyze-e2e-requirements ]
     outputs:
       webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
       test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}
@@ -220,6 +365,7 @@ jobs:
             echo "available=false" >> $GITHUB_OUTPUT
           fi
 
+  # Job 4: Generate version for client library coordination
   generate-version:
     name: Generate version
     runs-on: ubuntu-latest
@@ -244,13 +390,13 @@ jobs:
           echo "🎯 Generating client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
-  # Phase 4 Integration: Replace legacy file copying with client-publish workflow call
+  # Job 5: Publish client libraries with component-aware coordination
   # VERSION PATTERN: pr-{PR_NUMBER}.{RUN_NUMBER} for staging packages
   # REGISTRY: GitHub Packages (staging registry for E2E testing)
   # SCOPE: @vmenon25/*-staging packages for isolated testing
   publish-client-libraries:
     uses: ./.github/workflows/client-publish.yml
-    needs: [ setup-config, validate-images, generate-version ]
+    needs: [ setup-config, validate-images, generate-version, analyze-e2e-requirements ]
     if: needs.validate-images.outputs.webauthn-server-ready == 'true' && needs.validate-images.outputs.test-credentials-ready == 'true'
     permissions:
       contents: write  # Required for creating GitHub releases (production only)
@@ -263,15 +409,16 @@ jobs:
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-  # Job 3: Call Web E2E tests workflow
+  # Job 6: Enhanced Web E2E tests with parallel execution optimization
   call-web-e2e-tests:
     uses: ./.github/workflows/web-e2e-tests.yml
-    needs: [ setup-config, validate-images, generate-version, publish-client-libraries, check-e2e-cache ]
+    needs: [ setup-config, validate-images, generate-version, publish-client-libraries, analyze-e2e-requirements ]
     if: |
       needs.validate-images.outputs.webauthn-server-ready == 'true' &&
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
       needs.publish-client-libraries.result == 'success' &&
-      needs.check-e2e-cache.outputs.skip-web-e2e != 'true'
+      needs.analyze-e2e-requirements.outputs.should-run-web-e2e == 'true' &&
+      needs.analyze-e2e-requirements.outputs.skip-web-e2e == 'false'
     secrets: inherit
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
@@ -280,17 +427,20 @@ jobs:
       java-version: ${{ needs.setup-config.outputs.java-version }}
       typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
       client-version: ${{ needs.generate-version.outputs.version }}
-      cache-key: ${{ needs.check-e2e-cache.outputs.cache-key-web }}
+      cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-web }}
+      test-execution-strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}
+      docker-image-strategy: ${{ needs.analyze-e2e-requirements.outputs.docker-image-strategy }}
 
-  # Job 4: Call Android E2E tests workflow
+  # Job 7: Enhanced Android E2E tests with parallel execution optimization
   call-android-e2e-tests:
     uses: ./.github/workflows/android-e2e-tests.yml
-    needs: [ setup-config, validate-images, generate-version, publish-client-libraries, check-e2e-cache ]
+    needs: [ setup-config, validate-images, generate-version, publish-client-libraries, analyze-e2e-requirements ]
     if: |
       needs.validate-images.outputs.webauthn-server-ready == 'true' &&
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
       needs.publish-client-libraries.result == 'success' &&
-      needs.check-e2e-cache.outputs.skip-android-e2e != 'true'
+      needs.analyze-e2e-requirements.outputs.should-run-android-e2e == 'true' &&
+      needs.analyze-e2e-requirements.outputs.skip-android-e2e == 'false'
     secrets: inherit
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
@@ -300,13 +450,17 @@ jobs:
       android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
       android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}
       client-version: ${{ needs.generate-version.outputs.version }}
-      cache-key: ${{ needs.check-e2e-cache.outputs.cache-key-android }}
+      cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-android }}
+      test-execution-strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}
+      docker-image-strategy: ${{ needs.analyze-e2e-requirements.outputs.docker-image-strategy }}
 
-  # Job 5: Handle cached Web E2E results
+  # Job 8: Handle cached Web E2E results with enhanced component awareness
   web-e2e-cached:
     runs-on: ubuntu-latest
-    needs: [ check-e2e-cache ]
-    if: needs.check-e2e-cache.outputs.skip-web-e2e == 'true'
+    needs: [ analyze-e2e-requirements ]
+    if: |
+      needs.analyze-e2e-requirements.outputs.should-run-web-e2e == 'true' &&
+      needs.analyze-e2e-requirements.outputs.skip-web-e2e == 'true'
     outputs:
       tests-passed: "true"
       artifact-name: "web-e2e-cached-results"
@@ -314,7 +468,7 @@ jobs:
       - name: Restore cached Web E2E results
         uses: actions/cache@v4
         with:
-          key: ${{ needs.check-e2e-cache.outputs.cache-key-web }}
+          key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-web }}
           path: |
             web-e2e-cache/
             web-e2e-results.json
@@ -323,18 +477,21 @@ jobs:
       - name: Report cached results
         run: |
           echo "✅ Web E2E tests skipped - using cached results"
-          echo "Cache key: ${{ needs.check-e2e-cache.outputs.cache-key-web }}"
+          echo "Cache key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-web }}"
+          echo "Test strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}"
           echo "Previous test run was successful for identical conditions"
           if [ -f web-e2e-results.json ]; then
             echo "📊 Cached test results available"
             cat web-e2e-results.json || echo "{\"status\": \"cached\", \"tests_passed\": true}"
           fi
 
-  # Job 6: Handle cached Android E2E results
+  # Job 9: Handle cached Android E2E results with enhanced component awareness
   android-e2e-cached:
     runs-on: ubuntu-latest
-    needs: [ check-e2e-cache ]
-    if: needs.check-e2e-cache.outputs.skip-android-e2e == 'true'
+    needs: [ analyze-e2e-requirements ]
+    if: |
+      needs.analyze-e2e-requirements.outputs.should-run-android-e2e == 'true' &&
+      needs.analyze-e2e-requirements.outputs.skip-android-e2e == 'true'
     outputs:
       tests-passed: "true"
       artifact-name: "android-e2e-cached-results"
@@ -342,7 +499,7 @@ jobs:
       - name: Restore cached Android E2E results
         uses: actions/cache@v4
         with:
-          key: ${{ needs.check-e2e-cache.outputs.cache-key-android }}
+          key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-android }}
           path: |
             android-e2e-cache/
             android-e2e-results.json
@@ -351,17 +508,85 @@ jobs:
       - name: Report cached results
         run: |
           echo "✅ Android E2E tests skipped - using cached results"
-          echo "Cache key: ${{ needs.check-e2e-cache.outputs.cache-key-android }}"
+          echo "Cache key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-android }}"
+          echo "Test strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}"
           echo "Previous test run was successful for identical conditions"
           if [ -f android-e2e-results.json ]; then
             echo "📊 Cached test results available"
             cat android-e2e-results.json || echo "{\"status\": \"cached\", \"tests_passed\": true}"
           fi
 
-  # Job 7: Report E2E test results back to PR
+  # Job 10: Cross-platform coordination analysis
+  analyze-cross-platform-results:
+    runs-on: ubuntu-latest
+    needs: [ analyze-e2e-requirements, call-web-e2e-tests, call-android-e2e-tests, web-e2e-cached, android-e2e-cached ]
+    if: always()
+    outputs:
+      overall-success: ${{ steps.analyze.outputs.overall-success }}
+      parallel-execution: ${{ steps.analyze.outputs.parallel-execution }}
+      performance-summary: ${{ steps.analyze.outputs.performance-summary }}
+    steps:
+      - name: Analyze cross-platform E2E test coordination
+        id: analyze
+        run: |
+          echo "📊 Analyzing cross-platform E2E test coordination results..."
+          echo "📋 Execution Analysis:"
+          echo "  Strategy: ${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}"
+          echo "  Docker Strategy: ${{ needs.analyze-e2e-requirements.outputs.docker-image-strategy }}"
+          echo ""
+          
+          # Determine if tests ran in parallel
+          WEB_EXECUTED="false"
+          ANDROID_EXECUTED="false"
+          PARALLEL_EXECUTION="false"
+          
+          if [[ "${{ needs.call-web-e2e-tests.result }}" == "success" ]] || [[ "${{ needs.web-e2e-cached.result }}" == "success" ]]; then
+            WEB_EXECUTED="true"
+          fi
+          
+          if [[ "${{ needs.call-android-e2e-tests.result }}" == "success" ]] || [[ "${{ needs.android-e2e-cached.result }}" == "success" ]]; then
+            ANDROID_EXECUTED="true"
+          fi
+          
+          if [[ "$WEB_EXECUTED" == "true" && "$ANDROID_EXECUTED" == "true" ]]; then
+            PARALLEL_EXECUTION="true"
+            echo "⚙️ Parallel cross-platform execution achieved"
+          elif [[ "$WEB_EXECUTED" == "true" || "$ANDROID_EXECUTED" == "true" ]]; then
+            echo "🎯 Single platform execution (optimized)"
+          else
+            echo "⚠️ No E2E tests executed"
+          fi
+          
+          # Overall success determination
+          OVERALL_SUCCESS="true"
+          if [[ "${{ needs.call-web-e2e-tests.result }}" == "failure" ]] || [[ "${{ needs.call-android-e2e-tests.result }}" == "failure" ]]; then
+            OVERALL_SUCCESS="false"
+          fi
+          
+          # Performance summary
+          PERFORMANCE_SUMMARY="{"
+          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"web_executed\": $WEB_EXECUTED,"
+          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"android_executed\": $ANDROID_EXECUTED,"
+          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"parallel_execution\": $PARALLEL_EXECUTION,"
+          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"strategy\": \"${{ needs.analyze-e2e-requirements.outputs.test-execution-strategy }}\","
+          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"docker_strategy\": \"${{ needs.analyze-e2e-requirements.outputs.docker-image-strategy }}\""
+          PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY}"
+          
+          echo "overall-success=$OVERALL_SUCCESS" >> $GITHUB_OUTPUT
+          echo "parallel-execution=$PARALLEL_EXECUTION" >> $GITHUB_OUTPUT
+          echo "performance-summary=$PERFORMANCE_SUMMARY" >> $GITHUB_OUTPUT
+          
+          echo ""
+          echo "✅ Cross-Platform Coordination Analysis:"
+          echo "  Overall Success: $OVERALL_SUCCESS"
+          echo "  Parallel Execution: $PARALLEL_EXECUTION"
+          echo "  Web Platform: $WEB_EXECUTED"
+          echo "  Android Platform: $ANDROID_EXECUTED"
+
+  # Job 11: Enhanced E2E test results reporting with component analysis
   report-results:
     runs-on: ubuntu-latest
-    needs: [ validate-images, call-web-e2e-tests, call-android-e2e-tests, web-e2e-cached, android-e2e-cached ]
+    needs: [ validate-images, analyze-cross-platform-results, call-web-e2e-tests, call-android-e2e-tests, web-e2e-cached, android-e2e-cached ]
     if: always() && github.event_name == 'pull_request'
     permissions:
       contents: read
@@ -370,7 +595,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Comment on PR with E2E test results
+      - name: Enhanced PR comment with component-aware E2E results
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
@@ -385,6 +610,16 @@ jobs:
           ANDROID_ARTIFACT_NAME: ${{ needs.call-android-e2e-tests.outputs.artifact-name }}
           WEBAUTHN_SERVER_IMAGE: ${{ env.WEBAUTHN_SERVER_IMAGE }}
           TEST_CREDENTIALS_IMAGE: ${{ env.TEST_CREDENTIALS_IMAGE }}
+          # Enhanced component analysis data
+          OVERALL_SUCCESS: ${{ needs.analyze-cross-platform-results.outputs.overall-success }}
+          PARALLEL_EXECUTION: ${{ needs.analyze-cross-platform-results.outputs.parallel-execution }}
+          PERFORMANCE_SUMMARY: ${{ needs.analyze-cross-platform-results.outputs.performance-summary }}
         run: |
+          echo "📢 Creating enhanced E2E results comment with component analysis..."
+          echo "📋 Enhanced Results Data:"
+          echo "  Overall Success: $OVERALL_SUCCESS"
+          echo "  Parallel Execution: $PARALLEL_EXECUTION"
+          echo "  Performance Summary: $PERFORMANCE_SUMMARY"
+          
           chmod +x scripts/ci/create-e2e-results-comment.cjs
           node scripts/ci/create-e2e-results-comment.cjs

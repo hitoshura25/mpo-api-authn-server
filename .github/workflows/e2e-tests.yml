@@ -122,6 +122,10 @@ jobs:
       java-version: ${{ steps.config.outputs.java-version }}
       android-api-version: ${{ steps.config.outputs.android-api-version }}
       docker-registry: ${{ steps.config.outputs.docker-registry }}
+      # Client library information (passed through from main orchestrator)
+      client-version: ${{ steps.config.outputs.client-version }}
+      typescript-package-name: ${{ steps.config.outputs.typescript-package-name }}
+      android-package-name: ${{ steps.config.outputs.android-package-name }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -153,10 +157,18 @@ jobs:
           echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
           echo "android-api-version=${{ env.ANDROID_API_VERSION }}" >> $GITHUB_OUTPUT
           echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
+          
+          # Pass through client library information from main orchestrator
+          echo "client-version=${{ inputs.client-version }}" >> $GITHUB_OUTPUT
+          echo "typescript-package-name=${{ inputs.typescript-package-name }}" >> $GITHUB_OUTPUT
+          echo "android-package-name=${{ inputs.android-package-name }}" >> $GITHUB_OUTPUT
 
           echo "✅ Configuration loaded successfully:"
           echo "  Docker registry: $DOCKER_REGISTRY (from central config)"
           echo "  Java version: ${{ env.JAVA_VERSION }} (from environment)"
+          echo "  Client version: ${{ inputs.client-version }} (from main orchestrator)"
+          echo "  TypeScript package: ${{ inputs.typescript-package-name }} (from main orchestrator)"
+          echo "  Android package: ${{ inputs.android-package-name }} (from main orchestrator)"
 
   # Job 2: Component-aware E2E test orchestration with intelligent scope determination
   analyze-e2e-requirements:
@@ -393,9 +405,9 @@ jobs:
       test-credentials-image: ${{ inputs.test_credentials_image }}
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'main' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
-      # Use actual published client library information from main orchestrator
-      typescript-package-name: ${{ inputs.typescript-package-name }}
-      client-version: ${{ inputs.client-version }}
+      # Use actual published client library information from main orchestrator (via setup-config)
+      typescript-package-name: ${{ needs.setup-config.outputs.typescript-package-name }}
+      client-version: ${{ needs.setup-config.outputs.client-version }}
       cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-web }}
 
   # Job 5: Enhanced Android E2E tests with parallel execution optimization
@@ -413,9 +425,9 @@ jobs:
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'main' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
-      # Use actual published client library information from main orchestrator
-      android-package-name: ${{ inputs.android-package-name }}
-      client-version: ${{ inputs.client-version }}
+      # Use actual published client library information from main orchestrator (via setup-config)
+      android-package-name: ${{ needs.setup-config.outputs.android-package-name }}
+      client-version: ${{ needs.setup-config.outputs.client-version }}
       cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-android }}
 
   # Job 6: Handle cached Web E2E results with enhanced component awareness

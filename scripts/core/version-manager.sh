@@ -92,7 +92,7 @@ generate_version() {
             else
                 # Feature branch manual dispatch: prerelease with branch identifier
                 branch_name=$(echo "$REF_NAME" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
-                version="${BASE_VERSION}.0-${branch_name}.${BUILD_NUMBER}"
+                version="${BASE_VERSION}.${actual_build_number}-${branch_name}.${BUILD_NUMBER}"
                 is_prerelease="true"
                 echo "🌿 Manual branch release: $version (branch: $REF_NAME)" >&2
             fi

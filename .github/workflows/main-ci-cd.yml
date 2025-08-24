@@ -582,7 +582,6 @@ jobs:
           echo ""
 
           CLEANUP_TYPE="none"
-          CLEANUP_SCOPE="none"
 
           if [[ "${{ steps.check-preserve.outputs.preserve-override }}" == "true" ]]; then
             echo "🚨 Emergency preserve override - skipping all cleanup"
@@ -590,11 +589,12 @@ jobs:
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "📦 Pull request cleanup - staging artifacts only"
             CLEANUP_TYPE="staging"
-            CLEANUP_SCOPE="pr-artifacts"
           elif [[ "${{ github.ref_name }}" == "main" && ("${{ needs.publish-docker-production.result }}" == "success" || "${{ needs.publish-clients-production.result }}" == "success") ]]; then
             echo "🚀 Main branch with successful production publishing - GHCR cleanup"
             CLEANUP_TYPE="production"
-            CLEANUP_SCOPE="ghcr-staging"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "🔧 Workflow dispatch cleanup - staging artifacts for current branch"
+            CLEANUP_TYPE="staging"
           else
             echo "⏭️ No cleanup needed for this context"
           fi

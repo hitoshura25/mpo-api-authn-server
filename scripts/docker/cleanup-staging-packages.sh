@@ -193,29 +193,14 @@ determine_cleanup_scope() {
         CLEANUP_PR_NUMBER="$pr_number"
         log "✅ Context: PR #${pr_number} - will target only pr-${pr_number} packages"
     elif [[ "$event_name" == "push" && "$ref_name" == "main" ]]; then
-        # Main branch context - determine which PR packages to clean
+        # Main branch context - clean recent staging packages
         CLEANUP_CONTEXT="main"
         CLEANUP_PR_NUMBER=""
-
-        # For main branch, we could look at recent merge commits to find the PR number
-        # For now, we'll use a more conservative approach and clean recent staging packages
-        local recent_pr_from_merge
-        recent_pr_from_merge=$(git log -1 --pretty=%s | grep -oE '#[0-9]+' | head -1 | tr -d '#' || echo "")
     elif [[ "$event_name" == "workflow_dispatch" ]]; then
         # Workflow dispatch context - clean packages for the current branch
         CLEANUP_CONTEXT="workflow_dispatch"
         CLEANUP_PR_NUMBER=""
         log "✅ Context: Workflow dispatch on branch '$ref_name' - will target branch-specific packages"
-
-        if [[ -n "$recent_pr_from_merge" ]]; then
-            # Use explicit value for main branch cleanup - this triggers ALL staging package cleanup
-            # including both the merged PR packages AND the main branch packages that were just published
-            CLEANUP_PR_NUMBER="MAIN_BRANCH"
-            log "✅ Context: Main branch (recent merge from PR #${recent_pr_from_merge}) - will target ALL staging packages including main branch"
-        else
-            CLEANUP_PR_NUMBER="MAIN_BRANCH"
-            log "⚠️ Context: Main branch (no recent PR detected) - will target ALL staging packages"
-        fi
     else
         # Unknown context - use broad staging pattern but log the issue
         CLEANUP_CONTEXT="unknown"

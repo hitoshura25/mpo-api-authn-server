@@ -35,6 +35,21 @@ on:
       workflows-changed:
         description: 'Whether workflow files changed'
         value: ${{ jobs.detect-changes.outputs.workflows-changed }}
+      docker-affecting-workflows-changed:
+        description: 'Whether Docker-affecting workflow files changed'
+        value: ${{ jobs.detect-changes.outputs.docker-affecting-workflows-changed }}
+      e2e-test-affecting-workflows-changed:
+        description: 'Whether E2E test workflow files changed'
+        value: ${{ jobs.detect-changes.outputs.e2e-test-affecting-workflows-changed }}
+      client-publishing-affecting-workflows-changed:
+        description: 'Whether client publishing workflow files changed'
+        value: ${{ jobs.detect-changes.outputs.client-publishing-affecting-workflows-changed }}
+      unit-test-affecting-workflows-changed:
+        description: 'Whether unit test workflow files changed'
+        value: ${{ jobs.detect-changes.outputs.unit-test-affecting-workflows-changed }}
+      security-affecting-workflows-changed:
+        description: 'Whether security workflow files changed'
+        value: ${{ jobs.detect-changes.outputs.security-affecting-workflows-changed }}
       
       # Granular E2E test change detection for platform-specific triggering
       web-e2e-test-files-changed:
@@ -65,6 +80,11 @@ jobs:
       openapi-changed: ${{ steps.decision-matrix.outputs.openapi-changed }}
       e2e-tests-changed: ${{ steps.decision-matrix.outputs.e2e-tests-changed }}
       workflows-changed: ${{ steps.decision-matrix.outputs.workflows-changed }}
+      docker-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.docker-affecting-workflows-changed }}
+      e2e-test-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.e2e-test-affecting-workflows-changed }}
+      client-publishing-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.client-publishing-affecting-workflows-changed }}
+      unit-test-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.unit-test-affecting-workflows-changed }}
+      security-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.security-affecting-workflows-changed }}
       
       # Granular E2E test change detection outputs
       web-e2e-test-files-changed: ${{ steps.decision-matrix.outputs.web-e2e-test-files-changed }}
@@ -105,6 +125,33 @@ jobs:
             publishing-workflows:
               - '.github/workflows/client-publish.yml'
               - '.github/workflows/publish-*.yml'
+            
+            # Docker-affecting workflow changes (optimization: only these trigger Docker builds)
+            docker-affecting-workflows:
+              - '.github/workflows/docker-build.yml'        # Direct Docker build logic
+              - '.github/workflows/build-and-test.yml'      # Docker build coordination
+              - '.github/workflows/main-ci-cd.yml'          # Docker build decisions
+              - '.github/workflows/detect-changes.yml'      # Change detection affects build decisions
+            
+            # E2E test workflow changes (affect E2E execution but not Docker builds)
+            e2e-test-affecting-workflows:
+              - '.github/workflows/e2e-tests.yml'
+              - '.github/workflows/web-e2e-tests.yml'
+              - '.github/workflows/android-e2e-tests.yml'
+            
+            # Client publishing workflow changes (affect publishing but not Docker builds)
+            client-publishing-affecting-workflows:
+              - '.github/workflows/client-publish.yml'
+              - '.github/workflows/publish-*.yml'
+            
+            # Unit test workflow changes (affect unit testing but not Docker builds)
+            unit-test-affecting-workflows:
+              - '.github/workflows/unit-tests.yml'
+            
+            # Security workflow changes (affect security scanning but not Docker builds)
+            security-affecting-workflows:
+              - '.github/workflows/security-analysis.yml'
+              - '.github/workflows/vulnerability-monitor.yml'
             
             # Component-specific changes (webauthn-server + shared dependencies)
             webauthn-server-tests:
@@ -187,6 +234,11 @@ jobs:
           echo "web-e2e-test-files: ${{ steps.changes.outputs.web-e2e-test-files }}"
           echo "android-e2e-test-files: ${{ steps.changes.outputs.android-e2e-test-files }}"
           echo "orchestration-workflows: ${{ steps.changes.outputs.orchestration-workflows }}"
+          echo "docker-affecting-workflows: ${{ steps.changes.outputs.docker-affecting-workflows }}"
+          echo "e2e-test-affecting-workflows: ${{ steps.changes.outputs.e2e-test-affecting-workflows }}"
+          echo "client-publishing-affecting-workflows: ${{ steps.changes.outputs.client-publishing-affecting-workflows }}"
+          echo "unit-test-affecting-workflows: ${{ steps.changes.outputs.unit-test-affecting-workflows }}"
+          echo "security-affecting-workflows: ${{ steps.changes.outputs.security-affecting-workflows }}"
 
       - name: Apply decision matrix logic
         id: decision-matrix
@@ -209,24 +261,39 @@ jobs:
           WEB_E2E_FILES_CHANGED="${{ steps.changes.outputs.web-e2e-test-files }}"
           ANDROID_E2E_FILES_CHANGED="${{ steps.changes.outputs.android-e2e-test-files }}"
           
+          # Enhanced workflow change detection (preserves backward compatibility)
           WORKFLOWS_CHANGED="false"
           if [[ "${{ steps.changes.outputs.orchestration-workflows }}" == "true" || "${{ steps.changes.outputs.unit-test-workflows }}" == "true" || "${{ steps.changes.outputs.docker-workflows }}" == "true" || "${{ steps.changes.outputs.e2e-workflows }}" == "true" || "${{ steps.changes.outputs.publishing-workflows }}" == "true" ]]; then
             WORKFLOWS_CHANGED="true" 
           fi
           
-          # Build decision logic (backward compatibility with build-and-test.yml)
+          # Specific workflow category detection (optimization: granular build triggering)
+          DOCKER_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.docker-affecting-workflows }}"
+          E2E_TEST_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.e2e-test-affecting-workflows }}"
+          CLIENT_PUBLISHING_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.client-publishing-affecting-workflows }}"
+          UNIT_TEST_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.unit-test-affecting-workflows }}"
+          SECURITY_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.security-affecting-workflows }}"
+          
+          # Build decision logic with Docker workflow optimization
           SHOULD_RUN_DOCKER="false"
           SHOULD_RUN_E2E="false"
           SHOULD_RUN_TESTS="false"
           
-          if [[ "$WEBAUTHN_SERVER_CHANGED" == "true" || "$TEST_CREDS_SERVICE_CHANGED" == "true" || "$WORKFLOWS_CHANGED" == "true" ]]; then
+          # OPTIMIZATION: Only Docker-affecting workflows trigger Docker builds (not ALL workflow changes)
+          if [[ "$WEBAUTHN_SERVER_CHANGED" == "true" || "$TEST_CREDS_SERVICE_CHANGED" == "true" || "$DOCKER_AFFECTING_WORKFLOWS_CHANGED" == "true" ]]; then
             SHOULD_RUN_DOCKER="true"
             SHOULD_RUN_E2E="true"
             SHOULD_RUN_TESTS="true"
           fi
           
-          if [[ "$OPENAPI_CHANGED" == "true" || "$E2E_TESTS_CHANGED" == "true" ]]; then
+          # E2E tests should run for OpenAPI changes, E2E test changes, and E2E-affecting workflow changes
+          if [[ "$OPENAPI_CHANGED" == "true" || "$E2E_TESTS_CHANGED" == "true" || "$E2E_TEST_AFFECTING_WORKFLOWS_CHANGED" == "true" ]]; then
             SHOULD_RUN_E2E="true"
+          fi
+          
+          # Unit tests should run for unit test workflow changes
+          if [[ "$UNIT_TEST_AFFECTING_WORKFLOWS_CHANGED" == "true" ]]; then
+            SHOULD_RUN_TESTS="true"
           fi
           
           # Set outputs
@@ -235,6 +302,11 @@ jobs:
           echo "openapi-changed=$OPENAPI_CHANGED" >> $GITHUB_OUTPUT
           echo "e2e-tests-changed=$E2E_TESTS_CHANGED" >> $GITHUB_OUTPUT
           echo "workflows-changed=$WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
+          echo "docker-affecting-workflows-changed=$DOCKER_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
+          echo "e2e-test-affecting-workflows-changed=$E2E_TEST_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
+          echo "client-publishing-affecting-workflows-changed=$CLIENT_PUBLISHING_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
+          echo "unit-test-affecting-workflows-changed=$UNIT_TEST_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
+          echo "security-affecting-workflows-changed=$SECURITY_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
           
           # Granular E2E outputs
           echo "web-e2e-test-files-changed=$WEB_E2E_FILES_CHANGED" >> $GITHUB_OUTPUT
@@ -252,7 +324,12 @@ jobs:
           echo "  web-e2e-test-files: $WEB_E2E_FILES_CHANGED"
           echo "  android-e2e-test-files: $ANDROID_E2E_FILES_CHANGED"
           echo "  workflows: $WORKFLOWS_CHANGED"
-          echo "🚀 Build Decisions:"
-          echo "  run-docker-workflow: $SHOULD_RUN_DOCKER"
-          echo "  run-e2e-workflow: $SHOULD_RUN_E2E"
-          echo "  run-tests-workflow: $SHOULD_RUN_TESTS"
+          echo "  docker-affecting-workflows: $DOCKER_AFFECTING_WORKFLOWS_CHANGED"
+          echo "  e2e-test-affecting-workflows: $E2E_TEST_AFFECTING_WORKFLOWS_CHANGED"
+          echo "  client-publishing-affecting-workflows: $CLIENT_PUBLISHING_AFFECTING_WORKFLOWS_CHANGED"
+          echo "  unit-test-affecting-workflows: $UNIT_TEST_AFFECTING_WORKFLOWS_CHANGED"
+          echo "  security-affecting-workflows: $SECURITY_AFFECTING_WORKFLOWS_CHANGED"
+          echo "🚀 Build Decisions (Optimized):"  
+          echo "  run-docker-workflow: $SHOULD_RUN_DOCKER (triggers: server/creds changes OR docker-affecting workflows)"
+          echo "  run-e2e-workflow: $SHOULD_RUN_E2E (triggers: OpenAPI/E2E changes OR e2e-test-affecting workflows)"
+          echo "  run-tests-workflow: $SHOULD_RUN_TESTS (triggers: server/creds changes OR unit-test-affecting workflows)"

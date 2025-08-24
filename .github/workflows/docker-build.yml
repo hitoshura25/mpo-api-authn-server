@@ -196,6 +196,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=pr
+            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Docker Test Credentials meta
         id: docker-test-credentials-meta
@@ -205,6 +206,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=pr
+            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' }}
 
       # STEP 3: Build Docker images locally (for scanning)
       - name: Build Docker images locally

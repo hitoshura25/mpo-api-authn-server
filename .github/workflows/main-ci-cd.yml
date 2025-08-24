@@ -77,8 +77,8 @@ jobs:
     uses: ./.github/workflows/build-and-test.yml
     with:
       force-full-pipeline: ${{ inputs.force-full-pipeline || false }}
-      force-docker-build: ${{ inputs.force-docker-build || needs.detect-component-changes.outputs.should-run-docker-workflow == 'true' }}
-      force-unit-tests: ${{ inputs.force-unit-tests || needs.detect-component-changes.outputs.should-run-tests-workflow == 'true' }}
+      force-docker-build: ${{ inputs.force-docker-build || false }}
+      force-unit-tests: ${{ inputs.force-unit-tests || false }}
       # Pass component change flags for fine-grained conditioning
       webauthn-server-changed: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}
       test-credentials-service-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
@@ -100,7 +100,9 @@ jobs:
     needs: [detect-component-changes]
     if: |
       needs.detect-component-changes.outputs.openapi-changed == 'true' ||
-      needs.detect-component-changes.outputs.webauthn-server-changed == 'true'
+      needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
+      inputs.force-full-pipeline == true ||
+      inputs.force-docker-build == true
     outputs:
       version: ${{ steps.generate-version.outputs.version }}
       is-prerelease: ${{ steps.generate-version.outputs.is-prerelease }}
@@ -127,8 +129,14 @@ jobs:
     name: Publish Client Libraries (Staging)
     needs: [detect-component-changes, generate-staging-version]
     if: |
-      needs.detect-component-changes.outputs.openapi-changed == 'true' ||
-      needs.detect-component-changes.outputs.webauthn-server-changed == 'true'
+      always() &&
+      needs.generate-staging-version.result == 'success' &&
+      (
+        needs.detect-component-changes.outputs.openapi-changed == 'true' ||
+        needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
+        inputs.force-full-pipeline == true ||
+        inputs.force-docker-build == true
+      )
     uses: ./.github/workflows/client-publish.yml
     permissions:
       contents: write  # Required for creating GitHub releases and tags

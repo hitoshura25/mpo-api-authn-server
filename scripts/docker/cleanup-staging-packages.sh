@@ -642,7 +642,7 @@ cleanup_staging_docker() {
                 (.metadata.container.tags[]? | test("^latest$")) or
                 (.metadata.container.tags[]? | test("^sha256-[a-f0-9]+-branch-[a-zA-Z0-9-]+-[0-9]+$"))'
             strategy_description="TARGET ALL staging packages (includes latest for main branch)"
-6            if [[ "$CLEANUP_CONTEXT" == "workflow_dispatch" ]]; then
+            if [[ "$CLEANUP_CONTEXT" == "workflow_dispatch" ]]; then
                 log "🔧 Using workflow dispatch staging pattern - targeting branch-specific packages"
                 log "🎯 Targeting: sha256-*-branch-* patterns for branch '$GITHUB_REF_NAME', client versions like '*-[branchname].*'"
             else

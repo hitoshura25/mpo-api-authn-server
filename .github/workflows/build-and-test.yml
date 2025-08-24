@@ -157,10 +157,11 @@ jobs:
     if: |
       inputs.webauthn-server-changed == 'true' ||
       inputs.test-credentials-service-changed == 'true' ||
-      inputs.force-unit-tests == true ||
-      inputs.force-full-pipeline == true
+      inputs.force-unit-tests ||
+      inputs.force-full-pipeline
     with:
       changes-detected: ${{ inputs.webauthn-server-changed == 'true' || inputs.test-credentials-service-changed == 'true' }}
+      force-execution: ${{ inputs.force-unit-tests || inputs.force-full-pipeline }}
       test-scope: 'all'
       java-version: ${{ needs.setup-config.outputs.java-version }}
     secrets: inherit
@@ -175,7 +176,7 @@ jobs:
         inputs.webauthn-server-changed == 'true' ||
         inputs.test-credentials-service-changed == 'true' ||
         inputs.force-docker-build == true ||
-        inputs.force-full-pipeline == true
+        inputs.force-full-pipeline
       ) &&
       (needs.run-unit-tests.result == 'success' ||
        needs.run-unit-tests.result == 'skipped')

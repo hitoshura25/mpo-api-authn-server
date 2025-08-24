@@ -42,6 +42,11 @@ on:
         required: false
         type: string
         default: '21'
+      force-execution:
+        description: 'Force test execution regardless of change detection'
+        required: false
+        type: boolean
+        default: false
     outputs:
       tests-passed:
         description: 'Whether all unit tests passed successfully'
@@ -59,7 +64,7 @@ env:
 jobs:
   run-unit-tests:
     runs-on: ubuntu-latest
-    if: inputs.changes-detected == true
+    if: inputs.changes-detected == true || inputs.force-execution == true
     permissions:
       contents: read
     outputs:

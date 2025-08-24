@@ -187,7 +187,24 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # STEP 2: Generate Docker metadata
+      # STEP 2a: Generate SHA-based tags for workflow dispatch
+      - name: Generate workflow dispatch tags
+        id: generate-tags
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          SAFE_BRANCH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
+          
+          if [[ "${{ github.ref_name }}" == "main" ]]; then
+            TAG="sha256-${SHORT_SHA}-main-${{ github.run_number }}"
+          else
+            TAG="sha256-${SHORT_SHA}-branch-${SAFE_BRANCH}-${{ github.run_number }}"
+          fi
+          
+          echo "workflow-dispatch-tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Generated workflow dispatch tag: ${TAG}"
+
+      # STEP 2b: Generate Docker metadata
       - name: Docker meta
         id: docker-meta
         uses: docker/metadata-action@v5
@@ -196,7 +213,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=pr
-            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=${{ steps.generate-tags.outputs.workflow-dispatch-tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       - name: Docker Test Credentials meta
         id: docker-test-credentials-meta
@@ -206,7 +223,7 @@ jobs:
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
             type=ref,event=pr
-            type=ref,event=branch,enable=${{ github.event_name == 'workflow_dispatch' }}
+            type=raw,value=${{ steps.generate-tags.outputs.workflow-dispatch-tag }},enable=${{ github.event_name == 'workflow_dispatch' }}
 
       # STEP 3: Build Docker images locally (for scanning)
       - name: Build Docker images locally

@@ -918,12 +918,12 @@ cleanup_staging_npm() {
         strategy_description="TARGET PR #$CLEANUP_PR_NUMBER npm packages only"
         log "🎯 Targeting specific PR #$CLEANUP_PR_NUMBER npm packages"
     else
-        # Fallback to broader pattern - includes staging suffix AND main branch versions  
+        # Fallback to broader pattern - includes staging suffix, branch versions, AND main branch versions  
         # Main branch publishes to GitHub Packages with production version numbers (staging context)
-        # This targets: 1) PR versions (-pr.) 2) Staging suffix (-staging) 3) Any version (main branch to GitHub Packages)
-        name_filter='(.name | test("-pr\\.") or test("-staging$") or true)'
-        strategy_description="TARGET ALL staging npm packages (includes main branch versions to GitHub Packages)"
-        log "⚠️ Using broad npm staging pattern - includes main branch versions published to GitHub Packages"
+        # This targets: 1) PR versions (-pr.) 2) Staging suffix (-staging) 3) Branch versions (-branchname.) 4) Any version (main branch to GitHub Packages)
+        name_filter='(.name | test("-pr\\.") or test("-staging$") or test("-[a-z0-9]+\\.\\d+$") or true)'
+        strategy_description="TARGET ALL staging npm packages (includes PR, branch, and main branch versions)"
+        log "⚠️ Using broad npm staging pattern - includes PR versions, branch versions, and main branch versions published to GitHub Packages"
     fi
     
     if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then
@@ -1121,12 +1121,12 @@ cleanup_staging_maven() {
         strategy_description="TARGET PR #$CLEANUP_PR_NUMBER Maven packages only"
         log "🎯 Targeting specific PR #$CLEANUP_PR_NUMBER Maven packages"
     else
-        # Fallback to broader pattern - includes staging suffix AND main branch versions
+        # Fallback to broader pattern - includes staging suffix, branch versions, AND main branch versions
         # Main branch publishes to GitHub Packages with production version numbers (staging context)
-        # This targets: 1) PR versions (-pr.) 2) Staging suffix (-staging) 3) Any version (main branch to GitHub Packages)
-        name_filter='(.name | test("-pr\\.") or test("-staging$") or true)'
-        strategy_description="TARGET ALL staging Maven packages (includes main branch versions to GitHub Packages)"
-        log "⚠️ Using broad Maven staging pattern - includes main branch versions published to GitHub Packages"
+        # This targets: 1) PR versions (-pr.) 2) Staging suffix (-staging) 3) Branch versions (-branchname.) 4) Any version (main branch to GitHub Packages)
+        name_filter='(.name | test("-pr\\.") or test("-staging$") or test("-[a-z0-9]+\\.\\d+$") or true)'
+        strategy_description="TARGET ALL staging Maven packages (includes PR, branch, and main branch versions)"
+        log "⚠️ Using broad Maven staging pattern - includes PR versions, branch versions, and main branch versions published to GitHub Packages"
     fi
     
     if [[ "$WORKFLOW_OUTCOME" == "success" ]]; then

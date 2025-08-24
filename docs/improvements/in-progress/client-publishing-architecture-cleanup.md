@@ -19,6 +19,7 @@
 - [x] Phase 9.2: Consolidated Main Workflow *(Completed - 2025-08-22)*
 - [x] Phase 9.3: Legacy Workflow Removal *(Completed - 2025-08-22)*
 - [x] Phase 10: Independent Component Processing & Optimization *(Completed - 2025-08-22)*
+- [x] Post-Phase 10: Force Pipeline Functionality Fixes *(Completed - 2025-08-24)*
 
 ## 🔄 Session Continuity & Documentation Maintenance
 
@@ -2908,5 +2909,172 @@ This comprehensive audit identified **3 high-impact consolidation opportunities*
 **Implementation Status**: **READY FOR IMMEDIATE IMPLEMENTATION** by next fresh Claude Code session using the detailed phase-by-phase approach documented above.
 
 **Expected ROI**: 30-40% CI time reduction for workflow-only changes, elimination of false positive E2E execution, and unified maintainable change detection architecture.
+
+---
+
+## Post-Phase 10 Implementation: Force Pipeline Functionality Fixes *(2025-08-24)*
+
+### Problem Statement
+
+After Phase 10 completion, user reported that "force full pipeline" manual dispatch was not working correctly:
+1. **Unit tests were skipped** despite force flags
+2. **Client library publishing was skipped** despite force flags  
+3. **E2E tests ignored force flags** completely
+4. **Redundant logic confusion** in E2E test orchestration
+
+### Root Cause Analysis
+
+**Multi-Level Conditional Logic Issues:**
+1. **Level 1**: `main-ci-cd.yml` correctly passed force flags to `build-and-test.yml`
+2. **Level 2**: `build-and-test.yml` had mixed boolean/string comparisons and semantic overloading
+3. **Level 3**: `unit-tests.yml` callable workflow only checked `changes-detected`, ignoring force flags
+4. **Level 4**: `e2e-tests.yml` had no force flag inputs and confusing dual-flag logic
+
+### Implementation Summary *(Completed 2025-08-24)*
+
+**Implemented By**: Claude session (2025-08-24)  
+**Duration**: 2 hours  
+**Approach**: Systematic fix of conditional logic at all workflow levels
+
+#### **Key Changes Implemented:**
+
+1. **Clean Flag Separation (No Semantic Overloading)**:
+   ```yaml
+   # BEFORE: Overloaded changes-detected with force logic ❌
+   changes-detected: ${{ inputs.webauthn-server-changed == 'true' || inputs.test-credentials-service-changed == 'true' || inputs.force-unit-tests || inputs.force-full-pipeline }}
+   
+   # AFTER: Clean separation with dedicated force flag ✅
+   changes-detected: ${{ inputs.webauthn-server-changed == 'true' || inputs.test-credentials-service-changed == 'true' }}
+   force-execution: ${{ inputs.force-unit-tests || inputs.force-full-pipeline }}
+   ```
+
+2. **Unit Tests Callable Workflow Fix**:
+   ```yaml
+   # Added force-execution input to unit-tests.yml
+   force-execution:
+     description: 'Force test execution regardless of change detection'
+     required: false
+     type: boolean
+     default: false
+   
+   # Updated conditional logic
+   if: inputs.changes-detected == true || inputs.force-execution == true
+   ```
+
+3. **E2E Tests Force Flag Support**:
+   ```yaml
+   # Added force flag inputs to e2e-tests.yml
+   force-full-pipeline: true/false
+   force-docker-build: true/false
+   
+   # Force flags OVERRIDE everything (including cache)
+   if [[ "${{ inputs.force-full-pipeline }}" == "true" || "${{ inputs.force-docker-build }}" == "true" ]]; then
+     RUN_WEB="true"
+     RUN_ANDROID="true"
+     echo "🚀 Force flags detected - running full E2E test suite (ignoring cache)"
+   ```
+
+4. **Eliminated Redundant Flag Logic**:
+   ```yaml
+   # BEFORE: Confusing dual flags ❌
+   should-run-web-e2e == 'true' && skip-web-e2e == 'false'
+   
+   # AFTER: Clear single-purpose flags ✅  
+   run-web-e2e: true      # Execute fresh tests
+   use-web-cache: true    # Use cached results
+   ```
+
+5. **Client Publishing Force Flag Integration**:
+   - Added force flags to `generate-staging-version` job conditional
+   - Added force flags to `publish-client-libraries` job conditional
+   - Used `always()` pattern to respect upstream job dependencies
+
+6. **Docker Tagging for Cleanup Compatibility**:
+   - Fixed Docker metadata action to use branch-based tagging for `workflow_dispatch`
+   - Ensures cleanup script can properly identify staging images from manual runs
+   - Maintains PR-style tagging compatibility
+
+#### **Files Modified:**
+- `.github/workflows/main-ci-cd.yml` - Force flag passing to E2E tests
+- `.github/workflows/build-and-test.yml` - Clean flag separation  
+- `.github/workflows/unit-tests.yml` - Force execution input
+- `.github/workflows/e2e-tests.yml` - Complete force flag support + simplified logic
+- `.github/workflows/docker-build.yml` - Smart tagging for workflow dispatch
+
+### Performance Results
+
+**Force Pipeline Functionality**: ✅ **100% Working**
+- Unit tests execute when forced (was: skipped)
+- Client publishing executes when forced (was: skipped) 
+- E2E tests execute when forced, ignoring cache (was: ignored)
+- Docker builds get proper tags for cleanup (was: invalid tags)
+
+### Challenges Resolved
+
+1. **Multi-Level Conditional Logic**: Traced through 4 levels of workflow calls to find root cause
+2. **Boolean vs String Comparisons**: Cleaned up inconsistent type comparisons  
+3. **Semantic Flag Overloading**: Separated concerns with dedicated force flags
+4. **Redundant Logic**: Eliminated confusing dual-flag patterns
+5. **Callable Workflow Contracts**: Ensured proper input/output definitions
+
+### Validation Completed
+
+- [x] Force full pipeline manual dispatch works end-to-end
+- [x] Unit tests run when forced despite no code changes
+- [x] Client publishing runs when forced
+- [x] E2E tests run when forced, ignoring cache optimization
+- [x] Docker images get proper branch-based tags
+- [x] All existing functionality preserved (no regressions)
+
+### Architecture Impact
+
+**Logic Flow Improvements:**
+1. **Force flags** → Always run fresh (override cache)
+2. **Component changes** → Determine what needs testing
+3. **Cache optimization** → Use cache when available (unless forced)  
+4. **Single flags** → `run-*` or `use-*-cache`, never both
+
+### Technical Debt Eliminated
+
+- **Semantic overloading** of `changes-detected` flag
+- **Redundant dual flags** (`should-run-*` vs `skip-*`)
+- **Missing force flag support** in E2E orchestration
+- **Boolean/string comparison** inconsistencies
+- **Multi-level conditional complexity** without clear separation
+
+### Next Steps
+
+1. **✅ COMPLETED**: Client version generation for workflow dispatch on feature branches
+   - ✅ Issue: Version shows `1.0.43` instead of branch/PR-specific format
+   - ✅ Root cause: Version generation not properly detecting workflow dispatch context  
+   - ✅ Fix applied: Updated version-manager.sh to distinguish branch vs main for workflow dispatch
+   - ✅ Result: Feature branches now get `1.0.0-branchname.{run}`, main gets `1.0.{build}`
+
+2. **✅ COMPLETED**: Docker cleanup orphaned digest issue
+   - ✅ Issue: Docker images deleted but digests remained (e.g., orphaned package ID 494918425)
+   - ✅ Root cause: Docker metadata created simple tags, cleanup expected SHA-based tags
+   - ✅ Solution: Modified Docker tagging to use SHA-based patterns for workflow dispatch
+   - ✅ Approach: Added SHA generation step instead of breaking existing cleanup patterns
+   - ✅ Result: `sha256-{short-sha}-branch-{safe-branch}-{run}` tags match cleanup expectations
+
+2. **Future Enhancement Opportunities**:
+   - Consider selective force flags (force-web-only, force-android-only)
+   - Add force flag support to security scanning workflows
+   - Implement force flag validation/confirmation UI
+
+### Key Learnings for Future Sessions
+
+**Critical Pattern for Multi-Level Workflow Debugging:**
+1. **Trace the complete chain**: main-ci-cd → build-and-test → unit-tests
+2. **Check ALL conditional logic**: Not just the first level that seems relevant
+3. **Validate input/output contracts**: Especially for callable workflows
+4. **Test boolean vs string comparisons**: GitHub Actions is strict about types
+5. **Separate semantic concerns**: Don't overload existing flags with new logic
+
+**Force Flag Implementation Best Practices:**
+- Force flags should OVERRIDE all optimization (cache, change detection)
+- Use dedicated force flags rather than semantic overloading
+- Implement force support at ALL levels that have conditional logic
+- Test force scenarios specifically (they often reveal edge cases)
 
 ---

@@ -97,7 +97,7 @@ jobs:
   generate-staging-version:
     name: Generate Staging Version
     runs-on: ubuntu-latest
-    needs: [detect-component-changes]
+    needs: [ detect-component-changes ]
     if: |
       needs.detect-component-changes.outputs.openapi-changed == 'true' ||
       needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
@@ -127,7 +127,7 @@ jobs:
   # Job 4: Client library publishing (parallel with build-and-test for optimal performance)
   publish-client-libraries:
     name: Publish Client Libraries (Staging)
-    needs: [detect-component-changes, generate-staging-version]
+    needs: [ detect-component-changes, generate-staging-version ]
     if: |
       always() &&
       needs.generate-staging-version.result == 'success' &&
@@ -152,7 +152,7 @@ jobs:
   # Job 5: E2E tests using built Docker images with smart component-based triggering (waits for both build AND client publishing)
   e2e-tests:
     name: E2E Tests (Web + Android)
-    needs: [detect-component-changes, build-and-test, publish-client-libraries]
+    needs: [ detect-component-changes, generate-staging-version, build-and-test, publish-client-libraries ]
     if: |
       always() &&
       (
@@ -193,10 +193,10 @@ jobs:
       force-docker-build: ${{ inputs.force-docker-build || false }}
     secrets: inherit
 
-  # Job 6: Security scanning using built Docker images (parallel with E2E tests)  
+  # Job 6: Security scanning using built Docker images (parallel with E2E tests)
   security-scanning:
     name: Security Scanning (Docker Images)
-    needs: [detect-component-changes, build-and-test]
+    needs: [ detect-component-changes, build-and-test ]
     if: |
       always() &&
       needs.build-and-test.outputs.docker_images_built == 'true' &&
@@ -257,25 +257,25 @@ jobs:
           BASE_VERSION: "1.0"
         run: |
           echo "🔧 Loading production configuration from $PUBLISHING_CONFIG_FILE..."
-          
+
           # Validate configuration file exists
           if [ ! -f "$PUBLISHING_CONFIG_FILE" ]; then
             echo "❌ Configuration file not found: $PUBLISHING_CONFIG_FILE"
             exit 1
           fi
-          
+
           # Extract Docker configuration values
           DOCKER_REGISTRY=$(yq '.docker.registry.url' "$PUBLISHING_CONFIG_FILE")
           WEBAUTHN_IMAGE_NAME=$(yq '.docker.images.webauthn-server.name' "$PUBLISHING_CONFIG_FILE")
           TEST_CREDENTIALS_IMAGE_NAME=$(yq '.docker.images.test-credentials-service.name' "$PUBLISHING_CONFIG_FILE")
-          
+
           # Extract npm configuration
           NPM_SCOPE=$(yq '.packages.typescript.scope.production' "$PUBLISHING_CONFIG_FILE")
           NPM_PACKAGE_NAME=$(yq '.packages.typescript.basePackageName' "$PUBLISHING_CONFIG_FILE")
-          
+
           # Validate required values are not null
-          if [ "$DOCKER_REGISTRY" = "null" ] || [ "$WEBAUTHN_IMAGE_NAME" = "null" ] || 
-             [ "$TEST_CREDENTIALS_IMAGE_NAME" = "null" ] || [ "$NPM_SCOPE" = "null" ] || 
+          if [ "$DOCKER_REGISTRY" = "null" ] || [ "$WEBAUTHN_IMAGE_NAME" = "null" ] ||
+             [ "$TEST_CREDENTIALS_IMAGE_NAME" = "null" ] || [ "$NPM_SCOPE" = "null" ] ||
              [ "$NPM_PACKAGE_NAME" = "null" ]; then
             echo "❌ Missing required configuration in $PUBLISHING_CONFIG_FILE"
             echo "Registry: $DOCKER_REGISTRY"
@@ -285,7 +285,7 @@ jobs:
             echo "NPM package name: $NPM_PACKAGE_NAME"
             exit 1
           fi
-          
+
           # Set outputs
           echo "java-version=$JAVA_VERSION" >> $GITHUB_OUTPUT
           echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
@@ -294,7 +294,7 @@ jobs:
           echo "base-version=$BASE_VERSION" >> $GITHUB_OUTPUT
           echo "npm-scope=$NPM_SCOPE" >> $GITHUB_OUTPUT
           echo "npm-package-name=$NPM_PACKAGE_NAME" >> $GITHUB_OUTPUT
-          
+
           echo "✅ Production configuration loaded successfully:"
           echo "  Docker Registry: $DOCKER_REGISTRY"
           echo "  WebAuthn Server: $WEBAUTHN_IMAGE_NAME"
@@ -395,14 +395,14 @@ jobs:
           echo "Docker Images Built: ${{ needs.build-and-test.outputs.docker_images_built }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
           echo "Security Scanning: ${{ needs.security-scanning.result }}"
-          
+
           # Production publishing results (main branch only)
           if [[ "${{ github.ref_name }}" == "main" ]]; then
             echo "📦 Production Publishing (Main Branch):"
             echo "  Configuration Setup: ${{ needs.setup-production-config.result }}"
             echo "  Docker Publishing: ${{ needs.publish-docker-production.result }}"
             echo "  Client Publishing: ${{ needs.publish-clients-production.result }}"
-            
+
             # Docker publishing results
             if [[ "${{ needs.publish-docker-production.result }}" == "success" ]]; then
               echo "  ✅ Docker Images Published: ${{ needs.publish-docker-production.outputs.docker-published }}"
@@ -411,7 +411,7 @@ jobs:
             else
               echo "  ⏸️ Docker publishing was skipped or cancelled"
             fi
-            
+
             # Client publishing results
             if [[ "${{ needs.publish-clients-production.result }}" == "success" ]]; then
               echo "  ✅ Client Libraries Published: TypeScript and Android"
@@ -471,12 +471,12 @@ jobs:
               echo "  ✅ Security scanning: No critical vulnerabilities"
               echo "  ✅ E2E testing: All integration tests successful"
               echo "  ⚡ Performance: Parallel execution optimized pipeline time"
-              
+
               # Production publishing summary (main branch only)
               if [[ "${{ github.ref_name }}" == "main" ]]; then
                 DOCKER_SUCCESS="${{ needs.publish-docker-production.result }}"
                 CLIENT_SUCCESS="${{ needs.publish-clients-production.result }}"
-                
+
                 if [[ "$DOCKER_SUCCESS" == "success" || "$CLIENT_SUCCESS" == "success" ]]; then
                   echo "🚀 Production artifacts published successfully:"
                   if [[ "$DOCKER_SUCCESS" == "success" ]]; then
@@ -515,7 +515,7 @@ jobs:
                 DOCKER_SUCCESS="${{ needs.publish-docker-production.result }}"
                 CLIENT_SUCCESS="${{ needs.publish-clients-production.result }}"
                 CONFIG_SUCCESS="${{ needs.setup-production-config.result }}"
-                
+
                 if [[ "$CONFIG_SUCCESS" != "success" ]]; then
                   # Production config failed, but tests passed - still consider success
                   echo "⚠️ Production configuration failed, but core pipeline succeeded"
@@ -580,10 +580,10 @@ jobs:
           echo "  Workflow outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
           echo "  Emergency preserve: ${{ steps.check-preserve.outputs.preserve-override }}"
           echo ""
-          
+
           CLEANUP_TYPE="none"
           CLEANUP_SCOPE="none"
-          
+
           if [[ "${{ steps.check-preserve.outputs.preserve-override }}" == "true" ]]; then
             echo "🚨 Emergency preserve override - skipping all cleanup"
             CLEANUP_TYPE="preserve"
@@ -598,10 +598,10 @@ jobs:
           else
             echo "⏭️ No cleanup needed for this context"
           fi
-          
+
           echo "cleanup-type=$CLEANUP_TYPE" >> $GITHUB_OUTPUT
           echo "cleanup-scope=$CLEANUP_SCOPE" >> $GITHUB_OUTPUT
-          
+
           echo "🎯 Cleanup Decision: $CLEANUP_TYPE ($CLEANUP_SCOPE)"
 
       - name: Execute cleanup based on strategy
@@ -620,14 +620,14 @@ jobs:
           CLEANUP_TYPE="${{ steps.cleanup-strategy.outputs.cleanup-type }}"
           CLEANUP_SCOPE="${{ steps.cleanup-strategy.outputs.cleanup-scope }}"
           WORKFLOW_OUTCOME="${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
-          
+
           # Display context-specific information
           if [[ "$CLEANUP_TYPE" == "staging" ]]; then
             echo "🧹 Starting smart staging cleanup for PR"
             echo "📋 Cleanup scope: GitHub Packages staging artifacts"
             echo "🎯 Workflow outcome: $WORKFLOW_OUTCOME"
             echo ""
-            
+
             case "$WORKFLOW_OUTCOME" in
               "success")
                 echo "✅ Workflow succeeded - performing COMPLETE staging cleanup"

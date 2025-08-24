@@ -118,6 +118,29 @@ callable-job:
     # package-name: ${{ env.PACKAGE_NAME }}  # ❌ WILL FAIL
 ```
 
+#### **🚨 CRITICAL: Job Dependencies Rule (FUNDAMENTAL!)**
+**ANY job that references `needs.JOBNAME.outputs.X` or `needs.JOBNAME.result` MUST include `JOBNAME` in its `needs` array.**
+
+**WHY THIS IS CRITICAL**: Missing dependencies cause outputs to be empty/undefined with NO error - workflows appear to succeed but use wrong values.
+
+```yaml
+# ❌ WRONG: References generate-version but not in needs array
+deploy-job:
+  needs: [build-job]  # Missing generate-version!
+  steps:
+    - run: echo "Version: ${{ needs.generate-version.outputs.version }}"  # Will be EMPTY!
+
+# ✅ CORRECT: All referenced jobs in needs array  
+deploy-job:
+  needs: [build-job, generate-version]  # Both dependencies declared
+  steps:
+    - run: echo "Version: ${{ needs.generate-version.outputs.version }}"  # Works correctly
+```
+
+**VALIDATION PATTERN**: For every `needs.JOBNAME.anything`, verify `JOBNAME` in `needs: [...]` array.
+**CONDITIONAL JOBS**: Use `always() && needs.maybe-skipped.result == 'success'` for potentially skipped dependencies.
+**DOCUMENTATION**: Complete guide at `docs/development/workflows/github-actions-dependency-rules.md`
+
 #### **🚨 CRITICAL: Callable Workflow Secrets Pattern**
 When secrets are explicitly defined in callable workflows, they MUST be explicitly passed:
 ```yaml
@@ -183,8 +206,46 @@ docker-registry: ${{ env.DOCKER_REGISTRY }}
 1. **Missing `credentials(PasswordCredentials::class)`**: Android publishing failed without explicit credentials block
 2. **Wrong Docker Registry Reference**: web-e2e-tests.yml used `${{ env.DOCKER_REGISTRY }}` instead of job output
 3. **Credential Name Mismatch**: Repository "GitHubPackages" required matching environment variable names
+4. **🚨 CRITICAL: GitHub Actions Job Dependencies**: E2E test workflow dispatch failed due to missing `generate-staging-version` job in dependencies
 
 **Why This Matters**: These patterns prevent common publishing failures and ensure consistent configuration across all client library workflows.
+
+### 🚨 CRITICAL: GitHub Actions Job Dependencies Rule
+
+**THE FUNDAMENTAL RULE**: Any job that references `needs.JOBNAME.outputs.X` or `needs.JOBNAME.result` MUST include `JOBNAME` in its `needs` array.
+
+#### **Critical Pattern (Silent Failure)**:
+```yaml
+# ❌ WRONG - Will cause silent failure (empty/undefined values)
+some-job:
+  needs: [ other-job ]  # Missing required-job!
+  with:
+    param: ${{ needs.required-job.outputs.value }}  # Empty/undefined!
+
+# ✅ CORRECT - Properly declares dependency
+some-job:
+  needs: [ other-job, required-job ]  # Include ALL referenced jobs
+  with:
+    param: ${{ needs.required-job.outputs.value }}  # Works correctly
+```
+
+#### **Why This is Critical**:
+- **Silent Failures**: Missing dependencies don't cause workflow errors - they just return empty values
+- **Hard to Debug**: Workflows succeed but use wrong/empty data (e.g., client-version: "")
+- **Production Impact**: E2E tests might use fake packages instead of real published packages
+
+#### **Validation Pattern**:
+```bash
+# Check all needs.* references have proper dependencies
+grep -n "needs\." .github/workflows/*.yml | grep -v "needs: \[.*JOBNAME.*\]"
+```
+
+#### **Common Scenarios**:
+1. **Multi-step pipelines**: Jobs referencing outputs from version generation, client publishing, etc.
+2. **Conditional workflows**: Using `always() && needs.maybe-skipped.result == 'success'`
+3. **Callable workflows**: Passing job outputs as inputs to other workflows
+
+**Recent Fix**: E2E test workflow dispatch was failing because it referenced `needs.generate-staging-version.outputs.version` without including `generate-staging-version` in the needs array, causing empty client-version inputs.
 
 ### 🔄 CRITICAL: Callable Workflow Input/Output Validation
 

@@ -87,6 +87,22 @@ on:
         required: false
         default: false
         type: boolean
+      # Client library information (from actual published packages)
+      typescript-package-name:
+        description: 'Published TypeScript package name'
+        required: false
+        type: string
+        default: ''
+      android-package-name:
+        description: 'Published Android package name'
+        required: false
+        type: string
+        default: ''
+      client-version:
+        description: 'Published client library version'
+        required: false
+        type: string
+        default: ''
 
 env:
   ANDROID_API_VERSION: "29"
@@ -377,9 +393,9 @@ jobs:
       test-credentials-image: ${{ inputs.test_credentials_image }}
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'main' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
-      # Client library data will be passed from main orchestrator
-      typescript-package-name: "${{ inputs.workflow-identifier }}-typescript-staging"
-      client-version: "${{ inputs.workflow-identifier }}.0.0-pr.${{ github.run_number }}"
+      # Use actual published client library information from main orchestrator
+      typescript-package-name: ${{ inputs.typescript-package-name }}
+      client-version: ${{ inputs.client-version }}
       cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-web }}
 
   # Job 5: Enhanced Android E2E tests with parallel execution optimization
@@ -397,9 +413,9 @@ jobs:
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'main' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
-      # Client library data will be passed from main orchestrator
-      android-package-name: "mpo-webauthn-android-client-staging"
-      client-version: "${{ inputs.workflow-identifier }}.0.0-pr.${{ github.run_number }}"
+      # Use actual published client library information from main orchestrator
+      android-package-name: ${{ inputs.android-package-name }}
+      client-version: ${{ inputs.client-version }}
       cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-android }}
 
   # Job 6: Handle cached Web E2E results with enhanced component awareness

@@ -98,31 +98,44 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Pull Docker images from registry
+        id: pull-images
         run: |
           echo "🔍 Pulling Docker images for security scanning..."
           echo "WebAuthn Server: ${{ env.WEBAUTHN_SERVER_IMAGE }}"
           echo "Test Credentials: ${{ env.TEST_CREDENTIALS_IMAGE }}"
           
+          # Extract first tag from multi-line tags output (docker pull requires single tag)
+          WEBAUTHN_TAG=$(echo "${{ env.WEBAUTHN_SERVER_IMAGE }}" | head -n1)
+          TEST_CREDENTIALS_TAG=$(echo "${{ env.TEST_CREDENTIALS_IMAGE }}" | head -n1)
+          
+          echo "📋 Pulling with single tags:"
+          echo "  WebAuthn Server: $WEBAUTHN_TAG"
+          echo "  Test Credentials: $TEST_CREDENTIALS_TAG"
+          
           # Pull WebAuthn Server image
           echo "📥 Pulling WebAuthn Server image..."
-          docker pull "${{ env.WEBAUTHN_SERVER_IMAGE }}"
+          docker pull "$WEBAUTHN_TAG"
           
           # Pull Test Credentials Service image  
           echo "📥 Pulling Test Credentials Service image..."
-          docker pull "${{ env.TEST_CREDENTIALS_IMAGE }}"
+          docker pull "$TEST_CREDENTIALS_TAG"
           
           # Verify images are available locally
           echo "✅ Verifying pulled images..."
-          docker image inspect "${{ env.WEBAUTHN_SERVER_IMAGE }}" >/dev/null
-          docker image inspect "${{ env.TEST_CREDENTIALS_IMAGE }}" >/dev/null
+          docker image inspect "$WEBAUTHN_TAG" >/dev/null
+          docker image inspect "$TEST_CREDENTIALS_TAG" >/dev/null
+          
+          # Set outputs for use in security scanning
+          echo "webauthn-tag=$WEBAUTHN_TAG" >> $GITHUB_OUTPUT
+          echo "test-credentials-tag=$TEST_CREDENTIALS_TAG" >> $GITHUB_OUTPUT
           
           echo "✅ Docker images pulled successfully and ready for scanning"
 
       - name: Comprehensive Docker Security Scanning
         id: security-scan
         env:
-          WEBAUTHN_IMAGE_TAG: ${{ env.WEBAUTHN_SERVER_IMAGE }}
-          TEST_CREDENTIALS_IMAGE_TAG: ${{ env.TEST_CREDENTIALS_IMAGE }}
+          WEBAUTHN_IMAGE_TAG: ${{ steps.pull-images.outputs.webauthn-tag }}
+          TEST_CREDENTIALS_IMAGE_TAG: ${{ steps.pull-images.outputs.test-credentials-tag }}
         run: |
           echo "🔍 Starting comprehensive security scan of Docker images..."
           echo "WebAuthn image: $WEBAUTHN_IMAGE_TAG"

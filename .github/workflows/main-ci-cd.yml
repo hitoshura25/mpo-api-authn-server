@@ -421,13 +421,17 @@ jobs:
             echo "📦 Production Publishing: Skipped (not main branch)"
           fi
 
-          # Check if build phase failed
-          if [[ "${{ needs.build-and-test.result }}" != "success" ]]; then
+          # Check if build phase failed (success or skipped are both valid for fast-path scenarios)
+          if [[ "${{ needs.build-and-test.result }}" != "success" && "${{ needs.build-and-test.result }}" != "skipped" ]]; then
             echo "❌ Build and test phase failed"
             exit 1
           fi
 
-          echo "✅ Build and test phase completed successfully"
+          if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
+            echo "✅ Build and test phase completed successfully"
+          else
+            echo "⚡ Build and test phase skipped (fast-path for workflow/documentation changes)"
+          fi
 
           if [[ "${{ needs.build-and-test.outputs.docker_images_built }}" == "true" ]]; then
             echo "🐳 Docker images were built:"

@@ -191,11 +191,37 @@ grep -A 10 "outputs:" .github/workflows/docker-build.yml
 grep "webauthn-server-image\|test-credentials-image" .github/workflows/docker-build.yml
 ```
 
+#### **🚨 CRITICAL: Complete Job Dependency Chain Validation (August 2025)**
+**When adding new change detection categories, ALWAYS verify the complete workflow dependency chain:**
+
+**FAILURE PATTERN**: Change detection succeeds but downstream jobs are still skipped.
+```yaml
+# ❌ BROKEN: detect-changes outputs correct flag, but security-scanning job misses it
+detect-changes.yml: docker-security-workflows-changed: true  ✅
+main-ci-cd.yml security-scanning: checks workflows-changed only  ❌ (skipped)
+
+# ✅ CORRECT: All downstream jobs check specific category flags  
+security-scanning:
+  if: |
+    needs.detect-component-changes.outputs.docker-security-workflows-changed == 'true' ||
+    needs.detect-component-changes.outputs.workflows-changed == 'true'  # fallback
+```
+
+**MANDATORY CHECKLIST** for new change detection categories:
+- [ ] Category added to `detect-changes.yml` filters
+- [ ] Category included in build decision logic  
+- [ ] Category output defined at workflow and job levels
+- [ ] **ALL dependent jobs include specific category check** (most critical step)
+- [ ] End-to-end test: file change → detect-changes → all downstream jobs execute
+
+**WHY CRITICAL**: Security-critical workflow changes can be deployed without validation, creating false security confidence.
+
 #### **Common Workflow Issues to Avoid:**
 - **❌ NEVER use `env.VARIABLE` in `if:` conditionals** - Use job outputs instead
 - **❌ NEVER use `github.event.number`** - Use `github.event.pull_request.number`
 - **❌ NEVER use `actions/github-script` with external file requires** - Use direct Node.js execution
 - **❌ NEVER define outputs without verifying implementation chain** - Always validate job→step→value mapping
+- **❌ NEVER add change detection without validating ALL downstream job conditions** - Change detection ≠ job execution
 - **✅ Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped**
 
 ### 🏗️ CRITICAL: Android Publishing & Docker Registry Patterns

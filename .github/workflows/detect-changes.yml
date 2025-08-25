@@ -26,9 +26,6 @@ on:
       test-credentials-service-changed:
         description: 'Whether test-credentials-service or shared dependencies changed' 
         value: ${{ jobs.detect-changes.outputs.test-credentials-service-changed }}
-      openapi-changed:
-        description: 'Whether OpenAPI specification changed (triggers client generation)'
-        value: ${{ jobs.detect-changes.outputs.openapi-changed }}
       e2e-tests-changed:
         description: 'Whether E2E test files changed'
         value: ${{ jobs.detect-changes.outputs.e2e-tests-changed }}
@@ -69,6 +66,9 @@ on:
       should-run-tests-workflow:
         description: 'Whether unit tests workflow should be executed'
         value: ${{ jobs.detect-changes.outputs.should-run-tests-workflow }}
+      should-run-client-publishing-workflow:
+        description: 'Whether client publishing workflow should be executed'
+        value: ${{ jobs.detect-changes.outputs.should-run-client-publishing-workflow }}
 
 jobs:
   detect-changes:
@@ -77,7 +77,6 @@ jobs:
       # Component change indicators
       webauthn-server-changed: ${{ steps.decision-matrix.outputs.webauthn-server-changed }}
       test-credentials-service-changed: ${{ steps.decision-matrix.outputs.test-credentials-service-changed }}
-      openapi-changed: ${{ steps.decision-matrix.outputs.openapi-changed }}
       e2e-tests-changed: ${{ steps.decision-matrix.outputs.e2e-tests-changed }}
       workflows-changed: ${{ steps.decision-matrix.outputs.workflows-changed }}
       docker-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.docker-affecting-workflows-changed }}
@@ -94,6 +93,7 @@ jobs:
       should-run-docker-workflow: ${{ steps.decision-matrix.outputs.should-run-docker-workflow }}
       should-run-e2e-workflow: ${{ steps.decision-matrix.outputs.should-run-e2e-workflow }}
       should-run-tests-workflow: ${{ steps.decision-matrix.outputs.should-run-tests-workflow }}
+      should-run-client-publishing-workflow: ${{ steps.decision-matrix.outputs.should-run-client-publishing-workflow }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -278,6 +278,7 @@ jobs:
           SHOULD_RUN_DOCKER="false"
           SHOULD_RUN_E2E="false"
           SHOULD_RUN_TESTS="false"
+          SHOULD_RUN_CLIENT_PUBLISHING="false"
           
           # OPTIMIZATION: Only Docker-affecting workflows trigger Docker builds (not ALL workflow changes)
           if [[ "$WEBAUTHN_SERVER_CHANGED" == "true" || "$TEST_CREDS_SERVICE_CHANGED" == "true" || "$DOCKER_AFFECTING_WORKFLOWS_CHANGED" == "true" ]]; then
@@ -296,10 +297,14 @@ jobs:
             SHOULD_RUN_TESTS="true"
           fi
           
+          # Client publishing should run for OpenAPI changes or client publishing workflow changes
+          if [[ "$OPENAPI_CHANGED" == "true" || "$CLIENT_PUBLISHING_AFFECTING_WORKFLOWS_CHANGED" == "true" ]]; then
+            SHOULD_RUN_CLIENT_PUBLISHING="true"
+          fi
+          
           # Set outputs
           echo "webauthn-server-changed=$WEBAUTHN_SERVER_CHANGED" >> $GITHUB_OUTPUT
           echo "test-credentials-service-changed=$TEST_CREDS_SERVICE_CHANGED" >> $GITHUB_OUTPUT
-          echo "openapi-changed=$OPENAPI_CHANGED" >> $GITHUB_OUTPUT
           echo "e2e-tests-changed=$E2E_TESTS_CHANGED" >> $GITHUB_OUTPUT
           echo "workflows-changed=$WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
           echo "docker-affecting-workflows-changed=$DOCKER_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
@@ -315,11 +320,11 @@ jobs:
           echo "should-run-docker-workflow=$SHOULD_RUN_DOCKER" >> $GITHUB_OUTPUT
           echo "should-run-e2e-workflow=$SHOULD_RUN_E2E" >> $GITHUB_OUTPUT
           echo "should-run-tests-workflow=$SHOULD_RUN_TESTS" >> $GITHUB_OUTPUT
+          echo "should-run-client-publishing-workflow=$SHOULD_RUN_CLIENT_PUBLISHING" >> $GITHUB_OUTPUT
           
           echo "📊 Component Change Summary:"
           echo "  webauthn-server: $WEBAUTHN_SERVER_CHANGED"
           echo "  test-credentials-service: $TEST_CREDS_SERVICE_CHANGED"
-          echo "  openapi-specification: $OPENAPI_CHANGED"
           echo "  e2e-tests: $E2E_TESTS_CHANGED"
           echo "  web-e2e-test-files: $WEB_E2E_FILES_CHANGED"
           echo "  android-e2e-test-files: $ANDROID_E2E_FILES_CHANGED"
@@ -333,3 +338,4 @@ jobs:
           echo "  run-docker-workflow: $SHOULD_RUN_DOCKER (triggers: server/creds changes OR docker-affecting workflows)"
           echo "  run-e2e-workflow: $SHOULD_RUN_E2E (triggers: OpenAPI/E2E changes OR e2e-test-affecting workflows)"
           echo "  run-tests-workflow: $SHOULD_RUN_TESTS (triggers: server/creds changes OR unit-test-affecting workflows)"
+          echo "  run-client-publishing-workflow: $SHOULD_RUN_CLIENT_PUBLISHING (triggers: OpenAPI changes OR client-publishing workflows)"

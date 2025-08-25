@@ -62,8 +62,8 @@ on:
         required: false
         default: 'false'
         type: string
-      openapi-changed:
-        description: 'Whether OpenAPI specification changed'
+      should-run-client-publishing-workflow:
+        description: 'Whether client publishing workflow should be executed (based on OpenAPI or workflow changes)'
         required: false
         default: 'false'
         type: string
@@ -203,7 +203,7 @@ jobs:
           echo "📋 Component Changes Detected (Passed from Main Orchestrator):"
           echo "WebAuthn Server: ${{ inputs.webauthn-server-changed }}"
           echo "Test Credentials Service: ${{ inputs.test-credentials-service-changed }}"
-          echo "OpenAPI Specification: ${{ inputs.openapi-changed }}"
+          echo "Client Publishing Workflow: ${{ inputs.should-run-client-publishing-workflow }}"
           echo ""
           echo "⚡ Execution Results:"
           echo "Unit tests: ${{ needs.run-unit-tests.result }}"

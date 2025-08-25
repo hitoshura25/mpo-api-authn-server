@@ -82,7 +82,7 @@ jobs:
       # Pass component change flags for fine-grained conditioning
       webauthn-server-changed: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}
       test-credentials-service-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
-      openapi-changed: ${{ needs.detect-component-changes.outputs.openapi-changed }}
+      should-run-client-publishing-workflow: ${{ needs.detect-component-changes.outputs.should-run-client-publishing-workflow }}
     permissions:
       contents: read          # Read repository code
       packages: write         # Push Docker images to GHCR
@@ -99,7 +99,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ detect-component-changes ]
     if: |
-      needs.detect-component-changes.outputs.openapi-changed == 'true' ||
+      needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' ||
       needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
       inputs.force-full-pipeline == true ||
       inputs.force-docker-build == true
@@ -132,8 +132,7 @@ jobs:
       always() &&
       needs.generate-staging-version.result == 'success' &&
       (
-        needs.detect-component-changes.outputs.openapi-changed == 'true' ||
-        needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
+        needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' ||
         inputs.force-full-pipeline == true ||
         inputs.force-docker-build == true
       )
@@ -159,7 +158,7 @@ jobs:
         (
           (needs.detect-component-changes.outputs.webauthn-server-changed == 'true' && needs.build-and-test.result == 'success') ||
           (needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' && needs.build-and-test.result == 'success') ||
-          (needs.detect-component-changes.outputs.openapi-changed == 'true' && needs.publish-client-libraries.result == 'success') ||
+          (needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' && needs.publish-client-libraries.result == 'success') ||
           (needs.detect-component-changes.outputs.e2e-tests-changed == 'true' && (needs.build-and-test.result == 'success' || needs.build-and-test.result == 'skipped'))
         ) ||
         (inputs.force-full-pipeline == true && needs.build-and-test.result == 'success') ||
@@ -183,7 +182,7 @@ jobs:
       # Pass component change flags for smart E2E conditioning
       webauthn-server-changed: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}
       test-credentials-service-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
-      openapi-changed: ${{ needs.detect-component-changes.outputs.openapi-changed }}
+      should-run-client-publishing-workflow: ${{ needs.detect-component-changes.outputs.should-run-client-publishing-workflow }}
       e2e-tests-changed: ${{ needs.detect-component-changes.outputs.e2e-tests-changed }}
       # Pass granular E2E change flags for platform-specific triggering
       web-e2e-test-files-changed: ${{ needs.detect-component-changes.outputs.web-e2e-test-files-changed }}
@@ -232,7 +231,7 @@ jobs:
       (
         needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
         needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' ||
-        needs.detect-component-changes.outputs.openapi-changed == 'true'
+        needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true'
       )
     outputs:
       java-version: ${{ steps.config.outputs.java-version }}
@@ -350,7 +349,7 @@ jobs:
       github.ref_name == 'main' &&
       needs.setup-production-config.result == 'success' &&
       (
-        needs.detect-component-changes.outputs.openapi-changed == 'true' ||
+        needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' ||
         needs.detect-component-changes.outputs.webauthn-server-changed == 'true'
       )
     uses: ./.github/workflows/client-publish.yml
@@ -386,7 +385,7 @@ jobs:
           echo "📊 Component Changes Detected:"
           echo "  WebAuthn Server: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}"
           echo "  Test Credentials Service: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}"
-          echo "  OpenAPI Specification: ${{ needs.detect-component-changes.outputs.openapi-changed }}"
+          echo "  Client Publishing Workflow: ${{ needs.detect-component-changes.outputs.should-run-client-publishing-workflow }}"
           echo "  E2E Tests: ${{ needs.detect-component-changes.outputs.e2e-tests-changed }}"
           echo "  Workflows: ${{ needs.detect-component-changes.outputs.workflows-changed }}"
           echo ""

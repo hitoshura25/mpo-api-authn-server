@@ -55,8 +55,8 @@ on:
         required: false
         default: 'false'
         type: string
-      openapi-changed:
-        description: 'Whether OpenAPI specification changed'
+      should-run-client-publishing-workflow:
+        description: 'Whether client publishing workflow should be executed (based on OpenAPI or workflow changes)'
         required: false
         default: 'false'
         type: string
@@ -261,7 +261,7 @@ jobs:
           echo "📋 Component Changes:"
           echo "  WebAuthn Server: ${{ inputs.webauthn-server-changed }}"
           echo "  Test Credentials Service: ${{ inputs.test-credentials-service-changed }}"
-          echo "  OpenAPI Specification: ${{ inputs.openapi-changed }}"
+          echo "  Client Publishing Workflow: ${{ inputs.should-run-client-publishing-workflow }}"
           echo "  E2E Tests: ${{ inputs.e2e-tests-changed }}"
           echo "📋 Force Flags:"
           echo "  Force Full Pipeline: ${{ inputs.force-full-pipeline }}"
@@ -283,7 +283,7 @@ jobs:
             # Component-specific E2E test triggering logic
             SERVER_CHANGED="${{ inputs.webauthn-server-changed }}"
             CREDS_CHANGED="${{ inputs.test-credentials-service-changed }}"
-            API_CHANGED="${{ inputs.openapi-changed }}"
+            API_CHANGED="${{ inputs.should-run-client-publishing-workflow }}"
             E2E_CHANGED="${{ inputs.e2e-tests-changed }}"
             
             # Determine which tests to run based on component changes
@@ -340,7 +340,7 @@ jobs:
         run: |
           echo "📊 E2E Test Strategy Summary:"
           echo "📋 Component Analysis:"
-          echo "  Component triggers: Server=${{ inputs.webauthn-server-changed }}, Creds=${{ inputs.test-credentials-service-changed }}, API=${{ inputs.openapi-changed }}, E2E=${{ inputs.e2e-tests-changed }}"
+          echo "  Component triggers: Server=${{ inputs.webauthn-server-changed }}, Creds=${{ inputs.test-credentials-service-changed }}, Client Publishing=${{ inputs.should-run-client-publishing-workflow }}, E2E=${{ inputs.e2e-tests-changed }}"
           echo ""
           echo "💾 Cache Optimization:"
           echo "  Web E2E cache hit: ${{ steps.web-cache.outputs.cache-hit }}"

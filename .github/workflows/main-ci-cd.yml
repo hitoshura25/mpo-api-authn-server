@@ -59,14 +59,30 @@ permissions:
   contents: read
 
 jobs:
-  # Job 1: Build and test with smart change detection
+  # Job 1: Component change detection for independent processing optimization (Phase 10.1)
+  detect-component-changes:
+    name: Detect Component Changes
+    uses: ./.github/workflows/detect-changes.yml
+
+  # Job 2: Build and test with component-specific conditioning and parallel execution
   build-and-test:
     name: Build & Test (Unit Tests + Docker Images)
+    needs: detect-component-changes
+    if: |
+      needs.detect-component-changes.outputs.should-run-tests-workflow == 'true' ||
+      needs.detect-component-changes.outputs.should-run-docker-workflow == 'true' ||
+      inputs.force-full-pipeline == true ||
+      inputs.force-docker-build == true ||
+      inputs.force-unit-tests == true
     uses: ./.github/workflows/build-and-test.yml
     with:
       force-full-pipeline: ${{ inputs.force-full-pipeline || false }}
       force-docker-build: ${{ inputs.force-docker-build || false }}
       force-unit-tests: ${{ inputs.force-unit-tests || false }}
+      # Pass component change flags for fine-grained conditioning
+      webauthn-server-changed: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}
+      test-credentials-service-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
+      should-run-client-publishing-workflow: ${{ needs.detect-component-changes.outputs.should-run-client-publishing-workflow }}
     permissions:
       contents: read          # Read repository code
       packages: write         # Push Docker images to GHCR
@@ -77,32 +93,119 @@ jobs:
       issues: write
     secrets: inherit
 
-  # Job 2: E2E tests using built Docker images
-  e2e-tests:
-    name: E2E Tests (Web + Android)
-    needs: build-and-test
+  # Job 3: Generate version for staging client libraries
+  generate-staging-version:
+    name: Generate Staging Version
+    runs-on: ubuntu-latest
+    needs: [ detect-component-changes ]
+    if: |
+      needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' ||
+      needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
+      inputs.force-full-pipeline == true ||
+      inputs.force-docker-build == true
+    outputs:
+      version: ${{ steps.generate-version.outputs.version }}
+      is-prerelease: ${{ steps.generate-version.outputs.is-prerelease }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch all history and tags for version continuity
+
+      - name: Generate staging client version
+        id: generate-version
+        env:
+          BASE_VERSION: "1.0"
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+        run: |
+          echo "🎯 Generating staging client version with centralized version manager"
+          ./scripts/core/version-manager.sh generate
+
+  # Job 4: Client library publishing (parallel with build-and-test for optimal performance)
+  publish-client-libraries:
+    name: Publish Client Libraries (Staging)
+    needs: [ detect-component-changes, generate-staging-version ]
     if: |
       always() &&
+      needs.generate-staging-version.result == 'success' &&
+      (
+        needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' ||
+        inputs.force-full-pipeline == true ||
+        inputs.force-docker-build == true
+      )
+    uses: ./.github/workflows/client-publish.yml
+    permissions:
+      contents: write  # Required for creating GitHub releases and tags
+      packages: write  # Required for publishing to GitHub Packages
+      id-token: write  # Required for npm publishing
+    with:
+      publish-type: "staging"
+      client-version: ${{ needs.generate-staging-version.outputs.version }}
+      workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
+    secrets:
+      GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
+
+  # Job 5: E2E tests using built Docker images with smart component-based triggering (waits for both build AND client publishing)
+  e2e-tests:
+    name: E2E Tests (Web + Android)
+    needs: [ detect-component-changes, generate-staging-version, build-and-test, publish-client-libraries ]
+    if: |
+      always() &&
+      (
+        (
+          (needs.detect-component-changes.outputs.webauthn-server-changed == 'true' && needs.build-and-test.result == 'success') ||
+          (needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' && needs.build-and-test.result == 'success') ||
+          (needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' && needs.publish-client-libraries.result == 'success') ||
+          (needs.detect-component-changes.outputs.e2e-tests-changed == 'true' && (needs.build-and-test.result == 'success' || needs.build-and-test.result == 'skipped'))
+        ) ||
+        (inputs.force-full-pipeline == true && needs.build-and-test.result == 'success') ||
+        (inputs.force-docker-build == true && needs.build-and-test.result == 'success')
+      ) &&
       needs.build-and-test.outputs.docker_images_built == 'true'
     uses: ./.github/workflows/e2e-tests.yml
     permissions:
-      contents: write         # Required for GitHub release creation in client publishing
-      packages: write          # Pull/Push Docker images from GHCR and client lib packages
+      contents: write         # Required for GitHub release creation
+      packages: write          # Pull/Push Docker images from GHCR
       pull-requests: write    # Comment on PRs with test results
       id-token: write         # Required for npm publishing
     with:
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}
       test_credentials_image: ${{ needs.build-and-test.outputs.test_credentials_image }}
+      webauthn_server_digest: ${{ needs.build-and-test.outputs.webauthn-server-digest }}
+      test_credentials_digest: ${{ needs.build-and-test.outputs.test-credentials-digest }}
+      # Pass published client library information from staging publishing
+      typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
+      android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}
+      client-version: ${{ needs.generate-staging-version.outputs.version }}
+      # Pass component change flags based on actual build outputs (truth source: what was actually built)
+      webauthn-server-changed: ${{ needs.build-and-test.outputs.webauthn-server-built }}
+      test-credentials-service-changed: ${{ needs.build-and-test.outputs.test-credentials-service-built }}
+      should-run-client-publishing-workflow: ${{ needs.publish-client-libraries.result == 'success' && 'true' || 'false' }}
+      e2e-tests-changed: ${{ needs.detect-component-changes.outputs.e2e-tests-changed }}
+      # Pass granular E2E change flags for platform-specific triggering
+      web-e2e-test-files-changed: ${{ needs.detect-component-changes.outputs.web-e2e-test-files-changed }}
+      android-e2e-test-files-changed: ${{ needs.detect-component-changes.outputs.android-e2e-test-files-changed }}
+      # Pass force execution flags
+      force-full-pipeline: ${{ inputs.force-full-pipeline || false }}
+      force-docker-build: ${{ inputs.force-docker-build || false }}
     secrets: inherit
 
-  # Job 3: Security scanning using built Docker images (parallel with E2E tests)
+  # Job 6: Security scanning using built Docker images (parallel with E2E tests)
   security-scanning:
     name: Security Scanning (Docker Images)
-    needs: build-and-test
+    needs: [ detect-component-changes, build-and-test ]
     if: |
       always() &&
-      needs.build-and-test.outputs.docker_images_built == 'true'
+      needs.build-and-test.outputs.docker_images_built == 'true' &&
+      (
+        needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
+        needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' ||
+        needs.detect-component-changes.outputs.workflows-changed == 'true'
+      )
     uses: ./.github/workflows/docker-security-scan.yml
     permissions:
       contents: read          # Read repository code
@@ -116,16 +219,22 @@ jobs:
       skip-scan: false
     secrets: inherit
 
-  # Job 4: Setup configuration for production publishing (main branch only)
+  # Job 7: Setup configuration for production publishing (main branch only)
   setup-production-config:
     name: Setup Production Configuration
     runs-on: ubuntu-latest
-    needs: [ build-and-test, e2e-tests, security-scanning ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning ]
     if: |
+      always() &&
       github.ref_name == 'main' &&
       needs.build-and-test.result == 'success' &&
-      needs.e2e-tests.result == 'success' &&
-      needs.security-scanning.outputs.security-scan-passed == 'true'
+      (needs.e2e-tests.result == 'success' || needs.e2e-tests.result == 'skipped') &&
+      (needs.security-scanning.outputs.security-scan-passed == 'true' || needs.security-scanning.result == 'skipped') &&
+      (
+        needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
+        needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' ||
+        needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true'
+      )
     outputs:
       java-version: ${{ steps.config.outputs.java-version }}
       docker-registry: ${{ steps.config.outputs.docker-registry }}
@@ -149,25 +258,25 @@ jobs:
           BASE_VERSION: "1.0"
         run: |
           echo "🔧 Loading production configuration from $PUBLISHING_CONFIG_FILE..."
-          
+
           # Validate configuration file exists
           if [ ! -f "$PUBLISHING_CONFIG_FILE" ]; then
             echo "❌ Configuration file not found: $PUBLISHING_CONFIG_FILE"
             exit 1
           fi
-          
+
           # Extract Docker configuration values
           DOCKER_REGISTRY=$(yq '.docker.registry.url' "$PUBLISHING_CONFIG_FILE")
           WEBAUTHN_IMAGE_NAME=$(yq '.docker.images.webauthn-server.name' "$PUBLISHING_CONFIG_FILE")
           TEST_CREDENTIALS_IMAGE_NAME=$(yq '.docker.images.test-credentials-service.name' "$PUBLISHING_CONFIG_FILE")
-          
+
           # Extract npm configuration
           NPM_SCOPE=$(yq '.packages.typescript.scope.production' "$PUBLISHING_CONFIG_FILE")
           NPM_PACKAGE_NAME=$(yq '.packages.typescript.basePackageName' "$PUBLISHING_CONFIG_FILE")
-          
+
           # Validate required values are not null
-          if [ "$DOCKER_REGISTRY" = "null" ] || [ "$WEBAUTHN_IMAGE_NAME" = "null" ] || 
-             [ "$TEST_CREDENTIALS_IMAGE_NAME" = "null" ] || [ "$NPM_SCOPE" = "null" ] || 
+          if [ "$DOCKER_REGISTRY" = "null" ] || [ "$WEBAUTHN_IMAGE_NAME" = "null" ] ||
+             [ "$TEST_CREDENTIALS_IMAGE_NAME" = "null" ] || [ "$NPM_SCOPE" = "null" ] ||
              [ "$NPM_PACKAGE_NAME" = "null" ]; then
             echo "❌ Missing required configuration in $PUBLISHING_CONFIG_FILE"
             echo "Registry: $DOCKER_REGISTRY"
@@ -177,7 +286,7 @@ jobs:
             echo "NPM package name: $NPM_PACKAGE_NAME"
             exit 1
           fi
-          
+
           # Set outputs
           echo "java-version=$JAVA_VERSION" >> $GITHUB_OUTPUT
           echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
@@ -186,7 +295,7 @@ jobs:
           echo "base-version=$BASE_VERSION" >> $GITHUB_OUTPUT
           echo "npm-scope=$NPM_SCOPE" >> $GITHUB_OUTPUT
           echo "npm-package-name=$NPM_PACKAGE_NAME" >> $GITHUB_OUTPUT
-          
+
           echo "✅ Production configuration loaded successfully:"
           echo "  Docker Registry: $DOCKER_REGISTRY"
           echo "  WebAuthn Server: $WEBAUTHN_IMAGE_NAME"
@@ -205,18 +314,23 @@ jobs:
           echo "🎯 Generating production client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
-  # Job 5a: Publish Docker images to Docker Hub  
+  # Job 8a: Publish Docker images to Docker Hub (conditional on component changes)
   publish-docker-production:
     name: Publish Docker Images to Docker Hub
-    needs: [ build-and-test, e2e-tests, security-scanning, setup-production-config ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config ]
     if: |
+      always() &&
       github.ref_name == 'main' &&
-      needs.setup-production-config.result == 'success'
+      needs.setup-production-config.result == 'success' &&
+      (
+        needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
+        needs.detect-component-changes.outputs.test-credentials-service-changed == 'true'
+      )
     uses: ./.github/workflows/publish-docker.yml
     with:
       docker-registry: ${{ needs.setup-production-config.outputs.docker-registry }}
-      webauthn-server-changed: "true"  # Always publish on main branch
-      test-credentials-changed: "true"  # Always publish on main branch
+      webauthn-server-changed: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}
+      test-credentials-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
       publish-from-main-ci: "true"
       github-run-number: ${{ github.run_number }}
     secrets:
@@ -228,13 +342,18 @@ jobs:
       id-token: write     # Required for Sigstore signing
       packages: read      # Required for pulling from GHCR
 
-  # Job 5b: Publish client libraries in parallel
+  # Job 8b: Publish client libraries in parallel (conditional on OpenAPI changes)
   publish-clients-production:
     name: Publish Client Libraries
-    needs: [ build-and-test, e2e-tests, security-scanning, setup-production-config ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config ]
     if: |
+      always() &&
       github.ref_name == 'main' &&
-      needs.setup-production-config.result == 'success'
+      needs.setup-production-config.result == 'success' &&
+      (
+        needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' ||
+        needs.detect-component-changes.outputs.webauthn-server-changed == 'true'
+      )
     uses: ./.github/workflows/client-publish.yml
     with:
       publish-type: "production"
@@ -252,11 +371,11 @@ jobs:
       SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
       SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
 
-  # Job 6: Report pipeline status
+  # Job 9: Report pipeline status with component-aware result analysis
   report-pipeline-status:
     name: Report Pipeline Status
     runs-on: ubuntu-latest
-    needs: [ build-and-test, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production ]
     if: always()
     outputs:
       pipeline-success: ${{ steps.determine-outcome.outputs.pipeline-success }}
@@ -264,19 +383,27 @@ jobs:
     steps:
       - name: Report overall pipeline status
         run: |
-          echo "🏗️ CI/CD Pipeline Results Summary (Parallel Execution):"
+          echo "🏗️ CI/CD Pipeline Results Summary (Component-Aware Parallel Execution):"
+          echo "📊 Component Changes Detected:"
+          echo "  WebAuthn Server: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}"
+          echo "  Test Credentials Service: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}"
+          echo "  Client Publishing Workflow: ${{ needs.detect-component-changes.outputs.should-run-client-publishing-workflow }}"
+          echo "  E2E Tests: ${{ needs.detect-component-changes.outputs.e2e-tests-changed }}"
+          echo "  Workflows: ${{ needs.detect-component-changes.outputs.workflows-changed }}"
+          echo ""
+          echo "🚀 Pipeline Execution Results:"
           echo "Build & Test: ${{ needs.build-and-test.result }}"
           echo "Docker Images Built: ${{ needs.build-and-test.outputs.docker_images_built }}"
           echo "E2E Tests: ${{ needs.e2e-tests.result }}"
           echo "Security Scanning: ${{ needs.security-scanning.result }}"
-          
+
           # Production publishing results (main branch only)
           if [[ "${{ github.ref_name }}" == "main" ]]; then
             echo "📦 Production Publishing (Main Branch):"
             echo "  Configuration Setup: ${{ needs.setup-production-config.result }}"
             echo "  Docker Publishing: ${{ needs.publish-docker-production.result }}"
             echo "  Client Publishing: ${{ needs.publish-clients-production.result }}"
-            
+
             # Docker publishing results
             if [[ "${{ needs.publish-docker-production.result }}" == "success" ]]; then
               echo "  ✅ Docker Images Published: ${{ needs.publish-docker-production.outputs.docker-published }}"
@@ -285,7 +412,7 @@ jobs:
             else
               echo "  ⏸️ Docker publishing was skipped or cancelled"
             fi
-            
+
             # Client publishing results
             if [[ "${{ needs.publish-clients-production.result }}" == "success" ]]; then
               echo "  ✅ Client Libraries Published: TypeScript and Android"
@@ -345,12 +472,12 @@ jobs:
               echo "  ✅ Security scanning: No critical vulnerabilities"
               echo "  ✅ E2E testing: All integration tests successful"
               echo "  ⚡ Performance: Parallel execution optimized pipeline time"
-              
+
               # Production publishing summary (main branch only)
               if [[ "${{ github.ref_name }}" == "main" ]]; then
                 DOCKER_SUCCESS="${{ needs.publish-docker-production.result }}"
                 CLIENT_SUCCESS="${{ needs.publish-clients-production.result }}"
-                
+
                 if [[ "$DOCKER_SUCCESS" == "success" || "$CLIENT_SUCCESS" == "success" ]]; then
                   echo "🚀 Production artifacts published successfully:"
                   if [[ "$DOCKER_SUCCESS" == "success" ]]; then
@@ -373,23 +500,23 @@ jobs:
           PIPELINE_SUCCESS=false
           WORKFLOW_OUTCOME="failure"
 
-          # Pipeline is successful if build-and-test succeeded and either:
-          # 1. No Docker images were built (fast path)
-          # 2. Docker images were built AND security scanning AND E2E tests passed
-          # 3. Main branch: All above + production publishing succeeded (if attempted)
-          if [[ "${{ needs.build-and-test.result }}" == "success" ]]; then
+          # Component-aware pipeline success logic:
+          # 1. Fast path: Only documentation/infrastructure changes (no builds needed)
+          # 2. Component path: Component changes with successful builds/tests
+          # 3. Main branch: All above + conditional production publishing
+          if [[ "${{ needs.build-and-test.result }}" == "success" || "${{ needs.build-and-test.result }}" == "skipped" ]]; then
             if [[ "${{ needs.build-and-test.outputs.docker_images_built }}" != "true" ]]; then
-              # Fast path - no Docker builds
+              # Fast path - no Docker builds needed (docs/infrastructure only)
               PIPELINE_SUCCESS=true
               WORKFLOW_OUTCOME="success"
-            elif [[ "${{ needs.security-scanning.outputs.security-scan-passed }}" == "true" && "${{ needs.e2e-tests.result }}" == "success" ]]; then
+            elif [[ ("${{ needs.security-scanning.outputs.security-scan-passed }}" == "true" || "${{ needs.security-scanning.result }}" == "skipped") && ("${{ needs.e2e-tests.result }}" == "success" || "${{ needs.e2e-tests.result }}" == "skipped") ]]; then
               # Full pipeline with Docker builds - all tests passed
               if [[ "${{ github.ref_name }}" == "main" ]]; then
                 # Main branch - also check production publishing
                 DOCKER_SUCCESS="${{ needs.publish-docker-production.result }}"
                 CLIENT_SUCCESS="${{ needs.publish-clients-production.result }}"
                 CONFIG_SUCCESS="${{ needs.setup-production-config.result }}"
-                
+
                 if [[ "$CONFIG_SUCCESS" != "success" ]]; then
                   # Production config failed, but tests passed - still consider success
                   echo "⚠️ Production configuration failed, but core pipeline succeeded"
@@ -418,11 +545,11 @@ jobs:
           echo "📊 Workflow outcome for staging cleanup: $WORKFLOW_OUTCOME"
           echo "🎯 Pipeline success status: $PIPELINE_SUCCESS"
 
-  # Job 7: Final cleanup after production publishing
+  # Job 10: Final cleanup after production publishing (component-aware)
   final-cleanup:
     name: Final Cleanup
     runs-on: ubuntu-latest
-    needs: [ build-and-test, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production, report-pipeline-status ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production, report-pipeline-status ]
     if: always()
     permissions:
       contents: read          # Read repository code and git history
@@ -454,32 +581,32 @@ jobs:
           echo "  Workflow outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
           echo "  Emergency preserve: ${{ steps.check-preserve.outputs.preserve-override }}"
           echo ""
-          
+
           CLEANUP_TYPE="none"
-          CLEANUP_SCOPE="none"
-          
+
           if [[ "${{ steps.check-preserve.outputs.preserve-override }}" == "true" ]]; then
             echo "🚨 Emergency preserve override - skipping all cleanup"
             CLEANUP_TYPE="preserve"
           elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
             echo "📦 Pull request cleanup - staging artifacts only"
             CLEANUP_TYPE="staging"
-            CLEANUP_SCOPE="pr-artifacts"
           elif [[ "${{ github.ref_name }}" == "main" && ("${{ needs.publish-docker-production.result }}" == "success" || "${{ needs.publish-clients-production.result }}" == "success") ]]; then
             echo "🚀 Main branch with successful production publishing - GHCR cleanup"
             CLEANUP_TYPE="production"
-            CLEANUP_SCOPE="ghcr-staging"
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "🔧 Workflow dispatch cleanup - staging artifacts for current branch"
+            CLEANUP_TYPE="staging"
           else
             echo "⏭️ No cleanup needed for this context"
           fi
-          
+
           echo "cleanup-type=$CLEANUP_TYPE" >> $GITHUB_OUTPUT
           echo "cleanup-scope=$CLEANUP_SCOPE" >> $GITHUB_OUTPUT
-          
+
           echo "🎯 Cleanup Decision: $CLEANUP_TYPE ($CLEANUP_SCOPE)"
 
-      - name: Execute staging cleanup (PR only)
-        if: steps.cleanup-strategy.outputs.cleanup-type == 'staging'
+      - name: Execute cleanup based on strategy
+        if: steps.cleanup-strategy.outputs.cleanup-type == 'staging' || steps.cleanup-strategy.outputs.cleanup-type == 'production'
         env:
           GH_TOKEN: ${{ secrets.PACKAGE_ADMIN_TOKEN }}
           GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
@@ -488,48 +615,43 @@ jobs:
           GITHUB_REF_NAME: ${{ github.ref_name }}
           DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
           DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
+          # Set FORCE_DOCKER_CLEANUP for production cleanup to override preservation logic
+          FORCE_DOCKER_CLEANUP: ${{ steps.cleanup-strategy.outputs.cleanup-type == 'production' && 'true' || 'false' }}
         run: |
-          echo "🧹 Starting smart staging cleanup for PR"
-          echo "📋 Cleanup scope: ONLY GitHub Packages staging artifacts"
-          echo "🎯 Workflow outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
+          CLEANUP_TYPE="${{ steps.cleanup-strategy.outputs.cleanup-type }}"
+          CLEANUP_SCOPE="${{ steps.cleanup-strategy.outputs.cleanup-scope }}"
+          WORKFLOW_OUTCOME="${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
+
+          # Display context-specific information
+          if [[ "$CLEANUP_TYPE" == "staging" ]]; then
+            echo "🧹 Starting smart staging cleanup for PR"
+            echo "📋 Cleanup scope: GitHub Packages staging artifacts"
+            echo "🎯 Workflow outcome: $WORKFLOW_OUTCOME"
+            echo ""
+
+            case "$WORKFLOW_OUTCOME" in
+              "success")
+                echo "✅ Workflow succeeded - performing COMPLETE staging cleanup"
+                echo "🗑️ Strategy: Delete ALL staging packages (validation complete, no longer needed)"
+                ;;
+              "failure")
+                echo "❌ Workflow failed - performing CONSERVATIVE staging cleanup"
+                echo "🔍 Strategy: Keep last 5 staging versions for debugging"
+                ;;
+            esac
+          elif [[ "$CLEANUP_TYPE" == "production" ]]; then
+            echo "🧹 Final GHCR cleanup after production publishing"
+            echo "📦 Docker Image Lifecycle Coordination - Final cleanup step"
+            echo "✅ Production publishing successful - performing final GHCR cleanup"
+            echo "🗑️ Removing preserved Docker images from GHCR after DockerHub publication"
+            # Main branch cleanup always uses "success" since it only runs after successful production publishing
+            WORKFLOW_OUTCOME="success"
+          fi
           echo ""
 
-          case "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" in
-            "success")
-              echo "✅ Workflow succeeded - performing COMPLETE staging cleanup"
-              echo "🗑️ Strategy: Delete ALL staging packages (validation complete, no longer needed)"
-              ;;
-            "failure")
-              echo "❌ Workflow failed - performing CONSERVATIVE staging cleanup"
-              echo "🔍 Strategy: Keep last 5 staging versions for debugging"
-              ;;
-          esac
-          echo ""
-
-          # Execute staging cleanup script
+          # Execute cleanup script (same script, same logic for both scenarios)
           chmod +x scripts/docker/cleanup-staging-packages.sh
-          scripts/docker/cleanup-staging-packages.sh "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" "${{ github.repository_owner }}"
-
-      - name: Execute GHCR cleanup after production publishing (main branch only)
-        if: steps.cleanup-strategy.outputs.cleanup-type == 'production'
-        env:
-          GH_TOKEN: ${{ secrets.PACKAGE_ADMIN_TOKEN }}
-          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
-          GITHUB_EVENT_NAME: "workflow_run"
-          GITHUB_REF_NAME: "main"
-          DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
-          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
-          FORCE_DOCKER_CLEANUP: "true"  # Override preservation logic for final cleanup
-        run: |
-          echo "🧹 Final GHCR cleanup after production publishing"
-          echo "📦 Phase 8: Docker Image Lifecycle Coordination - Final cleanup step"
-          echo "✅ Production publishing successful - performing final GHCR cleanup"
-          echo "🗑️ Removing preserved Docker images from GHCR after DockerHub publication"
-          echo ""
-
-          # Execute final cleanup script with force flag
-          chmod +x scripts/docker/cleanup-staging-packages.sh
-          scripts/docker/cleanup-staging-packages.sh "success" "${{ github.repository_owner }}"
+          scripts/docker/cleanup-staging-packages.sh "$WORKFLOW_OUTCOME" "${{ github.repository_owner }}"
 
       - name: Report cleanup summary
         if: always()
@@ -564,87 +686,3 @@ jobs:
               ;;
           esac
 
-  # Job 8: Legacy staging cleanup job (for backward compatibility)
-  smart-staging-cleanup:
-    name: Smart Staging Cleanup (Legacy)
-    runs-on: ubuntu-latest
-    needs: [ final-cleanup ]
-    if: always() && github.event_name == 'pull_request' && needs.final-cleanup.result != 'success'
-    permissions:
-      contents: read          # Read repository code and git history
-      packages: write         # Package access (GitHub Actions tokens cannot have admin permission)
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 2  # Fetch recent commits to check for [preserve] keyword
-
-      - name: Check for emergency preserve override
-        id: check-preserve
-        run: |
-          # Check latest commit message for [preserve] keyword
-          if git log -1 --pretty=%s | grep -i '\[preserve\]' >/dev/null; then
-            echo "🚨 EMERGENCY OVERRIDE: [preserve] keyword found in commit message"
-            echo "preserve-override=true" >> $GITHUB_OUTPUT
-          else
-            echo "preserve-override=false" >> $GITHUB_OUTPUT
-          fi
-
-      - name: Smart staging cleanup
-        if: steps.check-preserve.outputs.preserve-override != 'true'
-        env:
-          GH_TOKEN: ${{ secrets.PACKAGE_ADMIN_TOKEN }}
-          GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-          GITHUB_PR_NUMBER: ${{ github.event.pull_request.number || '' }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          DOCKER_WEBAUTHN_IMAGE_NAME: "webauthn-server"
-          DOCKER_TEST_CREDENTIALS_IMAGE_NAME: "webauthn-test-credentials-service"
-        run: |
-          echo "🧹 Starting smart staging cleanup"
-          echo "📋 Cleanup scope: ONLY GitHub Packages staging artifacts"
-          echo "🎯 Workflow outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
-          echo ""
-
-          case "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" in
-            "success")
-              echo "✅ Workflow succeeded - performing COMPLETE staging cleanup"
-              echo "🗑️ Strategy: Delete ALL staging packages (validation complete, no longer needed)"
-              ;;
-            "failure")
-              echo "❌ Workflow failed - performing CONSERVATIVE staging cleanup"
-              echo "🔍 Strategy: Keep last 5 staging versions for debugging"
-              ;;
-          esac
-          echo ""
-
-          # Execute staging cleanup script
-          chmod +x scripts/docker/cleanup-staging-packages.sh
-          scripts/docker/cleanup-staging-packages.sh "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" "${{ github.repository_owner }}"
-
-      - name: Report emergency preserve override
-        if: steps.check-preserve.outputs.preserve-override == 'true'
-        run: |
-          echo "🚨 EMERGENCY OVERRIDE ACTIVATED"
-          echo "⚠️  All staging packages preserved due to [preserve] keyword in commit message"
-          echo "🔍 Manual investigation may be required"
-          echo "📝 To resume normal cleanup, remove [preserve] from commit messages"
-
-      - name: Cleanup summary
-        if: always()
-        run: |
-          echo "📋 Smart Staging Cleanup Summary:"
-          echo "  Emergency Override: ${{ steps.check-preserve.outputs.preserve-override }}"
-          echo "  Workflow Outcome: ${{ needs.report-pipeline-status.outputs.workflow-outcome }}"
-          echo "  Pipeline Success: ${{ needs.report-pipeline-status.outputs.pipeline-success }}"
-          echo ""
-
-          if [[ "${{ steps.check-preserve.outputs.preserve-override }}" == "true" ]]; then
-            echo "🚨 Cleanup skipped due to emergency override"
-          elif [[ "${{ needs.report-pipeline-status.outputs.workflow-outcome }}" == "success" ]]; then
-            echo "🎉 Complete staging cleanup performed - all staging artifacts removed"
-            echo "✅ GitHub Packages staging cleanup completed successfully"
-          else
-            echo "🔍 Conservative staging cleanup performed - debugging artifacts preserved"
-            echo "⚠️  Some staging packages retained for investigation"
-          fi

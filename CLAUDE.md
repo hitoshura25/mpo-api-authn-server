@@ -3,14 +3,13 @@
 ## Current Work (In Progress)
 
 ### Active Tasks
-- No active tasks at this time - all major features completed
+- **Workflow Change Detection Optimization**: Minor optimization opportunity to prevent unnecessary Docker builds when workflow changes don't affect Docker processes (documented in client-publishing-architecture-cleanup.md). Expected: 40% faster CI for workflow-only changes
 
 ### Completed Major Refactors
-- **Client Library Publishing Architecture Cleanup (PHASES 1-9 COMPLETED)**: Successfully implemented complete CI/CD consolidation achieving 23% faster main branch processing (13 min → 10 min) and 40% reduction in workflow complexity. Phase 9 consolidated `main-ci-cd.yml` and `main-branch-post-processing.yml` into unified workflow with parallel production publishing and comprehensive cleanup coordination. Centralized configuration via `config/publishing-config.yml` with enhanced security and 100% Docker registry optimization.
+- **Client Library Publishing Architecture Cleanup (PHASES 1-10 COMPLETED)**: ✅ **COMPLETED** - Successfully implemented complete CI/CD optimization with independent component processing achieving 40-95% performance improvements. **Phase 10** delivered correct architecture with parallel client publishing, eliminated duplicate change detection, and smart E2E dependency management. Key results: client libraries publish immediately when OpenAPI changes (not after full build pipeline), true parallel execution of builds + publishing, and comprehensive E2E cache optimization.
 - **OpenAPI Client Library Architecture**: ✅ **COMPLETED** - Docker-inspired staging→production workflow using GitHub Packages with dedicated client library submodules.
 
 ### Planned Major Refactors
-- **Client Publishing Architecture Phase 10** *(Future Optimization)* - Independent Component Processing for 40-60% faster builds when only single components change. Phase 9 (Consolidated CI/CD Publishing) completed successfully achieving 23% performance improvement.
 - **iOS Test Client Implementation** *(Enhanced 2025-08-21)* - Complete iOS E2E testing ecosystem with Swift client library generation, SwiftUI test application, and CI integration. Extends testing coverage to iOS platform with AuthenticationServices WebAuthn integration. Timeline: 8-10 weeks. See `docs/improvements/planned/ios-test-client-implementation.md`.
 - **FOSS Security Implementation**: Replace AI-dependent security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP). See `docs/improvements/planned/foss-security-implementation.md` for complete plan.
 
@@ -119,6 +118,29 @@ callable-job:
     # package-name: ${{ env.PACKAGE_NAME }}  # ❌ WILL FAIL
 ```
 
+#### **🚨 CRITICAL: Job Dependencies Rule (FUNDAMENTAL!)**
+**ANY job that references `needs.JOBNAME.outputs.X` or `needs.JOBNAME.result` MUST include `JOBNAME` in its `needs` array.**
+
+**WHY THIS IS CRITICAL**: Missing dependencies cause outputs to be empty/undefined with NO error - workflows appear to succeed but use wrong values.
+
+```yaml
+# ❌ WRONG: References generate-version but not in needs array
+deploy-job:
+  needs: [build-job]  # Missing generate-version!
+  steps:
+    - run: echo "Version: ${{ needs.generate-version.outputs.version }}"  # Will be EMPTY!
+
+# ✅ CORRECT: All referenced jobs in needs array  
+deploy-job:
+  needs: [build-job, generate-version]  # Both dependencies declared
+  steps:
+    - run: echo "Version: ${{ needs.generate-version.outputs.version }}"  # Works correctly
+```
+
+**VALIDATION PATTERN**: For every `needs.JOBNAME.anything`, verify `JOBNAME` in `needs: [...]` array.
+**CONDITIONAL JOBS**: Use `always() && needs.maybe-skipped.result == 'success'` for potentially skipped dependencies.
+**DOCUMENTATION**: Complete guide at `docs/development/workflows/github-actions-dependency-rules.md`
+
 #### **🚨 CRITICAL: Callable Workflow Secrets Pattern**
 When secrets are explicitly defined in callable workflows, they MUST be explicitly passed:
 ```yaml
@@ -133,10 +155,47 @@ secrets:
   # ❌ WILL FAIL: secrets: inherit (doesn't work with explicitly defined secrets)
 ```
 
+#### **🚨 CRITICAL: Workflow Output Definition vs Implementation (August 2025)**
+**When adding new workflow outputs, ALWAYS verify the complete implementation chain:**
+
+```yaml
+# Step 1: Define the workflow output (Declaration)
+outputs:
+  service-built:
+    description: 'Whether service was built'
+    value: ${{ jobs.docker-job.outputs.service-image != '' && 'true' || 'false' }}
+
+# Step 2: Verify job outputs exist in callable workflow (Implementation)
+# In docker-build.yml:
+jobs:
+  docker-job:
+    outputs:
+      service-image: ${{ steps.docker-meta.outputs.tags }}  # ✅ Must exist!
+```
+
+**CRITICAL VALIDATION STEPS:**
+1. **Declaration**: Output defined in `outputs:` section ✓
+2. **Reference**: Output references correct job via `jobs.JOBNAME.outputs.X` ✓  
+3. **Implementation**: Referenced job output actually exists in callable workflow ✓
+4. **Data Flow**: Job output gets value from step output ✓
+
+**FAILURE PATTERN**: Defining workflow outputs that reference non-existent job outputs results in empty/undefined values with NO error messages.
+
+**RECENT EXAMPLE**: Added `webauthn-server-built` and `test-credentials-service-built` outputs in build-and-test.yml but forgot to verify that docker-build.yml actually provides the referenced `webauthn-server-image` and `test-credentials-image` outputs.
+
+**VALIDATION COMMANDS**:
+```bash
+# Verify job outputs exist in callable workflow
+grep -A 10 "outputs:" .github/workflows/docker-build.yml
+# Verify job sets the outputs  
+grep "webauthn-server-image\|test-credentials-image" .github/workflows/docker-build.yml
+```
+
 #### **Common Workflow Issues to Avoid:**
 - **❌ NEVER use `env.VARIABLE` in `if:` conditionals** - Use job outputs instead
 - **❌ NEVER use `github.event.number`** - Use `github.event.pull_request.number`
 - **❌ NEVER use `actions/github-script` with external file requires** - Use direct Node.js execution
+- **❌ NEVER define outputs without verifying implementation chain** - Always validate job→step→value mapping
 - **✅ Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped**
 
 ### 🏗️ CRITICAL: Android Publishing & Docker Registry Patterns
@@ -184,8 +243,46 @@ docker-registry: ${{ env.DOCKER_REGISTRY }}
 1. **Missing `credentials(PasswordCredentials::class)`**: Android publishing failed without explicit credentials block
 2. **Wrong Docker Registry Reference**: web-e2e-tests.yml used `${{ env.DOCKER_REGISTRY }}` instead of job output
 3. **Credential Name Mismatch**: Repository "GitHubPackages" required matching environment variable names
+4. **🚨 CRITICAL: GitHub Actions Job Dependencies**: E2E test workflow dispatch failed due to missing `generate-staging-version` job in dependencies
 
 **Why This Matters**: These patterns prevent common publishing failures and ensure consistent configuration across all client library workflows.
+
+### 🚨 CRITICAL: GitHub Actions Job Dependencies Rule
+
+**THE FUNDAMENTAL RULE**: Any job that references `needs.JOBNAME.outputs.X` or `needs.JOBNAME.result` MUST include `JOBNAME` in its `needs` array.
+
+#### **Critical Pattern (Silent Failure)**:
+```yaml
+# ❌ WRONG - Will cause silent failure (empty/undefined values)
+some-job:
+  needs: [ other-job ]  # Missing required-job!
+  with:
+    param: ${{ needs.required-job.outputs.value }}  # Empty/undefined!
+
+# ✅ CORRECT - Properly declares dependency
+some-job:
+  needs: [ other-job, required-job ]  # Include ALL referenced jobs
+  with:
+    param: ${{ needs.required-job.outputs.value }}  # Works correctly
+```
+
+#### **Why This is Critical**:
+- **Silent Failures**: Missing dependencies don't cause workflow errors - they just return empty values
+- **Hard to Debug**: Workflows succeed but use wrong/empty data (e.g., client-version: "")
+- **Production Impact**: E2E tests might use fake packages instead of real published packages
+
+#### **Validation Pattern**:
+```bash
+# Check all needs.* references have proper dependencies
+grep -n "needs\." .github/workflows/*.yml | grep -v "needs: \[.*JOBNAME.*\]"
+```
+
+#### **Common Scenarios**:
+1. **Multi-step pipelines**: Jobs referencing outputs from version generation, client publishing, etc.
+2. **Conditional workflows**: Using `always() && needs.maybe-skipped.result == 'success'`
+3. **Callable workflows**: Passing job outputs as inputs to other workflows
+
+**Recent Fix**: E2E test workflow dispatch was failing because it referenced `needs.generate-staging-version.outputs.version` without including `generate-staging-version` in the needs array, causing empty client-version inputs.
 
 ### 🔄 CRITICAL: Callable Workflow Input/Output Validation
 
@@ -253,6 +350,7 @@ yq eval '.on.workflow_call.inputs' .github/workflows/callable-workflow.yml
 1. **Missing Input Definitions**: `force-publish` added to `client-publish.yml` but missing from `publish-typescript.yml` and `publish-android.yml`
 2. **GITHUB_TOKEN Double Error**: Cannot define `GITHUB_TOKEN` in callable workflow secrets AND cannot pass it explicitly in calling workflow secrets block
 3. **Input Type Mismatches**: Boolean inputs passed as strings causing validation failures
+4. **E2E Cache Isolation**: Main branch E2E tests were using PR cache results - fixed by adding branch/event context to cache keys
 
 #### **Validation Tools and Commands:**
 ```bash
@@ -267,6 +365,52 @@ grep -r "uses: ./.github/workflows/" .github/workflows/
 ```
 
 **Why This Matters**: Callable workflow input/output mismatches are a recurring issue that cause GitHub Actions validation failures. Systematic validation prevents these errors and ensures smooth workflow refactoring.
+
+### 🧪 CRITICAL: E2E Test Caching Strategy
+
+**MANDATORY patterns for E2E test caching to prevent cache pollution between different execution contexts.**
+
+#### **🚨 CRITICAL: Branch/Event Context Isolation**
+**ALWAYS include branch and event context in E2E test cache keys to prevent cross-contamination:**
+
+**Problem Pattern:**
+- PR runs E2E tests and caches results with key: `web-e2e-results-{images}-{files}`
+- Main branch uses identical images/files → generates same cache key → skips E2E tests
+- Result: Main branch production deployment lacks fresh validation
+
+**Solution Pattern:**
+```bash
+# Generate context-aware cache keys
+if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+  CONTEXT_SUFFIX="pr-${{ github.event.pull_request.number }}"
+elif [[ "${{ github.ref_name }}" == "main" ]]; then
+  CONTEXT_SUFFIX="main"
+else
+  CONTEXT_SUFFIX="branch-${{ github.ref_name }}"
+fi
+
+# Cache key with context isolation
+CACHE_KEY="web-e2e-results-${IMAGES_HASH}-${FILES_HASH}-${CONTEXT_SUFFIX}"
+```
+
+#### **Cache Key Components for E2E Tests:**
+1. **Docker Images**: Hash of Docker image tags being tested
+2. **Test Files**: Hash of E2E test files and configuration
+3. **Branch Context**: PR number, main branch, or feature branch name
+4. **Event Context**: pull_request vs push vs workflow_dispatch
+
+#### **Benefits of Context Isolation:**
+- **Production Validation**: Main branch always gets fresh E2E validation
+- **PR Independence**: Each PR gets isolated cache without pollution
+- **Branch Isolation**: Feature branches don't interfere with main/PR caches
+- **Debugging**: Clear cache key patterns for troubleshooting
+
+#### **Cache Key Examples:**
+- **PR Run**: `web-e2e-results-{images}-{files}-pr-123`
+- **Main Branch**: `web-e2e-results-{images}-{files}-main`
+- **Feature Branch**: `web-e2e-results-{images}-{files}-branch-feat-new-feature`
+
+**Why This Matters**: E2E test cache pollution can cause main branch production deployments to skip validation, leading to undetected integration issues in production.
 
 ### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
 

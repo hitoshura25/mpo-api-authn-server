@@ -83,10 +83,19 @@ generate_version() {
             echo "🔄 PR snapshot release: $version (based on next release ${next_build}, PR #${pr_number}, run ${BUILD_NUMBER})" >&2
             ;;
         "workflow_dispatch")
-            # Manual dispatch: use base version with continuity
-            version="${BASE_VERSION}.${actual_build_number}"
-            is_prerelease="false"
-            echo "🚀 Manual release: $version" >&2
+            # Manual dispatch: branch-aware versioning
+            if [[ "$REF_NAME" == "main" ]]; then
+                # Main branch manual dispatch: production-style version
+                version="${BASE_VERSION}.${actual_build_number}"
+                is_prerelease="false"
+                echo "🚀 Manual main branch release: $version" >&2
+            else
+                # Feature branch manual dispatch: prerelease with branch identifier
+                branch_name=$(echo "$REF_NAME" | sed 's/[^a-zA-Z0-9]//g' | tr '[:upper:]' '[:lower:]')
+                version="${BASE_VERSION}.${actual_build_number}-${branch_name}.${BUILD_NUMBER}"
+                is_prerelease="true"
+                echo "🌿 Manual branch release: $version (branch: $REF_NAME)" >&2
+            fi
             ;;
         "workflow_run")
             # Workflow run (e.g., main-branch-post-processing): treat as main branch release

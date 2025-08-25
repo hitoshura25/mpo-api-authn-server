@@ -175,6 +175,8 @@ jobs:
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}
       test_credentials_image: ${{ needs.build-and-test.outputs.test_credentials_image }}
+      webauthn_server_digest: ${{ needs.build-and-test.outputs.webauthn-server-digest }}
+      test_credentials_digest: ${{ needs.build-and-test.outputs.test-credentials-digest }}
       # Pass published client library information from staging publishing
       typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
       android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}

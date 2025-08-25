@@ -50,6 +50,11 @@ on:
         description: 'Cache key for test results (from orchestrator)'
         required: false
         type: string
+      should-run-client-publishing-workflow:
+        description: 'Whether client publishing workflow should be executed (used to determine staging vs production packages)'
+        required: false
+        type: string
+        default: 'false'
     outputs:
       tests-passed:
         description: 'Boolean indicating if web tests passed'
@@ -187,6 +192,7 @@ jobs:
           scope: '${{ needs.setup-config.outputs.npm-scope }}'
 
       - name: Update web client to use staging package
+        if: inputs.should-run-client-publishing-workflow == 'true'
         env:
           STAGING_PACKAGE: ${{ inputs.typescript-package-name }}
           STAGING_VERSION: ${{ inputs.client-version }}

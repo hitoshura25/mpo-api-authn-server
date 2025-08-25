@@ -77,6 +77,12 @@ on:
       test_credentials_image:
         description: 'Test credentials service Docker image tag'
         value: ${{ jobs.docker-build-scan-push.outputs.test-credentials-image }}
+      webauthn-server-digest:
+        description: 'WebAuthn server image digest (for content-based caching)'
+        value: ${{ jobs.docker-build-scan-push.outputs.webauthn-server-digest }}
+      test-credentials-digest:
+        description: 'Test credentials service image digest (for content-based caching)'
+        value: ${{ jobs.docker-build-scan-push.outputs.test-credentials-digest }}
       unit_tests_passed:
         description: 'Whether unit tests passed successfully'
         value: ${{ jobs.run-unit-tests.outputs.tests-passed }}

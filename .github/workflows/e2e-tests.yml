@@ -39,6 +39,14 @@ on:
         description: 'Test credentials service Docker image tag'
         required: true
         type: string
+      webauthn_server_digest:
+        description: 'WebAuthn server Docker image digest (for content-based caching)'
+        required: true
+        type: string
+      test_credentials_digest:
+        description: 'Test credentials service Docker image digest (for content-based caching)'
+        required: true
+        type: string
       workflow-identifier:
         description: 'Workflow identifier for artifact naming (PR number or fallback value for main branch)'
         required: false
@@ -191,21 +199,21 @@ jobs:
       - name: Generate E2E cache keys
         id: cache-keys
         run: |
-          # Extract image tags for cache key (use full tag, not digest)
-          WEBAUTHN_IMAGE_TAG="${{ inputs.webauthn_server_image }}"
-          TEST_CREDS_IMAGE_TAG="${{ inputs.test_credentials_image }}"
+          # Extract image digests for cache key (content-based, not tag-based)
+          WEBAUTHN_DIGEST="${{ inputs.webauthn_server_digest }}"
+          TEST_CREDS_DIGEST="${{ inputs.test_credentials_digest }}"
 
-          # Create hash-friendly versions of image tags (replace problematic characters)
-          WEBAUTHN_TAG_HASH=$(echo "$WEBAUTHN_IMAGE_TAG" | sed 's|[:/]|-|g')
-          TEST_CREDS_TAG_HASH=$(echo "$TEST_CREDS_IMAGE_TAG" | sed 's|[:/]|-|g')
+          # Create short digest versions for cache keys (first 12 chars of hash)
+          WEBAUTHN_DIGEST_SHORT=$(echo "$WEBAUTHN_DIGEST" | cut -d':' -f2 | cut -c1-12)
+          TEST_CREDS_DIGEST_SHORT=$(echo "$TEST_CREDS_DIGEST" | cut -d':' -f2 | cut -c1-12)
 
           # Use dorny-based change detection results for cache keys (eliminating manual file hashing)
           WEB_FILES_CHANGED="${{ inputs.web-e2e-test-files-changed }}"
           ANDROID_FILES_CHANGED="${{ inputs.android-e2e-test-files-changed }}"
           
-          # Create cache discriminator based on change detection
-          WEB_CACHE_DISCRIMINATOR=$(echo "${WEB_FILES_CHANGED}-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}" | sha256sum | cut -d' ' -f1)
-          ANDROID_CACHE_DISCRIMINATOR=$(echo "${ANDROID_FILES_CHANGED}-${WEBAUTHN_TAG_HASH}-${TEST_CREDS_TAG_HASH}" | sha256sum | cut -d' ' -f1)
+          # Create cache discriminator based on image content (digests) and change detection
+          WEB_CACHE_DISCRIMINATOR=$(echo "${WEB_FILES_CHANGED}-${WEBAUTHN_DIGEST_SHORT}-${TEST_CREDS_DIGEST_SHORT}" | sha256sum | cut -d' ' -f1)
+          ANDROID_CACHE_DISCRIMINATOR=$(echo "${ANDROID_FILES_CHANGED}-${WEBAUTHN_DIGEST_SHORT}-${TEST_CREDS_DIGEST_SHORT}" | sha256sum | cut -d' ' -f1)
 
           # Generate branch/event context for cache key isolation
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
@@ -223,12 +231,12 @@ jobs:
           echo "web-key=${WEB_CACHE_KEY}" >> $GITHUB_OUTPUT
           echo "android-key=${ANDROID_CACHE_KEY}" >> $GITHUB_OUTPUT
 
-          echo "🔑 Cache Keys Generated (Dorny-Based):"
+          echo "🔑 Cache Keys Generated (Content-Based):"
           echo "  Web E2E: ${WEB_CACHE_KEY}"
           echo "  Android E2E: ${ANDROID_CACHE_KEY}"
-          echo "🏷️  Image Tags:"
-          echo "  WebAuthn: ${WEBAUTHN_IMAGE_TAG} → ${WEBAUTHN_TAG_HASH}"
-          echo "  Test Creds: ${TEST_CREDS_IMAGE_TAG} → ${TEST_CREDS_TAG_HASH}"
+          echo "🏷️  Image Digests (Content-Based):"
+          echo "  WebAuthn: ${WEBAUTHN_DIGEST} → ${WEBAUTHN_DIGEST_SHORT}"
+          echo "  Test Creds: ${TEST_CREDS_DIGEST} → ${TEST_CREDS_DIGEST_SHORT}"
           echo "🎯 Change Detection:"
           echo "  Web E2E Files Changed: ${WEB_FILES_CHANGED}"
           echo "  Android E2E Files Changed: ${ANDROID_FILES_CHANGED}"
@@ -408,6 +416,7 @@ jobs:
       # Use actual published client library information from main orchestrator (via setup-config)
       typescript-package-name: ${{ needs.setup-config.outputs.typescript-package-name }}
       client-version: ${{ needs.setup-config.outputs.client-version }}
+      should-run-client-publishing-workflow: ${{ inputs.should-run-client-publishing-workflow }}
       cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-web }}
 
   # Job 5: Enhanced Android E2E tests with parallel execution optimization
@@ -428,6 +437,7 @@ jobs:
       # Use actual published client library information from main orchestrator (via setup-config)
       android-package-name: ${{ needs.setup-config.outputs.android-package-name }}
       client-version: ${{ needs.setup-config.outputs.client-version }}
+      should-run-client-publishing-workflow: ${{ inputs.should-run-client-publishing-workflow }}
       cache-key: ${{ needs.analyze-e2e-requirements.outputs.cache-key-android }}
 
   # Job 6: Handle cached Web E2E results with enhanced component awareness

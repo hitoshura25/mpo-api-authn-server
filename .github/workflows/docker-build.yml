@@ -21,6 +21,8 @@
 # INPUTS:
 #   webauthn-docker-changes-detected: Whether Webauthn Server Docker-related changes were detected
 #   test-credentials-docker-changes-detected: Whether Test Credentials Docker-related changes were detected
+#   docker-security-workflows-changed: Whether Docker security workflow files changed (requires validation)
+#   docker-affecting-workflows-changed: Whether Docker-affecting workflow files changed (requires validation)
 #   force-build: Force Docker build regardless of change detection (for UI force options)
 #   image-tag-base: Base tag for Docker images (e.g., 'pr-123', 'latest')
 #   registry-config: Docker registry configuration
@@ -72,6 +74,16 @@ on:
         description: 'Test credentials service image name'
         required: true
         type: string
+      docker-security-workflows-changed:
+        description: 'Whether Docker security workflow files changed (requires Docker build for validation)'
+        required: false
+        type: boolean
+        default: false
+      docker-affecting-workflows-changed:
+        description: 'Whether Docker-affecting workflow files changed (requires Docker build for validation)'
+        required: false
+        type: boolean
+        default: false
     outputs:
       images-built:
         description: 'Whether Docker images were successfully built'
@@ -105,7 +117,9 @@ jobs:
     if: |
       inputs.force-build == true ||
       inputs.webauthn-docker-changes-detected == true ||
-      inputs.test-credentials-docker-changes-detected == true
+      inputs.test-credentials-docker-changes-detected == true ||
+      inputs.docker-security-workflows-changed == true ||
+      inputs.docker-affecting-workflows-changed == true
     permissions:
       contents: read
       packages: write
@@ -159,12 +173,18 @@ jobs:
           echo "  Force build: ${{ inputs.force-build }}"
           echo "  WebAuthn changes detected: ${{ inputs.webauthn-docker-changes-detected }}"
           echo "  Test credentials changes detected: ${{ inputs.test-credentials-docker-changes-detected }}"
+          echo "  Docker security workflows changed: ${{ inputs.docker-security-workflows-changed }}"
+          echo "  Docker affecting workflows changed: ${{ inputs.docker-affecting-workflows-changed }}"
           echo ""
 
           if [[ "${{ inputs.force-build }}" == "true" ]]; then
             echo "🚀 FORCE BUILD MODE: Building all images regardless of change detection"
           elif [[ "${{ inputs.webauthn-docker-changes-detected }}" == "true" || "${{ inputs.test-credentials-docker-changes-detected }}" == "true" ]]; then
             echo "📝 CHANGE-BASED BUILD: Building images based on detected changes"
+          elif [[ "${{ inputs.docker-security-workflows-changed }}" == "true" ]]; then
+            echo "🔒 SECURITY WORKFLOW BUILD: Building images for Docker security workflow validation"
+          elif [[ "${{ inputs.docker-affecting-workflows-changed }}" == "true" ]]; then
+            echo "🛠️ WORKFLOW BUILD: Building images for Docker-affecting workflow validation"
           else
             echo "⚠️ UNEXPECTED: No changes detected and no force build (this step should not run)"
           fi

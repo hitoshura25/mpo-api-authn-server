@@ -3057,10 +3057,38 @@ After Phase 10 completion, user reported that "force full pipeline" manual dispa
    - ✅ Approach: Added SHA generation step instead of breaking existing cleanup patterns
    - ✅ Result: `sha256-{short-sha}-branch-{safe-branch}-{run}` tags match cleanup expectations
 
-3. **🔄 IN PROGRESS**: E2E Test Cache Key Fix - Docker Image Content-Based Caching
-   - **Issue**: E2E tests incorrectly hit cache when server code changes but Docker tags are reused
-   - **Root Cause**: Cache keys use image tags (`pr-123.456`) instead of image digests (`sha256:abc123...`)
-   - **Impact**: Server code changes don't trigger E2E tests even when Docker image content differs
+3. **✅ COMPLETED**: Client Library Production Publishing Logic Fix
+   - ✅ Issue: Client libraries incorrectly published for server-only changes (no OpenAPI changes)
+   - ✅ Root cause: `webauthn-server-changed` was included in production publishing triggers
+   - ✅ Solution: Removed `webauthn-server-changed` from client library publishing conditions
+   - ✅ Result: Production client publishing now only triggers for `should-run-client-publishing-workflow == 'true'`
+   - ✅ Preserves: Manual override capabilities (`force-full-pipeline`)
+
+4. **✅ COMPLETED**: Docker Security Workflow Triggering Gap Fix
+   - **Issue**: Changes to Docker security workflows trigger change detection but don't result in Docker builds
+   - **Problem Flow**: 
+     1. ✅ `detect-changes.yml`: Correctly outputs `docker-security-workflows-changed: true`
+     2. ✅ `build-and-test` job: Runs (checks `should-run-docker-workflow: true`)
+     3. ❌ Internal Docker build steps in `build-and-test.yml`: SKIPPED - Only check component change inputs
+     4. ❌ `security-scanning` job: SKIPPED - Depends on `docker_images_built == 'true'` which never gets set
+   - **Root Cause**: Complete callable workflow chain validation revealed missing support in `docker-build.yml`
+   - **Complete Solution Implemented**:
+     - ✅ Added `docker-security-workflows-changed` input to `build-and-test.yml`
+     - ✅ Updated Docker build condition to include security workflow changes
+     - ✅ Passed input from `main-ci-cd.yml` to `build-and-test.yml`
+     - ✅ **CRITICAL**: Added `docker-security-workflows-changed` input to `docker-build.yml` callable workflow
+     - ✅ **CRITICAL**: Updated `docker-build.yml` job condition to include security workflow changes
+     - ✅ **CRITICAL**: Updated `build-and-test.yml` to pass security workflow parameter to `docker-build.yml`
+     - ✅ Enhanced build strategy logging to include security workflow triggers
+   - **Files Modified**: `build-and-test.yml`, `main-ci-cd.yml`, `docker-build.yml`
+   - **Risk Level**: 🟢 LOW - Additive changes only, backward compatible
+   - **Result**: Changes to `docker-security-scan.yml` or `scripts/docker/scan-security.sh` now trigger complete validation chain: Docker builds → security scanning → E2E tests
+   - **Validation Status**: ✅ **COMPLETE** - Full callable workflow chain implemented and ready for production testing
+
+5. **🔄 COMPLETED**: E2E Test Cache Key Fix - Docker Image Content-Based Caching
+   - ✅ Issue: E2E tests incorrectly hit cache when server code changes but Docker tags are reused
+   - ✅ Root Cause: Cache keys use image tags (`pr-123.456`) instead of image digests (`sha256:abc123...`)
+   - ✅ Impact: Server code changes don't trigger E2E tests even when Docker image content differs
    - **Solution Strategy**: Update cache keys to use Docker image digests for content-based invalidation
    - **Required Changes**:
      - Add digest inputs to E2E workflows (`webauthn-server-digest`, `test-credentials-digest`)

@@ -67,6 +67,16 @@ on:
         required: false
         default: 'false'
         type: string
+      docker-security-workflows-changed:
+        description: 'Whether Docker security workflow files changed (requires Docker build for validation)'
+        required: false
+        default: 'false'
+        type: string
+      docker-affecting-workflows-changed:
+        description: 'Whether Docker-affecting workflow files changed (requires Docker build for validation)'
+        required: false
+        default: 'false'
+        type: string
     outputs:
       docker_images_built:
         description: 'Whether Docker images were built and pushed'
@@ -187,6 +197,8 @@ jobs:
       (
         inputs.webauthn-server-changed == 'true' ||
         inputs.test-credentials-service-changed == 'true' ||
+        inputs.docker-security-workflows-changed == 'true' ||
+        inputs.docker-affecting-workflows-changed == 'true' ||
         inputs.force-docker-build == true ||
         inputs.force-full-pipeline
       ) &&
@@ -195,6 +207,8 @@ jobs:
     with:
       webauthn-docker-changes-detected: ${{ inputs.webauthn-server-changed == 'true' }}
       test-credentials-docker-changes-detected: ${{ inputs.test-credentials-service-changed == 'true' }}
+      docker-security-workflows-changed: ${{ inputs.docker-security-workflows-changed == 'true' }}
+      docker-affecting-workflows-changed: ${{ inputs.docker-affecting-workflows-changed == 'true' }}
       force-build: ${{ inputs.force-full-pipeline == true || inputs.force-docker-build == true }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       registry-url: ${{ needs.setup-config.outputs.docker-registry }}

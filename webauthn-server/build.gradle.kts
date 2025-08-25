@@ -64,6 +64,11 @@ dependencies {
         implementation("com.upokecenter:cbor:$cborVersion") {
             because("Avoid version ranges that break Gradle configuration cache")
         }
+        implementation("com.google.guava:guava:31.1-jre") {
+            because(
+                "Pin Guava JRE version for server environment, avoiding [24.1.1,33) range that breaks configuration cache"
+            )
+        }
     }
 
     // Kotlin Standard Library
@@ -247,11 +252,12 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
     inputs.file(staticOpenApiSpecFile)
     outputs.dir(layout.buildDirectory.dir("generated-clients/android"))
 
-    // Configuration cache compatible approach - configure paths as properties  
-    val templateFile = layout.projectDirectory.file("../android-client-library/build.gradle.kts.template")
+    // Configuration cache compatible approach - configure paths as properties
+    val templateFile =
+        layout.projectDirectory.file("../android-client-library/build.gradle.kts.template")
     val finalBuildFile = layout.projectDirectory.file("../android-client-library/build.gradle.kts")
     val outputDir = layout.buildDirectory.dir("generated-clients/android")
-    
+
     // CRITICAL: Declare generated build.gradle.kts as output so it's included in cache
     inputs.file(templateFile)
     outputs.file(finalBuildFile)
@@ -299,16 +305,16 @@ tasks.register<org.openapitools.generator.gradle.plugin.tasks.GenerateTask>(
 
                     lines.forEach { line ->
                         val trimmedLine = line.trim()
-                        
+
                         // Skip problematic dependencies that cause Android conflicts
                         val shouldSkip = trimmedLine.contains("jakarta.ws.rs:jakarta.ws.rs-api") ||
-                                       trimmedLine.contains("jakarta.annotation:jakarta.annotation-api")
-                        
+                            trimmedLine.contains("jakarta.annotation:jakarta.annotation-api")
+
                         if (shouldSkip) {
                             convertedLines.add("    // Excluded: $trimmedLine")
                             return@forEach
                         }
-                        
+
                         when {
                             trimmedLine.isEmpty() || trimmedLine.startsWith("//") -> {
                                 convertedLines.add("    $trimmedLine")

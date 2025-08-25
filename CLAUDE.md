@@ -462,6 +462,63 @@ This project emphasizes security testing and vulnerability protection:
 - **Credential tampering** - Signature validation
 - **Result**: 7/7 security tests passing, 100% coverage achieved
 
+## Server Development Best Practices
+
+### Dependency Variant Selection for Server Projects
+
+**CRITICAL: Always prefer JRE variants over Android variants for server-based projects**
+
+When resolving dependency conflicts in server applications like webauthn-server, ensure you're using server-appropriate dependency variants:
+
+- ✅ **JRE variant** (`com.google.guava:guava:31.1-jre`) - Optimized for standard JVM server environments
+- ❌ **Android variant** (`com.google.guava:guava:31.1-android`) - Optimized for Android runtime, suboptimal for servers
+
+#### **Common Issue Pattern:**
+Gradle's conflict resolution may select Android variants when multiple dependencies request different versions, even in server projects:
+
+```kotlin
+// PROBLEM: Multiple variant conflict
+dependencies {
+    implementation("com.yubico:webauthn-server-core:2.6.0")  // Requests guava:[24.1.1,33)
+    implementation("io.swagger.codegen.v3:swagger-codegen:3.0.41")  // Requests guava:31.0.1-jre
+    implementation("io.swagger:swagger-core:1.6.10")  // Requests guava:31.1-android
+}
+// Result: Gradle selects 31.1-android (highest version wins, wrong variant)
+```
+
+#### **Solution Pattern:**
+Use dependency constraints to explicitly select server-appropriate variants:
+
+```kotlin
+dependencies {
+    constraints {
+        implementation("com.google.guava:guava:31.1-jre") {
+            because(
+                "Pin Guava JRE version for server environment, avoiding version ranges and Android variants"
+            )
+        }
+    }
+    // ... other dependencies
+}
+```
+
+#### **Benefits:**
+- **Performance**: JRE variants optimized for server JVM environments
+- **Compatibility**: Better compatibility with server-side frameworks and libraries
+- **Predictability**: Explicit control prevents unexpected variant selection
+- **Configuration Cache**: Pinning versions prevents cache invalidation from version ranges
+
+#### **Detection Commands:**
+```bash
+# Check current variant selection
+./gradlew :webauthn-server:dependencyInsight --dependency=com.google.guava:guava --configuration=runtimeClasspath
+
+# Look for Android variants in server projects (should be empty)
+./gradlew :webauthn-server:dependencies --configuration=runtimeClasspath | grep android
+```
+
+**Rule**: For server projects (webauthn-server, webauthn-test-credentials-service), always use `-jre` variants when available, never `-android` variants.
+
 ## Port Assignments
 
 - **WebAuthn Server**: 8080 (main API)

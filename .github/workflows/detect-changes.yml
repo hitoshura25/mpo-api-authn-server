@@ -35,6 +35,9 @@ on:
       docker-affecting-workflows-changed:
         description: 'Whether Docker-affecting workflow files changed'
         value: ${{ jobs.detect-changes.outputs.docker-affecting-workflows-changed }}
+      docker-security-workflows-changed:
+        description: 'Whether Docker security workflow files changed'
+        value: ${{ jobs.detect-changes.outputs.docker-security-workflows-changed }}
       e2e-test-affecting-workflows-changed:
         description: 'Whether E2E test workflow files changed'
         value: ${{ jobs.detect-changes.outputs.e2e-test-affecting-workflows-changed }}
@@ -80,6 +83,7 @@ jobs:
       e2e-tests-changed: ${{ steps.decision-matrix.outputs.e2e-tests-changed }}
       workflows-changed: ${{ steps.decision-matrix.outputs.workflows-changed }}
       docker-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.docker-affecting-workflows-changed }}
+      docker-security-workflows-changed: ${{ steps.decision-matrix.outputs.docker-security-workflows-changed }}
       e2e-test-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.e2e-test-affecting-workflows-changed }}
       client-publishing-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.client-publishing-affecting-workflows-changed }}
       unit-test-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.unit-test-affecting-workflows-changed }}
@@ -152,6 +156,11 @@ jobs:
             security-affecting-workflows:
               - '.github/workflows/security-analysis.yml'
               - '.github/workflows/vulnerability-monitor.yml'
+            
+            # Docker security workflow changes (CRITICAL: affect Docker security scanning functionality)
+            docker-security-workflows:
+              - '.github/workflows/docker-security-scan.yml'
+              - 'scripts/docker/scan-security.sh'
             
             # Component-specific changes (webauthn-server + shared dependencies)
             webauthn-server-tests:
@@ -235,6 +244,7 @@ jobs:
           echo "android-e2e-test-files: ${{ steps.changes.outputs.android-e2e-test-files }}"
           echo "orchestration-workflows: ${{ steps.changes.outputs.orchestration-workflows }}"
           echo "docker-affecting-workflows: ${{ steps.changes.outputs.docker-affecting-workflows }}"
+          echo "docker-security-workflows: ${{ steps.changes.outputs.docker-security-workflows }}"
           echo "e2e-test-affecting-workflows: ${{ steps.changes.outputs.e2e-test-affecting-workflows }}"
           echo "client-publishing-affecting-workflows: ${{ steps.changes.outputs.client-publishing-affecting-workflows }}"
           echo "unit-test-affecting-workflows: ${{ steps.changes.outputs.unit-test-affecting-workflows }}"
@@ -269,6 +279,7 @@ jobs:
           
           # Specific workflow category detection (optimization: granular build triggering)
           DOCKER_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.docker-affecting-workflows }}"
+          DOCKER_SECURITY_WORKFLOWS_CHANGED="${{ steps.changes.outputs.docker-security-workflows }}"
           E2E_TEST_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.e2e-test-affecting-workflows }}"
           CLIENT_PUBLISHING_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.client-publishing-affecting-workflows }}"
           UNIT_TEST_AFFECTING_WORKFLOWS_CHANGED="${{ steps.changes.outputs.unit-test-affecting-workflows }}"
@@ -281,7 +292,8 @@ jobs:
           SHOULD_RUN_CLIENT_PUBLISHING="false"
           
           # OPTIMIZATION: Only Docker-affecting workflows trigger Docker builds (not ALL workflow changes)
-          if [[ "$WEBAUTHN_SERVER_CHANGED" == "true" || "$TEST_CREDS_SERVICE_CHANGED" == "true" || "$DOCKER_AFFECTING_WORKFLOWS_CHANGED" == "true" ]]; then
+          # CRITICAL: Include docker-security-workflows for security scanning validation
+          if [[ "$WEBAUTHN_SERVER_CHANGED" == "true" || "$TEST_CREDS_SERVICE_CHANGED" == "true" || "$DOCKER_AFFECTING_WORKFLOWS_CHANGED" == "true" || "$DOCKER_SECURITY_WORKFLOWS_CHANGED" == "true" ]]; then
             SHOULD_RUN_DOCKER="true"
             SHOULD_RUN_E2E="true"
             SHOULD_RUN_TESTS="true"
@@ -308,6 +320,7 @@ jobs:
           echo "e2e-tests-changed=$E2E_TESTS_CHANGED" >> $GITHUB_OUTPUT
           echo "workflows-changed=$WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
           echo "docker-affecting-workflows-changed=$DOCKER_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
+          echo "docker-security-workflows-changed=$DOCKER_SECURITY_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
           echo "e2e-test-affecting-workflows-changed=$E2E_TEST_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
           echo "client-publishing-affecting-workflows-changed=$CLIENT_PUBLISHING_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
           echo "unit-test-affecting-workflows-changed=$UNIT_TEST_AFFECTING_WORKFLOWS_CHANGED" >> $GITHUB_OUTPUT
@@ -330,12 +343,13 @@ jobs:
           echo "  android-e2e-test-files: $ANDROID_E2E_FILES_CHANGED"
           echo "  workflows: $WORKFLOWS_CHANGED"
           echo "  docker-affecting-workflows: $DOCKER_AFFECTING_WORKFLOWS_CHANGED"
+          echo "  docker-security-workflows: $DOCKER_SECURITY_WORKFLOWS_CHANGED"
           echo "  e2e-test-affecting-workflows: $E2E_TEST_AFFECTING_WORKFLOWS_CHANGED"
           echo "  client-publishing-affecting-workflows: $CLIENT_PUBLISHING_AFFECTING_WORKFLOWS_CHANGED"
           echo "  unit-test-affecting-workflows: $UNIT_TEST_AFFECTING_WORKFLOWS_CHANGED"
           echo "  security-affecting-workflows: $SECURITY_AFFECTING_WORKFLOWS_CHANGED"
           echo "🚀 Build Decisions (Optimized):"  
-          echo "  run-docker-workflow: $SHOULD_RUN_DOCKER (triggers: server/creds changes OR docker-affecting workflows)"
+          echo "  run-docker-workflow: $SHOULD_RUN_DOCKER (triggers: server/creds changes OR docker-affecting workflows OR docker-security workflows)"
           echo "  run-e2e-workflow: $SHOULD_RUN_E2E (triggers: OpenAPI/E2E changes OR e2e-test-affecting workflows)"
           echo "  run-tests-workflow: $SHOULD_RUN_TESTS (triggers: server/creds changes OR unit-test-affecting workflows)"
           echo "  run-client-publishing-workflow: $SHOULD_RUN_CLIENT_PUBLISHING (triggers: OpenAPI changes OR client-publishing workflows)"

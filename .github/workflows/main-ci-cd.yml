@@ -83,6 +83,7 @@ jobs:
       webauthn-server-changed: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}
       test-credentials-service-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
       docker-security-workflows-changed: ${{ needs.detect-component-changes.outputs.docker-security-workflows-changed }}
+      docker-affecting-workflows-changed: ${{ needs.detect-component-changes.outputs.docker-affecting-workflows-changed }}
       should-run-client-publishing-workflow: ${{ needs.detect-component-changes.outputs.should-run-client-publishing-workflow }}
     permissions:
       contents: read          # Read repository code

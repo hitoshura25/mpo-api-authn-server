@@ -3057,7 +3057,34 @@ After Phase 10 completion, user reported that "force full pipeline" manual dispa
    - ✅ Approach: Added SHA generation step instead of breaking existing cleanup patterns
    - ✅ Result: `sha256-{short-sha}-branch-{safe-branch}-{run}` tags match cleanup expectations
 
-2. **Future Enhancement Opportunities**:
+3. **🔄 IN PROGRESS**: E2E Test Cache Key Fix - Docker Image Content-Based Caching
+   - **Issue**: E2E tests incorrectly hit cache when server code changes but Docker tags are reused
+   - **Root Cause**: Cache keys use image tags (`pr-123.456`) instead of image digests (`sha256:abc123...`)
+   - **Impact**: Server code changes don't trigger E2E tests even when Docker image content differs
+   - **Solution Strategy**: Update cache keys to use Docker image digests for content-based invalidation
+   - **Required Changes**:
+     - Add digest inputs to E2E workflows (`webauthn-server-digest`, `test-credentials-digest`)
+     - Update main workflow to pass digests from docker-build outputs
+     - Replace tag-based cache discriminators with digest-based discriminators
+     - Use short digest versions (first 12 chars) for cache key readability
+   - **Files to Update**: `e2e-tests.yml`, `web-e2e-tests.yml`, `android-e2e-tests.yml`, `main-ci-cd.yml`
+   - **Validation**: HealthRoutes.kt changes should invalidate E2E cache and trigger test runs
+
+4. **🔄 IN PROGRESS**: Client Library Fallback Strategy Simplification
+   - **Issue**: Complex fallback logic when staging client packages don't exist (client publishing skipped)
+   - **Current Problem**: E2E tests attempt to install non-existent staging packages, rely on fragile fallback
+   - **Simplified Solution**: Skip staging update steps entirely when client publishing was skipped
+   - **Implementation**: Add conditional to staging update steps: `if: inputs.should-run-client-publishing-workflow == 'true'`
+   - **Benefit**: E2E tests naturally use production packages when no staging packages published
+   - **Files to Update**: 
+     - `web-e2e-tests.yml`: "Update web client to use staging package" step
+     - `android-e2e-tests.yml`: "Update Android client to use staging package" step
+   - **Validation Scenarios**:
+     - OpenAPI changed → Client publishing runs → E2E uses staging packages
+     - Server code only → Client publishing skipped → E2E uses production packages
+     - E2E files only → Client publishing skipped → E2E uses production packages
+
+5. **Future Enhancement Opportunities**:
    - Consider selective force flags (force-web-only, force-android-only)
    - Add force flag support to security scanning workflows
    - Implement force flag validation/confirmation UI

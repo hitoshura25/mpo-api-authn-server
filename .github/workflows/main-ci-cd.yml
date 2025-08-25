@@ -181,10 +181,10 @@ jobs:
       typescript-package-name: ${{ needs.publish-client-libraries.outputs.typescript-package-name }}
       android-package-name: ${{ needs.publish-client-libraries.outputs.android-package-name }}
       client-version: ${{ needs.generate-staging-version.outputs.version }}
-      # Pass component change flags for smart E2E conditioning
-      webauthn-server-changed: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}
-      test-credentials-service-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
-      should-run-client-publishing-workflow: ${{ needs.detect-component-changes.outputs.should-run-client-publishing-workflow }}
+      # Pass component change flags based on actual build outputs (truth source: what was actually built)
+      webauthn-server-changed: ${{ needs.build-and-test.outputs.webauthn-server-built }}
+      test-credentials-service-changed: ${{ needs.build-and-test.outputs.test-credentials-service-built }}
+      should-run-client-publishing-workflow: ${{ needs.publish-client-libraries.result == 'success' && 'true' || 'false' }}
       e2e-tests-changed: ${{ needs.detect-component-changes.outputs.e2e-tests-changed }}
       # Pass granular E2E change flags for platform-specific triggering
       web-e2e-test-files-changed: ${{ needs.detect-component-changes.outputs.web-e2e-test-files-changed }}

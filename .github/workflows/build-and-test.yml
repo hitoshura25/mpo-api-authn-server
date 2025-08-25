@@ -71,6 +71,12 @@ on:
       docker_images_built:
         description: 'Whether Docker images were built and pushed'
         value: ${{ jobs.docker-build-scan-push.outputs.images-pushed }}
+      webauthn-server-built:
+        description: 'Whether WebAuthn server image was built and pushed'
+        value: ${{ jobs.docker-build-scan-push.outputs.webauthn-server-image != '' && 'true' || 'false' }}
+      test-credentials-service-built:
+        description: 'Whether test credentials service image was built and pushed'  
+        value: ${{ jobs.docker-build-scan-push.outputs.test-credentials-image != '' && 'true' || 'false' }}
       webauthn_server_image:
         description: 'WebAuthn server Docker image tag'
         value: ${{ jobs.docker-build-scan-push.outputs.webauthn-server-image }}

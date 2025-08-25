@@ -155,10 +155,47 @@ secrets:
   # ❌ WILL FAIL: secrets: inherit (doesn't work with explicitly defined secrets)
 ```
 
+#### **🚨 CRITICAL: Workflow Output Definition vs Implementation (August 2025)**
+**When adding new workflow outputs, ALWAYS verify the complete implementation chain:**
+
+```yaml
+# Step 1: Define the workflow output (Declaration)
+outputs:
+  service-built:
+    description: 'Whether service was built'
+    value: ${{ jobs.docker-job.outputs.service-image != '' && 'true' || 'false' }}
+
+# Step 2: Verify job outputs exist in callable workflow (Implementation)
+# In docker-build.yml:
+jobs:
+  docker-job:
+    outputs:
+      service-image: ${{ steps.docker-meta.outputs.tags }}  # ✅ Must exist!
+```
+
+**CRITICAL VALIDATION STEPS:**
+1. **Declaration**: Output defined in `outputs:` section ✓
+2. **Reference**: Output references correct job via `jobs.JOBNAME.outputs.X` ✓  
+3. **Implementation**: Referenced job output actually exists in callable workflow ✓
+4. **Data Flow**: Job output gets value from step output ✓
+
+**FAILURE PATTERN**: Defining workflow outputs that reference non-existent job outputs results in empty/undefined values with NO error messages.
+
+**RECENT EXAMPLE**: Added `webauthn-server-built` and `test-credentials-service-built` outputs in build-and-test.yml but forgot to verify that docker-build.yml actually provides the referenced `webauthn-server-image` and `test-credentials-image` outputs.
+
+**VALIDATION COMMANDS**:
+```bash
+# Verify job outputs exist in callable workflow
+grep -A 10 "outputs:" .github/workflows/docker-build.yml
+# Verify job sets the outputs  
+grep "webauthn-server-image\|test-credentials-image" .github/workflows/docker-build.yml
+```
+
 #### **Common Workflow Issues to Avoid:**
 - **❌ NEVER use `env.VARIABLE` in `if:` conditionals** - Use job outputs instead
 - **❌ NEVER use `github.event.number`** - Use `github.event.pull_request.number`
 - **❌ NEVER use `actions/github-script` with external file requires** - Use direct Node.js execution
+- **❌ NEVER define outputs without verifying implementation chain** - Always validate job→step→value mapping
 - **✅ Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped**
 
 ### 🏗️ CRITICAL: Android Publishing & Docker Registry Patterns

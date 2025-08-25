@@ -100,7 +100,6 @@ jobs:
     needs: [ detect-component-changes ]
     if: |
       needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' ||
-      needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
       inputs.force-full-pipeline == true ||
       inputs.force-docker-build == true
     outputs:
@@ -350,10 +349,7 @@ jobs:
       always() &&
       github.ref_name == 'main' &&
       needs.setup-production-config.result == 'success' &&
-      (
-        needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true' ||
-        needs.detect-component-changes.outputs.webauthn-server-changed == 'true'
-      )
+      needs.detect-component-changes.outputs.should-run-client-publishing-workflow == 'true'
     uses: ./.github/workflows/client-publish.yml
     with:
       publish-type: "production"

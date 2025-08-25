@@ -203,6 +203,7 @@ jobs:
       (
         needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
         needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' ||
+        needs.detect-component-changes.outputs.docker-security-workflows-changed == 'true' ||
         needs.detect-component-changes.outputs.workflows-changed == 'true'
       )
     uses: ./.github/workflows/docker-security-scan.yml

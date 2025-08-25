@@ -195,11 +195,8 @@ jobs:
           SHORT_SHA=$(git rev-parse --short HEAD)
           SAFE_BRANCH=$(echo "${{ github.ref_name }}" | sed 's/[^a-zA-Z0-9-]/-/g' | tr '[:upper:]' '[:lower:]')
           
-          if [[ "${{ github.ref_name }}" == "main" ]]; then
-            TAG="sha256-${SHORT_SHA}-main-${{ github.run_number }}"
-          else
-            TAG="sha256-${SHORT_SHA}-branch-${SAFE_BRANCH}-${{ github.run_number }}"
-          fi
+          # Use consistent branch- prefix for all branches (including main) for cleanup script compatibility
+          TAG="sha256-${SHORT_SHA}-branch-${SAFE_BRANCH}-${{ github.run_number }}"
           
           echo "workflow-dispatch-tag=${TAG}" >> $GITHUB_OUTPUT
           echo "Generated workflow dispatch tag: ${TAG}"
@@ -230,11 +227,28 @@ jobs:
         run: |
           echo "🐳 Building Docker images locally for security scanning..."
 
+          # For workflow dispatch, prefer the SHA tag (cleanup script compatibility)
+          # For other events, use first tag from metadata output
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            # Use SHA-based tag that cleanup script can find
+            WEBAUTHN_TAG="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.generate-tags.outputs.workflow-dispatch-tag }}"
+            TEST_CREDENTIALS_TAG="${{ env.DOCKER_REGISTRY }}/${{ env.DOCKER_TEST_CREDENTIALS_IMAGE_NAME }}:${{ steps.generate-tags.outputs.workflow-dispatch-tag }}"
+            echo "🔧 Using workflow dispatch SHA tags for cleanup script compatibility"
+          else
+            # Extract first tag from multi-line tags output (docker build -t requires single tag)
+            WEBAUTHN_TAG=$(echo "${{ steps.docker-meta.outputs.tags }}" | head -n1)
+            TEST_CREDENTIALS_TAG=$(echo "${{ steps.docker-test-credentials-meta.outputs.tags }}" | head -n1)
+          fi
+
+          echo "📋 Building with tags:"
+          echo "  WebAuthn Server: $WEBAUTHN_TAG"
+          echo "  Test Credentials: $TEST_CREDENTIALS_TAG"
+
           # Build WebAuthn Server image
-          docker build -t "${{ steps.docker-meta.outputs.tags }}" ./webauthn-server
+          docker build -t "$WEBAUTHN_TAG" ./webauthn-server
 
           # Build Test Credentials Service image
-          docker build -t "${{ steps.docker-test-credentials-meta.outputs.tags }}" ./webauthn-test-credentials-service
+          docker build -t "$TEST_CREDENTIALS_TAG" ./webauthn-test-credentials-service
 
           echo "✅ Docker images built successfully"
 

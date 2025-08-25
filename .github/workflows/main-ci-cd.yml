@@ -82,6 +82,7 @@ jobs:
       # Pass component change flags for fine-grained conditioning
       webauthn-server-changed: ${{ needs.detect-component-changes.outputs.webauthn-server-changed }}
       test-credentials-service-changed: ${{ needs.detect-component-changes.outputs.test-credentials-service-changed }}
+      docker-security-workflows-changed: ${{ needs.detect-component-changes.outputs.docker-security-workflows-changed }}
       should-run-client-publishing-workflow: ${{ needs.detect-component-changes.outputs.should-run-client-publishing-workflow }}
     permissions:
       contents: read          # Read repository code
@@ -199,13 +200,7 @@ jobs:
     needs: [ detect-component-changes, build-and-test ]
     if: |
       always() &&
-      needs.build-and-test.outputs.docker_images_built == 'true' &&
-      (
-        needs.detect-component-changes.outputs.webauthn-server-changed == 'true' ||
-        needs.detect-component-changes.outputs.test-credentials-service-changed == 'true' ||
-        needs.detect-component-changes.outputs.docker-security-workflows-changed == 'true' ||
-        needs.detect-component-changes.outputs.workflows-changed == 'true'
-      )
+      needs.build-and-test.outputs.docker_images_built == 'true'
     uses: ./.github/workflows/docker-security-scan.yml
     permissions:
       contents: read          # Read repository code

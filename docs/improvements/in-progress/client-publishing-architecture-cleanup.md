@@ -3064,22 +3064,26 @@ After Phase 10 completion, user reported that "force full pipeline" manual dispa
    - ✅ Result: Production client publishing now only triggers for `should-run-client-publishing-workflow == 'true'`
    - ✅ Preserves: Manual override capabilities (`force-full-pipeline`)
 
-4. **🚧 PLANNED**: Docker Security Workflow Triggering Gap Fix
+4. **✅ COMPLETED**: Docker Security Workflow Triggering Gap Fix
    - **Issue**: Changes to Docker security workflows trigger change detection but don't result in Docker builds
    - **Problem Flow**: 
      1. ✅ `detect-changes.yml`: Correctly outputs `docker-security-workflows-changed: true`
      2. ✅ `build-and-test` job: Runs (checks `should-run-docker-workflow: true`)
      3. ❌ Internal Docker build steps in `build-and-test.yml`: SKIPPED - Only check component change inputs
      4. ❌ `security-scanning` job: SKIPPED - Depends on `docker_images_built == 'true'` which never gets set
-   - **Root Cause**: `build-and-test.yml` doesn't receive `docker-security-workflows-changed` flag
-   - **Solution Plan**:
-     - Add `docker-security-workflows-changed` input to `build-and-test.yml`
-     - Update Docker build condition to include security workflow changes
-     - Pass input from `main-ci-cd.yml` to `build-and-test.yml`
-     - Simplify security-scanning condition (no longer needs complex duplication)
-   - **Files to Modify**: `build-and-test.yml`, `main-ci-cd.yml`
+   - **Root Cause**: Complete callable workflow chain validation revealed missing support in `docker-build.yml`
+   - **Complete Solution Implemented**:
+     - ✅ Added `docker-security-workflows-changed` input to `build-and-test.yml`
+     - ✅ Updated Docker build condition to include security workflow changes
+     - ✅ Passed input from `main-ci-cd.yml` to `build-and-test.yml`
+     - ✅ **CRITICAL**: Added `docker-security-workflows-changed` input to `docker-build.yml` callable workflow
+     - ✅ **CRITICAL**: Updated `docker-build.yml` job condition to include security workflow changes
+     - ✅ **CRITICAL**: Updated `build-and-test.yml` to pass security workflow parameter to `docker-build.yml`
+     - ✅ Enhanced build strategy logging to include security workflow triggers
+   - **Files Modified**: `build-and-test.yml`, `main-ci-cd.yml`, `docker-build.yml`
    - **Risk Level**: 🟢 LOW - Additive changes only, backward compatible
-   - **Expected Result**: Changes to `docker-security-scan.yml` or `scripts/docker/scan-security.sh` trigger Docker builds → security scanning → E2E tests
+   - **Result**: Changes to `docker-security-scan.yml` or `scripts/docker/scan-security.sh` now trigger complete validation chain: Docker builds → security scanning → E2E tests
+   - **Validation Status**: ✅ **COMPLETE** - Full callable workflow chain implemented and ready for production testing
 
 5. **🔄 COMPLETED**: E2E Test Cache Key Fix - Docker Image Content-Based Caching
    - ✅ Issue: E2E tests incorrectly hit cache when server code changes but Docker tags are reused

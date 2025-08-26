@@ -1,0 +1,70 @@
+name: Semgrep SAST Security Analysis
+
+on:
+  # Scan changed files in PRs (diff-aware scanning)
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.kt'
+      - '**/*.java'
+      - '**/*.ts'
+      - '**/*.js'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'package.json'
+      - '.github/workflows/**'
+      - 'semgrep-rules/**'
+
+  # Scan mainline branches for baseline security scanning
+  push:
+    branches: [ main ]
+    paths:
+      - '**/*.kt'
+      - '**/*.java'
+      - '**/*.ts'
+      - '**/*.js'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'package.json'
+      - '.github/workflows/**'
+      - 'semgrep-rules/**'
+
+# Ensure only one Semgrep scan runs at a time per branch
+concurrency:
+  group: semgrep-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  semgrep:
+    name: Semgrep SAST Analysis
+    runs-on: ubuntu-latest
+    container:
+      # Official Semgrep Docker image
+      image: semgrep/semgrep
+
+    # Skip on dependabot PRs to avoid permission issues
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Semgrep scan
+        run: |
+          semgrep ci
+          echo "✅ Semgrep analysis completed"
+        env:
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+          SEMGREP_TIMEOUT: 300

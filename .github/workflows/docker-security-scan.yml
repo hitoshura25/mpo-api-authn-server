@@ -126,8 +126,8 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ steps.extract-tags.outputs.webauthn-tag }}
-          format: 'sarif'
-          output: 'webauthn-vulns.sarif'
+          format: 'json'
+          output: 'webauthn-vulns.json'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
           exit-code: 0  # Don't fail action, we'll handle exit logic later
 
@@ -157,8 +157,8 @@ jobs:
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: ${{ steps.extract-tags.outputs.test-credentials-tag }}
-          format: 'sarif'
-          output: 'test-credentials-vulns.sarif'
+          format: 'json'
+          output: 'test-credentials-vulns.json'
           severity: 'CRITICAL,HIGH,MEDIUM,LOW'
           exit-code: 0
 
@@ -192,11 +192,27 @@ jobs:
           CRITICAL_COUNT=0
           TOTAL_COUNT=0
           
-          # Create consolidated results JSON for PR comments (preserving existing format)
-          TIMESTAMP=$(date -Iseconds)
+          
+          echo "📊 Processing Trivy JSON scan results..."
+          
           WEBAUTHN_TAG="${{ steps.extract-tags.outputs.webauthn-tag }}"
           TEST_CREDS_TAG="${{ steps.extract-tags.outputs.test-credentials-tag }}"
+          TIMESTAMP=$(date -Iseconds)
           
+          # Read JSON vulnerability files directly (no conversion needed!)
+          if [ -f "webauthn-vulns.json" ]; then
+            WEBAUTHN_VULNS=$(cat webauthn-vulns.json)
+          else
+            WEBAUTHN_VULNS="null"
+          fi
+          
+          if [ -f "test-credentials-vulns.json" ]; then
+            TEST_CREDS_VULNS=$(cat test-credentials-vulns.json)
+          else
+            TEST_CREDS_VULNS="null"
+          fi
+          
+          # Create consolidated results JSON for PR comments
           cat > docker-security-scan-results.json << EOF
           {
             "timestamp": "$TIMESTAMP",
@@ -205,16 +221,16 @@ jobs:
                 "image": "$WEBAUTHN_TAG",
                 "timestamp": "$TIMESTAMP",
                 "scans": {
-                  "vulnerabilities": null,
+                  "vulnerabilities": $WEBAUTHN_VULNS,
                   "secrets": null,
                   "config": null
                 }
               },
               {
                 "image": "$TEST_CREDS_TAG",
-                "timestamp": "$TIMESTAMP",
+                "timestamp": "$TIMESTAMP", 
                 "scans": {
-                  "vulnerabilities": null,
+                  "vulnerabilities": $TEST_CREDS_VULNS,
                   "secrets": null,
                   "config": null
                 }
@@ -229,22 +245,41 @@ jobs:
           }
           EOF
           
-          # Count critical vulnerabilities from SARIF files (simplified approach)
-          if [ -f "webauthn-vulns.sarif" ]; then
-            WEBAUTHN_CRITICAL=$(jq '[.runs[].results[] | select(.level == "error")] | length' webauthn-vulns.sarif 2>/dev/null || echo 0)
+          # Count vulnerabilities by severity from JSON files
+          echo "🔢 Counting vulnerabilities by severity..."
+          
+          if [ -f "webauthn-vulns.json" ]; then
+            # Count by Trivy Severity field in JSON
+            WEBAUTHN_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' webauthn-vulns.json 2>/dev/null || echo 0)
+            WEBAUTHN_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' webauthn-vulns.json 2>/dev/null || echo 0)
+            WEBAUTHN_MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' webauthn-vulns.json 2>/dev/null || echo 0)
+            WEBAUTHN_LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' webauthn-vulns.json 2>/dev/null || echo 0)
+            
             CRITICAL_COUNT=$((CRITICAL_COUNT + WEBAUTHN_CRITICAL))
-            echo "📊 WebAuthn Server: $WEBAUTHN_CRITICAL critical vulnerabilities"
+            echo "📊 WebAuthn Server vulnerabilities: Critical=$WEBAUTHN_CRITICAL, High=$WEBAUTHN_HIGH, Medium=$WEBAUTHN_MEDIUM, Low=$WEBAUTHN_LOW"
+          else
+            echo "📊 WebAuthn Server: No vulnerability JSON file found"
           fi
           
-          if [ -f "test-credentials-vulns.sarif" ]; then
-            TEST_CREDS_CRITICAL=$(jq '[.runs[].results[] | select(.level == "error")] | length' test-credentials-vulns.sarif 2>/dev/null || echo 0)
+          if [ -f "test-credentials-vulns.json" ]; then
+            # Count by Trivy Severity field in JSON
+            TEST_CREDS_CRITICAL=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "CRITICAL")] | length' test-credentials-vulns.json 2>/dev/null || echo 0)
+            TEST_CREDS_HIGH=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "HIGH")] | length' test-credentials-vulns.json 2>/dev/null || echo 0)
+            TEST_CREDS_MEDIUM=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "MEDIUM")] | length' test-credentials-vulns.json 2>/dev/null || echo 0)
+            TEST_CREDS_LOW=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity == "LOW")] | length' test-credentials-vulns.json 2>/dev/null || echo 0)
+            
             CRITICAL_COUNT=$((CRITICAL_COUNT + TEST_CREDS_CRITICAL))
-            echo "📊 Test Credentials: $TEST_CREDS_CRITICAL critical vulnerabilities"
+            echo "📊 Test Credentials vulnerabilities: Critical=$TEST_CREDS_CRITICAL, High=$TEST_CREDS_HIGH, Medium=$TEST_CREDS_MEDIUM, Low=$TEST_CREDS_LOW"
+          else
+            echo "📊 Test Credentials: No vulnerability JSON file found"
           fi
+          
+          # Calculate total vulnerabilities
+          TOTAL_COUNT=$((CRITICAL_COUNT + ${WEBAUTHN_HIGH:-0} + ${TEST_CREDS_HIGH:-0} + ${WEBAUTHN_MEDIUM:-0} + ${TEST_CREDS_MEDIUM:-0} + ${WEBAUTHN_LOW:-0} + ${TEST_CREDS_LOW:-0}))
           
           # Update summary in results JSON
           SCAN_PASSED=$([ $CRITICAL_COUNT -eq 0 ] && echo true || echo false)
-          jq ".summary.criticalVulnerabilities = $CRITICAL_COUNT | .summary.scanPassed = $SCAN_PASSED" \
+          jq ".summary.criticalVulnerabilities = $CRITICAL_COUNT | .summary.totalVulnerabilities = $TOTAL_COUNT | .summary.scanPassed = $SCAN_PASSED" \
             docker-security-scan-results.json > temp.json && mv temp.json docker-security-scan-results.json
           
           # Set GitHub Actions outputs (preserve existing interface)
@@ -254,6 +289,7 @@ jobs:
           
           echo "✅ Scan results processing completed"
           echo "   Critical vulnerabilities: $CRITICAL_COUNT"
+          echo "   Total vulnerabilities: $TOTAL_COUNT"
           echo "   Scan passed: $SCAN_PASSED"
           
           # Exit with error if critical vulnerabilities found (preserve existing behavior)
@@ -262,11 +298,12 @@ jobs:
             exit 1
           fi
 
-      # SARIF CONSOLIDATION - Merge multiple SARIF files for GitHub Security
-      - name: Consolidate SARIF files for GitHub Security
+      # SARIF CONSOLIDATION - Temporarily disabled for JSON-only testing
+      # TODO: Re-enable if JSON format doesn't work with GitHub Security tab
+      - name: Skip SARIF consolidation (testing JSON-only approach)
         if: always()
         run: |
-          echo "📋 Consolidating SARIF files for GitHub Security upload..."
+          echo "⏭️  Skipping SARIF consolidation - testing JSON-only approach for GitHub Security"
           
           # Create consolidated SARIF file
           cat > docker-security-scan-results.sarif << EOF
@@ -306,14 +343,22 @@ jobs:
             *-config.json
           retention-days: 30
 
-      - name: Upload scan results to GitHub Security
+      # Temporarily disabled - testing if JSON format can work with GitHub Security
+      # - name: Upload scan results to GitHub Security
+      #   id: upload-sarif
+      #   if: always()
+      #   uses: github/codeql-action/upload-sarif@v3
+      #   continue-on-error: true
+      #   with:
+      #     sarif_file: docker-security-scan-results.sarif
+      #     category: docker-security-trivy-action
+      
+      - name: Skip SARIF upload (testing JSON approach)
         id: upload-sarif
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
-        continue-on-error: true
-        with:
-          sarif_file: docker-security-scan-results.sarif
-          category: docker-security-trivy-action
+        run: |
+          echo "⏭️ Skipping SARIF upload - testing JSON-only approach"
+          echo "outcome=skipped" >> $GITHUB_OUTPUT
 
       - name: Post security scan results to PR
         if: always() && github.event_name == 'pull_request'
@@ -335,7 +380,7 @@ jobs:
           echo "  🖼️  Test Credentials: ${{ env.TEST_CREDENTIALS_IMAGE }}"
           echo "  🔒 Security scan passed: ${{ steps.security-scan.outputs.scan-passed }}"
           echo "  🚨 Critical vulnerabilities: ${{ steps.security-scan.outputs.critical-vulnerabilities }}"
-          echo "  📊 SARIF uploaded: ${{ steps.upload-sarif.outcome == 'success' }}"
+          echo "  📊 SARIF uploaded: ${{ steps.upload-sarif.outcome }} (testing JSON-only approach)"
           echo "  🚀 Scan method: Official Trivy Action (eliminated 451-line custom script)"
           echo "  ⚡ Performance: Built-in caching and optimized scanning"
           echo "  🛠️  Maintenance: Zero maintenance vs custom bash/jq processing"

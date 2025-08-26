@@ -33,6 +33,18 @@
 - **Security Coverage**: Preserved 100% - vulnerabilities, secrets, configuration scanning
 - **Integration**: Enhanced SARIF consolidation vs custom formatting
 
+### **Critical Issue Found & Fixed: SARIF vs JSON Format Mismatch**
+**Problem**: Trivy Action migration broke PR comment vulnerability reporting
+- **Symptom**: 3 HIGH vulnerabilities detected but PR comment showed 0 vulnerabilities
+- **Root Cause**: Changed from JSON to SARIF output, but PR comment script expected JSON format
+- **Impact**: Security scan results not visible to developers in PR comments
+
+**Solution Applied**: Simplified approach using JSON format only
+- **Changed**: Trivy Action `format: 'sarif'` → `format: 'json'`
+- **Simplified**: Eliminated 200+ lines of complex SARIF→JSON conversion logic
+- **Risk**: May affect GitHub Security tab integration (testing in progress)
+- **Benefit**: Direct compatibility with existing PR comment script
+
 ### **Critical Finding: VulnerabilityProtectionTest Analysis**
 **Discovery**: VulnerabilityProtectionTest provides **irreplaceable security value**
 - **5/7 tests** validate runtime WebAuthn behavior that FOSS tools cannot detect

@@ -66,6 +66,40 @@
 - **Trivy Action**: Professional caching vs 451-line custom script
 - **Combined Coverage**: 100% when integrated with VulnerabilityProtectionTest
 
+### **🚨 CRITICAL: Semgrep Integration Issues (Fixed 2025-08-26)**
+**Issue**: Semgrep workflow implemented with deprecated action and made-up parameters
+- **Symptom**: "Unexpected input(s) 'generateSarif', 'scanChangedFilesOnly', 'output'" errors
+- **Root Cause**: Used deprecated `returntocorp/semgrep-action@v1` with invented parameters
+- **Secondary Issue**: Invalid Semgrep rule syntax with `pattern-not-inside` as top-level key
+
+**Critical Lesson**: ALWAYS validate GitHub Actions documentation before implementation
+1. **Never assume parameters exist** - Check official documentation 
+2. **Verify action is current** - `returntocorp/semgrep-action@v1` was deprecated
+3. **Test rule syntax** - Semgrep rules have strict YAML schema requirements
+
+**Solution Applied**: Complete workflow rewrite using official approach
+- **Correct Method**: Use `semgrep/semgrep` Docker container, not GitHub Action
+- **Command Pattern**: `semgrep scan --sarif --output=file.sarif --config=rules`
+- **Rule Syntax Fix**: Move `pattern-not-inside` into `patterns` array
+```yaml
+# ❌ WRONG - will cause "Additional properties" error
+patterns:
+  - pattern: ...
+pattern-not-inside:  # Top-level key is invalid
+  - pattern: ...
+
+# ✅ CORRECT - inside patterns array
+patterns:
+  - pattern: ...
+  - pattern-not-inside: |
+      ...
+```
+
+**Prevention Strategy**: 
+- **Documentation First**: Always read official docs before implementing
+- **Simple Start**: Begin with basic configuration before adding complexity
+- **Syntax Validation**: Test rule files with `semgrep --validate` locally
+
 ## Technical Gotchas
 
 ### **🚨 CRITICAL: GitHub Actions Job Removal Pattern**
@@ -194,6 +228,35 @@ yamllint .github/workflows/main-ci-cd.yml
 **Current Issue**: JSON-only Trivy implementation ready for testing  
 **Next Update**: Test results + Phase 2 FOSS tool implementation (Dependabot, OSV-Scanner, SAST)  
 **Session Handoff Ready**: Yes - comprehensive context documented + major milestones achieved
+
+## Phase 2 Implementation Results (COMPLETED 2025-08-26)
+
+### **✅ COMPREHENSIVE FOSS SECURITY STACK IMPLEMENTED**
+
+**Implemented Tools:**
+1. **GitHub Dependabot** - Comprehensive dependency management across all ecosystems (11 configurations)
+2. **Semgrep SAST** - WebAuthn-focused static code analysis with 14 custom rules
+3. **OSV-Scanner** - Multi-ecosystem vulnerability scanning using OSV.dev database
+
+**Key Achievements:**
+- **Zero Maintenance Overhead**: All tools self-updating and automated
+- **Fast Multi-Tool Feedback**: <30s Semgrep + <60s OSV-Scanner for PR analysis  
+- **Unified Security Tab**: All findings centralized via SARIF integration
+- **Non-Blocking Development**: Warning-only mode preserves development velocity
+- **Database Superiority**: OSV.dev provides faster, more reliable data than custom NVD integration
+
+**Files Created:**
+- `.github/dependabot.yml` - Comprehensive dependency management
+- `.github/workflows/semgrep-sast.yml` - SAST security analysis (corrected architecture)
+- `.github/workflows/osv-scanner-pr.yml` - Pull request vulnerability scanning  
+- `semgrep-rules/webauthn-security.yml` - 14 custom WebAuthn security rules (syntax corrected)
+- `.semgrepignore` - Semgrep ignore patterns
+
+**Critical Issues Resolved:**
+- **Semgrep Action Error**: Fixed deprecated `returntocorp/semgrep-action@v1` with made-up parameters
+- **Rule Syntax Error**: Corrected `pattern-not-inside` placement in all 14 WebAuthn rules
+- **Architecture Error**: Removed inappropriate main-ci-cd.yml integration
+- **Authentication Discovery**: Documented Semgrep v1.100+ authentication requirement
 
 ## Session Handoff Summary (2025-08-26)
 

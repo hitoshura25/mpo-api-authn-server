@@ -56,6 +56,77 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 
 ## Critical Development Reminders
 
+### 🚨 CRITICAL: NEVER Make Assumptions - Always Validate Documentation
+
+**THE FUNDAMENTAL RULE**: NEVER create code, workflows, or configurations based on assumptions or invented parameters. ALWAYS validate against official documentation first.
+
+#### **🚨 MANDATORY Documentation Validation Process:**
+
+**BEFORE writing ANY code that integrates with external tools/APIs/actions:**
+1. **Find Official Documentation**: Locate the current, official documentation for the tool/service
+2. **Verify Current Version**: Ensure the documentation matches the version you're using
+3. **Check Deprecation Status**: Verify the tool/action is not deprecated
+4. **Validate Parameters**: Confirm ALL parameters exist and have correct syntax
+5. **Look for Examples**: Use official examples as the foundation, not invented syntax
+
+#### **🚨 RED FLAGS - STOP and Research:**
+- **"I think the parameter should be..."** → STOP: Find documentation
+- **"Based on similar tools..."** → STOP: Each tool has unique syntax  
+- **"This parameter seems logical..."** → STOP: Logic ≠ actual API
+- **"The old version had..."** → STOP: APIs change, verify current version
+
+#### **Recent Critical Example: Semgrep Integration Failure**
+**What Went Wrong:**
+- Used deprecated `returntocorp/semgrep-action@v1` without checking status
+- Invented parameters: `generateSarif`, `scanChangedFilesOnly`, `output` (none exist)
+- Created invalid Semgrep rule syntax without validating schema
+- Result: Complete workflow failure and wasted implementation time
+
+**What Should Have Been Done:**
+1. **Research First**: Check if `returntocorp/semgrep-action` is current
+2. **Find Current Approach**: Discover official `semgrep/semgrep` Docker method
+3. **Validate Rule Syntax**: Check Semgrep rule schema documentation
+4. **Test Locally**: Validate YAML and rule syntax before committing
+
+#### **Approved Information Sources (In Priority Order):**
+1. **Official Documentation**: Tool's official docs site (e.g., semgrep.dev, docs.github.com)
+2. **Official GitHub Repositories**: README files and examples in official repos
+3. **Current Release Notes**: Check for breaking changes and deprecations
+4. **Web Search**: Only for finding official documentation sources
+
+#### **NEVER Acceptable Sources:**
+- ❌ **Assumptions**: "This should work like X"
+- ❌ **Invented Syntax**: Making up parameters or configurations
+- ❌ **Outdated Examples**: Using old tutorials without version verification
+- ❌ **Similar Tools Logic**: "Tool A works this way, so Tool B should too"
+
+#### **When Documentation is Missing or Unclear:**
+- **State the Problem**: "Official documentation for X is unclear/missing"
+- **Request Research**: "This needs independent research before implementation"
+- **Propose Alternatives**: Suggest different tools with better documentation
+- **Don't Guess**: NEVER attempt to generate code without confirmed syntax
+
+#### **Implementation Safety Pattern:**
+```yaml
+# ✅ CORRECT: Based on verified official documentation
+uses: official/action@v2
+with:
+  validated-param: "documented-value"
+
+# ❌ WRONG: Invented parameters
+uses: deprecated/action@v1  
+with:
+  made-up-param: "seems-logical"
+```
+
+**This rule prevents:**
+- Workflow failures from invalid syntax
+- Security vulnerabilities from incorrect configurations
+- Time waste from debugging non-existent features
+- Loss of user confidence from repeated failures
+
+## Critical Development Reminders
+
 ### 🤖 CRITICAL: Proactively Use Subagents for Complex Tasks
 
 **BEFORE starting any multi-step or complex task, ALWAYS evaluate if it should be delegated to a subagent.**

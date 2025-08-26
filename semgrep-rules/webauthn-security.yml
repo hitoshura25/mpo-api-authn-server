@@ -21,16 +21,15 @@ rules:
                 $WEBAUTHN.start$BUILDER(...);
                 ...
               }
-    pattern-not-inside:
-      - pattern: |
+      - pattern-not-inside: |
           ...
           .origins($ORIGINS)
           ...
-      - pattern: |
+      - pattern-not-inside: |
           ...
           .allowOriginPort($PORT)
           ...
-      - pattern: |
+      - pattern-not-inside: |
           ...
           .allowOriginSubdomain($SUBDOMAIN)
           ...
@@ -55,11 +54,10 @@ rules:
           - pattern: .origins(Arrays.asList("http://localhost:$PORT", ...))
           - pattern: .origins(listOf("http://localhost:$PORT", ...))
           - pattern: .allowOriginPort($PORT)
-    pattern-not-inside:
-      - pattern: |
+      - pattern-not-inside: |
           @Test
           ...
-      - pattern: |
+      - pattern-not-inside: |
           // test$...
           ...
     metadata:
@@ -106,16 +104,15 @@ rules:
               $STORAGE.put($KEY, $CHALLENGE)
           - pattern: |
               $MAP[$KEY] = $CHALLENGE
-    pattern-not-inside:
-      - pattern: |
+      - pattern-not-inside: |
           ...
           .expireAfter($TIME, $UNIT)
           ...
-      - pattern: |
+      - pattern-not-inside: |
           ...
           .expire($DURATION)
           ...
-      - pattern: |
+      - pattern-not-inside: |
           ...
           setTimeout($CALLBACK, $TIME)
           ...
@@ -144,16 +141,16 @@ rules:
               return AssertionResult.successful($CREDENTIAL)
           - pattern: |
               return RegistrationResult.success($CREDENTIAL)
-    pattern-inside:
-      - pattern-either:
-          - pattern: |
-              fun finish$METHOD(...): $RESULT {
-                ...
-              }
-          - pattern: |
-              public $RESULT finish$METHOD(...) {
-                ...
-              }
+      - pattern-inside:
+          pattern-either:
+            - pattern: |
+                fun finish$METHOD(...): $RESULT {
+                  ...
+                }
+            - pattern: |
+                public $RESULT finish$METHOD(...) {
+                  ...
+                }
     metadata:
       category: security
       technology: [webauthn]
@@ -215,11 +212,10 @@ rules:
       - pattern-either:
           - pattern: .attestationConveyancePreference(AttestationConveyancePreference.NONE)
           - pattern: .allowUntrustedAttestation(true)
-    pattern-not-inside:
-      - pattern: |
+      - pattern-not-inside: |
           @Test
           ...
-      - pattern: |
+      - pattern-not-inside: |
           // test$...
           ...
     metadata:
@@ -248,8 +244,7 @@ rules:
                   ...
                 }
               })
-    pattern-not-inside:
-      - pattern: |
+      - pattern-not-inside: |
           // Validate origin
           if (window.location.origin !== $EXPECTED_ORIGIN) {
             ...
@@ -278,11 +273,10 @@ rules:
               })
           - pattern: |
               fetch("http://$DOMAIN/$PATH", ...)
-    pattern-not-inside:
-      - pattern: |
+      - pattern-not-inside: |
           // test$...
           ...
-      - pattern: |
+      - pattern-not-inside: |
           if ($NODE_ENV === "development") {
             ...
           }
@@ -311,11 +305,10 @@ rules:
               if (true) { // debug mode
                 ...
               }
-    pattern-not-inside:
-      - pattern: |
+      - pattern-not-inside: |
           @Test
           ...
-      - pattern: |
+      - pattern-not-inside: |
           // test$...
           ...
     metadata:
@@ -339,20 +332,20 @@ rules:
               println($CREDENTIAL)
           - pattern: |
               System.out.println($CREDENTIAL)
-    pattern-inside:
-      - pattern-either:
-          - pattern: |
-              $CREDENTIAL: PublicKeyCredential
-              ...
-          - pattern: |
-              $CREDENTIAL: RegistrationResult
-              ...
-          - pattern: |
-              $CREDENTIAL: AssertionResult
-              ...
-          - pattern: |
-              $CHALLENGE: ByteArray
-              ...
+      - pattern-inside:
+          pattern-either:
+            - pattern: |
+                $CREDENTIAL: PublicKeyCredential
+                ...
+            - pattern: |
+                $CREDENTIAL: RegistrationResult
+                ...
+            - pattern: |
+                $CREDENTIAL: AssertionResult
+                ...
+            - pattern: |
+                $CHALLENGE: ByteArray
+                ...
     metadata:
       category: security
       technology: [webauthn]
@@ -400,16 +393,16 @@ rules:
               }
           - pattern: |
               return if ($USER_EXISTS) $SUCCESS else $ERROR
-    pattern-inside:
-      - pattern-either:
-          - pattern: |
-              fun startAuthentication(...): $RETURN {
-                ...
-              }
-          - pattern: |
-              public $RETURN startAuthentication(...) {
-                ...
-              }
+      - pattern-inside:
+          pattern-either:
+            - pattern: |
+                fun startAuthentication(...): $RETURN {
+                  ...
+                }
+            - pattern: |
+                public $RETURN startAuthentication(...) {
+                  ...
+                }
     metadata:
       category: security
       technology: [webauthn]

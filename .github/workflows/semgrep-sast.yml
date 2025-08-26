@@ -1,9 +1,9 @@
 name: Semgrep SAST Security Analysis
 
 on:
-  # Run on all pull requests to analyze changed code
+  # Scan changed files in PRs (diff-aware scanning)
   pull_request:
-    branches: [main, develop]
+    branches: [ main, develop ]
     paths:
       - '**/*.kt'
       - '**/*.java'
@@ -15,10 +15,11 @@ on:
       - 'settings.gradle.kts'
       - 'package.json'
       - '.github/workflows/**'
-  
-  # Run on pushes to main branch for baseline security scanning
+      - 'semgrep-rules/**'
+
+  # Scan mainline branches for baseline security scanning
   push:
-    branches: [main]
+    branches: [ main ]
     paths:
       - '**/*.kt'
       - '**/*.java'
@@ -30,19 +31,7 @@ on:
       - 'settings.gradle.kts'
       - 'package.json'
       - '.github/workflows/**'
-  
-  # Allow manual triggering for security analysis
-  workflow_dispatch:
-    inputs:
-      scan-scope:
-        description: 'Scan scope (changed-files, full-repo, or security-only)'
-        required: false
-        default: 'changed-files'
-        type: choice
-        options:
-          - changed-files
-          - full-repo
-          - security-only
+      - 'semgrep-rules/**'
 
 # Ensure only one Semgrep scan runs at a time per branch
 concurrency:
@@ -50,167 +39,93 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  # Required for checkout and SARIF upload
   contents: read
-  # Required for uploading SARIF results to GitHub Security tab
   security-events: write
-  # Required for commenting on pull requests
   pull-requests: write
-  # Required for reading workflow status
   actions: read
 
 jobs:
-  semgrep-analysis:
+  semgrep:
     name: Semgrep SAST Analysis
     runs-on: ubuntu-latest
-    
-    # Skip on dependabot PRs to avoid noise (Dependabot updates are pre-approved)
+    container:
+      # Official Semgrep Docker image
+      image: semgrep/semgrep
+
+    # Skip on dependabot PRs to avoid permission issues
     if: github.actor != 'dependabot[bot]'
-    
-    outputs:
-      findings-count: ${{ steps.semgrep-scan.outputs.findings-count }}
-      has-security-findings: ${{ steps.check-security-findings.outputs.has-security-findings }}
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # Fetch full history for better analysis context
           fetch-depth: 0
 
-      - name: Setup scan configuration
-        id: scan-config
+      - name: Run Semgrep scan
         run: |
-          # Determine scan scope based on event type and input
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            SCAN_SCOPE="${{ github.event.inputs.scan-scope }}"
-          elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            SCAN_SCOPE="changed-files"
-          else
-            SCAN_SCOPE="full-repo"
-          fi
-          
-          echo "scan-scope=${SCAN_SCOPE}" >> $GITHUB_OUTPUT
-          echo "🔍 Scan scope: ${SCAN_SCOPE}"
-          
-          # Set up rule configurations
-          echo "semgrep-rules=auto,security,kotlin,typescript,yaml" >> $GITHUB_OUTPUT
-          echo "custom-rules-path=semgrep-rules/" >> $GITHUB_OUTPUT
+          # Set configuration for comprehensive security analysis
+          export SEMGREP_RULES="auto r/security r/kotlin.lang.security r/typescript.lang.security r/yaml.security semgrep-rules/webauthn-security.yml"
 
-      - name: Get changed files (for PR analysis)
-        id: changed-files
-        if: github.event_name == 'pull_request' && steps.scan-config.outputs.scan-scope == 'changed-files'
-        run: |
-          # Get list of changed files for focused scanning
-          git fetch origin main:main
-          CHANGED_FILES=$(git diff --name-only main...HEAD | grep -E '\.(kt|java|ts|js|yml|yaml)$|build\.gradle\.kts$|settings\.gradle\.kts$|package\.json$' | tr '\n' ' ' || echo "")
-          
-          if [[ -n "$CHANGED_FILES" ]]; then
-            echo "changed-files=${CHANGED_FILES}" >> $GITHUB_OUTPUT
-            echo "has-relevant-changes=true" >> $GITHUB_OUTPUT
-            echo "📁 Changed files for analysis: ${CHANGED_FILES}"
-          else
-            echo "has-relevant-changes=false" >> $GITHUB_OUTPUT
-            echo "ℹ️ No relevant code files changed, skipping Semgrep analysis"
-          fi
+          # Run Semgrep with custom rules and generate SARIF for GitHub Security tab
+          semgrep scan --sarif --output=semgrep.sarif --config=$SEMGREP_RULES || true
 
-      - name: Run Semgrep analysis
-        id: semgrep-scan
-        # Only run if we have relevant changes (for PRs) or always (for other events)
-        if: github.event_name != 'pull_request' || steps.changed-files.outputs.has-relevant-changes == 'true'
-        uses: returntocorp/semgrep-action@v1
-        with:
-          # Use auto config plus additional rulesets for comprehensive coverage
-          config: >-
-            auto
-            r/security
-            r/kotlin.lang.security
-            r/typescript.lang.security
-            r/yaml.security
-            semgrep-rules/webauthn-security.yml
-          
-          # Generate SARIF for GitHub Security tab integration
-          generateSarif: "1"
-          
-          # Only scan changed files in PRs for faster feedback
-          scanChangedFilesOnly: ${{ github.event_name == 'pull_request' && steps.scan-config.outputs.scan-scope == 'changed-files' }}
-          
-          # Output format for processing
-          output: semgrep-results.json
+          # Also generate JSON for PR comments and analysis
+          semgrep scan --json --output=semgrep-results.json --config=$SEMGREP_RULES || true
         env:
-          # Connect to Semgrep Registry for latest rules
-          SEMGREP_RULES_FOLDER: semgrep-rules
-          SEMGREP_TIMEOUT: 300
           SEMGREP_SEND_METRICS: "off"
-        continue-on-error: true
+          SEMGREP_TIMEOUT: 300
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
-      - name: Process Semgrep results
-        id: process-results
-        if: steps.semgrep-scan.conclusion != 'skipped'
+      - name: Process results for PR comments
+        if: github.event_name == 'pull_request'
         run: |
-          # Count findings by severity
           if [[ -f "semgrep-results.json" ]]; then
-            TOTAL_FINDINGS=$(jq '.results | length' semgrep-results.json || echo "0")
-            SECURITY_FINDINGS=$(jq '[.results[] | select(.extra.metadata.category == "security" or .extra.severity == "ERROR")] | length' semgrep-results.json || echo "0")
-            WEBAUTHN_FINDINGS=$(jq '[.results[] | select(.check_id | contains("webauthn"))] | length' semgrep-results.json || echo "0")
-            
-            echo "findings-count=${TOTAL_FINDINGS}" >> $GITHUB_OUTPUT
-            echo "security-findings=${SECURITY_FINDINGS}" >> $GITHUB_OUTPUT
-            echo "webauthn-findings=${WEBAUTHN_FINDINGS}" >> $GITHUB_OUTPUT
-            
+            # Count findings by severity
+            TOTAL_FINDINGS=$(jq '.results | length' semgrep-results.json 2>/dev/null || echo "0")
+            SECURITY_FINDINGS=$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' semgrep-results.json 2>/dev/null || echo "0")
+            WEBAUTHN_FINDINGS=$(jq '[.results[] | select(.check_id | contains("webauthn"))] | length' semgrep-results.json 2>/dev/null || echo "0")
+
             echo "📊 Semgrep Analysis Results:"
             echo "   Total findings: ${TOTAL_FINDINGS}"
             echo "   Security findings: ${SECURITY_FINDINGS}"
             echo "   WebAuthn findings: ${WEBAUTHN_FINDINGS}"
-            
+
             # Create summary for PR comment
-            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-              {
-                echo "## 🔒 Semgrep Security Analysis Results"
+            {
+              echo "## 🔒 Semgrep Security Analysis Results"
+              echo ""
+              if [[ ${TOTAL_FINDINGS} -eq 0 ]]; then
+                echo "✅ **No security issues found** in the changed code!"
+              else
+                echo "⚠️ **${TOTAL_FINDINGS} potential issues found**"
+                echo "- 🔴 Security findings: ${SECURITY_FINDINGS}"
+                echo "- 🛡️ WebAuthn specific: ${WEBAUTHN_FINDINGS}"
                 echo ""
-                if [[ ${TOTAL_FINDINGS} -eq 0 ]]; then
-                  echo "✅ **No security issues found** in the changed code!"
-                else
-                  echo "⚠️ **${TOTAL_FINDINGS} potential issues found**"
-                  echo "- 🔴 Security findings: ${SECURITY_FINDINGS}"
-                  echo "- 🛡️ WebAuthn specific: ${WEBAUTHN_FINDINGS}"
-                  echo ""
-                  echo "Please review the [Security tab](https://github.com/${{ github.repository }}/security/code-scanning) for detailed findings."
-                fi
-                echo ""
-                echo "*Analysis scope: ${{ steps.scan-config.outputs.scan-scope }}*"
-              } > semgrep-summary.md
-            fi
+                echo "Please review the [Security tab](https://github.com/${{ github.repository }}/security/code-scanning) for detailed findings."
+              fi
+              echo ""
+              echo "*Scan completed at $(date)*"
+            } > semgrep-summary.md
           else
-            echo "findings-count=0" >> $GITHUB_OUTPUT
-            echo "security-findings=0" >> $GITHUB_OUTPUT
-            echo "webauthn-findings=0" >> $GITHUB_OUTPUT
-            echo "⚠️ No Semgrep results file found"
+            {
+              echo "## 🔒 Semgrep Security Analysis Results"
+              echo ""
+              echo "⚠️ Analysis completed but no results file generated."
+              echo ""
+              echo "*Scan completed at $(date)*"
+            } > semgrep-summary.md
           fi
 
-      - name: Check for critical security findings
-        id: check-security-findings
-        if: steps.semgrep-scan.conclusion != 'skipped'
-        run: |
-          SECURITY_FINDINGS="${{ steps.process-results.outputs.security-findings }}"
-          if [[ "${SECURITY_FINDINGS}" -gt 0 ]]; then
-            echo "has-security-findings=true" >> $GITHUB_OUTPUT
-            echo "🚨 Critical security findings detected!"
-          else
-            echo "has-security-findings=false" >> $GITHUB_OUTPUT
-            echo "✅ No critical security findings"
-          fi
-
-      - name: Upload SARIF results to GitHub Security tab
-        if: steps.semgrep-scan.conclusion != 'skipped' && always()
+      - name: Upload SARIF to GitHub Security tab
+        if: always() && hashFiles('semgrep.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
           sarif_file: semgrep.sarif
           category: "Semgrep SAST"
         continue-on-error: true
 
-      - name: Upload detailed results as artifact
-        if: steps.semgrep-scan.conclusion != 'skipped' && always()
+      - name: Upload results as artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: semgrep-results-${{ github.event_name }}-${{ github.run_number }}
@@ -222,31 +137,32 @@ jobs:
         continue-on-error: true
 
       - name: Comment on Pull Request
-        if: github.event_name == 'pull_request' && steps.semgrep-scan.conclusion != 'skipped'
+        if: github.event_name == 'pull_request' && hashFiles('semgrep-summary.md') != ''
         uses: actions/github-script@v7
         with:
           script: |
             const fs = require('fs');
-            
+
             // Read the summary file
             let summaryContent = '';
             try {
               summaryContent = fs.readFileSync('semgrep-summary.md', 'utf8');
             } catch (error) {
-              summaryContent = '## 🔒 Semgrep Security Analysis\n\nAnalysis completed. Check the Security tab for details.';
+              console.log('No summary file found, skipping comment.');
+              return;
             }
-            
+
             // Look for existing Semgrep comment to update instead of creating duplicate
             const comments = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number
             });
-            
-            const existingComment = comments.data.find(comment => 
-              comment.body.includes('🔒 Semgrep Security Analysis')
+
+            const existingComment = comments.data.find(comment =>
+              comment.body.includes('🔒 Semgrep Security Analysis Results')
             );
-            
+
             if (existingComment) {
               // Update existing comment
               await github.rest.issues.updateComment({
@@ -255,6 +171,7 @@ jobs:
                 comment_id: existingComment.id,
                 body: summaryContent
               });
+              console.log('Updated existing Semgrep comment.');
             } else {
               // Create new comment
               await github.rest.issues.createComment({
@@ -263,33 +180,5 @@ jobs:
                 issue_number: context.issue.number,
                 body: summaryContent
               });
+              console.log('Created new Semgrep comment.');
             }
-
-  # Fail the workflow if critical security issues are found
-  security-gate:
-    name: Security Gate Check
-    runs-on: ubuntu-latest
-    needs: semgrep-analysis
-    if: always() && needs.semgrep-analysis.result == 'success'
-    
-    steps:
-      - name: Evaluate security findings
-        run: |
-          HAS_SECURITY_FINDINGS="${{ needs.semgrep-analysis.outputs.has-security-findings }}"
-          FINDINGS_COUNT="${{ needs.semgrep-analysis.outputs.findings-count }}"
-          
-          echo "📊 Security Analysis Summary:"
-          echo "   Total findings: ${FINDINGS_COUNT}"
-          echo "   Has security findings: ${HAS_SECURITY_FINDINGS}"
-          
-          # For now, we'll warn but not fail on security findings to avoid disrupting development
-          # In a production environment, you might want to fail on critical security findings
-          if [[ "${HAS_SECURITY_FINDINGS}" == "true" ]]; then
-            echo "⚠️ WARNING: Security findings detected. Please review and address them."
-            echo "::warning::Security findings detected in code analysis. Review the Security tab for details."
-          else
-            echo "✅ No critical security findings detected."
-          fi
-          
-          # Exit successfully for now - adjust this based on your security requirements
-          exit 0

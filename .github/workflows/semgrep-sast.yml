@@ -63,11 +63,11 @@ jobs:
 
       - name: Run Semgrep scan
         run: |
-          # Configuration for comprehensive security analysis with registry rules
-          export SEMGREP_RULES="r/security r/kotlin.lang.security r/java.lang.security r/typescript.lang.security r/javascript.lang.security r/yaml.security r/dockerfile.security r/nginx.security semgrep-rules/webauthn-security.yml"
+          # Configuration for comprehensive security analysis with registry rules (removed r/ prefix)
+          export SEMGREP_RULES="security kotlin.lang.security java.lang.security typescript.lang.security javascript.lang.security yaml.security dockerfile.security nginx.security semgrep-rules/webauthn-security.yml"
 
           echo "🔍 Starting Semgrep SAST analysis with registry + custom rules..."
-          echo "📋 Registry rules: r/security r/kotlin.lang.security r/java.lang.security r/typescript.lang.security r/javascript.lang.security r/yaml.security r/dockerfile.security r/nginx.security"
+          echo "📋 Registry rules: security kotlin.lang.security java.lang.security typescript.lang.security javascript.lang.security yaml.security dockerfile.security nginx.security"
           echo "📋 Custom rules: semgrep-rules/webauthn-security.yml"
 
           # Run Semgrep with comprehensive rules and generate SARIF for GitHub Security tab

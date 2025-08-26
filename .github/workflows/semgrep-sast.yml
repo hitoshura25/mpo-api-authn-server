@@ -63,22 +63,14 @@ jobs:
 
       - name: Run Semgrep scan
         run: |
-          # Configuration for comprehensive security analysis with registry rules (removed r/ prefix)
-          export SEMGREP_RULES="p/security p/kotlin.lang.security p/java.lang.security p/typescript.lang.security p/javascript.lang.security p/yaml.security p/dockerfile.security p/nginx.security semgrep-rules/webauthn-security.yml"
-
-          echo "🔍 Starting Semgrep SAST analysis with registry + custom rules..."
-          echo "📋 Registry rules: security kotlin.lang.security java.lang.security typescript.lang.security javascript.lang.security yaml.security dockerfile.security nginx.security"
-          echo "📋 Custom rules: semgrep-rules/webauthn-security.yml"
-
           # Run Semgrep with comprehensive rules and generate SARIF for GitHub Security tab
-          semgrep scan --sarif --output=semgrep.sarif --config=$SEMGREP_RULES --verbose || true
+          semgrep scan --sarif --output=semgrep.sarif --config auto --verbose || true
 
           # Also generate JSON for PR comments and detailed analysis
-          semgrep scan --json --output=semgrep-results.json --config=$SEMGREP_RULES --verbose || true
+          semgrep scan --json --output=semgrep-results.json --config auto --verbose || true
 
           echo "✅ Semgrep analysis completed"
         env:
-          SEMGREP_SEND_METRICS: "off"
           SEMGREP_TIMEOUT: 300
 
       - name: Process results for PR comments

@@ -68,6 +68,36 @@
 
 ## Technical Gotchas
 
+### **🚨 CRITICAL: GitHub Actions Job Removal Pattern**
+**Issue**: When removing a job from GitHub Actions workflows, ALL references must be cleaned up
+**Failure Pattern**: Removed `semgrep-security-analysis` job but left references in `needs:` arrays
+**Impact**: Workflow would fail with "Job does not exist" errors
+**Root Cause**: Complex dependency chains with multiple jobs referencing the removed job
+
+**Complete Removal Checklist:**
+1. ✅ Remove the job definition itself
+2. ✅ Remove from ALL `needs:` arrays in dependent jobs  
+3. ✅ Remove from status reporting references
+4. ✅ Search entire workflow file for job name: `grep -n "job-name" workflow.yml`
+5. ✅ Validate workflow syntax after changes
+
+**Prevention Strategy:**
+- **Always use grep** to find ALL references before removing a job
+- **Validate workflows** after job removal: `yamllint .github/workflows/`
+- **Consider impact** on job dependency chains before removal
+
+**Example Commands for Safe Job Removal:**
+```bash
+# 1. Find ALL references to the job
+grep -n "job-name" .github/workflows/main-ci-cd.yml
+
+# 2. Remove job definition
+# 3. Remove from needs arrays (may be multiple locations)
+# 4. Update any status reporting
+# 5. Validate syntax
+yamllint .github/workflows/main-ci-cd.yml
+```
+
 ### **Git Hooks and Security Tests**
 **Issue**: Pre-commit hook runs VulnerabilityProtectionTest before each commit
 **Solution**: Keep hook - provides critical immediate WebAuthn security validation
@@ -143,6 +173,8 @@
 - **Enhanced Performance**: Built-in caching vs custom processing
 - **Zero Maintenance**: Professional implementation vs ongoing script updates
 - **Preserved Security**: 100% coverage maintained (vulnerabilities, secrets, config)
+- **Fixed Architecture Issue**: Corrected unnecessary Semgrep integration in main CI/CD
+- **Learned Critical Lesson**: Documented proper GitHub Actions job removal process
 
 ### **Phase 2 Planning**
 1. **Dependabot Setup**: Enable GitHub native dependency management
@@ -159,8 +191,33 @@
 ---
 
 **Status**: Phase 1 (AI Cleanup + Trivy Migration) COMPLETE ✅  
-**Next Update**: Phase 2 FOSS tool implementation (Dependabot, OSV-Scanner, SAST)  
-**Session Handoff Ready**: Yes - comprehensive context documented + major milestones achieved  
+**Current Issue**: JSON-only Trivy implementation ready for testing  
+**Next Update**: Test results + Phase 2 FOSS tool implementation (Dependabot, OSV-Scanner, SAST)  
+**Session Handoff Ready**: Yes - comprehensive context documented + major milestones achieved
+
+## Session Handoff Summary (2025-08-26)
+
+### **What We Accomplished:**
+1. **Completed AI Security Cleanup** - Removed all non-functional AI workflows and scripts
+2. **Completed Trivy Migration** - Replaced 451-line custom script with official Trivy Action  
+3. **Fixed Critical Bug** - Resolved SARIF vs JSON mismatch causing 0 vulnerabilities in PR comments
+4. **Simplified Implementation** - Chose JSON-only approach over complex dual SARIF/JSON
+
+### **Current Files Modified (Ready for Testing):**
+- **`.github/workflows/docker-security-scan.yml`** - Updated to use JSON format, simplified processing
+- **`scripts/ci/security-scan-pr-comment.cjs`** - Should now work correctly (unchanged, compatible with JSON)
+- **Package.json** - Removed AI dependencies (@anthropic-ai/sdk, @google/generative-ai)
+
+### **Next Session Should:**
+1. **Test Implementation** - Push changes and verify 3 HIGH vulnerabilities show in PR comments
+2. **Check GitHub Security Tab** - Verify JSON format works with Security tab integration
+3. **Proceed to Phase 2** - Implement Dependabot, OSV-Scanner, Semgrep SAST tools
+
+### **Critical Context for Next Session:**
+- **Known Issue**: 3 HIGH vulnerabilities in current containers (commons-io, netty components)
+- **Expected Fix**: PR comments should now show accurate vulnerability counts  
+- **Fallback Plan**: If GitHub Security tab doesn't work with JSON, re-enable SARIF generation
+- **Architecture**: VulnerabilityProtectionTest kept (30% unique WebAuthn security validation)  
 
 ## Major Milestones Achieved This Session
 

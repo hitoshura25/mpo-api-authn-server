@@ -1,0 +1,377 @@
+version: 2
+updates:
+  # Root Gradle project and main server
+  - package-ecosystem: "gradle"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "gradle"
+    open-pull-requests-limit: 10
+    groups:
+      # Group security updates for immediate attention
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+      # Group Kotlin and Ktor together as they often need coordinated updates
+      kotlin-ecosystem:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "io.ktor*"
+          - "kotlinx*"
+      # Group WebAuthn and security libraries
+      webauthn-security:
+        patterns:
+          - "com.yubico*"
+          - "org.bouncycastle*"
+          - "com.fasterxml.jackson*"
+      # Group testing frameworks
+      testing-frameworks:
+        patterns:
+          - "org.junit*"
+          - "io.mockk*"
+          - "org.testcontainers*"
+          - "io.kotest*"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+
+  # WebAuthn Server module
+  - package-ecosystem: "gradle"
+    directory: "/webauthn-server"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:15"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "webauthn-server"
+      - "gradle"
+    open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+      kotlin-ecosystem:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "io.ktor*"
+          - "kotlinx*"
+      webauthn-security:
+        patterns:
+          - "com.yubico*"
+          - "org.bouncycastle*"
+          - "com.fasterxml.jackson*"
+
+  # Test Credentials Service
+  - package-ecosystem: "gradle"
+    directory: "/webauthn-test-credentials-service"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:30"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "test-service"
+      - "gradle"
+    open-pull-requests-limit: 3
+    groups:
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+      kotlin-ecosystem:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "io.ktor*"
+          - "kotlinx*"
+
+  # Test Library
+  - package-ecosystem: "gradle"
+    directory: "/webauthn-test-lib"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:45"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "test-lib"
+      - "gradle"
+    open-pull-requests-limit: 3
+    groups:
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+
+  # Android Test Client
+  - package-ecosystem: "gradle"
+    directory: "/android-test-client"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "android"
+      - "gradle"
+    open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+      android-ecosystem:
+        patterns:
+          - "com.android*"
+          - "androidx*"
+          - "com.google.android*"
+      kotlin-ecosystem:
+        patterns:
+          - "org.jetbrains.kotlin*"
+          - "kotlinx*"
+
+  # Android Client Library (submodule)
+  - package-ecosystem: "gradle"
+    directory: "/android-client-library"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "10:15"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "android-client"
+      - "gradle"
+    open-pull-requests-limit: 3
+    groups:
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+      android-ecosystem:
+        patterns:
+          - "com.android*"
+          - "androidx*"
+          - "com.google.android*"
+
+  # Root npm dependencies (MCP tools)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "npm"
+      - "mcp-tools"
+    open-pull-requests-limit: 5
+    groups:
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+      typescript-ecosystem:
+        patterns:
+          - "typescript"
+          - "@types/*"
+          - "ts-*"
+      mcp-tools:
+        patterns:
+          - "@modelcontextprotocol/*"
+    commit-message:
+      prefix: "npm"
+      prefix-development: "npm-dev"
+      include: "scope"
+
+  # Web Test Client
+  - package-ecosystem: "npm"
+    directory: "/web-test-client"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:15"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "npm"
+      - "web-client"
+    open-pull-requests-limit: 8
+    groups:
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+      # Group WebAuthn and authentication libraries
+      webauthn-libraries:
+        patterns:
+          - "@simplewebauthn/*"
+          - "@vmenon25/mpo-webauthn-client"
+      # Group testing frameworks
+      testing-frameworks:
+        patterns:
+          - "@playwright/*"
+          - "playwright"
+      # Group build tools
+      build-tools:
+        patterns:
+          - "webpack*"
+          - "@babel/*"
+          - "typescript"
+          - "@types/*"
+          - "ts-*"
+      # Group Express and server dependencies
+      server-frameworks:
+        patterns:
+          - "express"
+          - "@types/express"
+          - "cors"
+          - "@types/cors"
+          - "nodemon"
+
+  # TypeScript Client Library (submodule)
+  - package-ecosystem: "npm"
+    directory: "/typescript-client-library"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:30"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "npm"
+      - "typescript-client"
+    open-pull-requests-limit: 3
+    groups:
+      security-updates:
+        dependency-type: "security-update"
+        patterns: ["*"]
+      typescript-ecosystem:
+        patterns:
+          - "typescript"
+          - "@types/*"
+          - "ts-*"
+    commit-message:
+      prefix: "npm"
+      prefix-development: "npm-dev"
+      include: "scope"
+
+  # Docker dependencies (for Dockerfiles)
+  - package-ecosystem: "docker"
+    directory: "/webauthn-server"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "webauthn-server"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+
+  - package-ecosystem: "docker"
+    directory: "/webauthn-test-credentials-service"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:15"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "test-service"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "docker"
+      include: "scope"
+
+  # GitHub Actions workflow dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/New_York"
+    reviewers:
+      - "@hitoshura25"
+    assignees:
+      - "@hitoshura25"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci-cd"
+    open-pull-requests-limit: 5
+    groups:
+      security-actions:
+        patterns:
+          - "github/codeql-action*"
+          - "securecodewarrior/github-action-add-sarif*"
+          - "aquasecurity/trivy-action*"
+          - "returntocorp/semgrep-action*"
+      build-actions:
+        patterns:
+          - "actions/checkout*"
+          - "actions/setup-*"
+          - "actions/cache*"
+          - "actions/upload-artifact*"
+          - "actions/download-artifact*"
+      docker-actions:
+        patterns:
+          - "docker/*"
+    commit-message:
+      prefix: "ci"
+      include: "scope"

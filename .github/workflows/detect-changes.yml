@@ -153,9 +153,13 @@ jobs:
               - '.github/workflows/unit-tests.yml'
             
             # Security workflow changes (affect security scanning but not Docker builds)
-            # Note: AI security workflows removed - replaced by FOSS security implementation
+            # FOSS Security Implementation: Semgrep SAST, Dependabot, and future OWASP ZAP
             security-affecting-workflows:
-              # Placeholder for future FOSS security workflows (Semgrep, OWASP ZAP, etc.)
+              - '.github/workflows/semgrep-sast.yml'
+              - '.github/dependabot.yml'
+              - 'semgrep-rules/**'
+              - '.semgrepignore'
+              # Placeholder for future FOSS security workflows (OWASP ZAP, etc.)
               - '.github/workflows/foss-security-scan.yml'
             
             # Docker security workflow changes (CRITICAL: affect Docker security scanning functionality)

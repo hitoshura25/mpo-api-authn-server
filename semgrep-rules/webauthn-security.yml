@@ -1,0 +1,419 @@
+rules:
+  # WebAuthn Origin Validation Rules
+  - id: webauthn-missing-origin-validation
+    message: |
+      WebAuthn origin validation is critical for security. Ensure that origin 
+      validation is properly implemented to prevent cross-origin attacks.
+    severity: ERROR
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          # Detect WebAuthn start methods without proper origin checks
+          - pattern: |
+              fun $METHOD(...): $RETURN {
+                ...
+                $WEBAUTHN.start$BUILDER(...)
+                ...
+              }
+          - pattern: |
+              public $RETURN $METHOD(...) {
+                ...
+                $WEBAUTHN.start$BUILDER(...);
+                ...
+              }
+    pattern-not-inside:
+      - pattern: |
+          ...
+          .origins($ORIGINS)
+          ...
+      - pattern: |
+          ...
+          .allowOriginPort($PORT)
+          ...
+      - pattern: |
+          ...
+          .allowOriginSubdomain($SUBDOMAIN)
+          ...
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-346: Origin Validation Error"
+      owasp: "A07:2021 – Identification and Authentication Failures"
+      references:
+        - "https://w3c.github.io/webauthn/#dom-credentialscontainer-create"
+        - "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-39912"
+
+  - id: webauthn-hardcoded-origins
+    message: |
+      Hardcoded origins in WebAuthn configuration create security vulnerabilities.
+      Use environment variables or secure configuration management instead.
+    severity: WARNING
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: .origins(setOf("http://localhost:$PORT", ...))
+          - pattern: .origins(Arrays.asList("http://localhost:$PORT", ...))
+          - pattern: .origins(listOf("http://localhost:$PORT", ...))
+          - pattern: .allowOriginPort($PORT)
+    pattern-not-inside:
+      - pattern: |
+          @Test
+          ...
+      - pattern: |
+          // test$...
+          ...
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-798: Use of Hard-coded Credentials"
+
+  # Challenge Uniqueness and Replay Attack Prevention
+  - id: webauthn-challenge-reuse-risk
+    message: |
+      WebAuthn challenges should be unique and stored securely to prevent replay attacks.
+      Ensure proper challenge generation and validation.
+    severity: ERROR
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          # Static or predictable challenge generation
+          - pattern: |
+              val challenge = ByteArray($SIZE)
+              ...
+          - pattern: |
+              val challenge = "$STATIC_STRING".toByteArray()
+              ...
+          - pattern: |
+              val challenge = byteArrayOf($BYTES)
+              ...
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-330: Use of Insufficiently Random Values"
+      owasp: "A02:2021 – Cryptographic Failures"
+
+  - id: webauthn-challenge-storage-without-expiry
+    message: |
+      WebAuthn challenges stored without expiration can lead to replay attacks.
+      Implement proper challenge expiration and cleanup.
+    severity: WARNING
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              $STORAGE.store($KEY, $CHALLENGE)
+          - pattern: |
+              $STORAGE.put($KEY, $CHALLENGE)
+          - pattern: |
+              $MAP[$KEY] = $CHALLENGE
+    pattern-not-inside:
+      - pattern: |
+          ...
+          .expireAfter($TIME, $UNIT)
+          ...
+      - pattern: |
+          ...
+          .expire($DURATION)
+          ...
+      - pattern: |
+          ...
+          setTimeout($CALLBACK, $TIME)
+          ...
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-613: Insufficient Session Expiration"
+
+  # Credential Validation and Tampering Prevention
+  - id: webauthn-credential-validation-bypass
+    message: |
+      WebAuthn credential validation should not be bypassed or weakened.
+      This can lead to authentication bypass vulnerabilities.
+    severity: ERROR
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if ($DEBUG) {
+                return $SUCCESS_RESULT
+              }
+          - pattern: |
+              // TODO: implement proper validation
+              return $SUCCESS_RESULT
+          - pattern: |
+              return AssertionResult.successful($CREDENTIAL)
+          - pattern: |
+              return RegistrationResult.success($CREDENTIAL)
+    pattern-inside:
+      - pattern-either:
+          - pattern: |
+              fun finish$METHOD(...): $RESULT {
+                ...
+              }
+          - pattern: |
+              public $RESULT finish$METHOD(...) {
+                ...
+              }
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-285: Improper Authorization"
+      owasp: "A07:2021 – Identification and Authentication Failures"
+
+  - id: webauthn-signature-validation-disabled
+    message: |
+      WebAuthn signature validation is critical and should not be disabled.
+      This creates a severe authentication bypass vulnerability.
+    severity: ERROR
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: .allowUntrustedAttestation(true)
+          - pattern: .validateSignatureCounter(false)
+          - pattern: .allowCredentialCloning(true)
+          - pattern: .strictTimestampValidation(false)
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-295: Improper Certificate Validation"
+      owasp: "A02:2021 – Cryptographic Failures"
+
+  # User Handle and Credential Management
+  - id: webauthn-user-handle-exposure
+    message: |
+      WebAuthn user handles should not expose sensitive user information.
+      Use opaque, non-guessable identifiers.
+    severity: WARNING
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              UserIdentity.builder()
+                .id($EMAIL.toByteArray())
+                ...
+          - pattern: |
+              UserIdentity.builder()
+                .id($USERNAME.toByteArray())
+                ...
+          - pattern: |
+              UserIdentity.builder()
+                .id("$USER_INFO".toByteArray())
+                ...
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-200: Information Exposure"
+
+  # Attestation and Trust Management
+  - id: webauthn-attestation-bypass
+    message: |
+      WebAuthn attestation validation provides important security guarantees.
+      Bypassing attestation validation can weaken authentication security.
+    severity: WARNING
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: .attestationConveyancePreference(AttestationConveyancePreference.NONE)
+          - pattern: .allowUntrustedAttestation(true)
+    pattern-not-inside:
+      - pattern: |
+          @Test
+          ...
+      - pattern: |
+          // test$...
+          ...
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-295: Improper Certificate Validation"
+
+  # TypeScript/JavaScript WebAuthn Rules
+  - id: webauthn-client-origin-mismatch
+    message: |
+      WebAuthn client origin should match the server's expected origins
+      to prevent cross-origin authentication attacks.
+    severity: ERROR
+    languages: [typescript, javascript]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              const credential = await navigator.credentials.create({
+                publicKey: {
+                  ...
+                }
+              })
+          - pattern: |
+              const assertion = await navigator.credentials.get({
+                publicKey: {
+                  ...
+                }
+              })
+    pattern-not-inside:
+      - pattern: |
+          // Validate origin
+          if (window.location.origin !== $EXPECTED_ORIGIN) {
+            ...
+          }
+          ...
+    metadata:
+      category: security
+      technology: [webauthn, javascript]
+      cwe: "CWE-346: Origin Validation Error"
+
+  - id: webauthn-client-insecure-transport
+    message: |
+      WebAuthn requires secure transport (HTTPS). Using HTTP creates
+      severe security vulnerabilities.
+    severity: ERROR
+    languages: [typescript, javascript]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              const baseURL = "http://$DOMAIN"
+              ...
+          - pattern: |
+              axios.create({
+                baseURL: "http://$DOMAIN"
+                ...
+              })
+          - pattern: |
+              fetch("http://$DOMAIN/$PATH", ...)
+    pattern-not-inside:
+      - pattern: |
+          // test$...
+          ...
+      - pattern: |
+          if ($NODE_ENV === "development") {
+            ...
+          }
+    metadata:
+      category: security
+      technology: [webauthn, javascript]
+      cwe: "CWE-319: Cleartext Transmission of Sensitive Information"
+      owasp: "A02:2021 – Cryptographic Failures"
+
+  # Configuration and Environment Security
+  - id: webauthn-debug-mode-in-production
+    message: |
+      WebAuthn debug mode should not be enabled in production environments
+      as it may expose sensitive information or weaken security controls.
+    severity: ERROR
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              val debug = true
+              ...
+          - pattern: |
+              .debug(true)
+              ...
+          - pattern: |
+              if (true) { // debug mode
+                ...
+              }
+    pattern-not-inside:
+      - pattern: |
+          @Test
+          ...
+      - pattern: |
+          // test$...
+          ...
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-489: Active Debug Code"
+
+  - id: webauthn-insecure-logging
+    message: |
+      WebAuthn credentials and sensitive data should not be logged
+      as this can expose authentication secrets.
+    severity: ERROR
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              logger.info("...", $CREDENTIAL, ...)
+          - pattern: |
+              logger.debug("...", $CHALLENGE, ...)
+          - pattern: |
+              println($CREDENTIAL)
+          - pattern: |
+              System.out.println($CREDENTIAL)
+    pattern-inside:
+      - pattern-either:
+          - pattern: |
+              $CREDENTIAL: PublicKeyCredential
+              ...
+          - pattern: |
+              $CREDENTIAL: RegistrationResult
+              ...
+          - pattern: |
+              $CREDENTIAL: AssertionResult
+              ...
+          - pattern: |
+              $CHALLENGE: ByteArray
+              ...
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-532: Information Exposure Through Log Files"
+      owasp: "A09:2021 – Security Logging and Monitoring Failures"
+
+  # Additional Security Patterns
+  - id: webauthn-weak-timeout-configuration
+    message: |
+      WebAuthn timeout configuration should be reasonable to prevent
+      both DoS attacks and poor user experience.
+    severity: INFO
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              .timeout($TIMEOUT)
+          - pattern: |
+              .timeoutMillis($TIMEOUT)
+    pattern-where:
+      - metavariable-comparison:
+          metavariable: $TIMEOUT
+          comparison: $TIMEOUT > 300000 # 5 minutes
+      - metavariable-comparison:
+          metavariable: $TIMEOUT
+          comparison: $TIMEOUT < 30000 # 30 seconds
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-770: Allocation of Resources Without Limits or Throttling"
+
+  - id: webauthn-credential-enumeration-risk
+    message: |
+      WebAuthn implementation should not reveal whether credentials exist
+      for a given user to prevent user enumeration attacks.
+    severity: WARNING
+    languages: [kotlin, java]
+    patterns:
+      - pattern-either:
+          - pattern: |
+              if ($CREDENTIAL_EXISTS) {
+                return $SUCCESS_RESPONSE
+              } else {
+                return $ERROR_RESPONSE
+              }
+          - pattern: |
+              return if ($USER_EXISTS) $SUCCESS else $ERROR
+    pattern-inside:
+      - pattern-either:
+          - pattern: |
+              fun startAuthentication(...): $RETURN {
+                ...
+              }
+          - pattern: |
+              public $RETURN startAuthentication(...) {
+                ...
+              }
+    metadata:
+      category: security
+      technology: [webauthn]
+      cwe: "CWE-204: Response Discrepancy Information Exposure"
+      owasp: "A07:2021 – Identification and Authentication Failures"
+      references:
+        - "https://cve.mitre.org/cgi-bin/cvename.cgi?name=CVE-2024-39912"

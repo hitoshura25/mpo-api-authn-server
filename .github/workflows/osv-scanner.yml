@@ -17,5 +17,4 @@ jobs:
     with:
       scan-args: |-
         --recursive
-        --allow-no-lockfiles
         .

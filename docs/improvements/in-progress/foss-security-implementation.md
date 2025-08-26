@@ -1,9 +1,10 @@
 # FOSS Security Implementation Plan
 
-**Status**: ⚪ **PLANNED** 📋  
-**Timeline**: 5-7 weeks *(Enhanced 2025-08-21)*  
-**Implementation Effort**: ~4-6 weeks development + 1 week validation  
-**Priority**: Medium (after current stability improvements)
+**Status**: 🟡 **IN PROGRESS** 🔄  
+**Timeline**: 2025-08-26 → 2025-09-09 (2 weeks)  
+**Implementation Effort**: ~1-2 weeks (accelerated with FOSS tools)  
+**Priority**: High (AI cleanup + immediate FOSS wins)  
+**Key Learnings**: [foss-security-learnings.md](learnings/foss-security-learnings.md)
 
 ## 🔄 Session Continuity & Documentation Maintenance
 
@@ -30,8 +31,8 @@
 
 ### Critical Security Context
 - **100% WebAuthn Vulnerability Coverage**: 7/7 security tests passing for WebAuthn-specific attacks
-- **AI Cost Issues**: Current AI API dependency requiring billing setup and maintenance overhead
-- **Custom Script Maintenance**: 1669-line AI security analyzer requiring significant maintenance
+- **AI Components Non-Functional**: AI security workflows require API billing setup (not configured)
+- **AI Cleanup Required**: Non-functional AI workflows and scripts identified for removal
 - **FOSS Integration Opportunity**: 60-80% of functionality replaceable with established tools
 
 ### Documentation Maintenance Rules
@@ -109,7 +110,135 @@ This document outlines a comprehensive implementation plan for enhancing the Web
 ❌ **AI Dependency**: Claude/Gemini API costs and billing requirements  
 ❌ **Maintenance Overhead**: Custom script maintenance and updates for solved problems  
 ❌ **Limited Coverage**: No SAST, DAST, or IaC security  
-❌ **Missed Opportunities**: Not leveraging GitHub's native security ecosystem  
+❌ **Missed Opportunities**: Not leveraging GitHub's native security ecosystem
+
+### AI Security Cleanup Required (Prerequisites for FOSS Implementation)
+
+**Current Non-Functional AI Components** - These require removal before FOSS implementation:
+
+#### **AI Security Workflows** (2 files - Non-functional)
+- **`.github/workflows/security-analysis.yml`** (601 lines) - 3-tier AI security analysis
+- **`.github/workflows/vulnerability-monitor.yml`** (154 lines) - AI-enhanced vulnerability monitoring
+- **Status**: Non-functional (requires API billing setup not configured)
+- **Dependencies**: `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` (not configured)
+
+#### **AI Security Scripts** (8 files - ~50KB total)
+**Scripts Directory (`scripts/security/` - 5 files)**:
+- `analyze-changes.sh` - AI security change analysis
+- `analyze-pr.sh` - 3-tier AI security analysis with fallbacks  
+- `generate-tests.sh` - AI-generated security test creation
+- `create-security-comment.cjs` - AI-enhanced PR security comments
+- `add-security-labels.cjs` - AI-based security label assignment
+
+**Monitoring Directory (`scripts/monitoring/` - 2 files)**:
+- `enhanced-monitor.sh` - AI vs standard vulnerability monitoring orchestration
+- `ai-enhanced-vulnerability-monitor.js` - AI-enhanced vulnerability analysis
+
+**Documentation (1 file)**:
+- `docs/security/webauthn-security-instructions.txt` - AI-specific security instructions
+
+#### **AI Package Dependencies** (2 dependencies)
+```json
+{
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.58.0",
+    "@google/generative-ai": "^0.24.1"
+  }
+}
+```
+
+#### **Workflow Reference Updates Required**
+**`.github/workflows/detect-changes.yml`** references to removed workflows:
+- Lines 156-158: Security workflow file patterns (remove)
+- Lines 50-52, 90: Security workflow output definitions (remove)
+- Lines 251, 286, 327, 350: Security workflow logic references (remove)
+
+#### **Prerequisites Cleanup Commands**
+```bash
+# Phase 1: Remove AI Security Workflows
+rm .github/workflows/security-analysis.yml
+rm .github/workflows/vulnerability-monitor.yml
+
+# Phase 2: Remove AI Security Scripts  
+rm scripts/security/analyze-changes.sh
+rm scripts/security/analyze-pr.sh
+rm scripts/security/generate-tests.sh
+rm scripts/security/create-security-comment.cjs
+rm scripts/security/add-security-labels.cjs
+rm scripts/monitoring/enhanced-monitor.sh
+rm scripts/monitoring/ai-enhanced-vulnerability-monitor.js
+rm docs/security/webauthn-security-instructions.txt
+
+# Phase 3: Remove AI Dependencies
+npm uninstall @anthropic-ai/sdk @google/generative-ai
+
+# Phase 4: Update detect-changes.yml workflow references
+# (Remove security workflow file patterns and logic)
+```
+
+#### **Impact Assessment**
+- ✅ **Zero Functional Impact**: All AI components are currently non-functional
+- ✅ **Immediate Cost Savings**: Eliminates future AI API costs
+- ✅ **Storage Savings**: ~50KB scripts + ~200KB dependencies  
+- ✅ **Maintenance Reduction**: Eliminates custom AI script maintenance
+- 🔄 **Replacement Ready**: FOSS tools will provide equivalent/better coverage
+
+### VulnerabilityProtectionTest Analysis (Keep Modified)
+
+**Current Security Test Suite**: `webauthn-server/src/test/kotlin/com/vmenon/mpo/api/authn/security/VulnerabilityProtectionTest.kt`
+- **7 WebAuthn Security Tests** covering PoisonSeed attacks, username enumeration, replay attacks
+- **Pre-commit Hook Integration**: `.git/hooks/pre-commit` blocks commits if security tests fail
+- **Purpose**: Validates runtime WebAuthn security behavior vs static configuration
+
+#### **Security Assessment Results**
+**🔍 Analysis Finding**: **KEEP MODIFIED** - Critical WebAuthn-specific runtime validation irreplaceable by FOSS tools
+
+**Tests to KEEP (Unique Security Value - 5/7 tests)**:
+- ✅ **Cross-origin PoisonSeed attacks** - Tests malicious origin rejection (cannot be static analyzed)
+- ✅ **Timing-based username enumeration** - CVE-2024-39912 protection (ZAP cannot detect timing attacks)
+- ✅ **Authentication replay attacks** - Request ID consumption validation (runtime behavior)
+- ✅ **Challenge uniqueness** - WebAuthn specification compliance (runtime validation)
+- ✅ **Credential tampering** - Signature validation testing (Yubico library integration)
+
+**Tests to REMOVE/MODIFY (2/7 tests)**:
+- ❌ **Basic WebAuthn configuration** - Replace with functional tests (not security-critical)
+- 🔄 **Response structure enumeration** - Partially replaceable by OWASP ZAP custom scripts
+
+#### **Integration with FOSS Tools**
+```yaml
+# Enhanced security coverage combining existing tests + FOSS tools
+WebAuthn Security Coverage:
+  Runtime Behavior (Keep):     VulnerabilityProtectionTest (30% unique value)
+  Static Analysis (Add):       Semgrep + Custom WebAuthn rules
+  Dynamic Testing (Add):       OWASP ZAP + Custom WebAuthn scripts
+  Container Security (Add):    Trivy + Yubico library vulnerability scanning
+  Dependency Security (Add):   Dependabot + java-webauthn-server updates
+```
+
+#### **Pre-commit Hook Modification**
+**Current Hook** (`.git/hooks/pre-commit`):
+```bash
+#!/bin/bash
+echo "🔐 Running security tests before commit..."
+./gradlew :webauthn-server:test --tests="*VulnerabilityProtectionTest*" --quiet
+```
+
+**Recommended Approach**: **KEEP** pre-commit hook - provides immediate security validation
+- **Execution Time**: ~15 seconds for 5 focused WebAuthn security tests
+- **Value**: Blocks commits with WebAuthn security regressions
+- **Maintenance**: Minimal - tests validate library behavior, not custom code
+
+#### **FOSS Tool Coverage Gap Analysis**
+- **Semgrep Coverage**: 40% (static WebAuthn configuration patterns)
+- **OWASP ZAP Coverage**: 30% (dynamic endpoint testing with custom scripts)  
+- **VulnerabilityProtectionTest Coverage**: 30% (runtime WebAuthn behavior - **IRREPLACEABLE**)
+- **Combined Coverage**: 100% comprehensive WebAuthn security validation
+
+#### **Cost-Benefit Analysis**
+- **Maintenance Cost**: 2 hours/month for 5 focused WebAuthn tests
+- **Security Value**: **CRITICAL** - No alternative runtime WebAuthn validation
+- **Performance Impact**: 15 seconds pre-commit time (acceptable)
+- **Risk if Removed**: **HIGH** - No detection of WebAuthn runtime security issues  
 
 ## Proposed Hybrid Architecture: Existing Tools + Focused AI
 

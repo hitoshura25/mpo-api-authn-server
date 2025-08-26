@@ -16,12 +16,34 @@ on:
   # Scan changed files in PRs (diff-aware scanning)
   pull_request:
     branches: [ main ]
-    paths: *semgrep_paths
+    paths:
+      - '**/*.kt'
+      - '**/*.java'
+      - '**/*.ts'
+      - '**/*.js'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'package.json'
+      - '.github/workflows/**'
+      - 'semgrep-rules/**'
 
   # Scan mainline branches for baseline security scanning
   push:
     branches: [ main ]
-    paths: *semgrep_paths
+    paths:
+      - '**/*.kt'
+      - '**/*.java'
+      - '**/*.ts'
+      - '**/*.js'
+      - '**/*.yml'
+      - '**/*.yaml'
+      - 'build.gradle.kts'
+      - 'settings.gradle.kts'
+      - 'package.json'
+      - '.github/workflows/**'
+      - 'semgrep-rules/**'
 
 # Ensure only one Semgrep scan runs at a time per branch
 concurrency:

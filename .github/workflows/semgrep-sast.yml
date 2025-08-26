@@ -1,17 +1,5 @@
 name: Semgrep SAST Security Analysis
 
-paths-list: &semgrep_paths
-  - '**/*.kt'
-  - '**/*.java'
-  - '**/*.ts'
-  - '**/*.js'
-  - '**/*.yml'
-  - '**/*.yaml'
-  - 'build.gradle.kts'
-  - 'settings.gradle.kts'
-  - 'package.json'
-  - '.github/workflows/**'
-  - 'semgrep-rules/**'
 on:
   # Scan changed files in PRs (diff-aware scanning)
   pull_request:

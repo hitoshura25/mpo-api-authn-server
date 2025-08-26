@@ -12,11 +12,83 @@ permissions:
   contents: read
 
 jobs:
-  scan-pr:
-    uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.2.1"
-    with:
-      upload-sarif: true
-      fail-on-vuln: false
-      scan-args: |
-        --recursive
-        --allow-no-lockfiles
+  osv-scanner:
+    name: OSV-Scanner Vulnerability Scan
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Debug - List package files
+        run: |
+          echo "🔍 Looking for package files OSV-Scanner should detect..."
+          echo ""
+          echo "📋 npm package files:"
+          find . -name "package.json" -not -path "*/node_modules/*" | head -10
+          echo ""
+          echo "📋 npm lockfiles:"
+          find . -name "package-lock.json" -not -path "*/node_modules/*" | head -10
+          echo ""
+          echo "📋 Gradle build files:"
+          find . -name "build.gradle.kts" -not -path "*/build/*" | head -10
+          echo ""
+          echo "📋 Working directory contents:"
+          ls -la
+          echo ""
+          echo "📋 OSV-Scanner supported file check:"
+          echo "Root package.json exists: $(test -f package.json && echo 'YES' || echo 'NO')"
+          echo "Root package-lock.json exists: $(test -f package-lock.json && echo 'YES' || echo 'NO')"
+          echo "Web client package.json exists: $(test -f web-test-client/package.json && echo 'YES' || echo 'NO')"
+          echo "Typescript client package.json exists: $(test -f typescript-client-library/package.json && echo 'YES' || echo 'NO')"
+
+      - name: Run OSV-Scanner
+        uses: google/osv-scanner-action@v1.9.0
+        with:
+          scan-args: |
+            --recursive
+            --allow-no-lockfiles
+            --format=sarif
+            --output=osv-results.sarif
+            .
+        continue-on-error: true
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always() && hashFiles('osv-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: osv-results.sarif
+          category: "OSV-Scanner"
+        continue-on-error: true
+
+      - name: Process results
+        if: always()
+        run: |
+          if [[ -f "osv-results.sarif" ]]; then
+            echo "✅ OSV-Scanner completed - SARIF file generated"
+            
+            # Count vulnerabilities from SARIF
+            VULN_COUNT=$(jq '.runs[0].results | length' osv-results.sarif 2>/dev/null || echo "0")
+            echo "📊 Total vulnerabilities found: ${VULN_COUNT}"
+            
+            if [[ ${VULN_COUNT} -gt 0 ]]; then
+              echo "⚠️ Vulnerabilities detected - check Security tab for details"
+            else
+              echo "🎉 No vulnerabilities found in scanned dependencies"
+            fi
+          else
+            echo "⚠️ No SARIF results generated"
+            echo "This indicates OSV-Scanner may not have found supported package files"
+          fi
+
+      - name: Upload results as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: osv-scanner-results-${{ github.event_name }}-${{ github.run_number }}
+          path: |
+            osv-results.sarif
+          retention-days: 30
+        continue-on-error: true

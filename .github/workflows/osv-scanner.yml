@@ -15,11 +15,8 @@ jobs:
   scan-pr:
     uses: "google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@v2.2.1"
     with:
-      # Upload SARIF results to GitHub Security tab
       upload-sarif: true
-      # Do not fail the workflow on vulnerabilities to avoid blocking development
       fail-on-vuln: false
-      # Additional scan arguments for comprehensive coverage
       scan-args: |
         --recursive
-        --call-analysis=all
+        --allow-no-lockfiles

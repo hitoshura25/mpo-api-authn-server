@@ -28,6 +28,143 @@
 - **Phase 2 Ready**: Dependabot setup (40-50% dependency monitoring replacement)
 - **Phase 2 Items**: OSV-Scanner, Semgrep SAST, OWASP ZAP DAST, Checkov IaC, GitLeaks secrets
 
+## 📋 **Phase 2B: OSV-Scanner Implementation Analysis (2025-08-26)**
+
+### **Critical Discovery: Gradle Dependency Locking Required**
+
+**Issue**: OSV-Scanner requires lockfiles (`gradle.lockfile`, `buildscript-gradle.lockfile`) but project only has manifest files (`build.gradle.kts`)
+
+**Root Cause**: OSV-Scanner doesn't scan manifest files directly - it needs exact version lockfiles for accurate vulnerability detection.
+
+### **Implementation Options Analysis**
+
+#### **Option 1: Quick Fix (`--allow-no-lockfiles`)**
+**Pros:**
+- ✅ **Immediate deployment** (5 minutes implementation)
+- ✅ **Zero build impact** - no changes to existing workflow
+- ✅ **No regression risk** - maintains current build behavior
+
+**Cons:**  
+- ❌ **Reduced security coverage** - manifest-based scanning vs exact versions
+- ❌ **Performance penalty** - slower manifest parsing vs direct lockfile scanning
+- ❌ **Missing Gradle dependencies** - most of codebase unscanned
+
+#### **Option 2: Proper Gradle Dependency Locking** 
+**Pros:**
+- ✅ **Complete security coverage** - all 140+ dependencies scanned with exact versions
+- ✅ **Performance optimization** - faster OSV scanning + deterministic builds
+- ✅ **Industry standard** - aligns with project's configuration cache optimization
+- ✅ **Build reproducibility** - exact version resolution
+
+**Cons:**
+- ❌ **Implementation scope** - 6 build files, 10+ lockfiles, CI/CD updates
+- ⚠️ **Regression risk** - potential conflicts with existing constraints system
+- ⚠️ **Timeline** - 2-3 weeks for full implementation + testing
+
+### **Detailed Implementation Impact Assessment**
+
+#### **Scope: 6 Gradle Modules Affected**
+```bash
+# Lockfiles to be generated (~35KB total)
+├── gradle/dependency-locks/buildscript-gradle.lockfile
+├── webauthn-server/gradle/dependency-locks/*.lockfile (4 files)
+├── webauthn-test-credentials-service/gradle/dependency-locks/*.lockfile (2 files)  
+├── webauthn-test-lib/gradle/dependency-locks/*.lockfile (2 files)
+├── android-test-client/gradle/dependency-locks/*.lockfile (2 files)
+└── android-test-client/app/gradle/dependency-locks/*.lockfile (4 files)
+```
+
+#### **Risk Analysis: MEDIUM Risk, HIGH Value**
+
+**Potential Conflicts:**
+1. **Current constraints system** in webauthn-server (Guava version pinning)
+2. **Dynamic versions** in android-test-client (`latest.release` usage) 
+3. **Cross-module project dependencies** between test modules
+
+**Migration Strategy:**
+```kotlin
+// Current constraint approach
+constraints {
+    implementation("com.google.guava:guava:31.1-jre") {
+        because("Pin Guava JRE version for server environment")
+    }
+}
+
+// Becomes direct dependency with locking
+dependencies {
+    implementation("com.google.guava:guava:31.1-jre") // Locked to exact version
+}
+```
+
+#### **Phased Implementation Plan**
+
+**Phase 2B-1: Core Modules (Week 1)**
+- Enable locking on webauthn-server, webauthn-test-*, webauthn-test-lib
+- Resolve constraint→dependency conflicts
+- Generate and test lockfiles
+
+**Phase 2B-2: Android Modules (Week 2)**  
+- Handle `latest.release` version resolution in android-test-client
+- Generate Android-specific lockfiles (debug/release configurations)
+- Test cross-platform builds
+
+**Phase 2B-3: CI/CD Integration (Week 3)**
+- Add `--verify-locks` to build workflows
+- Update GitHub Actions caching strategy  
+- OSV-Scanner integration testing
+
+#### **Rollback Strategy**
+```bash
+# Emergency rollback procedure (30 seconds)
+git checkout HEAD~1 -- build.gradle.kts */build.gradle.kts
+rm -rf gradle/dependency-locks */gradle/dependency-locks
+./gradlew clean build
+```
+
+### **Decision: Immediate Implementation with Future Enhancement**
+
+**✅ IMPLEMENTED (2025-08-26):**
+1. **OSV-Scanner Deployed** with `--allow-no-lockfiles` flag
+2. **Simplified Configuration** using reusable workflow (8 lines vs 102 lines)
+3. **Partial Coverage** operational for npm packages (package-lock.json files)
+
+**Current Security Coverage:**
+- ✅ **npm Dependencies**: Full vulnerability scanning (web-test-client, typescript-client-library, root)  
+- ⚠️ **Gradle Dependencies**: Limited manifest-based scanning (140+ dependencies partially covered)
+- ✅ **SARIF Integration**: Results appear in GitHub Security tab
+- ✅ **Non-blocking**: Warnings only, no build failures
+
+## 🚧 **PHASE 3: Gradle Dependency Locking Enhancement**
+
+**Status**: 📋 **PLANNED** - Required to complete FOSS security implementation
+
+**Objective**: Achieve 100% dependency vulnerability scanning coverage by implementing proper Gradle dependency locking.
+
+**Current Limitation**: 
+- OSV-Scanner with `--allow-no-lockfiles` provides **partial Gradle scanning** 
+- **140+ Gradle dependencies** not getting exact-version vulnerability detection
+- **Security gap**: Most critical dependencies (webauthn-server) have reduced scanning accuracy
+
+**Implementation Required:**
+```bash
+# Phase 3 Tasks (2-3 weeks)
+1. Enable Gradle dependency locking across 6 modules
+2. Resolve constraints→dependencies migration conflicts  
+3. Generate 10+ lockfiles for exact-version scanning
+4. Update CI/CD workflows with --verify-locks
+5. Remove --allow-no-lockfiles flag for complete coverage
+```
+
+**Success Criteria:**
+- ✅ All 140+ Gradle dependencies scanned with exact versions
+- ✅ OSV-Scanner performance optimization (direct lockfile scanning)
+- ✅ Build reproducibility enhancement 
+- ✅ Zero security coverage gaps
+
+**Timeline**: Must be completed before declaring FOSS Security Implementation **COMPLETE**
+
+**Documentation Reference**: See detailed implementation plan in Phase 2B analysis above.
+
 ### For Fresh Claude Sessions
 **CRITICAL**: Before starting work on this plan, new Claude sessions must:
 

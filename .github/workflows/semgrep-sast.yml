@@ -63,11 +63,8 @@ jobs:
 
       - name: Run Semgrep scan
         run: |
-          # Run Semgrep with comprehensive rules and generate SARIF for GitHub Security tab
-          semgrep scan --sarif --output=semgrep.sarif --config auto --verbose || true
-
-          # Also generate JSON for PR comments and detailed analysis
-          semgrep scan --json --output=semgrep-results.json --config auto --verbose || true
+          # Run Semgrep with comprehensive rules and generate SARIF/JSON for GitHub Security tab
+          semgrep scan --sarif-output=semgrep.sarif --json-output=semgrep-results.json --config auto --verbose || true
 
           echo "✅ Semgrep analysis completed"
         env:

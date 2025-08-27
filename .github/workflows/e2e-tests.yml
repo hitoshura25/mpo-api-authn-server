@@ -581,6 +581,7 @@ jobs:
           target: 'http://localhost:8080'
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a'
+          artifact_name: 'zap-full-scan-webauthn-server'
         continue-on-error: true
 
       - name: Run OWASP ZAP Baseline Scan - Test Service
@@ -588,6 +589,7 @@ jobs:
         with:
           target: 'http://localhost:8081'
           rules_file_name: '.zap/rules.tsv'
+          artifact_name: 'zap-baseline-scan-webauthn-test-credentials-service'
         continue-on-error: true
 
       - name: Process DAST scan results

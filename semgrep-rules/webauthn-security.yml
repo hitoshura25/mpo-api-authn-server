@@ -343,20 +343,14 @@ rules:
   - id: webauthn-weak-timeout-configuration
     message: |
       WebAuthn timeout configuration should be reasonable to prevent
-      both DoS attacks and poor user experience.
+      both DoS attacks and poor user experience. Very long timeouts (>5 minutes)
+      can enable DoS attacks, while very short timeouts (<30 seconds) create poor UX.
     severity: INFO
     languages: [kotlin, java]
     patterns:
       - pattern-either:
           - pattern: $OBJ.timeout($TIMEOUT)
           - pattern: $OBJ.timeoutMillis($TIMEOUT)
-    pattern-where:
-      - metavariable-comparison:
-          metavariable: $TIMEOUT
-          comparison: $TIMEOUT > 300000 # 5 minutes
-      - metavariable-comparison:
-          metavariable: $TIMEOUT
-          comparison: $TIMEOUT < 30000 # 30 seconds
     metadata:
       category: security
       technology: [webauthn]

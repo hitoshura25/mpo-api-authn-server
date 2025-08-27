@@ -1,0 +1,100 @@
+name: Infrastructure as Code Security Scan
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - '**/*.yml'
+      - '**/*.yaml' 
+      - '**/Dockerfile'
+      - '**/docker-compose.yml'
+      - '**/docker-compose.yaml'
+      - '.github/workflows/**'
+      - 'scripts/**'
+      - '**/*.tf'
+      - '**/*.json'
+  push:
+    branches: [ main ]
+    paths:
+      - '**/*.yml'
+      - '**/*.yaml'
+      - '**/Dockerfile' 
+      - '**/docker-compose.yml'
+      - '**/docker-compose.yaml'
+      - '.github/workflows/**'
+      - 'scripts/**'
+      - '**/*.tf'
+      - '**/*.json'
+
+# Ensure only one Checkov scan runs at a time per branch
+concurrency:
+  group: checkov-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  checkov:
+    name: Checkov IaC Security Scan
+    runs-on: ubuntu-latest
+    
+    # Skip on dependabot PRs to avoid permission issues
+    if: github.actor != 'dependabot[bot]'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Run Checkov IaC scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          output_format: sarif
+          output_file_path: checkov-results.sarif
+          skip_check: CKV_DOCKER_2,CKV_DOCKER_3  # Skip checks not applicable to our use case
+          framework: dockerfile,github_actions,yaml
+          soft_fail: true  # Don't fail the workflow on security issues
+          
+      - name: Process Checkov results
+        if: always()
+        run: |
+          if [[ -f "checkov-results.sarif" ]]; then
+            echo "🔍 Checkov scan completed - SARIF file generated"
+            
+            # Count findings from SARIF
+            TOTAL_FINDINGS=$(jq '.runs[0].results | length' checkov-results.sarif 2>/dev/null || echo "0")
+            echo "📊 Total infrastructure security findings: ${TOTAL_FINDINGS}"
+            
+            if [[ ${TOTAL_FINDINGS} -gt 0 ]]; then
+              echo "⚠️ Infrastructure security issues detected:"
+              echo "Check GitHub Security tab for detailed findings"
+            else
+              echo "✅ No infrastructure security issues detected!"
+            fi
+          else
+            echo "⚠️ Checkov scan completed but no SARIF results generated"
+          fi
+          
+      - name: Upload SARIF to GitHub Security tab
+        if: always() && hashFiles('checkov-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-results.sarif
+          category: "Checkov IaC"
+        continue-on-error: true
+        
+      - name: Upload results as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-results-${{ github.event_name }}-${{ github.run_number }}
+          path: |
+            checkov-results.sarif
+          retention-days: 30
+        continue-on-error: true

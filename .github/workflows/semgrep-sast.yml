@@ -3,7 +3,7 @@ name: Semgrep SAST Security Analysis
 on:
   # Scan changed files in PRs (diff-aware scanning)
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
     paths:
       - '**/*.kt'
       - '**/*.java'

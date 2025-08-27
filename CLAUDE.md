@@ -60,14 +60,51 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 
 **THE FUNDAMENTAL RULE**: NEVER create code, workflows, or configurations based on assumptions or invented parameters. ALWAYS validate against official documentation first.
 
-#### **🚨 MANDATORY Documentation Validation Process:**
+## 🛑 **MANDATORY CHECKPOINT: VALIDATE BEFORE ANY EXTERNAL INTEGRATION**
 
-**BEFORE writing ANY code that integrates with external tools/APIs/actions:**
-1. **Find Official Documentation**: Locate the current, official documentation for the tool/service
-2. **Verify Current Version**: Ensure the documentation matches the version you're using
-3. **Check Deprecation Status**: Verify the tool/action is not deprecated
-4. **Validate Parameters**: Confirm ALL parameters exist and have correct syntax
-5. **Look for Examples**: Use official examples as the foundation, not invented syntax
+**⚠️ STOP - READ THIS EVERY TIME BEFORE WRITING CODE ⚠️**
+
+### **🔒 ENFORCEMENT RULE: NO CODE WITHOUT VALIDATION**
+
+**BEFORE writing a SINGLE LINE of code that uses external tools/APIs/actions:**
+
+#### **STEP 1: MANDATORY DOCUMENTATION RESEARCH**
+- [ ] **Find Official Docs**: GitHub Marketplace page or official documentation site
+- [ ] **Verify Action/Tool Exists**: Confirm the exact action/tool name and repository  
+- [ ] **Check Version**: Verify the version (@v1, @v2, etc.) is current and not deprecated
+- [ ] **Read ALL Parameters**: Document every single input parameter that exists
+
+#### **STEP 2: MANDATORY PARAMETER VALIDATION** 
+- [ ] **List Required Parameters**: What parameters are mandatory?
+- [ ] **List Optional Parameters**: What parameters are available but optional?
+- [ ] **Validate Syntax**: Confirm exact spelling, case sensitivity, data types
+- [ ] **Check Examples**: Find official examples that show actual usage
+
+#### **STEP 3: MANDATORY IMPLEMENTATION CHECK**
+- [ ] **State Documentation Source**: "Based on [official docs URL]..."
+- [ ] **Confirm All Parameters**: "Verified parameters X, Y, Z exist in official docs"
+- [ ] **No Assumptions Made**: "All syntax confirmed against official examples"
+
+### **🚨 VIOLATION CONSEQUENCES**
+**If you proceed without completing ALL validation steps:**
+- **Workflow will likely fail** with parameter errors
+- **Time will be wasted** on non-functional implementations  
+- **User confidence will be damaged** by repeated failures
+- **Session will be terminated** to prevent further invalid implementations
+
+### **🔍 VALIDATION TEMPLATE - USE THIS EVERY TIME**
+
+Before implementing any external tool, ALWAYS state:
+
+```
+## 🛑 VALIDATION CHECKPOINT
+Tool/Action: [exact name]
+Documentation: [official URL] 
+Version: [confirmed current version]
+Parameters verified: [list all parameters with documentation references]
+Example usage: [official example that proves syntax works]
+✅ All parameters confirmed against official documentation
+```
 
 #### **🚨 RED FLAGS - STOP and Research:**
 - **"I think the parameter should be..."** → STOP: Find documentation
@@ -87,6 +124,30 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 2. **Find Current Approach**: Discover official `semgrep/semgrep` Docker method
 3. **Validate Rule Syntax**: Check Semgrep rule schema documentation
 4. **Test Locally**: Validate YAML and rule syntax before committing
+
+#### **Recent Critical Example: FOSS Security Tools Validation Failure (2025-08-27)**
+**What Went Wrong:**
+- **GitLeaks**: Assumed `gitleaks/gitleaks-action@v2` generates SARIF files (it doesn't)
+- **Checkov**: Used manual pip installation instead of official `bridgecrewio/checkov-action@master`
+- **OWASP ZAP**: Completely invented custom Docker automation framework syntax
+- **Result**: 3 workflows with non-functional implementations, violated CLAUDE.md validation rules
+
+**What Should Have Been Done:**
+1. **GitLeaks**: Research revealed action only creates GitHub issues, no SARIF output
+2. **Checkov**: Official action `bridgecrewio/checkov-action@master` with proper parameters
+3. **OWASP ZAP**: Use official actions `zaproxy/action-full-scan` and `zaproxy/action-baseline`
+
+**Validation Research Results:**
+```
+✅ GitLeaks: gitleaks/gitleaks-action@v2 (env: GITHUB_TOKEN only)
+✅ Checkov: bridgecrewio/checkov-action@master (with: directory, output_format, etc.)
+✅ OWASP ZAP: zaproxy/action-full-scan@v0.10.0 (with: target, rules_file_name)
+```
+
+**Why This Happened Again:**
+- Skipped mandatory validation checkpoint despite CLAUDE.md warnings
+- Assumed parameter syntax without checking official documentation
+- Invented complex configurations instead of using simple official actions
 
 #### **Approved Information Sources (In Priority Order):**
 1. **Official Documentation**: Tool's official docs site (e.g., semgrep.dev, docs.github.com)

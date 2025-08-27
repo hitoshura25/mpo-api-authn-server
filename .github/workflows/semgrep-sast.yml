@@ -64,11 +64,12 @@ jobs:
       - name: Run Semgrep scan
         run: |
           # Run Semgrep with comprehensive rules and generate SARIF/JSON for GitHub Security tab
-          semgrep scan --sarif-output=semgrep.sarif --json-output=semgrep-results.json --config auto --config semgrep-rules/webauthn-security.yml  --verbose || true
+          semgrep ci --sarif-output=semgrep.sarif --json-output=semgrep-results.json
 
           echo "✅ Semgrep analysis completed"
         env:
           SEMGREP_TIMEOUT: 300
+          SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: Process results for PR comments
         if: github.event_name == 'pull_request'

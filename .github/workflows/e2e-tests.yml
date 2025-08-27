@@ -497,7 +497,8 @@ jobs:
     outputs:
       tests-passed: ${{ steps.zap-results.outputs.tests-passed }}
       artifact-name: "dast-scan-results-${{ github.event.pull_request.number || github.run_number || 'main' }}"
-
+    permissions:
+      issues: write          # Update issues with security findings
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

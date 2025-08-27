@@ -172,6 +172,7 @@ jobs:
       packages: write          # Pull/Push Docker images from GHCR
       pull-requests: write    # Comment on PRs with test results
       id-token: write         # Required for npm publishing
+      issues: write          # Update issues with security findings
     with:
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}

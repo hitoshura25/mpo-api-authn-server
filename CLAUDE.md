@@ -503,7 +503,39 @@ security-scanning:
 - **❌ NEVER use `actions/github-script` with external file requires** - Use direct Node.js execution
 - **❌ NEVER define outputs without verifying implementation chain** - Always validate job→step→value mapping
 - **❌ NEVER add change detection without validating ALL downstream job conditions** - Change detection ≠ job execution
+- **❌ NEVER use compound arithmetic increment operations like `((VAR++))`** - Use safe assignment: `VAR=$((VAR + 1))`
 - **✅ Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped**
+
+#### **🚨 CRITICAL: Bash Arithmetic Operations in GitHub Actions (August 2025)**
+**GitHub Actions strict error handling can cause arithmetic operations to fail with exit code 1:**
+
+```bash
+# ❌ WRONG: Compound increment operations can fail in GitHub Actions
+((EXECUTED_COUNT++))              # Can exit with code 1
+[[ "$WEB_EXECUTED" == "true" ]] && ((EXECUTED_COUNT++))
+
+# ✅ CORRECT: Safe arithmetic assignment operations
+EXECUTED_COUNT=$((EXECUTED_COUNT + 1))     # Safe increment
+if [[ "$WEB_EXECUTED" == "true" ]]; then
+  EXECUTED_COUNT=$((EXECUTED_COUNT + 1))   # Safe conditional increment
+fi
+```
+
+**WHY THIS HAPPENS:**
+- **GitHub Actions Environment**: Runs with strict error handling (`set -e` equivalent behavior)
+- **Arithmetic Expansion**: `((expr))` can return non-zero exit codes for certain operations
+- **Pre-increment Evaluation**: `VAR++` evaluates current value before incrementing, causing issues when starting from 0
+
+**VALIDATION PATTERN:**
+```bash
+# Test arithmetic operations locally before committing
+set -e  # Enable strict error handling
+COUNTER=0
+COUNTER=$((COUNTER + 1))  # Safe - test this pattern
+echo "Counter: $COUNTER"
+```
+
+**Recent Example**: DAST scan integration failed with exit code 1 in cross-platform analysis due to `((EXECUTED_COUNT++))` operations. Fixed by using `EXECUTED_COUNT=$((EXECUTED_COUNT + 1))` pattern.
 
 
 ### 🏗️ CRITICAL: Android Publishing & Docker Registry Patterns

@@ -171,7 +171,7 @@ jobs:
           echo "java-version=${{ env.JAVA_VERSION }}" >> $GITHUB_OUTPUT
           echo "android-api-version=${{ env.ANDROID_API_VERSION }}" >> $GITHUB_OUTPUT
           echo "docker-registry=$DOCKER_REGISTRY" >> $GITHUB_OUTPUT
-          
+
           # Pass through client library information from main orchestrator
           echo "client-version=${{ inputs.client-version }}" >> $GITHUB_OUTPUT
           echo "typescript-package-name=${{ inputs.typescript-package-name }}" >> $GITHUB_OUTPUT
@@ -221,7 +221,7 @@ jobs:
           WEB_FILES_CHANGED="${{ inputs.web-e2e-test-files-changed }}"
           ANDROID_FILES_CHANGED="${{ inputs.android-e2e-test-files-changed }}"
           SECURITY_FILES_CHANGED="${{ inputs.security-scan-files-changed }}"
-          
+
           # Create cache discriminator based on image content (digests) and change detection
           WEB_CACHE_DISCRIMINATOR=$(echo "${WEB_FILES_CHANGED}-${WEBAUTHN_DIGEST_SHORT}-${TEST_CREDS_DIGEST_SHORT}" | sha256sum | cut -d' ' -f1)
           ANDROID_CACHE_DISCRIMINATOR=$(echo "${ANDROID_FILES_CHANGED}-${WEBAUTHN_DIGEST_SHORT}-${TEST_CREDS_DIGEST_SHORT}" | sha256sum | cut -d' ' -f1)
@@ -301,15 +301,15 @@ jobs:
           echo "  Force Full Pipeline: ${{ inputs.force-full-pipeline }}"
           echo "  Force Docker Build: ${{ inputs.force-docker-build }}"
           echo ""
-          
+
           # Initialize variables - simplified single flag approach
           RUN_WEB="false"
-          RUN_ANDROID="false" 
+          RUN_ANDROID="false"
           RUN_DAST="false"
           USE_WEB_CACHE="false"
           USE_ANDROID_CACHE="false"
           USE_DAST_CACHE="false"
-          
+
           # Check if force flags require execution (overrides everything)
           if [[ "${{ inputs.force-full-pipeline }}" == "true" || "${{ inputs.force-docker-build }}" == "true" ]]; then
             RUN_WEB="true"
@@ -323,7 +323,7 @@ jobs:
             API_CHANGED="${{ inputs.should-run-client-publishing-workflow }}"
             E2E_CHANGED="${{ inputs.e2e-tests-changed }}"
             SECURITY_CHANGED="${{ inputs.security-scan-files-changed }}"
-            
+
             # Determine which tests to run based on component changes
             if [[ "$SERVER_CHANGED" == "true" || "$CREDS_CHANGED" == "true" ]]; then
               # Server components changed: Full E2E test suite including DAST scan required
@@ -353,27 +353,27 @@ jobs:
             else
               echo "ℹ️ No components requiring E2E tests or security scans changed"
             fi
-            
+
             # Apply cache optimization (only when not forced)
             if [[ "$RUN_WEB" == "true" && "${{ steps.web-cache.outputs.cache-hit }}" == "true" ]]; then
               USE_WEB_CACHE="true"
               RUN_WEB="false"  # Use cache instead of running
               echo "💾 Web E2E cache hit - using cached results"
             fi
-            
+
             if [[ "$RUN_ANDROID" == "true" && "${{ steps.android-cache.outputs.cache-hit }}" == "true" ]]; then
               USE_ANDROID_CACHE="true"
               RUN_ANDROID="false"  # Use cache instead of running
               echo "💾 Android E2E cache hit - using cached results"
             fi
-            
+
             if [[ "$RUN_DAST" == "true" && "${{ steps.dast-cache.outputs.cache-hit }}" == "true" ]]; then
               USE_DAST_CACHE="true"
               RUN_DAST="false"  # Use cache instead of running
               echo "💾 DAST scan cache hit - using cached results"
             fi
           fi
-          
+
           # Set outputs - simplified single flag approach
           echo "run-web-e2e=$RUN_WEB" >> $GITHUB_OUTPUT
           echo "run-android-e2e=$RUN_ANDROID" >> $GITHUB_OUTPUT
@@ -381,13 +381,13 @@ jobs:
           echo "use-web-cache=$USE_WEB_CACHE" >> $GITHUB_OUTPUT
           echo "use-android-cache=$USE_ANDROID_CACHE" >> $GITHUB_OUTPUT
           echo "use-dast-cache=$USE_DAST_CACHE" >> $GITHUB_OUTPUT
-          
+
           echo ""
           echo "🎯 E2E Test Execution Plan:"
           echo "  Web E2E: $([ "$RUN_WEB" == "true" ] && echo "RUN" || ([ "$USE_WEB_CACHE" == "true" ] && echo "CACHE" || echo "SKIP"))"
           echo "  Android E2E: $([ "$RUN_ANDROID" == "true" ] && echo "RUN" || ([ "$USE_ANDROID_CACHE" == "true" ] && echo "CACHE" || echo "SKIP"))"
           echo "  DAST Scan: $([ "$RUN_DAST" == "true" ] && echo "RUN" || ([ "$USE_DAST_CACHE" == "true" ] && echo "CACHE" || echo "SKIP"))"
-      
+
       - name: Component-aware execution and cache summary
         run: |
           echo "📊 E2E Test Strategy Summary:"
@@ -497,13 +497,13 @@ jobs:
     outputs:
       tests-passed: ${{ steps.zap-results.outputs.tests-passed }}
       artifact-name: "dast-scan-results-${{ github.event.pull_request.number || github.run_number || 'main' }}"
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          
+
       - name: Log in to the Container registry
         uses: docker/login-action@v3
         with:
@@ -515,19 +515,19 @@ jobs:
         working-directory: webauthn-server
         run: |
           echo "🔐 Setting up secure environment for DAST scanning..."
-          
+
           # Use existing secure environment setup script
           chmod +x setup-secure-env.sh
           ./setup-secure-env.sh
-          
+
           # Override Docker images to use the built ones for this PR/workflow
           cat >> .env << EOF
-          
+
           # Override with built Docker images for DAST scanning
           WEBAUTHN_SERVER_IMAGE=${{ env.WEBAUTHN_SERVER_IMAGE }}
           TEST_CREDENTIALS_IMAGE=${{ env.TEST_CREDENTIALS_IMAGE }}
           EOF
-          
+
           # Create docker compose override for DAST scanning
           cat > docker-compose.dast-override.yml << 'EOF'
           services:
@@ -535,18 +535,18 @@ jobs:
               image: ${WEBAUTHN_SERVER_IMAGE}
               # Remove build directive to use pre-built image
               build: null
-              
+
             webauthn-test-credentials-service:
               image: ${TEST_CREDENTIALS_IMAGE}
-              # Remove build directive to use pre-built image  
+              # Remove build directive to use pre-built image
               build: null
           EOF
-          
+
           echo "🚀 Starting services with secure Docker Compose setup..."
-          
+
           # Start services using existing docker compose with override
           docker compose -f docker-compose.yml -f docker-compose.dast-override.yml up -d
-          
+
           # Wait for services to be ready using existing health checks
           echo "⏳ Waiting for services to be ready..."
           for i in {1..60}; do
@@ -557,13 +557,23 @@ jobs:
             echo "Waiting for health checks... ($i/60)"
             sleep 3
           done
-          
+
           # Verify services are accessible
-          curl -f http://localhost:8080/health || (echo "❌ WebAuthn server health check failed" && exit 1)
-          curl -f http://localhost:8081/health || (echo "❌ Test credentials service health check failed" && exit 1)
-          
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8080/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for WebAuthn server..."
+              sleep 2
+            done
+          '
+
+          timeout 120 bash -c '
+            while ! curl -s http://localhost:8081/health > /dev/null 2>&1; do
+              echo "⏳ Waiting for Test Credentials service..."
+              sleep 2
+            done
+          '
           echo "✅ All services ready for DAST scanning"
-          
+
       - name: Run OWASP ZAP Full Scan - WebAuthn Server
         uses: zaproxy/action-full-scan@v0.10.0
         with:
@@ -571,21 +581,21 @@ jobs:
           rules_file_name: '.zap/rules.tsv'
           cmd_options: '-a'
         continue-on-error: true
-        
+
       - name: Run OWASP ZAP Baseline Scan - Test Service
-        uses: zaproxy/action-baseline@v0.12.0  
+        uses: zaproxy/action-baseline@v0.12.0
         with:
           target: 'http://localhost:8081'
           rules_file_name: '.zap/rules.tsv'
         continue-on-error: true
-          
+
       - name: Process DAST scan results
         id: zap-results
         if: always()
         run: |
           echo "🔍 OWASP ZAP DAST scans completed"
           echo "tests-passed=true" >> $GITHUB_OUTPUT
-          
+
           # Save DAST results for caching
           mkdir -p dast-scan-cache
           cat > dast-scan-results.json << EOF
@@ -598,7 +608,7 @@ jobs:
                 "timestamp": "$(date -Iseconds)"
               },
               {
-                "target": "http://localhost:8081", 
+                "target": "http://localhost:8081",
                 "type": "baseline_scan",
                 "timestamp": "$(date -Iseconds)"
               }
@@ -607,9 +617,9 @@ jobs:
             "cache_key": "${{ needs.analyze-e2e-requirements.outputs.cache-key-dast }}"
           }
           EOF
-          
+
           cp dast-scan-results.json dast-scan-cache/
-          
+
           echo ""
           echo "📊 Applications Tested:"
           echo "- 🔐 WebAuthn Server (http://localhost:8080) - Full scan"
@@ -629,14 +639,14 @@ jobs:
           path: |
             dast-scan-cache/
             dast-scan-results.json
-          
+
       - name: Cleanup Docker services
         if: always()
         working-directory: webauthn-server
         run: |
           echo "🧹 Cleaning up Docker Compose services..."
           docker compose -f docker-compose.yml -f docker-compose.dast-override.yml down -v || true
-          
+
           # Clean up override file
           rm -f docker-compose.dast-override.yml || true
 
@@ -740,31 +750,31 @@ jobs:
           echo "📊 Analyzing cross-platform E2E test coordination results..."
           echo "📋 Execution Analysis:"
           echo ""
-          
+
           # Determine if tests ran in parallel
           WEB_EXECUTED="false"
           ANDROID_EXECUTED="false"
           DAST_EXECUTED="false"
           PARALLEL_EXECUTION="false"
-          
+
           if [[ "${{ needs.call-web-e2e-tests.result }}" == "success" ]] || [[ "${{ needs.web-e2e-cached.result }}" == "success" ]]; then
             WEB_EXECUTED="true"
           fi
-          
+
           if [[ "${{ needs.call-android-e2e-tests.result }}" == "success" ]] || [[ "${{ needs.android-e2e-cached.result }}" == "success" ]]; then
             ANDROID_EXECUTED="true"
           fi
-          
+
           if [[ "${{ needs.call-dast-scan.result }}" == "success" ]] || [[ "${{ needs.dast-scan-cached.result }}" == "success" ]]; then
             DAST_EXECUTED="true"
           fi
-          
+
           # Check for parallel execution (any two or more jobs executed)
           EXECUTED_COUNT=0
           [[ "$WEB_EXECUTED" == "true" ]] && ((EXECUTED_COUNT++))
           [[ "$ANDROID_EXECUTED" == "true" ]] && ((EXECUTED_COUNT++))
           [[ "$DAST_EXECUTED" == "true" ]] && ((EXECUTED_COUNT++))
-          
+
           if [[ $EXECUTED_COUNT -gt 1 ]]; then
             PARALLEL_EXECUTION="true"
             echo "⚙️ Parallel execution achieved across multiple test types"
@@ -773,13 +783,13 @@ jobs:
           else
             echo "⚠️ No tests or scans executed"
           fi
-          
+
           # Overall success determination
           OVERALL_SUCCESS="true"
           if [[ "${{ needs.call-web-e2e-tests.result }}" == "failure" ]] || [[ "${{ needs.call-android-e2e-tests.result }}" == "failure" ]] || [[ "${{ needs.call-dast-scan.result }}" == "failure" ]]; then
             OVERALL_SUCCESS="false"
           fi
-          
+
           # Performance summary
           PERFORMANCE_SUMMARY="{"
           PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"web_executed\": $WEB_EXECUTED,"
@@ -787,11 +797,11 @@ jobs:
           PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"dast_executed\": $DAST_EXECUTED,"
           PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY\"parallel_execution\": $PARALLEL_EXECUTION"
           PERFORMANCE_SUMMARY="$PERFORMANCE_SUMMARY}"
-          
+
           echo "overall-success=$OVERALL_SUCCESS" >> $GITHUB_OUTPUT
           echo "parallel-execution=$PARALLEL_EXECUTION" >> $GITHUB_OUTPUT
           echo "performance-summary=$PERFORMANCE_SUMMARY" >> $GITHUB_OUTPUT
-          
+
           echo ""
           echo "✅ Cross-Platform Coordination Analysis:"
           echo "  Overall Success: $OVERALL_SUCCESS"
@@ -837,6 +847,6 @@ jobs:
           echo "  Overall Success: $OVERALL_SUCCESS"
           echo "  Parallel Execution: $PARALLEL_EXECUTION"
           echo "  Performance Summary: $PERFORMANCE_SUMMARY"
-          
+
           chmod +x scripts/ci/create-e2e-results-comment.cjs
           node scripts/ci/create-e2e-results-comment.cjs

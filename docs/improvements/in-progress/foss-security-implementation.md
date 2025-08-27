@@ -28,6 +28,141 @@
 - **Phase 2 Ready**: Dependabot setup (40-50% dependency monitoring replacement)
 - **Phase 2 Items**: OSV-Scanner, Semgrep SAST, OWASP ZAP DAST, Checkov IaC, GitLeaks secrets
 
+## 📋 **Phase 2C: Semgrep SAST Implementation Analysis (2025-08-27)**
+
+### **✅ Semgrep FOSS Configuration Complete**
+
+**Current Working Configuration:**
+```yaml
+# .github/workflows/semgrep-sast.yml
+- name: Run Semgrep scan
+  run: |
+    semgrep scan --validate --config semgrep-rules/webauthn-security.yml
+    semgrep scan --sarif-output=semgrep.sarif --json-output=semgrep-results.json --config auto --config semgrep-rules/webauthn-security.yml
+```
+
+**Results:**
+- ✅ **103 Security Findings** detected across codebase
+- ✅ **14 Custom WebAuthn Rules** working correctly
+- ✅ **Registry Rules** via `--config auto` integrated
+- ✅ **SARIF/JSON Output** for GitHub Security tab integration
+- ✅ **No Semgrep Account Required** (fully FOSS)
+
+### **🏢 Semgrep Pro Account Configuration (Alternative Approach)**
+
+**For organizations wanting Semgrep Pro features:**
+
+#### **Configuration Requirements:**
+1. **Account Setup**: Semgrep Cloud Platform account with SEMGREP_APP_TOKEN
+2. **Repository Configuration**: Connect GitHub repository to Semgrep Cloud
+3. **Baseline Scanning**: Run full scan on main branch to establish baseline
+
+#### **Pro vs FOSS Comparison:**
+
+| Feature | FOSS (`semgrep scan`) | Pro (`semgrep ci`) |
+|---------|----------------------|-------------------|
+| **Scanning Scope** | Full codebase every run | Diff-aware (changed files only) |
+| **Custom Rules** | ✅ Local YAML files | ❌ Must use Semgrep UI |
+| **Rule Access** | Community rules only | ✅ Pro rules + Community |
+| **Account Required** | ❌ No | ✅ Semgrep Cloud Platform |
+| **Cost** | Free | Paid (enterprise features) |
+
+#### **Pro Account Differential Scanning Issue:**
+
+**Problem**: `semgrep ci` only scanned 3 files vs full codebase
+```
+Scanning 3 files tracked by git with 2453 Code rules:
+• Scan was limited to files changed since baseline commit
+• Current version has 0 findings
+```
+
+**Solutions for Full Coverage:**
+
+**Option 1: Disable Diff-Aware Scanning**
+```yaml
+- name: Run Semgrep CI Full Scan
+  run: |
+    semgrep ci --no-diff-aware-scanning --sarif-output=semgrep.sarif --json-output=semgrep-results.json
+  env:
+    SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
+```
+
+**Option 2: Establish Baseline Scanning**
+1. **Main Branch Setup**: Run full scan on main branch via Semgrep Cloud Platform
+2. **PR Scanning**: Subsequent PR scans will compare against main branch baseline
+3. **Periodic Full Scans**: Schedule full scans to refresh baseline
+
+**Option 3: Hybrid Configuration**
+```yaml
+# Full scan on main branch
+- name: Full Semgrep Scan (Main Branch)
+  if: github.ref == 'refs/heads/main'
+  run: semgrep ci --no-diff-aware-scanning
+  
+# Differential scan on PRs  
+- name: Diff Semgrep Scan (PRs)
+  if: github.event_name == 'pull_request'
+  run: semgrep ci
+```
+
+#### **Custom Rules Publishing Limitations:**
+
+**Issue**: `semgrep publish` requires **one rule per file**
+- Current: `semgrep-rules/webauthn-security.yml` contains 14 rules
+- Required: 14 separate files for publishing
+
+**Publishing Process (If Needed):**
+```bash
+# Split rules into individual files
+semgrep-rules/
+├── webauthn-missing-origin-validation.yml
+├── webauthn-hardcoded-origins.yml  
+├── webauthn-challenge-reuse-risk.yml
+├── webauthn-challenge-storage-without-expiry.yml
+├── webauthn-credential-validation-bypass.yml
+├── webauthn-signature-validation-disabled.yml
+├── webauthn-user-handle-exposure.yml
+├── webauthn-attestation-bypass.yml
+├── webauthn-client-origin-mismatch.yml
+├── webauthn-client-insecure-transport.yml
+├── webauthn-debug-mode-in-production.yml
+├── webauthn-insecure-logging.yml
+├── webauthn-weak-timeout-configuration.yml
+└── webauthn-credential-enumeration-risk.yml
+
+# Publish each rule individually
+semgrep publish webauthn-rules/webauthn-missing-origin-validation.yml
+# ... repeat for all 14 rules
+```
+
+**Publishing Commands:**
+```bash
+# Login to Semgrep
+semgrep login
+
+# Validate individual rule
+semgrep --validate --config webauthn-missing-origin-validation.yml
+
+# Publish to Semgrep Registry
+semgrep publish webauthn-missing-origin-validation.yml
+```
+
+### **✅ Recommended Configuration: FOSS Approach**
+
+**For this project's FOSS security implementation goals:**
+
+```yaml
+# .github/workflows/semgrep-sast.yml
+semgrep scan --config auto --config semgrep-rules/webauthn-security.yml
+```
+
+**Benefits:**
+- ✅ **Complete codebase coverage** (103 findings vs 0 with differential scanning)  
+- ✅ **Custom WebAuthn rules** without account dependency
+- ✅ **True FOSS implementation** aligned with project goals
+- ✅ **No vendor lock-in** or subscription requirements
+- ✅ **Local rule management** without external rule publishing
+
 ## 📋 **Phase 2B: OSV-Scanner Implementation Analysis (2025-08-26)**
 
 ### **Critical Discovery: Gradle Dependency Locking Required**

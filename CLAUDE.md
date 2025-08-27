@@ -634,6 +634,7 @@ packages:
 - Use `testStorageModule` for integration tests (in-memory storage)
 - All tests must pass with `./gradlew test` before claiming completion
 - Always verify Android tests pass: `cd android-test-client && ./gradlew connectedAndroidTest`
+- **🚨 NEVER commit changes automatically** - Always let user review changes before committing
 
 ---
 

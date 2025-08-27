@@ -50,10 +50,8 @@ rules:
     languages: [kotlin, java]
     patterns:
       - pattern-either:
-          - pattern: .origins(setOf("http://localhost:$PORT", ...))
-          - pattern: .origins(Arrays.asList("http://localhost:$PORT", ...))
-          - pattern: .origins(listOf("http://localhost:$PORT", ...))
-          - pattern: .allowOriginPort($PORT)
+          - pattern: $OBJ.origins($ORIGINS)
+          - pattern: $OBJ.allowOriginPort($PORT)
       - pattern-not-inside: |
           @Test
           ...
@@ -165,10 +163,10 @@ rules:
     languages: [kotlin, java]
     patterns:
       - pattern-either:
-          - pattern: .allowUntrustedAttestation(true)
-          - pattern: .validateSignatureCounter(false)
-          - pattern: .allowCredentialCloning(true)
-          - pattern: .strictTimestampValidation(false)
+          - pattern: $OBJ.allowUntrustedAttestation(true)
+          - pattern: $OBJ.validateSignatureCounter(false)
+          - pattern: $OBJ.allowCredentialCloning(true)
+          - pattern: $OBJ.strictTimestampValidation(false)
     metadata:
       category: security
       technology: [webauthn]
@@ -210,8 +208,8 @@ rules:
     languages: [kotlin, java]
     patterns:
       - pattern-either:
-          - pattern: .attestationConveyancePreference(AttestationConveyancePreference.NONE)
-          - pattern: .allowUntrustedAttestation(true)
+          - pattern: $OBJ.attestationConveyancePreference(AttestationConveyancePreference.NONE)
+          - pattern: $OBJ.allowUntrustedAttestation(true)
       - pattern-not-inside: |
           @Test
           ...
@@ -265,14 +263,13 @@ rules:
       - pattern-either:
           - pattern: |
               const baseURL = "http://$DOMAIN"
-              ...
           - pattern: |
               axios.create({
-                baseURL: "http://$DOMAIN"
-                ...
+                baseURL: "http://$DOMAIN",
+                $...ARGS
               })
           - pattern: |
-              fetch("http://$DOMAIN/$PATH", ...)
+              fetch("http://$DOMAIN/$PATH", $...ARGS)
       - pattern-not-inside: |
           // test$...
           ...
@@ -298,9 +295,7 @@ rules:
           - pattern: |
               val debug = true
               ...
-          - pattern: |
-              .debug(true)
-              ...
+          - pattern: $OBJ.debug(true)
           - pattern: |
               if (true) { // debug mode
                 ...
@@ -332,20 +327,12 @@ rules:
               println($CREDENTIAL)
           - pattern: |
               System.out.println($CREDENTIAL)
-      - pattern-inside:
-          pattern-either:
-            - pattern: |
-                $CREDENTIAL: PublicKeyCredential
-                ...
-            - pattern: |
-                $CREDENTIAL: RegistrationResult
-                ...
-            - pattern: |
-                $CREDENTIAL: AssertionResult
-                ...
-            - pattern: |
-                $CHALLENGE: ByteArray
-                ...
+      - pattern-inside: |
+          fun $FUNC(...) {
+            ...
+            logger.$LEVEL("...", $VAR, ...)
+            ...
+          }
     metadata:
       category: security
       technology: [webauthn]
@@ -361,10 +348,8 @@ rules:
     languages: [kotlin, java]
     patterns:
       - pattern-either:
-          - pattern: |
-              .timeout($TIMEOUT)
-          - pattern: |
-              .timeoutMillis($TIMEOUT)
+          - pattern: $OBJ.timeout($TIMEOUT)
+          - pattern: $OBJ.timeoutMillis($TIMEOUT)
     pattern-where:
       - metavariable-comparison:
           metavariable: $TIMEOUT

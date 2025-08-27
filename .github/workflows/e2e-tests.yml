@@ -774,9 +774,17 @@ jobs:
 
           # Check for parallel execution (any two or more jobs executed)
           EXECUTED_COUNT=0
-          [[ "$WEB_EXECUTED" == "true" ]] && ((EXECUTED_COUNT++))
-          [[ "$ANDROID_EXECUTED" == "true" ]] && ((EXECUTED_COUNT++))
-          [[ "$DAST_EXECUTED" == "true" ]] && ((EXECUTED_COUNT++))
+          if [[ "$WEB_EXECUTED" == "true" ]]; then
+            EXECUTED_COUNT++
+          fi
+
+          if [[ "$ANDROID_EXECUTED" == "true" ]]; then
+            EXECUTED_COUNT++
+          fi
+
+          if [[ "$DAST_EXECUTED" == "true" ]]; then
+            EXECUTED_COUNT++
+          fi
 
           if [[ $EXECUTED_COUNT -gt 1 ]]; then
             PARALLEL_EXECUTION="true"

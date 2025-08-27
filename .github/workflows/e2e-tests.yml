@@ -528,7 +528,7 @@ jobs:
           TEST_CREDENTIALS_IMAGE=${{ env.TEST_CREDENTIALS_IMAGE }}
           EOF
           
-          # Create docker-compose override for DAST scanning
+          # Create docker compose override for DAST scanning
           cat > docker-compose.dast-override.yml << 'EOF'
           services:
             webauthn-server:
@@ -544,13 +544,13 @@ jobs:
           
           echo "🚀 Starting services with secure Docker Compose setup..."
           
-          # Start services using existing docker-compose with override
-          docker-compose -f docker-compose.yml -f docker-compose.dast-override.yml up -d
+          # Start services using existing docker compose with override
+          docker compose -f docker-compose.yml -f docker-compose.dast-override.yml up -d
           
           # Wait for services to be ready using existing health checks
           echo "⏳ Waiting for services to be ready..."
           for i in {1..60}; do
-            if docker-compose -f docker-compose.yml -f docker-compose.dast-override.yml ps | grep -q "(healthy)" ; then
+            if docker compose -f docker-compose.yml -f docker-compose.dast-override.yml ps | grep -q "(healthy)" ; then
               echo "✅ Services are healthy and ready for DAST scanning"
               break
             fi
@@ -635,7 +635,7 @@ jobs:
         working-directory: webauthn-server
         run: |
           echo "🧹 Cleaning up Docker Compose services..."
-          docker-compose -f docker-compose.yml -f docker-compose.dast-override.yml down -v || true
+          docker compose -f docker-compose.yml -f docker-compose.dast-override.yml down -v || true
           
           # Clean up override file
           rm -f docker-compose.dast-override.yml || true

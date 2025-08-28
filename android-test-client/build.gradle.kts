@@ -15,10 +15,15 @@ buildscript {
 // NOTE: Repository configuration moved to settings.gradle.kts 
 // when using dependencyResolutionManagement
 
-// Enable dependency locking for Android project and all subprojects
-// Provides supply chain security by ensuring exact dependency versions
+// Enable selective dependency locking for Android project and all subprojects
+// Provides supply chain security while allowing staging client library flexibility
 allprojects {
     dependencyLocking {
+        // Lock all configurations except those that might need staging client library versions
+        // This allows CI workflows to dynamically replace client library versions for E2E testing
+        // while maintaining security for all other dependencies
+        ignoredDependencies.add("io.github.hitoshura25:mpo-webauthn-android-client")
+        ignoredDependencies.add("io.github.hitoshura25:mpo-webauthn-android-client-staging")
         lockAllConfigurations()
     }
 }

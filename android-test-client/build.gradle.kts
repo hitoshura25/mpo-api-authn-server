@@ -14,3 +14,11 @@ buildscript {
 
 // NOTE: Repository configuration moved to settings.gradle.kts 
 // when using dependencyResolutionManagement
+
+// Enable dependency locking for Android project and all subprojects
+// Provides supply chain security by ensuring exact dependency versions
+allprojects {
+    dependencyLocking {
+        lockAllConfigurations()
+    }
+}

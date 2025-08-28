@@ -25,6 +25,12 @@ repositories {
     mavenCentral()
 }
 
+// Dependency locking configuration for supply chain security
+// Ensures exact dependency versions are used across builds
+dependencyLocking {
+    lockAllConfigurations()
+}
+
 // Define versions to match generated client
 val jakartaAnnotationVersion = "1.3.5"
 

@@ -37,4 +37,10 @@ subprojects {
         ignoreFailures.set(false)
         enableExperimentalRules.set(false)
     }
+
+    // Enable dependency locking for all configurations across all subprojects
+    // This provides supply chain security by locking exact dependency versions
+    dependencyLocking {
+        lockAllConfigurations()
+    }
 }

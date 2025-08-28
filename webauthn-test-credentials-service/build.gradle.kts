@@ -38,6 +38,12 @@ repositories {
     mavenCentral()
 }
 
+// Dependency locking configuration (also configured at root level)
+// Provides supply chain security by ensuring exact dependency versions
+dependencyLocking {
+    lockAllConfigurations()
+}
+
 dependencies {
     // Force specific versions to avoid configuration cache issues with version ranges
     constraints {

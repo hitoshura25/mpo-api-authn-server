@@ -526,6 +526,60 @@ fi
 - **Arithmetic Expansion**: `((expr))` can return non-zero exit codes for certain operations
 - **Pre-increment Evaluation**: `VAR++` evaluates current value before incrementing, causing issues when starting from 0
 
+#### **🚨 CRITICAL: Format Migration Validation (August 2025)**
+**When changing output formats (JSON↔SARIF, CSV↔JSON, etc.), ALWAYS validate ALL references are updated to prevent silent failures:**
+
+**THE PROBLEM**: Format migrations often leave stale references causing workflows to succeed but produce wrong results.
+
+#### **Mandatory Format Migration Checklist:**
+- [ ] **Environment Variables**: Update all `*_FILE` environment variables to new format
+- [ ] **Artifact Uploads**: Remove old format from upload paths
+- [ ] **Processing Scripts**: Update all file loading/parsing logic
+- [ ] **Function Implementations**: Ensure format-specific functions exist and work
+- [ ] **Workflow Dependencies**: Verify downstream jobs expect the new format
+- [ ] **Integration Testing**: Validate workflow output matches script input
+
+#### **Common Format Migration Failures:**
+```yaml
+# ❌ WRONG: Environment variable still points to old format
+env:
+  SCAN_RESULTS_FILE: results.json  # But workflow generates results.sarif
+
+# ✅ CORRECT: All references updated to new format  
+env:
+  SCAN_RESULTS_FILE: results.sarif
+
+# ❌ WRONG: Artifact upload includes non-existent old format files
+path: |
+  results.json   # Doesn't exist anymore
+  results.sarif  
+  
+# ✅ CORRECT: Only upload files that actually exist
+path: |
+  results.sarif
+```
+
+#### **Validation Pattern:**
+```bash
+# Verify ALL format references updated
+grep -r "old-format-extension" .github/workflows/ scripts/
+grep -r "OLD_FORMAT_FILE" .github/workflows/
+```
+
+**Recent Example**: Trivy SARIF-only optimization failed because:
+- ✅ Workflow generated SARIF correctly (69 vulnerabilities found)
+- ❌ Environment variable still referenced JSON (`results.json`)
+- ❌ Script loaded wrong file, showing 0 vulnerabilities in PR comments
+- ❌ Artifact upload still tried to include non-existent JSON files
+
+**Prevention**: Always trace data flow from generation → processing → consumption when changing formats.
+```
+
+**WHY THIS HAPPENS:**
+- **GitHub Actions Environment**: Runs with strict error handling (`set -e` equivalent behavior)
+- **Arithmetic Expansion**: `((expr))` can return non-zero exit codes for certain operations
+- **Pre-increment Evaluation**: `VAR++` evaluates current value before incrementing, causing issues when starting from 0
+
 **VALIDATION PATTERN:**
 ```bash
 # Test arithmetic operations locally before committing

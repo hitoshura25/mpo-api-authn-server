@@ -298,7 +298,6 @@ jobs:
         with:
           name: docker-security-scan-results-trivy-action
           path: |
-            docker-security-scan-results.json
             docker-security-scan-results.sarif
             *-comprehensive.sarif
           retention-days: 30
@@ -318,7 +317,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
-          SCAN_RESULTS_FILE: docker-security-scan-results.json
+          SCAN_RESULTS_FILE: docker-security-scan-results.sarif
         run: |
           echo "📝 Posting SARIF-based security scan results to PR #${{ github.event.pull_request.number || 'N/A' }}"
           echo "🔄 Using SARIF parsing instead of JSON for PR comments"

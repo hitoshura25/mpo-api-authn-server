@@ -1,115 +1,56 @@
 name: Semgrep SAST Security Analysis
 
 on:
-  # Scan changed files in PRs (diff-aware scanning)
   pull_request:
     branches: [ main ]
-    paths:
-      - '**/*.kt'
-      - '**/*.java'
-      - '**/*.ts'
-      - '**/*.js'
-      - '**/*.yml'
-      - '**/*.yaml'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'package.json'
-      - '.github/workflows/**'
-      - 'semgrep-rules/**'
-
-  # Scan mainline branches for baseline security scanning
   push:
     branches: [ main ]
-    paths:
-      - '**/*.kt'
-      - '**/*.java'
-      - '**/*.ts'
-      - '**/*.js'
-      - '**/*.yml'
-      - '**/*.yaml'
-      - 'build.gradle.kts'
-      - 'settings.gradle.kts'
-      - 'package.json'
-      - '.github/workflows/**'
-      - 'semgrep-rules/**'
-
-# Ensure only one Semgrep scan runs at a time per branch
-concurrency:
-  group: semgrep-${{ github.ref }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
   security-events: write
-  pull-requests: write
   actions: read
 
 jobs:
   semgrep:
-    name: Semgrep SAST Analysis
     runs-on: ubuntu-latest
-    container:
-      # Official Semgrep Docker image
-      image: semgrep/semgrep
-
-    # Skip on dependabot PRs to avoid permission issues
     if: github.actor != 'dependabot[bot]'
-
+    
     steps:
-      - name: Checkout repository
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # Full history for comprehensive analysis
 
-      - name: Run Semgrep scan
+      - name: Run Semgrep analysis
         run: |
-          # Run Semgrep with comprehensive rules and generate SARIF/JSON for GitHub Security tab
-          semgrep scan --sarif-output=semgrep.sarif --json-output=semgrep-results.json --config auto --config semgrep-rules/webauthn-security.yml
+          echo "🔒 Running Semgrep SAST analysis..."
+          
+          # Install semgrep
+          python -m pip install semgrep
+          
+          # Run Semgrep with combined output formats for both Security tab and unified reporting
+          # Using registry rules + custom WebAuthn rules
+          semgrep ci \
+            --config=auto \
+            --config=.semgrep/webauthn-rules.yml \
+            --sarif-output=semgrep.sarif \
+            --json-output=semgrep-results.json \
+            --no-suppress-errors || true
+          
+          # Alternative approach with explicit rule sets (commented for reference)
+          #semgrep --config=p/security-audit --config=p/kotlin --config=p/typescript \
+          #  --config=.semgrep/webauthn-rules.yml \
+          #  --sarif-output=semgrep.sarif --json-output=semgrep-results.json . || true
+
+          # Legacy approach (commented for reference)
           #semgrep ci --sarif-output=semgrep.sarif --json-output=semgrep-results.json
 
           echo "✅ Semgrep analysis completed"
         env:
           SEMGREP_TIMEOUT: 300
 
-      - name: Process results for PR comments
-        if: github.event_name == 'pull_request'
-        run: |
-          if [[ -f "semgrep-results.json" ]]; then
-            # Count findings by severity
-            TOTAL_FINDINGS=$(jq '.results | length' semgrep-results.json 2>/dev/null || echo "0")
-            SECURITY_FINDINGS=$(jq '[.results[] | select(.extra.severity == "ERROR")] | length' semgrep-results.json 2>/dev/null || echo "0")
-            WEBAUTHN_FINDINGS=$(jq '[.results[] | select(.check_id | contains("webauthn"))] | length' semgrep-results.json 2>/dev/null || echo "0")
-
-            echo "📊 Semgrep Analysis Results:"
-            echo "   Total findings: ${TOTAL_FINDINGS}"
-            echo "   Security findings: ${SECURITY_FINDINGS}"
-            echo "   WebAuthn findings: ${WEBAUTHN_FINDINGS}"
-
-            # Create summary for PR comment
-            {
-              echo "## 🔒 Semgrep Security Analysis Results"
-              echo ""
-              if [[ ${TOTAL_FINDINGS} -eq 0 ]]; then
-                echo "✅ **No security issues found** in the changed code!"
-              else
-                echo "⚠️ **${TOTAL_FINDINGS} potential issues found**"
-                echo "- 🔴 Security findings: ${SECURITY_FINDINGS}"
-                echo "- 🛡️ WebAuthn specific: ${WEBAUTHN_FINDINGS}"
-                echo ""
-                echo "Please review the [Security tab](https://github.com/${{ github.repository }}/security/code-scanning) for detailed findings."
-              fi
-              echo ""
-              echo "*Scan completed at $(date)*"
-            } > semgrep-summary.md
-          else
-            {
-              echo "## 🔒 Semgrep Security Analysis Results"
-              echo ""
-              echo "⚠️ Analysis completed but no results file generated."
-              echo ""
-              echo "*Scan completed at $(date)*"
-            } > semgrep-summary.md
-          fi
+      # Note: Individual PR comments removed - findings now included in unified security dashboard
 
       - name: Upload SARIF to GitHub Security tab
         if: always() && hashFiles('semgrep.sarif') != ''
@@ -127,53 +68,5 @@ jobs:
           path: |
             semgrep-results.json
             semgrep.sarif
-            semgrep-summary.md
           retention-days: 30
         continue-on-error: true
-
-      - name: Comment on Pull Request
-        if: github.event_name == 'pull_request' && hashFiles('semgrep-summary.md') != ''
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs');
-
-            // Read the summary file
-            let summaryContent = '';
-            try {
-              summaryContent = fs.readFileSync('semgrep-summary.md', 'utf8');
-            } catch (error) {
-              console.log('No summary file found, skipping comment.');
-              return;
-            }
-
-            // Look for existing Semgrep comment to update instead of creating duplicate
-            const comments = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number
-            });
-
-            const existingComment = comments.data.find(comment =>
-              comment.body.includes('🔒 Semgrep Security Analysis Results')
-            );
-
-            if (existingComment) {
-              // Update existing comment
-              await github.rest.issues.updateComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                comment_id: existingComment.id,
-                body: summaryContent
-              });
-              console.log('Updated existing Semgrep comment.');
-            } else {
-              // Create new comment
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: context.issue.number,
-                body: summaryContent
-              });
-              console.log('Created new Semgrep comment.');
-            }

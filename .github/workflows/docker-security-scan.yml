@@ -311,19 +311,6 @@ jobs:
           sarif_file: docker-security-scan-results.sarif
           category: docker-security-trivy-action
 
-      - name: Post security scan results to PR (SARIF-based)
-        if: always() && github.event_name == 'pull_request'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number || 'N/A' }}
-          SCAN_RESULTS_FILE: docker-security-scan-results.sarif
-        run: |
-          echo "📝 Posting SARIF-based security scan results to PR #${{ github.event.pull_request.number || 'N/A' }}"
-          echo "🔄 Using SARIF parsing instead of JSON for PR comments"
-          chmod +x scripts/ci/security-scan-pr-comment.cjs
-          node scripts/ci/security-scan-pr-comment.cjs
-
       - name: Security scan summary
         if: always()
         run: |

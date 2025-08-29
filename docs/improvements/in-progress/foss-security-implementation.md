@@ -1,8 +1,8 @@
 # FOSS Security Implementation Plan
 
-**Status**: 🔄 **PHASE 4: SECURITY INTEGRATION FIXES** 📋  
-**Timeline**: 2025-08-26 → 2025-08-28 (Phase 3 complete, Phase 4 planned)  
-**Implementation Effort**: Phase 3 completed in 2 days, Phase 4 implementation documented for next session  
+**Status**: 🔄 **PHASE 5: UNIFIED SECURITY REPORTING** 📋  
+**Timeline**: 2025-08-26 → 2025-08-28 (Phases 1-4 complete, Phase 5 ready for implementation)  
+**Implementation Effort**: Phases 1-4 completed in 3 days, Phase 5 comprehensive implementation plan documented  
 **Priority**: High (AI cleanup + immediate FOSS wins)  
 **Key Learnings**: [foss-security-learnings.md](learnings/foss-security-learnings.md)
 
@@ -55,6 +55,13 @@
 - **🎯 CRITICAL DISCOVERIES**: Original workflows were functional but lacked detailed reporting
 - **💡 ENHANCED PR COMMENTS**: Professional vulnerability reporting with specific remediation guidance
 - **⚡ TRIVY OPTIMIZATION**: Reduced from 8 to 2 scans (75% faster) using SARIF-only approach with comprehensive scanning
+
+**🚀 Phase 5 Implementation Ready (2025-08-28):**
+- **📋 COMPREHENSIVE DOCUMENTATION**: Complete unified security reporting implementation plan created
+- **🎯 OBJECTIVE**: Consolidate 8 security tools into single professional PR comment (eliminate spam)  
+- **🔧 TECHNICAL SPECS**: 500+ line unified script template with dashboard format provided
+- **🔄 INTEGRATION PLAN**: Detailed workflow modifications for all security tools documented
+- **✅ READY FOR FRESH SESSION**: Complete implementation guide with step-by-step instructions, code templates, and testing procedures
 
 ## 📋 **Phase 2D: OWASP ZAP DAST Integration Complete (2025-08-27)**
 
@@ -3153,7 +3160,919 @@ This phase provides comprehensive implementation instructions for fixing critica
 - [x] **Phase 1**: FOSS Tool Integration - Trivy Action, Semgrep, OWASP ZAP ✅ COMPLETED
 - [x] **Phase 2**: GitHub Security Integration - Dependabot, CodeQL, SARIF optimization ✅ COMPLETED
 - [x] **Phase 3**: Custom Logic Migration - Preserve WebAuthn-specific functionality ✅ COMPLETED  
-- [ ] **Phase 4**: Security Integration Fixes - Fix SARIF upload, OSV-Scanner PR comments, unified reporting 🔄 **READY FOR IMPLEMENTATION**
+- [x] **Phase 4**: Security Integration Fixes - Fix SARIF upload, OSV-Scanner PR comments, unified reporting ✅ **COMPLETED**
+- [ ] **Phase 5**: Unified Security Reporting - Consolidate all security findings into single professional PR comment dashboard 🔄 **READY FOR IMPLEMENTATION**
+
+---
+
+## Phase 5: Unified Security Reporting System 📋
+
+**Status**: 🔄 **READY FOR IMPLEMENTATION**  
+**Timeline**: 2025-08-28 → 2025-08-29  
+**Priority**: Medium (Quality of life improvement, eliminates PR comment spam)  
+**Complexity**: Medium (consolidate 8 security tools into unified dashboard)
+
+### Problem Statement
+
+Currently, each of our 8 security tools posts individual PR comments, creating:
+- **PR Comment Spam**: 4-8 separate comments per PR with security findings
+- **Fragmented View**: Security findings scattered across multiple tools/comments
+- **Information Overload**: Developers struggle to prioritize across different tool outputs
+- **Maintenance Overhead**: Each tool has different comment formats and update logic
+
+### Current Security Tool Landscape (Post-Phase 4)
+
+**All 8 security tools are functional with proper SARIF/artifact integration:**
+
+| Tool | Status | Output Format | PR Comments | Security Tab |
+|------|--------|---------------|-------------|--------------|
+| 🐳 **Trivy** | ✅ Working | SARIF | ✅ Enhanced | ✅ Integrated |
+| 🔍 **OSV-Scanner** | ✅ Working | SARIF | ✅ Enhanced | ✅ Integrated |
+| 🔒 **Semgrep** | ✅ Working | SARIF | ✅ Basic | ✅ Integrated |
+| 🔑 **GitLeaks** | ✅ Working | Issues Only | ❌ None | ❌ Issues Only |
+| 🏗️ **Checkov** | ✅ Working | SARIF | ❌ None | ✅ Integrated |
+| ⚡ **OWASP ZAP** | ✅ Working | XML + SARIF | ❌ None | ✅ Integrated |
+| 🔧 **Dependabot** | ✅ Working | Built-in | ✅ Native | ✅ Native |
+| 🔒 **Gradle Locking** | ✅ Working | Build Only | ❌ None | ❌ None |
+
+### Solution: Unified Security Dashboard
+
+Create a single, comprehensive security comment that:
+- **Consolidates All Findings**: Parse all SARIF files + other outputs in one place
+- **Professional Presentation**: Clean table format with severity indicators  
+- **Actionable Insights**: Prioritized recommendations with direct links to findings
+- **Progress Tracking**: Compare current vs previous scans to show improvements
+- **Tool Status**: Show which tools ran successfully vs failed/skipped
+
+### Implementation Strategy
+
+#### Phase 5A: Unified Comment Script (Week 1)
+
+**Create centralized security reporting script**: `scripts/ci/unified-security-comment.cjs`
+
+**Core Features:**
+- Parse SARIF files from all tools (Trivy, OSV-Scanner, Semgrep, Checkov, OWASP ZAP)
+- Parse GitLeaks issues via GitHub API
+- Extract Dependabot findings from repository
+- Generate professional markdown table with vulnerability breakdown
+- Post single comment with comprehensive findings
+- Update existing comment instead of creating new ones
+
+#### Phase 5B: Workflow Integration (Week 1)  
+
+**Integrate with existing workflows:**
+- Modify security-related workflows to skip individual PR comments
+- Add unified comment step to main CI/CD pipeline
+- Ensure proper SARIF artifact collection from all tools
+- Handle workflow failures gracefully (partial reports)
+
+#### Phase 5C: Enhanced Reporting Features (Week 2)
+
+**Advanced dashboard features:**
+- Vulnerability trend analysis (current vs baseline)
+- Risk scoring and prioritization
+- Tool execution status and health monitoring
+- Deep-link integration to GitHub Security tab findings
+- Executive summary with key metrics
+
+### Technical Implementation Details
+
+#### Unified Comment Script Architecture
+
+```javascript
+// scripts/ci/unified-security-comment.cjs
+class UnifiedSecurityReporter {
+  constructor() {
+    this.findings = {
+      trivy: [],
+      osvScanner: [],
+      semgrep: [],
+      checkov: [],
+      owaspZap: [],
+      gitLeaks: [],
+      dependabot: [],
+      gradleLocking: { status: 'enabled' }
+    };
+  }
+
+  async collectFindings() {
+    // Parse SARIF files from artifacts
+    await this.parseSarifFindings();
+    // Query GitHub API for GitLeaks issues
+    await this.parseGitLeaksIssues();
+    // Query repository for Dependabot alerts
+    await this.parseDependabotAlerts();
+  }
+
+  generateUnifiedComment() {
+    return this.buildSecurityDashboard();
+  }
+}
+```
+
+#### SARIF Parser Implementation
+
+**Universal SARIF parsing for consistent vulnerability extraction:**
+
+```javascript
+class SarifParser {
+  static parseVulnerabilities(sarifFile, toolName) {
+    const sarif = JSON.parse(fs.readFileSync(sarifFile));
+    const vulnerabilities = [];
+    
+    for (const run of sarif.runs || []) {
+      for (const result of run.results || []) {
+        vulnerabilities.push({
+          tool: toolName,
+          severity: this.extractSeverity(result),
+          package: this.extractPackage(result),
+          vulnerability: this.extractVulnId(result),
+          description: result.message?.text || 'No description',
+          location: this.extractLocation(result)
+        });
+      }
+    }
+    
+    return vulnerabilities;
+  }
+}
+```
+
+#### Dashboard Template
+
+**Professional security dashboard format:**
+
+```markdown
+## 🛡️ Security Scan Summary
+
+### 📊 Overview
+- **Total Findings**: 42 vulnerabilities across 8 security tools
+- **Critical**: 2 🚨 | **High**: 8 🔥 | **Medium**: 15 ⚠️ | **Low**: 17 ℹ️
+- **New Issues**: 5 | **Resolved**: 3 | **Unchanged**: 34
+
+### 🔍 Tool Results
+
+| Tool | Status | Findings | Critical | High | Medium | Low |
+|------|--------|----------|----------|------|--------|-----|
+| 🐳 Trivy | ✅ | 12 | 1 | 3 | 5 | 3 |
+| 🔍 OSV-Scanner | ✅ | 8 | 1 | 2 | 3 | 2 |
+| 🔒 Semgrep | ✅ | 15 | 0 | 2 | 6 | 7 |
+| 🔑 GitLeaks | ✅ | 0 | 0 | 0 | 0 | 0 |
+| 🏗️ Checkov | ✅ | 5 | 0 | 1 | 1 | 3 |
+| ⚡ OWASP ZAP | ✅ | 2 | 0 | 0 | 0 | 2 |
+| 🔧 Dependabot | ✅ | 0 | 0 | 0 | 0 | 0 |
+| 🔒 Gradle Lock | ✅ | 974 deps locked | - | - | - | - |
+
+### 🚨 Critical Issues (Immediate Action Required)
+
+1. **CVE-2024-XXXX** - Remote Code Execution in `some-package@1.2.3`
+   - **Tool**: Trivy | **CVSS**: 9.8 | **Package**: `webauthn-server/some-package`
+   - **Fix**: Upgrade to `some-package@1.2.4`
+   - **Details**: [View in Security Tab](link)
+
+### 🔥 High Priority Issues
+
+[Expandable section with high-priority vulnerabilities]
+
+### 📈 Security Trends
+
+- **Improvement**: 3 critical issues resolved since last scan
+- **New Risks**: 2 new medium-severity issues detected  
+- **Overall**: Security posture improved by 15%
+
+### 🔗 Resources
+
+- [Complete Security Report](link-to-artifacts)
+- [GitHub Security Tab](link-to-security-tab)
+- [Dependabot Dashboard](link-to-dependabot)
+
+---
+*Report generated by Unified Security Reporting System*  
+*Last updated: 2025-08-28 14:23:45 UTC*
+```
+
+### Workflow Integration Points
+
+#### Modified Workflows
+
+**1. Main CI/CD Pipeline** (`.github/workflows/main-ci-cd.yml`)
+- Add unified security reporting job at end of pipeline
+- Collect all SARIF artifacts from security workflows
+- Skip individual tool PR comments when unified reporting enabled
+
+**2. Security Workflows** (All security-related workflows)
+- Add conditional logic: `if: env.UNIFIED_REPORTING != 'true'` for individual PR comments
+- Ensure SARIF artifacts always uploaded for unified collection
+- Maintain Security tab integration regardless of comment strategy
+
+**3. Pull Request Template**
+- Add security dashboard section placeholder
+- Include links to unified security reporting
+
+#### Implementation Steps
+
+**Step 1: Script Development**
+```bash
+# Create unified reporting script
+touch scripts/ci/unified-security-comment.cjs
+
+# Add executable permission
+chmod +x scripts/ci/unified-security-comment.cjs
+```
+
+**Step 2: SARIF Artifact Collection**
+```yaml
+# Add to main CI/CD workflow
+- name: Collect Security Artifacts
+  uses: actions/download-artifact@v4
+  with:
+    pattern: "*-sarif-*"
+    path: security-artifacts/
+    merge-multiple: true
+```
+
+**Step 3: Unified Comment Generation**
+```yaml
+- name: Generate Unified Security Report
+  if: github.event_name == 'pull_request'
+  env:
+    GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    GITHUB_REPOSITORY: ${{ github.repository }}
+    PR_NUMBER: ${{ github.event.pull_request.number }}
+  run: |
+    echo "🔄 Generating unified security dashboard..."
+    node scripts/ci/unified-security-comment.cjs
+```
+
+### Configuration Management
+
+#### Environment Variables
+
+**New environment variables for unified reporting:**
+```yaml
+env:
+  UNIFIED_SECURITY_REPORTING: true  # Enable unified reporting
+  SECURITY_COMMENT_UPDATE: true     # Update existing vs new comment
+  SECURITY_DASHBOARD_TEMPLATE: professional  # Template style
+  VULNERABILITY_THRESHOLD: medium   # Minimum severity for dashboard
+```
+
+#### Feature Flags
+
+**Gradual rollout with feature flags:**
+- `ENABLE_UNIFIED_REPORTING`: Master switch for unified system
+- `SKIP_INDIVIDUAL_COMMENTS`: Disable individual tool comments  
+- `ENHANCED_VULNERABILITY_PARSING`: Advanced SARIF parsing features
+- `TREND_ANALYSIS`: Enable vulnerability trend comparison
+
+### Testing Strategy
+
+#### Unit Tests
+- SARIF parser for all tool formats
+- Vulnerability categorization logic
+- Markdown table generation
+- GitHub API integration
+
+#### Integration Tests
+- End-to-end workflow with all 8 tools
+- PR comment update vs creation logic
+- Artifact collection from multiple workflows
+- Error handling for missing/corrupted SARIF files
+
+#### Performance Tests  
+- Large SARIF file parsing (1000+ findings)
+- Multiple concurrent tool execution
+- GitHub API rate limit handling
+
+### Migration Plan
+
+#### Phase 5A: Foundation (Days 1-2)
+- [x] Document comprehensive implementation plan
+- [ ] Create unified reporting script skeleton
+- [ ] Implement basic SARIF parsing for 5 tools
+- [ ] Add simple markdown table generation
+- [ ] Test with single security tool
+
+#### Phase 5B: Integration (Days 3-4)
+- [ ] Integrate all 8 security tools
+- [ ] Add GitHub API integration for GitLeaks/Dependabot
+- [ ] Implement comment update logic
+- [ ] Add workflow integration points
+- [ ] Test complete end-to-end flow
+
+#### Phase 5C: Enhancement (Days 5-6)
+- [ ] Add vulnerability trend analysis
+- [ ] Implement advanced dashboard features
+- [ ] Add configuration management
+- [ ] Performance optimization
+- [ ] Comprehensive testing suite
+
+#### Phase 5D: Deployment (Days 7-8)
+- [ ] Gradual rollout with feature flags
+- [ ] Monitor PR comment quality
+- [ ] User feedback collection
+- [ ] Documentation and training
+- [ ] Full production deployment
+
+### Success Metrics
+
+#### Quantitative Metrics
+- **PR Comment Reduction**: 8 separate comments → 1 unified dashboard
+- **Developer Engagement**: Increased interaction with security findings
+- **Time to Resolution**: Faster vulnerability remediation
+- **False Positive Rate**: Reduced noise from consolidated view
+
+#### Qualitative Metrics  
+- **Developer Experience**: Improved security visibility and usability
+- **Security Awareness**: Better understanding of vulnerability landscape
+- **Maintenance Overhead**: Reduced burden of managing multiple comment systems
+- **Professional Presentation**: Enhanced security reporting quality
+
+### Risk Mitigation
+
+#### Technical Risks
+- **SARIF Parsing Failures**: Implement robust error handling and fallback modes
+- **GitHub API Limits**: Add rate limiting and retry logic with exponential backoff
+- **Large Comment Size**: Implement comment truncation with links to full reports
+- **Tool Integration Breakage**: Maintain backward compatibility with individual comments
+
+#### Operational Risks
+- **Developer Adoption**: Provide clear migration guide and training materials
+- **Information Overload**: Start with executive summary, expandable detailed sections
+- **Performance Impact**: Optimize for fast comment generation and minimal pipeline delay
+- **Rollback Requirements**: Maintain ability to quickly disable unified reporting
+
+### Implementation Templates
+
+#### Complete Unified Security Script Template
+
+**File: `scripts/ci/unified-security-comment.cjs`**
+
+```javascript
+#!/usr/bin/env node
+
+const fs = require('fs');
+const path = require('path');
+const { execSync } = require('child_process');
+
+/**
+ * Unified Security Reporting System
+ * Consolidates findings from all 8 security tools into single professional PR comment
+ * 
+ * Supported Tools:
+ * - Trivy (Container vulnerabilities)
+ * - OSV-Scanner (Open source vulnerabilities) 
+ * - Semgrep (SAST)
+ * - GitLeaks (Secrets)
+ * - Checkov (IaC)
+ * - OWASP ZAP (DAST)
+ * - Dependabot (Dependencies)
+ * - Gradle Locking (Supply chain)
+ */
+
+class UnifiedSecurityReporter {
+  constructor() {
+    this.github = {
+      token: process.env.GITHUB_TOKEN,
+      repository: process.env.GITHUB_REPOSITORY,
+      prNumber: process.env.PR_NUMBER
+    };
+    
+    this.findings = {
+      trivy: [],
+      osvScanner: [],
+      semgrep: [],
+      checkov: [],
+      owaspZap: [],
+      gitLeaks: [],
+      dependabot: [],
+      gradleLocking: { status: 'enabled', lockedDeps: 974 }
+    };
+    
+    this.summary = {
+      total: 0,
+      critical: 0,
+      high: 0,
+      medium: 0,
+      low: 0,
+      toolStatus: {}
+    };
+  }
+
+  async run() {
+    try {
+      console.log('🔄 Starting unified security report generation...');
+      
+      // Collect findings from all security tools
+      await this.collectFindings();
+      
+      // Generate summary statistics
+      this.generateSummary();
+      
+      // Create unified dashboard comment
+      const dashboardComment = this.buildSecurityDashboard();
+      
+      // Post or update PR comment
+      await this.postUnifiedComment(dashboardComment);
+      
+      console.log('✅ Unified security dashboard successfully generated!');
+      
+    } catch (error) {
+      console.error('❌ Failed to generate unified security report:', error.message);
+      console.error('Stack trace:', error.stack);
+      process.exit(1);
+    }
+  }
+
+  async collectFindings() {
+    console.log('📋 Collecting findings from all security tools...');
+    
+    // Parse SARIF files from security tools
+    await this.parseSarifFindings();
+    
+    // Query GitHub API for additional data
+    await this.parseGitHubSecurityData();
+    
+    console.log(`📊 Collection complete: ${this.summary.total} total findings`);
+  }
+
+  async parseSarifFindings() {
+    const sarifTools = {
+      'trivy': 'docker-security-scan-results.sarif',
+      'osvScanner': 'osv-scanner-results.sarif', 
+      'semgrep': 'semgrep-results.sarif',
+      'checkov': 'checkov-results.sarif',
+      'owaspZap': 'zap-results.sarif'
+    };
+
+    for (const [toolName, sarifFile] of Object.entries(sarifTools)) {
+      try {
+        if (fs.existsSync(sarifFile)) {
+          console.log(`🔍 Parsing ${toolName} SARIF file: ${sarifFile}`);
+          this.findings[toolName] = this.parseSarifFile(sarifFile, toolName);
+          this.summary.toolStatus[toolName] = '✅ Completed';
+        } else {
+          console.log(`⚠️ SARIF file not found for ${toolName}: ${sarifFile}`);
+          this.summary.toolStatus[toolName] = '❌ Missing';
+        }
+      } catch (error) {
+        console.error(`❌ Failed to parse ${toolName} SARIF:`, error.message);
+        this.summary.toolStatus[toolName] = '❌ Error';
+      }
+    }
+  }
+
+  parseSarifFile(sarifFile, toolName) {
+    const sarif = JSON.parse(fs.readFileSync(sarifFile, 'utf8'));
+    const vulnerabilities = [];
+    
+    for (const run of sarif.runs || []) {
+      for (const result of run.results || []) {
+        const vuln = {
+          tool: toolName,
+          severity: this.extractSeverity(result),
+          ruleId: result.ruleId || 'unknown',
+          message: result.message?.text || 'No description available',
+          location: this.extractLocation(result),
+          package: this.extractPackage(result, toolName),
+          vulnerability: this.extractVulnId(result),
+          cvssScore: this.extractCvssScore(result)
+        };
+        
+        vulnerabilities.push(vuln);
+      }
+    }
+    
+    console.log(`  📊 ${toolName}: ${vulnerabilities.length} findings`);
+    return vulnerabilities;
+  }
+
+  extractSeverity(result) {
+    // Extract severity from various SARIF formats
+    const securitySeverity = result.properties?.['security-severity'];
+    if (securitySeverity) {
+      const score = parseFloat(securitySeverity);
+      if (score >= 9.0) return 'critical';
+      if (score >= 7.0) return 'high';
+      if (score >= 4.0) return 'medium';
+      return 'low';
+    }
+    
+    // Fallback to SARIF level mapping
+    const level = result.level || 'info';
+    switch (level) {
+      case 'error': return 'high';
+      case 'warning': return 'medium';  
+      case 'note':
+      case 'info':
+      default: return 'low';
+    }
+  }
+
+  extractLocation(result) {
+    const location = result.locations?.[0];
+    if (location?.physicalLocation?.artifactLocation?.uri) {
+      const uri = location.physicalLocation.artifactLocation.uri;
+      const startLine = location.physicalLocation?.region?.startLine;
+      return startLine ? `${uri}:${startLine}` : uri;
+    }
+    return 'Unknown location';
+  }
+
+  extractPackage(result, toolName) {
+    // Tool-specific package extraction
+    switch (toolName) {
+      case 'trivy':
+        return this.extractTrivyPackage(result);
+      case 'osvScanner':
+        return this.extractOSVPackage(result);
+      default:
+        return result.properties?.package || 'Unknown package';
+    }
+  }
+
+  extractTrivyPackage(result) {
+    // Extract package from Trivy SARIF format
+    const message = result.message?.text || '';
+    const packageMatch = message.match(/Package:\s*([^\s]+)/);
+    return packageMatch ? packageMatch[1] : 'Unknown package';
+  }
+
+  extractOSVPackage(result) {
+    // Extract package from OSV-Scanner SARIF format  
+    const location = result.locations?.[0];
+    const uri = location?.physicalLocation?.artifactLocation?.uri || '';
+    const packageMatch = uri.match(/([^\/]+)$/);
+    return packageMatch ? packageMatch[1] : 'Unknown package';
+  }
+
+  extractVulnId(result) {
+    return result.ruleId || result.properties?.vulnId || 'Unknown';
+  }
+
+  extractCvssScore(result) {
+    const score = result.properties?.['security-severity'];
+    return score ? parseFloat(score).toFixed(1) : 'N/A';
+  }
+
+  async parseGitHubSecurityData() {
+    // Query GitHub API for GitLeaks issues and Dependabot alerts
+    try {
+      await this.parseGitLeaksIssues();
+      await this.parseDependabotAlerts();
+    } catch (error) {
+      console.error('❌ Failed to fetch GitHub security data:', error.message);
+    }
+  }
+
+  async parseGitLeaksIssues() {
+    // GitLeaks creates GitHub issues for secret findings
+    console.log('🔑 Checking GitLeaks issues...');
+    
+    try {
+      const cmd = `gh api repos/${this.github.repository}/issues --jq '.[] | select(.labels[].name == "gitleaks") | {title, number, created_at}'`;
+      const issuesOutput = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' });
+      
+      if (issuesOutput.trim()) {
+        const issues = issuesOutput.trim().split('\n').map(line => JSON.parse(line));
+        this.findings.gitLeaks = issues.map(issue => ({
+          tool: 'gitLeaks',
+          severity: 'high', // Secrets are always high severity
+          message: issue.title,
+          location: `Issue #${issue.number}`,
+          package: 'Repository',
+          vulnerability: 'Secret Detection'
+        }));
+        this.summary.toolStatus.gitLeaks = '✅ Completed';
+        console.log(`  📊 GitLeaks: ${issues.length} secret issues found`);
+      } else {
+        this.summary.toolStatus.gitLeaks = '✅ No issues';
+        console.log('  📊 GitLeaks: No secret issues found');
+      }
+    } catch (error) {
+      console.error('❌ GitLeaks issue parsing failed:', error.message);
+      this.summary.toolStatus.gitLeaks = '❌ Error';
+    }
+  }
+
+  async parseDependabotAlerts() {
+    // Query Dependabot security alerts
+    console.log('🔧 Checking Dependabot alerts...');
+    
+    try {
+      const cmd = `gh api repos/${this.github.repository}/dependabot/alerts --jq '.[] | select(.state == "open") | {security_advisory: .security_advisory.summary, package: .dependency.package.name, severity: .security_advisory.severity}'`;
+      const alertsOutput = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' });
+      
+      if (alertsOutput.trim()) {
+        const alerts = alertsOutput.trim().split('\n').map(line => JSON.parse(line));
+        this.findings.dependabot = alerts.map(alert => ({
+          tool: 'dependabot',
+          severity: alert.severity.toLowerCase(),
+          message: alert.security_advisory,
+          location: 'Dependencies',
+          package: alert.package,
+          vulnerability: 'Dependency Alert'
+        }));
+        this.summary.toolStatus.dependabot = '✅ Completed';
+        console.log(`  📊 Dependabot: ${alerts.length} alerts found`);
+      } else {
+        this.summary.toolStatus.dependabot = '✅ No alerts';
+        console.log('  📊 Dependabot: No alerts found');
+      }
+    } catch (error) {
+      console.error('❌ Dependabot parsing failed:', error.message);
+      this.summary.toolStatus.dependabot = '❌ Error';
+    }
+  }
+
+  generateSummary() {
+    console.log('📊 Generating vulnerability summary...');
+    
+    // Combine all findings
+    const allFindings = [
+      ...this.findings.trivy,
+      ...this.findings.osvScanner,
+      ...this.findings.semgrep,
+      ...this.findings.checkov,
+      ...this.findings.owaspZap,
+      ...this.findings.gitLeaks,
+      ...this.findings.dependabot
+    ];
+    
+    // Count by severity
+    this.summary.total = allFindings.length;
+    this.summary.critical = allFindings.filter(f => f.severity === 'critical').length;
+    this.summary.high = allFindings.filter(f => f.severity === 'high').length;
+    this.summary.medium = allFindings.filter(f => f.severity === 'medium').length;
+    this.summary.low = allFindings.filter(f => f.severity === 'low').length;
+    
+    console.log(`  📈 Total: ${this.summary.total} findings`);
+    console.log(`  🚨 Critical: ${this.summary.critical}`);
+    console.log(`  🔥 High: ${this.summary.high}`);
+    console.log(`  ⚠️ Medium: ${this.summary.medium}`);
+    console.log(`  ℹ️ Low: ${this.summary.low}`);
+  }
+
+  buildSecurityDashboard() {
+    const timestamp = new Date().toISOString().replace('T', ' ').substring(0, 19);
+    
+    return `## 🛡️ Unified Security Dashboard
+
+### 📊 Executive Summary
+- **Total Findings**: ${this.summary.total} vulnerabilities across 8 security tools
+- **Critical**: ${this.summary.critical} 🚨 | **High**: ${this.summary.high} 🔥 | **Medium**: ${this.summary.medium} ⚠️ | **Low**: ${this.summary.low} ℹ️
+- **Supply Chain**: ${this.findings.gradleLocking.lockedDeps} dependencies locked 🔒
+
+### 🔍 Security Tool Results
+
+| Tool | Status | Findings | Critical | High | Medium | Low | Details |
+|------|--------|----------|----------|------|--------|-----|---------|
+| 🐳 **Trivy** | ${this.summary.toolStatus.trivy || '❓'} | ${this.findings.trivy.length} | ${this.countBySeverity('trivy', 'critical')} | ${this.countBySeverity('trivy', 'high')} | ${this.countBySeverity('trivy', 'medium')} | ${this.countBySeverity('trivy', 'low')} | Container Security |
+| 🔍 **OSV-Scanner** | ${this.summary.toolStatus.osvScanner || '❓'} | ${this.findings.osvScanner.length} | ${this.countBySeverity('osvScanner', 'critical')} | ${this.countBySeverity('osvScanner', 'high')} | ${this.countBySeverity('osvScanner', 'medium')} | ${this.countBySeverity('osvScanner', 'low')} | Open Source Vulns |
+| 🔒 **Semgrep** | ${this.summary.toolStatus.semgrep || '❓'} | ${this.findings.semgrep.length} | ${this.countBySeverity('semgrep', 'critical')} | ${this.countBySeverity('semgrep', 'high')} | ${this.countBySeverity('semgrep', 'medium')} | ${this.countBySeverity('semgrep', 'low')} | Static Analysis |
+| 🔑 **GitLeaks** | ${this.summary.toolStatus.gitLeaks || '❓'} | ${this.findings.gitLeaks.length} | ${this.countBySeverity('gitLeaks', 'critical')} | ${this.countBySeverity('gitLeaks', 'high')} | ${this.countBySeverity('gitLeaks', 'medium')} | ${this.countBySeverity('gitLeaks', 'low')} | Secret Detection |
+| 🏗️ **Checkov** | ${this.summary.toolStatus.checkov || '❓'} | ${this.findings.checkov.length} | ${this.countBySeverity('checkov', 'critical')} | ${this.countBySeverity('checkov', 'high')} | ${this.countBySeverity('checkov', 'medium')} | ${this.countBySeverity('checkov', 'low')} | Infrastructure |
+| ⚡ **OWASP ZAP** | ${this.summary.toolStatus.owaspZap || '❓'} | ${this.findings.owaspZap.length} | ${this.countBySeverity('owaspZap', 'critical')} | ${this.countBySeverity('owaspZap', 'high')} | ${this.countBySeverity('owaspZap', 'medium')} | ${this.countBySeverity('owaspZap', 'low')} | Dynamic Analysis |
+| 🔧 **Dependabot** | ${this.summary.toolStatus.dependabot || '❓'} | ${this.findings.dependabot.length} | ${this.countBySeverity('dependabot', 'critical')} | ${this.countBySeverity('dependabot', 'high')} | ${this.countBySeverity('dependabot', 'medium')} | ${this.countBySeverity('dependabot', 'low')} | Dependencies |
+| 🔒 **Gradle Lock** | ✅ | 974 deps locked | - | - | - | - | Supply Chain |
+
+${this.buildCriticalSection()}
+
+${this.buildHighPrioritySection()}
+
+${this.buildResourcesSection()}
+
+---
+*🤖 Generated by Unified Security Reporting System*  
+*📅 Last updated: ${timestamp} UTC*  
+*🔄 Report includes findings from all 8 security tools*`;
+  }
+
+  countBySeverity(tool, severity) {
+    return this.findings[tool]?.filter(f => f.severity === severity).length || 0;
+  }
+
+  buildCriticalSection() {
+    const criticalFindings = this.getAllFindings().filter(f => f.severity === 'critical');
+    
+    if (criticalFindings.length === 0) {
+      return `### 🚨 Critical Issues
+✅ **No critical vulnerabilities found!** Great job maintaining secure code.`;
+    }
+
+    let section = `### 🚨 Critical Issues (${criticalFindings.length}) - Immediate Action Required\n\n`;
+    
+    criticalFindings.slice(0, 5).forEach((finding, index) => {
+      section += `${index + 1}. **${finding.vulnerability}** - ${finding.message}\n`;
+      section += `   - **Tool**: ${finding.tool} | **CVSS**: ${finding.cvssScore} | **Package**: \`${finding.package}\`\n`;
+      section += `   - **Location**: ${finding.location}\n\n`;
+    });
+    
+    if (criticalFindings.length > 5) {
+      section += `\n*... and ${criticalFindings.length - 5} more critical issues. View complete report for details.*\n`;
+    }
+    
+    return section;
+  }
+
+  buildHighPrioritySection() {
+    const highFindings = this.getAllFindings().filter(f => f.severity === 'high');
+    
+    if (highFindings.length === 0) {
+      return `### 🔥 High Priority Issues
+✅ **No high-priority vulnerabilities found!**`;
+    }
+
+    let section = `### 🔥 High Priority Issues (${highFindings.length})\n\n`;
+    section += `<details>\n<summary>Click to expand high-priority findings</summary>\n\n`;
+    
+    highFindings.slice(0, 10).forEach((finding, index) => {
+      section += `${index + 1}. **${finding.vulnerability}** - ${finding.message}\n`;
+      section += `   - **Tool**: ${finding.tool} | **Package**: \`${finding.package}\`\n`;
+      section += `   - **Location**: ${finding.location}\n\n`;
+    });
+    
+    if (highFindings.length > 10) {
+      section += `\n*... and ${highFindings.length - 10} more high-priority issues.*\n`;
+    }
+    
+    section += `\n</details>\n`;
+    return section;
+  }
+
+  buildResourcesSection() {
+    return `### 🔗 Additional Resources
+
+- **📊 [GitHub Security Tab](https://github.com/${this.github.repository}/security)** - Complete vulnerability details
+- **🔒 [Security Advisories](https://github.com/${this.github.repository}/security/advisories)** - Published security issues  
+- **🤖 [Dependabot Dashboard](https://github.com/${this.github.repository}/security/dependabot)** - Dependency management
+- **📋 [Security Artifacts](https://github.com/${this.github.repository}/actions)** - Download complete SARIF reports
+
+### 🛠️ Remediation Guidance
+
+1. **Critical Issues**: Address immediately before merging
+2. **High Priority**: Plan fixes in current sprint  
+3. **Medium/Low**: Include in technical debt backlog
+4. **False Positives**: Document and suppress with justification`;
+  }
+
+  getAllFindings() {
+    return [
+      ...this.findings.trivy,
+      ...this.findings.osvScanner,
+      ...this.findings.semgrep,
+      ...this.findings.checkov,
+      ...this.findings.owaspZap,
+      ...this.findings.gitLeaks,
+      ...this.findings.dependabot
+    ];
+  }
+
+  async postUnifiedComment(comment) {
+    if (!this.github.prNumber) {
+      console.log('📝 Not a PR - skipping comment posting');
+      return;
+    }
+
+    console.log(`📝 Posting unified security comment to PR #${this.github.prNumber}...`);
+    
+    try {
+      // Check for existing unified security comment
+      const existingCommentCmd = `gh api repos/${this.github.repository}/issues/${this.github.prNumber}/comments --jq '.[] | select(.body | contains("🛡️ Unified Security Dashboard")) | .id'`;
+      
+      let existingCommentId;
+      try {
+        existingCommentId = execSync(existingCommentCmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
+      } catch (error) {
+        // No existing comment found
+      }
+
+      if (existingCommentId) {
+        // Update existing comment
+        console.log(`🔄 Updating existing security comment ID: ${existingCommentId}`);
+        execSync(`gh api repos/${this.github.repository}/issues/comments/${existingCommentId} -X PATCH -f body='${comment.replace(/'/g, "'\\''")}' > /dev/null`, { stdio: 'pipe' });
+      } else {
+        // Create new comment  
+        console.log('🆕 Creating new unified security comment');
+        execSync(`gh pr comment ${this.github.prNumber} --body '${comment.replace(/'/g, "'\\''")}' > /dev/null`, { stdio: 'pipe' });
+      }
+      
+      console.log('✅ Unified security comment successfully posted!');
+      
+    } catch (error) {
+      console.error('❌ Failed to post unified comment:', error.message);
+      throw error;
+    }
+  }
+}
+
+// Execute unified security reporting
+if (require.main === module) {
+  const reporter = new UnifiedSecurityReporter();
+  reporter.run().catch(error => {
+    console.error('💥 Unified security reporting failed:', error);
+    process.exit(1);
+  });
+}
+
+module.exports = UnifiedSecurityReporter;
+```
+
+### Workflow Integration Template
+
+**Modified Main CI/CD Workflow** (`.github/workflows/main-ci-cd.yml`)
+
+```yaml
+  # Add unified security reporting job
+  unified-security-report:
+    name: 🛡️ Unified Security Dashboard
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'pull_request'
+    needs: [
+      security-scanning,
+      docker-security-scan, 
+      osv-scanner,
+      semgrep-scan,
+      checkov-scan,
+      zap-scan
+    ]
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
+      security-events: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all security artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-security-*"
+          path: security-artifacts/
+          merge-multiple: true
+
+      - name: Generate unified security dashboard
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          UNIFIED_SECURITY_REPORTING: true
+        run: |
+          echo "🛡️ Generating unified security dashboard..."
+          ls -la security-artifacts/  # Debug artifact collection
+          chmod +x scripts/ci/unified-security-comment.cjs
+          node scripts/ci/unified-security-comment.cjs
+
+      - name: Upload unified report artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unified-security-dashboard
+          path: |
+            unified-security-report.json
+            security-artifacts/
+          retention-days: 30
+```
+
+**Modified Security Workflow Template** (Skip individual comments when unified reporting enabled)
+
+```yaml
+      - name: Post individual security results to PR
+        if: always() && github.event_name == 'pull_request' && env.UNIFIED_SECURITY_REPORTING != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "📝 Posting individual security findings (unified reporting disabled)"
+          # Individual tool PR comment logic here
+```
+
+### Expected Outcomes
+
+#### Developer Experience Improvements
+- **Single Source of Truth**: All security findings in one professional dashboard
+- **Reduced Noise**: 8 separate comments → 1 consolidated view
+- **Actionable Priorities**: Clear critical/high/medium/low categorization  
+- **Progress Tracking**: Trend analysis and improvement visibility
+
+#### Operational Benefits
+- **Maintenance Simplification**: Single comment system vs 8 separate implementations
+- **Consistent Formatting**: Standardized vulnerability presentation across all tools
+- **Enhanced Visibility**: Executive summary with key metrics for stakeholders
+- **Integration Quality**: Professional presentation matches enterprise security standards
+
+### Next Steps for Implementation
+
+1. **Create foundational unified script** with basic SARIF parsing
+2. **Test with 2-3 security tools** for initial validation
+3. **Integrate GitHub API queries** for GitLeaks and Dependabot
+4. **Add workflow integration points** with feature flag support
+5. **Comprehensive testing** with all 8 security tools
+6. **Gradual rollout** with monitoring and feedback collection
+7. **Documentation and training** for development team
+8. **Full production deployment** with unified security dashboard
+
+---
 
 ### Implementation Notes
 

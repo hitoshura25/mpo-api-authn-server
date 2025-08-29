@@ -59,12 +59,10 @@ permissions:
   contents: read
 
 jobs:
-  # Job 1: Component change detection for independent processing optimization (Phase 10.1)
   detect-component-changes:
     name: Detect Component Changes
     uses: ./.github/workflows/detect-changes.yml
 
-  # Job 2: Build and test with component-specific conditioning and parallel execution
   build-and-test:
     name: Build & Test (Unit Tests + Docker Images)
     needs: detect-component-changes
@@ -95,7 +93,6 @@ jobs:
       issues: write
     secrets: inherit
 
-  # Job 3: Generate version for staging client libraries
   generate-staging-version:
     name: Generate Staging Version
     runs-on: ubuntu-latest
@@ -125,7 +122,6 @@ jobs:
           echo "🎯 Generating staging client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
-  # Job 4: Client library publishing (parallel with build-and-test for optimal performance)
   publish-client-libraries:
     name: Publish Client Libraries (Staging)
     needs: [ detect-component-changes, generate-staging-version ]
@@ -149,7 +145,6 @@ jobs:
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-  # Job 5: E2E tests using built Docker images with smart component-based triggering (waits for both build AND client publishing)
   e2e-tests:
     name: E2E Tests (Web + Android)
     needs: [ detect-component-changes, generate-staging-version, build-and-test, publish-client-libraries ]
@@ -196,7 +191,6 @@ jobs:
       force-docker-build: ${{ inputs.force-docker-build || false }}
     secrets: inherit
 
-  # Job 6: Security scanning using built Docker images (parallel with E2E tests)
   security-scanning:
     name: Security Scanning (Docker Images)
     needs: [ detect-component-changes, build-and-test ]
@@ -216,12 +210,82 @@ jobs:
       skip-scan: false
     secrets: inherit
 
-  # Job 7: Unified Security Dashboard (consolidates all security findings from 8 tools)
+  osv-scanner:
+    name: OSV Dependency Scanning
+    needs: [ detect-component-changes ]
+    if: |
+      always() && (
+        needs.detect-component-changes.outputs.dependencies-changed == 'true' ||
+        needs.detect-component-changes.outputs.workflows-changed == 'true' ||
+        github.event_name == 'push'
+      )
+    uses: ./.github/workflows/osv-scanner.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  semgrep-sast:
+    name: SAST Code Analysis
+    needs: [ detect-component-changes ]
+    if: |
+      always() && (
+        needs.detect-component-changes.outputs.code-changed == 'true' ||
+        needs.detect-component-changes.outputs.workflows-changed == 'true' ||
+        github.event_name == 'push'
+      )
+    uses: ./.github/workflows/semgrep-sast.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  iac-scan:
+    name: Infrastructure Security Scan
+    needs: [ detect-component-changes ]
+    if: |
+      always() && (
+        needs.detect-component-changes.outputs.docker-changed == 'true' ||
+        needs.detect-component-changes.outputs.workflows-changed == 'true' ||
+        needs.detect-component-changes.outputs.scripts-changed == 'true' ||
+        github.event_name == 'push'
+      )
+    uses: ./.github/workflows/iac-scan.yml
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      actions: read
+
+  secrets-scan:
+    name: Secrets Detection
+    needs: [ detect-component-changes ]
+    if: |
+      always() && (
+        needs.detect-component-changes.outputs.code-changed == 'true' ||
+        needs.detect-component-changes.outputs.workflows-changed == 'true' ||
+        github.event_name == 'push'
+      )
+    uses: ./.github/workflows/secrets-scan.yml
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      actions: read
+
   unified-security-report:
     name: 🛡️ Unified Security Dashboard
     runs-on: ubuntu-latest
     if: always() && github.event_name == 'pull_request'
-    needs: [ detect-component-changes, build-and-test, security-scanning ]
+    needs: [ 
+      detect-component-changes, 
+      build-and-test, 
+      security-scanning,
+      osv-scanner,
+      semgrep-sast,
+      iac-scan,
+      secrets-scan
+    ]
     permissions:
       contents: read          # Read repository code
       issues: write          # Query GitLeaks issues via GitHub API
@@ -280,7 +344,6 @@ jobs:
           retention-days: 30
         continue-on-error: true
 
-  # Job 8: Setup configuration for production publishing (main branch only)
   setup-production-config:
     name: Setup Production Configuration
     runs-on: ubuntu-latest

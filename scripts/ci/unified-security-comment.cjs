@@ -76,13 +76,170 @@ class UnifiedSecurityReporter {
   async collectFindings() {
     console.log('📋 Collecting findings from all security tools...');
     
+    // Download artifacts from security workflow runs
+    await this.downloadSecurityArtifacts();
+    
     // Parse SARIF files from security tools
     await this.parseSarifFindings();
+    
+    // Parse JSON files from security tools  
+    await this.parseJsonFindings();
     
     // Query GitHub API for additional data
     await this.parseGitHubSecurityData();
     
     console.log(`📊 Collection complete: ${this.summary.total} total findings`);
+  }
+
+  async downloadSecurityArtifacts() {
+    console.log('⬇️ Downloading security artifacts from workflow runs...');
+    
+    const workflowRunId = process.env.GITHUB_RUN_ID;
+    const eventNumber = process.env.GITHUB_RUN_NUMBER;
+    
+    const artifactPatterns = [
+      `osv-scanner-results-*-${eventNumber}`,
+      `semgrep-results-*-${eventNumber}`, 
+      `checkov-results-*-${eventNumber}`,
+      `gitleaks-results-*-${eventNumber}`,
+      `docker-security-scan-results-*-${eventNumber}`,
+      `zap-results-*-${eventNumber}`
+    ];
+    
+    try {
+      // List all artifacts for this workflow run
+      const listCmd = `gh api repos/${this.github.repository}/actions/runs/${workflowRunId}/artifacts --jq '.artifacts[] | {name, download_url}'`;
+      const artifactsOutput = execSync(listCmd, { encoding: 'utf8', stdio: 'pipe' });
+      
+      if (artifactsOutput.trim()) {
+        const artifacts = artifactsOutput.trim().split('\n').map(line => JSON.parse(line));
+        
+        for (const artifact of artifacts) {
+          // Check if this artifact matches our security tool patterns
+          for (const pattern of artifactPatterns) {
+            const patternRegex = new RegExp(pattern.replace('*', '.*'));
+            if (patternRegex.test(artifact.name)) {
+              console.log(`  📦 Downloading ${artifact.name}...`);
+              try {
+                // Download and extract artifact
+                const downloadCmd = `gh api ${artifact.download_url} > ${artifact.name}.zip`;
+                execSync(downloadCmd, { stdio: 'pipe' });
+                execSync(`unzip -o ${artifact.name}.zip`, { stdio: 'pipe' });
+                execSync(`rm ${artifact.name}.zip`, { stdio: 'pipe' });
+                console.log(`  ✅ ${artifact.name} downloaded and extracted`);
+              } catch (downloadError) {
+                console.warn(`  ⚠️ Failed to download ${artifact.name}: ${downloadError.message}`);
+              }
+              break;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️ Artifact download failed, will check for existing files:', error.message);
+    }
+  }
+
+  async parseJsonFindings() {
+    console.log('📄 Parsing JSON security findings...');
+    
+    const jsonTools = {
+      'osvScanner': { 
+        files: ['osv-results.json'], 
+        parser: this.parseOsvScannerJson.bind(this) 
+      },
+      'gitLeaks': { 
+        files: ['gitleaks-results.json'], 
+        parser: this.parseGitLeaksJson.bind(this) 
+      }
+    };
+
+    for (const [toolName, config] of Object.entries(jsonTools)) {
+      let found = false;
+      
+      for (const jsonFile of config.files) {
+        if (fs.existsSync(jsonFile)) {
+          console.log(`🔍 Parsing ${toolName} JSON file: ${jsonFile}`);
+          try {
+            const jsonContent = JSON.parse(fs.readFileSync(jsonFile, 'utf8'));
+            await config.parser(jsonContent, toolName);
+            this.summary.toolStatus[toolName] = '✅ Completed';
+            found = true;
+            break;
+          } catch (error) {
+            console.error(`❌ Failed to parse ${toolName} JSON:`, error.message);
+            this.summary.toolStatus[toolName] = '❌ Error';
+          }
+        }
+      }
+      
+      if (!found) {
+        console.log(`⚠️ ${toolName} JSON files not found`);
+        this.summary.toolStatus[toolName] = '⚠️ Missing';
+      }
+    }
+  }
+
+  parseOsvScannerJson(jsonData, toolName) {
+    if (!jsonData.results || !Array.isArray(jsonData.results)) {
+      console.log(`  📊 ${toolName}: No vulnerabilities found`);
+      this.findings.osvScanner = [];
+      return;
+    }
+
+    this.findings.osvScanner = [];
+    
+    for (const result of jsonData.results) {
+      if (!result.packages) continue;
+      
+      for (const pkg of result.packages) {
+        if (!pkg.vulnerabilities) continue;
+        
+        for (const vuln of pkg.vulnerabilities) {
+          this.findings.osvScanner.push({
+            tool: toolName,
+            severity: this.mapOsvSeverity(vuln.database_specific?.severity),
+            message: vuln.summary || vuln.id,
+            location: result.source?.path || 'Unknown',
+            package: pkg.package?.name || 'Unknown',
+            vulnerability: vuln.id,
+            cvssScore: vuln.database_specific?.cvss_score || 'N/A'
+          });
+        }
+      }
+    }
+    
+    console.log(`  📊 ${toolName}: ${this.findings.osvScanner.length} vulnerabilities found`);
+  }
+
+  parseGitLeaksJson(jsonData, toolName) {
+    if (!Array.isArray(jsonData)) {
+      console.log(`  📊 ${toolName}: No secrets detected`);
+      this.findings.gitLeaks = [];
+      return;
+    }
+
+    this.findings.gitLeaks = jsonData.map(leak => ({
+      tool: toolName,
+      severity: 'high', // Secrets are always high severity
+      message: leak.Description || 'Secret detected',
+      location: `${leak.File}:${leak.StartLine}`,
+      package: path.basename(leak.File || 'Unknown'),
+      vulnerability: leak.RuleID || 'Secret Detection',
+      commit: leak.Commit ? leak.Commit.substring(0, 7) : 'N/A'
+    }));
+    
+    console.log(`  📊 ${toolName}: ${this.findings.gitLeaks.length} secrets found`);
+  }
+
+  mapOsvSeverity(severity) {
+    if (!severity) return 'medium';
+    const sev = severity.toLowerCase();
+    if (sev.includes('critical')) return 'critical';
+    if (sev.includes('high')) return 'high';  
+    if (sev.includes('medium') || sev.includes('moderate')) return 'medium';
+    if (sev.includes('low')) return 'low';
+    return 'medium';
   }
 
   async parseSarifFindings() {
@@ -216,7 +373,13 @@ class UnifiedSecurityReporter {
 
   async parseGitLeaksIssues() {
     // GitLeaks creates GitHub issues for secret findings
-    console.log('🔑 Checking GitLeaks issues...');
+    // Only query issues if we didn't already parse JSON results
+    if (this.findings.gitLeaks.length > 0) {
+      console.log('🔑 GitLeaks results already parsed from JSON, skipping issue query');
+      return;
+    }
+    
+    console.log('🔑 Checking GitLeaks issues (fallback method)...');
     
     try {
       const cmd = `gh api repos/${this.github.repository}/issues --jq '.[] | select(.labels[].name == "gitleaks") | {title, number, created_at}'`;

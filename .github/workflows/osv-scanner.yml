@@ -5,6 +5,11 @@ on:
     branches: [ main ]
   push:
     branches: [ main ]
+  workflow_call:
+    outputs:
+      findings-found:
+        description: 'Whether vulnerabilities were found'
+        value: ${{ jobs.osv-scanner-local.outputs.findings-found }}
 
 permissions:
   actions: read
@@ -13,9 +18,68 @@ permissions:
 
 jobs:
   osv-scanner:
+    # Keep original OSV-Scanner action for backwards compatibility
     uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@v1.9.0
     with:
       scan-args: |-
         --recursive
         .
       fail-on-vuln: false  # Prevent workflow failure when vulnerabilities found
+
+  osv-scanner-local:
+    # Additional job for unified reporting system
+    runs-on: ubuntu-latest
+    outputs:
+      findings-found: ${{ steps.scan.outputs.findings-found }}
+    
+    # Skip on dependabot PRs to avoid permission issues
+    if: github.actor != 'dependabot[bot]'
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Install OSV-Scanner
+        run: |
+          echo "🔧 Installing OSV-Scanner..."
+          curl -L https://github.com/google/osv-scanner/releases/latest/download/osv-scanner_linux_amd64 -o osv-scanner
+          chmod +x osv-scanner
+          
+      - name: Run OSV-Scanner with JSON output
+        id: scan
+        run: |
+          echo "🔍 Running OSV-Scanner..."
+          set +e  # Don't fail on vulnerabilities
+          
+          ./osv-scanner --format json --recursive . > osv-results.json 2>&1
+          SCAN_EXIT_CODE=$?
+          
+          if [[ -f "osv-results.json" ]]; then
+            echo "📊 OSV-Scanner completed - JSON results generated"
+            
+            # Check if vulnerabilities were found
+            VULNERABILITIES=$(jq -r '.results // [] | length' osv-results.json 2>/dev/null || echo "0")
+            
+            if [[ ${VULNERABILITIES} -gt 0 ]]; then
+              echo "⚠️ Found ${VULNERABILITIES} vulnerable packages"
+              echo "findings-found=true" >> $GITHUB_OUTPUT
+            else
+              echo "✅ No vulnerabilities detected!"
+              echo "findings-found=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "⚠️ OSV-Scanner completed but no JSON results generated"
+            echo "findings-found=false" >> $GITHUB_OUTPUT
+          fi
+          
+      - name: Upload results as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: osv-scanner-results-${{ github.event_name }}-${{ github.run_number }}
+          path: |
+            osv-results.json
+          retention-days: 30
+        continue-on-error: true

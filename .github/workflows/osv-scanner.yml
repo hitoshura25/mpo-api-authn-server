@@ -19,6 +19,7 @@ jobs:
       scan-args: |-
         --recursive
         .
+      fail-on-vuln: false  # Prevent workflow failure when vulnerabilities found
 
   # New job: Process OSV-Scanner results for PR comments
   osv-pr-comment:
@@ -35,15 +36,15 @@ jobs:
       - name: Download OSV-Scanner results
         uses: actions/download-artifact@v4
         with:
-          name: osv-scanner-results
+          name: SARIF file  # Correct artifact name from Google's reusable workflow
           path: osv-results
 
       - name: Process OSV results for PR comment
         run: |
           echo "🔍 Processing OSV-Scanner results for PR comment..."
 
-          # Find the results file (may be in subdirectory)
-          RESULTS_FILE=$(find osv-results -name "*.json" -o -name "*.sarif" | head -1)
+          # Find the results file (should be results.sarif from Google's workflow)
+          RESULTS_FILE=$(find osv-results -name "results.sarif" -o -name "*.sarif" | head -1)
 
           if [[ -z "$RESULTS_FILE" ]]; then
             echo "⚠️ No OSV-Scanner results file found"

@@ -93,6 +93,109 @@ function categorizeVulnerabilities(results) {
     return categories;
 }
 
+function categorizeVulnerabilitiesFromSARIF(scanResults) {
+    const categories = {
+        critical: [],
+        high: [],
+        medium: [],
+        low: []
+    };
+
+    console.log('🔍 Processing SARIF format results for vulnerability categorization');
+    
+    // Handle SARIF format from Trivy (runs[0].results[])
+    if (scanResults.runs && Array.isArray(scanResults.runs) && scanResults.runs.length > 0) {
+        const results = scanResults.runs[0].results || [];
+        console.log(`📋 Processing ${results.length} SARIF results`);
+        
+        results.forEach(result => {
+            // Extract severity from SARIF properties
+            const securitySeverity = result.properties?.['security-severity'] || 0;
+            const level = result.level || 'note';
+            
+            // Map SARIF level and security-severity to vulnerability categories
+            let severity = 'low';
+            if (level === 'error' && securitySeverity >= 9.0) {
+                severity = 'critical';
+            } else if (level === 'error' && securitySeverity >= 7.0) {
+                severity = 'high';
+            } else if (level === 'warning' || (level === 'error' && securitySeverity >= 4.0)) {
+                severity = 'medium';
+            } else {
+                severity = 'low';
+            }
+            
+            // Extract vulnerability information from SARIF structure
+            const vulnerability = {
+                VulnerabilityID: result.ruleId || 'Unknown',
+                Title: result.message?.text?.split(' ')[0] || 'Unknown',
+                Description: result.message?.text || 'No description available',
+                Severity: severity.toUpperCase(),
+                PkgName: extractPackageFromSARIF(result),
+                InstalledVersion: extractVersionFromSARIF(result),
+                FixedVersion: extractFixedVersionFromSARIF(result),
+                References: extractReferencesFromSARIF(result),
+                target: extractTargetFromSARIF(result),
+                // Add SARIF-specific fields
+                level: level,
+                securitySeverity: securitySeverity
+            };
+            
+            categories[severity].push(vulnerability);
+        });
+    }
+    
+    console.log(`📊 SARIF Categorization complete: Critical: ${categories.critical.length}, High: ${categories.high.length}, Medium: ${categories.medium.length}, Low: ${categories.low.length}`);
+    return categories;
+}
+
+// Helper functions to extract information from SARIF structure
+function extractPackageFromSARIF(result) {
+    // Try to extract package name from locations or message
+    if (result.locations && result.locations[0] && result.locations[0].physicalLocation) {
+        const artifact = result.locations[0].physicalLocation.artifactLocation?.uri || '';
+        // Extract package name from path or message
+        const match = artifact.match(/([^\/]+)\.(jar|lock|json)$/) || result.message?.text?.match(/([a-zA-Z0-9\.\-_]+):/);
+        return match ? match[1] : 'Unknown';
+    }
+    return result.message?.text?.split(' ')[1] || 'Unknown';
+}
+
+function extractVersionFromSARIF(result) {
+    // Try to extract version from properties or message
+    return result.properties?.version || 
+           result.message?.text?.match(/version\s+([0-9\.\-\w]+)/i)?.[1] || 
+           'Unknown';
+}
+
+function extractFixedVersionFromSARIF(result) {
+    // Try to extract fixed version from properties
+    return result.properties?.fixedVersion || 
+           result.fixes?.[0]?.description?.text?.match(/([0-9\.\-\w]+)/)?.[1] || 
+           '';
+}
+
+function extractReferencesFromSARIF(result) {
+    // Extract references from help or related locations
+    const refs = [];
+    if (result.help?.markdown) {
+        const urlMatches = result.help.markdown.match(/https?:\/\/[^\s)]+/g);
+        if (urlMatches) refs.push(...urlMatches);
+    }
+    if (result.helpUri) {
+        refs.push(result.helpUri);
+    }
+    return refs;
+}
+
+function extractTargetFromSARIF(result) {
+    // Extract target file from locations
+    if (result.locations && result.locations[0] && result.locations[0].physicalLocation) {
+        return result.locations[0].physicalLocation.artifactLocation?.uri || 'Unknown';
+    }
+    return 'Unknown';
+}
+
 function generateCommentBody(categories, scanPassed) {
     const totalVulns = Object.values(categories).reduce((sum, vulns) => sum + vulns.length, 0);
     

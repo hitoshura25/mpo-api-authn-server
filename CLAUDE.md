@@ -186,6 +186,37 @@ with:
 - Time waste from debugging non-existent features
 - Loss of user confidence from repeated failures
 
+### 🚨 CRITICAL: Git Commit Policy - NEVER Auto-Commit
+
+**🛑 MANDATORY: User Must Review and Commit All Changes**
+
+**THE FUNDAMENTAL RULE**: NEVER automatically commit changes using git commands. The user must review all changes and perform commits themselves.
+
+#### **STRICT ENFORCEMENT:**
+- **❌ NEVER run**: `git add`, `git commit`, `git push` commands
+- **❌ NEVER auto-stage**: Files for commit without explicit user request
+- **✅ ALWAYS prepare**: Changes and inform user they are ready for review
+- **✅ ALWAYS stage**: Changes for user review using file modification tools only
+
+#### **Correct Workflow Pattern:**
+1. **Make Changes**: Use Edit, Write, MultiEdit tools to modify files
+2. **Inform User**: "Changes are ready for your review and commit"
+3. **Let User Review**: User examines changes using git tools or IDE
+4. **User Commits**: User decides when and how to commit changes
+
+#### **Why This Is Critical:**
+- **User Control**: User maintains full control over commit history and messages
+- **Change Review**: User can review and potentially modify changes before commit
+- **Commit Messages**: User can write appropriate commit messages for their workflow
+- **Git History**: User maintains clean, intentional git history
+- **Rollback Control**: User can selectively stage/unstage changes as needed
+
+#### **Exception:**
+- **Only when explicitly requested**: User says "commit these changes" or "create a commit"
+- **Even then, confirm**: Ask for commit message and get explicit confirmation
+
+**VIOLATION**: Automatically committing changes without user approval breaks user workflow and removes their control over the development process.
+
 ## Critical Development Reminders
 
 ### 🧬 CRITICAL: Complete Pattern Verification Protocol (FUNDAMENTAL!)
@@ -931,7 +962,7 @@ packages:
 - Use `testStorageModule` for integration tests (in-memory storage)
 - All tests must pass with `./gradlew test` before claiming completion
 - Always verify Android tests pass: `cd android-test-client && ./gradlew connectedAndroidTest`
-- **🚨 NEVER commit changes automatically** - Always let user review changes before committing
+- **🚨 NEVER commit changes automatically** - Always let user review and commit changes themselves (see Git Commit Policy above)
 
 ---
 

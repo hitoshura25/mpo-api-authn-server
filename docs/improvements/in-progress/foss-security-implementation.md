@@ -4074,6 +4074,234 @@ module.exports = UnifiedSecurityReporter;
 
 ---
 
+## Phase 5B: Security Workflow Integration Fix 🔧
+
+**Status**: 🔄 **READY FOR IMPLEMENTATION**  
+**Timeline**: 2025-08-29 → 2025-08-29  
+**Priority**: High (Fix unified security dashboard missing tools)  
+**Complexity**: Medium (Convert 4 workflows + integration)
+
+### Problem Analysis
+
+**Current Issue**: Unified Security Dashboard shows several tools as "Missing" or "Error":
+- ✅ **Trivy**: Working (integrated in main CI/CD)
+- ❌ **OSV-Scanner**: Missing (independent workflow)
+- ❌ **Semgrep**: Missing (independent workflow)  
+- ❌ **Checkov**: Missing (independent workflow)
+- ❌ **GitLeaks**: Working but independent workflow
+- ❌ **OWASP ZAP**: Missing (runs in E2E workflow)
+- ❌ **Dependabot**: API permission error (403)
+- ✅ **Gradle Locking**: Working (static status)
+
+**Root Cause**: Security tools run as **independent workflows** with separate artifact contexts. The unified security job can only access artifacts from the same workflow execution.
+
+### Solution: Workflow Integration Architecture
+
+**Convert standalone security workflows to callable workflows integrated in main CI/CD pipeline**:
+
+```yaml
+# main-ci-cd.yml integration pattern
+jobs:
+  # Existing jobs...
+  
+  # New parallel security jobs
+  osv-scanner:
+    uses: ./.github/workflows/osv-scanner.yml
+    
+  semgrep-scan:
+    uses: ./.github/workflows/semgrep-sast.yml
+    
+  checkov-scan:
+    uses: ./.github/workflows/iac-scan.yml
+    
+  gitleaks-scan:
+    uses: ./.github/workflows/secrets-scan.yml
+  
+  # Updated unified security job
+  unified-security-report:
+    needs: [
+      security-scanning,    # Trivy
+      osv-scanner,         # OSV-Scanner
+      semgrep-scan,        # Semgrep
+      checkov-scan,        # Checkov
+      gitleaks-scan        # GitLeaks
+      # OWASP ZAP: artifacts from e2e-tests
+      # Dependabot: separate fix needed
+    ]
+```
+
+### Implementation Steps
+
+#### **Step 1: Convert Security Workflows to Callable**
+
+**Files to modify**:
+- `.github/workflows/osv-scanner.yml`
+- `.github/workflows/semgrep-sast.yml` 
+- `.github/workflows/iac-scan.yml`
+- `.github/workflows/secrets-scan.yml`
+
+**Required changes for each workflow**:
+```yaml
+# Add workflow_call trigger
+on:
+  workflow_call:
+    # Keep existing triggers for backward compatibility
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+# Ensure proper permissions for callable context
+permissions:
+  actions: read
+  security-events: write
+  contents: read
+```
+
+#### **Step 2: Add Security Jobs to Main CI/CD**
+
+**Add to `.github/workflows/main-ci-cd.yml`** after existing security jobs:
+
+```yaml
+  # Additional security scanning (parallel with docker security)
+  osv-scanner:
+    name: OSV Vulnerability Scanner
+    uses: ./.github/workflows/osv-scanner.yml
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
+
+  semgrep-scan:
+    name: Semgrep SAST Analysis
+    uses: ./.github/workflows/semgrep-sast.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  checkov-scan:
+    name: Checkov Infrastructure Scan
+    if: |
+      needs.detect-component-changes.outputs.docker-security-workflows-changed == 'true' ||
+      needs.detect-component-changes.outputs.workflows-changed == 'true'
+    uses: ./.github/workflows/iac-scan.yml
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      actions: read
+
+  gitleaks-scan:
+    name: GitLeaks Secrets Detection
+    uses: ./.github/workflows/secrets-scan.yml
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      actions: read
+```
+
+#### **Step 3: Update Unified Security Job Dependencies**
+
+**Modify the `unified-security-report` job**:
+```yaml
+  unified-security-report:
+    name: 🛡️ Unified Security Dashboard
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'pull_request'
+    needs: [ 
+      detect-component-changes, 
+      build-and-test, 
+      security-scanning,     # Trivy
+      osv-scanner,          # OSV-Scanner  
+      semgrep-scan,         # Semgrep
+      checkov-scan,         # Checkov (conditional)
+      gitleaks-scan         # GitLeaks
+    ]
+```
+
+#### **Step 4: Handle Special Cases**
+
+**OWASP ZAP Integration**:
+- Keep in E2E workflow for timing dependencies
+- Add artifact sharing mechanism:
+```yaml
+# In e2e-tests.yml - upload ZAP artifacts for unified collection
+- name: Upload OWASP ZAP results for unified reporting
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: zap-security-results-${{ github.run_number }}
+    path: |
+      zap-results.sarif
+    retention-days: 30
+```
+
+**Dependabot Integration**:
+- Skip for now (will be addressed in separate phase)
+- Add graceful handling in unified script for 403 errors
+- Document as known limitation
+
+### Expected File Changes
+
+#### **Modified Files**:
+1. **`.github/workflows/osv-scanner.yml`**: Add `workflow_call` trigger
+2. **`.github/workflows/semgrep-sast.yml`**: Add `workflow_call` trigger
+3. **`.github/workflows/iac-scan.yml`**: Add `workflow_call` trigger  
+4. **`.github/workflows/secrets-scan.yml`**: Add `workflow_call` trigger
+5. **`.github/workflows/main-ci-cd.yml`**: Add 4 new security jobs + update unified job dependencies
+6. **`.github/workflows/e2e-tests.yml`**: Add OWASP ZAP artifact upload (if not already present)
+
+#### **No File Removal**:
+- Keep all existing workflows for backward compatibility
+- Dual triggers (workflow_call + direct) ensure flexibility
+
+### Testing Strategy
+
+#### **Validation Steps**:
+1. **Workflow Syntax**: Validate all modified YAML files
+2. **Callable Integration**: Test each security tool via workflow_call
+3. **Artifact Collection**: Verify unified job can access all SARIF files
+4. **Dashboard Content**: Confirm all tools show proper status
+5. **Performance Impact**: Measure execution time difference
+
+#### **Expected Outcomes**:
+- **All 8 tools status**: ✅ Completed (instead of ❌ Missing)
+- **Complete artifact collection**: All SARIF files available to unified job
+- **Professional dashboard**: Full security coverage display
+- **Better performance**: Parallel execution vs sequential independent workflows
+
+### Rollback Plan
+
+**If integration fails**:
+1. **Immediate**: Revert main-ci-cd.yml changes
+2. **Fallback**: Independent workflows continue working normally
+3. **Debug**: Use workflow_call triggers for isolated testing
+
+### Implementation Checklist
+
+- [ ] **Step 1**: Convert 4 workflows to callable (add workflow_call triggers)
+- [ ] **Step 2**: Add 4 security jobs to main-ci-cd.yml
+- [ ] **Step 3**: Update unified-security-report job dependencies  
+- [ ] **Step 4**: Add OWASP ZAP artifact sharing from e2e-tests.yml
+- [ ] **Step 5**: Test complete integration with PR
+- [ ] **Step 6**: Verify all 8 tools show in unified dashboard
+
+### Success Criteria
+
+✅ **Unified Security Dashboard shows**:
+- 🐳 **Trivy**: ✅ Completed (74 findings)
+- 🔍 **OSV-Scanner**: ✅ Completed (X findings) 
+- 🔒 **Semgrep**: ✅ Completed (X findings)
+- 🔑 **GitLeaks**: ✅ No issues (0 findings)
+- 🏗️ **Checkov**: ✅ Completed (X findings)
+- ⚡ **OWASP ZAP**: ✅ Completed (X findings)  
+- 🔧 **Dependabot**: ❌ Error (documented limitation)
+- 🔒 **Gradle Lock**: ✅ 974 deps locked
+
+---
+
 ### Implementation Notes
 
 **Add entries as work progresses**:

@@ -210,15 +210,51 @@ jobs:
       skip-scan: false
     secrets: inherit
 
+  security-optimization-monitor:
+    name: 📊 Security Optimization Monitor
+    runs-on: ubuntu-latest
+    needs: [ detect-component-changes ]
+    if: always()
+    steps:
+      - name: Log security workflow optimization decisions
+        run: |
+          echo "🔍 Security Workflow Optimization Decision Matrix:"
+          echo "  IaC Files Changed: ${{ needs.detect-component-changes.outputs.iac-files-changed }}"
+          echo "  Code Files Changed: ${{ needs.detect-component-changes.outputs.code-files-changed }}"
+          echo "  Dependency Files Changed: ${{ needs.detect-component-changes.outputs.dependency-files-changed }}"
+          echo "  Security Workflows Changed: ${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}"
+          echo "  Event Type: ${{ github.event_name }}"
+          echo "  Branch: ${{ github.ref }}"
+          echo ""
+          echo "📋 Security Scan Execution Plan:"
+          
+          # OSV-Scanner (always run)
+          echo "  OSV-Scanner: ✅ Always Run (critical dependency security)"
+          
+          # Semgrep SAST (conditional)
+          if [[ "${{ needs.detect-component-changes.outputs.code-files-changed }}" == "true" || "${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}" == "true" ]]; then
+            echo "  Semgrep SAST: ✅ Will Run (code changes or security workflow changes detected)"
+          else
+            echo "  Semgrep SAST: ⏭️ Skipped (no relevant changes, performance optimization)"
+          fi
+          
+          # IaC Scan (conditional)
+          if [[ "${{ needs.detect-component-changes.outputs.iac-files-changed }}" == "true" || "${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}" == "true" ]]; then
+            echo "  IaC Scan: ✅ Will Run (infrastructure or security workflow changes detected)"
+          else
+            echo "  IaC Scan: ⏭️ Skipped (no relevant changes, performance optimization)"
+          fi
+          
+          # GitLeaks (always run)
+          echo "  GitLeaks: ✅ Always Run (critical secrets detection)"
+          
+    permissions:
+      contents: read
+
   osv-scanner:
     name: OSV Dependency Scanning
-    needs: [ detect-component-changes ]
-    if: |
-      always() && (
-        needs.detect-component-changes.outputs.dependencies-changed == 'true' ||
-        needs.detect-component-changes.outputs.workflows-changed == 'true' ||
-        github.event_name == 'push'
-      )
+    needs: [ detect-component-changes, security-optimization-monitor ]
+    if: always()  # Critical dependency security - always run
     uses: ./.github/workflows/osv-scanner.yml
     permissions:
       contents: read
@@ -229,11 +265,8 @@ jobs:
     name: SAST Code Analysis
     needs: [ detect-component-changes ]
     if: |
-      always() && (
-        needs.detect-component-changes.outputs.code-changed == 'true' ||
-        needs.detect-component-changes.outputs.workflows-changed == 'true' ||
-        github.event_name == 'push'
-      )
+      needs.detect-component-changes.outputs.code-files-changed == 'true' ||
+      needs.detect-component-changes.outputs.security-affecting-workflows-changed == 'true'
     uses: ./.github/workflows/semgrep-sast.yml
     permissions:
       contents: read
@@ -244,12 +277,8 @@ jobs:
     name: Infrastructure Security Scan
     needs: [ detect-component-changes ]
     if: |
-      always() && (
-        needs.detect-component-changes.outputs.docker-changed == 'true' ||
-        needs.detect-component-changes.outputs.workflows-changed == 'true' ||
-        needs.detect-component-changes.outputs.scripts-changed == 'true' ||
-        github.event_name == 'push'
-      )
+      needs.detect-component-changes.outputs.iac-files-changed == 'true' ||
+      needs.detect-component-changes.outputs.security-affecting-workflows-changed == 'true'
     uses: ./.github/workflows/iac-scan.yml
     permissions:
       contents: read
@@ -260,12 +289,7 @@ jobs:
   secrets-scan:
     name: Secrets Detection
     needs: [ detect-component-changes ]
-    if: |
-      always() && (
-        needs.detect-component-changes.outputs.code-changed == 'true' ||
-        needs.detect-component-changes.outputs.workflows-changed == 'true' ||
-        github.event_name == 'push'
-      )
+    if: always()  # Critical security - secrets can be in any file type
     uses: ./.github/workflows/secrets-scan.yml
     permissions:
       contents: read
@@ -281,6 +305,7 @@ jobs:
       detect-component-changes, 
       build-and-test, 
       security-scanning,
+      security-optimization-monitor,
       osv-scanner,
       semgrep-sast,
       iac-scan,

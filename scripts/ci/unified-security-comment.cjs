@@ -101,7 +101,6 @@ class UnifiedSecurityReporter {
       `osv-scanner-results-*-${eventNumber}`,
       `semgrep-results-*-${eventNumber}`, 
       `checkov-results-*-${eventNumber}`,
-      `gitleaks-results-*-${eventNumber}`,
       `docker-security-scan-results-*-${eventNumber}`,
       `zap-results-*-${eventNumber}`
     ];
@@ -147,10 +146,6 @@ class UnifiedSecurityReporter {
       'osvScanner': { 
         files: ['osv-results.json'], 
         parser: this.parseOsvScannerJson.bind(this) 
-      },
-      'gitLeaks': { 
-        files: ['gitleaks-results.json'], 
-        parser: this.parseGitLeaksJson.bind(this) 
       }
     };
 
@@ -212,25 +207,6 @@ class UnifiedSecurityReporter {
     console.log(`  📊 ${toolName}: ${this.findings.osvScanner.length} vulnerabilities found`);
   }
 
-  parseGitLeaksJson(jsonData, toolName) {
-    if (!Array.isArray(jsonData)) {
-      console.log(`  📊 ${toolName}: No secrets detected`);
-      this.findings.gitLeaks = [];
-      return;
-    }
-
-    this.findings.gitLeaks = jsonData.map(leak => ({
-      tool: toolName,
-      severity: 'high', // Secrets are always high severity
-      message: leak.Description || 'Secret detected',
-      location: `${leak.File}:${leak.StartLine}`,
-      package: path.basename(leak.File || 'Unknown'),
-      vulnerability: leak.RuleID || 'Secret Detection',
-      commit: leak.Commit ? leak.Commit.substring(0, 7) : 'N/A'
-    }));
-    
-    console.log(`  📊 ${toolName}: ${this.findings.gitLeaks.length} secrets found`);
-  }
 
   mapOsvSeverity(severity) {
     if (!severity) return 'medium';
@@ -373,13 +349,7 @@ class UnifiedSecurityReporter {
 
   async parseGitLeaksIssues() {
     // GitLeaks creates GitHub issues for secret findings
-    // Only query issues if we didn't already parse JSON results
-    if (this.findings.gitLeaks.length > 0) {
-      console.log('🔑 GitLeaks results already parsed from JSON, skipping issue query');
-      return;
-    }
-    
-    console.log('🔑 Checking GitLeaks issues (fallback method)...');
+    console.log('🔑 Checking GitLeaks issues...');
     
     try {
       const cmd = `gh api repos/${this.github.repository}/issues --jq '.[] | select(.labels[].name == "gitleaks") | {title, number, created_at}'`;

@@ -51,6 +51,17 @@ on:
         description: 'Whether security workflow files changed'
         value: ${{ jobs.detect-changes.outputs.security-affecting-workflows-changed }}
       
+      # Security optimization change detection
+      iac-files-changed:
+        description: 'Whether infrastructure as code files changed'
+        value: ${{ jobs.detect-changes.outputs.iac-files-changed }}
+      code-files-changed:
+        description: 'Whether source code files changed'
+        value: ${{ jobs.detect-changes.outputs.code-files-changed }}
+      dependency-files-changed:
+        description: 'Whether dependency files changed'
+        value: ${{ jobs.detect-changes.outputs.dependency-files-changed }}
+      
       # Granular E2E test change detection for platform-specific triggering
       web-e2e-test-files-changed:
         description: 'Whether web E2E test files changed'
@@ -88,6 +99,11 @@ jobs:
       client-publishing-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.client-publishing-affecting-workflows-changed }}
       unit-test-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.unit-test-affecting-workflows-changed }}
       security-affecting-workflows-changed: ${{ steps.decision-matrix.outputs.security-affecting-workflows-changed }}
+      
+      # Security optimization change detection outputs
+      iac-files-changed: ${{ steps.decision-matrix.outputs.iac-files-changed }}
+      code-files-changed: ${{ steps.decision-matrix.outputs.code-files-changed }}
+      dependency-files-changed: ${{ steps.decision-matrix.outputs.dependency-files-changed }}
       
       # Granular E2E test change detection outputs
       web-e2e-test-files-changed: ${{ steps.decision-matrix.outputs.web-e2e-test-files-changed }}
@@ -203,6 +219,48 @@ jobs:
               - 'build.gradle.kts'
               - 'gradle.properties'
             
+            # Infrastructure as Code files (for security scanning optimization)
+            iac-files:
+              - '**.yml'
+              - '**.yaml'  
+              - 'Dockerfile*'
+              - '**/Dockerfile'
+              - 'docker-compose*.yml'
+              - 'docker-compose*.yaml'
+              - '.github/workflows/**'
+              - 'scripts/**'
+              - '**.tf'
+              - '**.json'
+              - 'gradle.properties'
+              - 'settings.gradle.kts'
+            
+            # Source code files (for SAST scanning optimization)  
+            code-files:
+              - 'src/**'
+              - '**/*.kt'
+              - '**/*.ts' 
+              - '**/*.js'
+              - '**/*.java'
+              - 'web-test-client/src/**'
+              - 'android-test-client/app/src/**'
+              - 'android-client-library/src/**'
+              - 'typescript-client-library/src/**'
+              - 'webauthn-server/src/**'
+              - 'webauthn-test-credentials-service/src/**'
+              - 'webauthn-test-lib/src/**'
+            
+            # Dependency files (for enhanced OSV scanning logic)
+            dependency-files:
+              - 'build.gradle.kts'
+              - '**/build.gradle.kts'
+              - 'package.json'
+              - '**/package.json'
+              - 'package-lock.json'
+              - '**/package-lock.json'
+              - 'gradle/libs.versions.toml'
+              - 'gradle.properties'
+              - 'settings.gradle.kts'
+
             # OpenAPI specification changes (triggers client generation)
             openapi-changes:
               - 'webauthn-server/src/main/resources/openapi/documentation.yaml'
@@ -276,6 +334,11 @@ jobs:
           WEB_E2E_FILES_CHANGED="${{ steps.changes.outputs.web-e2e-test-files }}"
           ANDROID_E2E_FILES_CHANGED="${{ steps.changes.outputs.android-e2e-test-files }}"
           
+          # Security optimization change detection
+          IAC_FILES_CHANGED="${{ steps.changes.outputs.iac-files }}"
+          CODE_FILES_CHANGED="${{ steps.changes.outputs.code-files }}"
+          DEPENDENCY_FILES_CHANGED="${{ steps.changes.outputs.dependency-files }}"
+          
           # Enhanced workflow change detection (preserves backward compatibility)
           WORKFLOWS_CHANGED="false"
           if [[ "${{ steps.changes.outputs.orchestration-workflows }}" == "true" || "${{ steps.changes.outputs.unit-test-workflows }}" == "true" || "${{ steps.changes.outputs.docker-workflows }}" == "true" || "${{ steps.changes.outputs.e2e-workflows }}" == "true" || "${{ steps.changes.outputs.publishing-workflows }}" == "true" ]]; then
@@ -335,6 +398,11 @@ jobs:
           echo "web-e2e-test-files-changed=$WEB_E2E_FILES_CHANGED" >> $GITHUB_OUTPUT
           echo "android-e2e-test-files-changed=$ANDROID_E2E_FILES_CHANGED" >> $GITHUB_OUTPUT
           
+          # Security optimization outputs
+          echo "iac-files-changed=$IAC_FILES_CHANGED" >> $GITHUB_OUTPUT
+          echo "code-files-changed=$CODE_FILES_CHANGED" >> $GITHUB_OUTPUT
+          echo "dependency-files-changed=$DEPENDENCY_FILES_CHANGED" >> $GITHUB_OUTPUT
+          
           echo "should-run-docker-workflow=$SHOULD_RUN_DOCKER" >> $GITHUB_OUTPUT
           echo "should-run-e2e-workflow=$SHOULD_RUN_E2E" >> $GITHUB_OUTPUT
           echo "should-run-tests-workflow=$SHOULD_RUN_TESTS" >> $GITHUB_OUTPUT
@@ -353,6 +421,9 @@ jobs:
           echo "  client-publishing-affecting-workflows: $CLIENT_PUBLISHING_AFFECTING_WORKFLOWS_CHANGED"
           echo "  unit-test-affecting-workflows: $UNIT_TEST_AFFECTING_WORKFLOWS_CHANGED"
           echo "  security-affecting-workflows: $SECURITY_AFFECTING_WORKFLOWS_CHANGED"
+          echo "  iac-files: $IAC_FILES_CHANGED"
+          echo "  code-files: $CODE_FILES_CHANGED"
+          echo "  dependency-files: $DEPENDENCY_FILES_CHANGED"
           echo "🚀 Build Decisions (Optimized):"  
           echo "  run-docker-workflow: $SHOULD_RUN_DOCKER (triggers: server/creds changes OR docker-affecting workflows OR docker-security workflows)"
           echo "  run-e2e-workflow: $SHOULD_RUN_E2E (triggers: OpenAPI/E2E changes OR e2e-test-affecting workflows)"

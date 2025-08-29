@@ -4388,7 +4388,273 @@ permissions:
 
 ---
 
-*Implementation plan updated: 2025-08-21*  
+## Phase 5C: Security Workflow Performance Optimization 🚀
+
+**Overview**: Optimize security workflow execution based on file change detection to improve CI performance while maintaining comprehensive security coverage.
+
+**Current State**: All security workflows run with `if: always()`, causing unnecessary executions when irrelevant files change.
+
+**Target State**: Smart conditional execution based on file types and change detection, with security failsafes.
+
+### **Root Cause Analysis**
+
+**Performance Issue**: Security workflows execute on every PR/push regardless of file changes
+- **IaC Scan (Checkov)**: Originally triggered only on infrastructure files, now runs always
+- **Semgrep SAST**: Originally triggered on all changes, could be optimized for code-only
+- **OSV-Scanner**: Should always run (dependency security critical)
+- **GitLeaks**: Should always run (secrets can appear anywhere)
+
+**Change Detection Gaps**: Current `detect-changes.yml` lacks specific file type categorization
+- ❌ Missing: `iac-files-changed` (yml, Dockerfile, docker-compose, workflows, scripts)
+- ❌ Missing: `code-files-changed` (src/, *.kt, *.ts, *.js)
+- ❌ Missing: Enhanced dependency detection
+
+### **Implementation Steps**
+
+#### **Step 1: Enhanced Change Detection (Day 1)**
+
+**File**: `.github/workflows/detect-changes.yml`
+
+**Add Enhanced File Pattern Detection**:
+```yaml
+# Add to existing filters section
+- id: changes
+  uses: dorny/paths-filter@v3
+  with:
+    filters: |
+      # Infrastructure as Code files (for Checkov IaC scanning)
+      iac-files:
+        - '**.yml'
+        - '**.yaml'  
+        - 'Dockerfile*'
+        - 'docker-compose*.yml'
+        - 'docker-compose*.yaml'
+        - '.github/workflows/**'
+        - 'scripts/**'
+        - '**.tf'
+        - '**.json'
+        - 'gradle.properties'
+        - 'settings.gradle.kts'
+      
+      # Source code files (for Semgrep SAST analysis)
+      code-files:
+        - 'src/**'
+        - '**/*.kt'
+        - '**/*.ts' 
+        - '**/*.js'
+        - '**/*.java'
+        - 'web-test-client/src/**'
+        - 'android-test-client/app/src/**'
+        - 'android-client-library/src/**'
+        - 'typescript-client-library/src/**'
+      
+      # Dependency files (for enhanced OSV logic if needed)
+      dependency-files:
+        - 'build.gradle.kts'
+        - '**/build.gradle.kts'
+        - 'package.json'
+        - '**/package.json'
+        - 'package-lock.json'
+        - '**/package-lock.json'
+        - 'gradle/libs.versions.toml'
+        - 'gradle.properties'
+
+      # Existing patterns...
+      webauthn-server-changed:
+        # Keep existing patterns
+```
+
+**Add Output Definitions**:
+```yaml
+# Add to outputs section
+iac-files-changed:
+  description: 'Whether infrastructure as code files changed'
+  value: ${{ steps.changes.outputs.iac-files }}
+code-files-changed:
+  description: 'Whether source code files changed'
+  value: ${{ steps.changes.outputs.code-files }}
+dependency-files-changed:
+  description: 'Whether dependency files changed'
+  value: ${{ steps.changes.outputs.dependency-files }}
+```
+
+#### **Step 2: Optimize Security Workflow Conditions (Day 1)**
+
+**File**: `.github/workflows/main-ci-cd.yml`
+
+**Update Security Job Conditions**:
+
+```yaml
+# High-value optimization - only run on infrastructure changes
+iac-scan:
+  name: Infrastructure Security Scan
+  needs: [ detect-component-changes ]
+  if: |
+    needs.detect-component-changes.outputs.iac-files-changed == 'true' ||
+    needs.detect-component-changes.outputs.security-affecting-workflows-changed == 'true' ||
+    (github.event_name == 'push' && github.ref == 'refs/heads/main')
+  uses: ./.github/workflows/iac-scan.yml
+  permissions:
+    contents: read
+    security-events: write
+    pull-requests: write
+    actions: read
+
+# Keep always-on for comprehensive dependency security
+osv-scanner:
+  name: OSV Dependency Scanning  
+  needs: [ detect-component-changes ]
+  if: always()  # Critical dependency security - always run
+  uses: ./.github/workflows/osv-scanner.yml
+  permissions:
+    contents: read
+    security-events: write
+    actions: read
+
+# Moderate optimization - run on code changes + main branch failsafe
+semgrep-sast:
+  name: SAST Code Analysis
+  needs: [ detect-component-changes ]
+  if: |
+    needs.detect-component-changes.outputs.code-files-changed == 'true' ||
+    needs.detect-component-changes.outputs.security-affecting-workflows-changed == 'true' ||
+    (github.event_name == 'push' && github.ref == 'refs/heads/main')
+  uses: ./.github/workflows/semgrep-sast.yml
+  permissions:
+    contents: read
+    security-events: write
+    actions: read
+
+# Keep always-on for comprehensive secret detection
+secrets-scan:
+  name: Secrets Detection
+  needs: [ detect-component-changes ]
+  if: always()  # Critical security - secrets can be in any file type
+  uses: ./.github/workflows/secrets-scan.yml
+  permissions:
+    contents: read
+    security-events: write
+    pull-requests: write
+    actions: read
+```
+
+#### **Step 3: Security Failsafe Validation (Day 2)**
+
+**Validation Requirements**:
+1. **Main Branch Protection**: All security scans MUST run on main branch pushes
+2. **Security Workflow Changes**: Changes to security configs trigger all scans
+3. **No False Negatives**: File pattern coverage validated against original triggers
+4. **PR Testing**: Test with various PR types to verify correct conditional logic
+
+**Test Cases to Validate**:
+```bash
+# Test IaC scan triggering
+# Should trigger: docker-compose.yml change, Dockerfile change, workflow change
+# Should NOT trigger: README.md change, src/ code change
+
+# Test Semgrep triggering  
+# Should trigger: src/*.kt change, web-test-client/*.ts change, workflow change
+# Should NOT trigger: docker-compose.yml change, README.md change
+
+# Test failsafes
+# Main branch push should ALWAYS trigger all scans regardless of files
+# Security workflow changes should ALWAYS trigger all scans
+```
+
+#### **Step 4: Performance Monitoring & Validation (Day 2)**
+
+**Create Monitoring Dashboard**:
+```yaml
+# Add to workflow files for performance tracking
+- name: Log optimization decision
+  run: |
+    echo "🔍 Security Workflow Optimization Decision:"
+    echo "  IaC Files Changed: ${{ needs.detect-component-changes.outputs.iac-files-changed }}"
+    echo "  Code Files Changed: ${{ needs.detect-component-changes.outputs.code-files-changed }}"
+    echo "  Security Workflows Changed: ${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}"
+    echo "  Event Type: ${{ github.event_name }}"
+    echo "  Branch: ${{ github.ref }}"
+    echo "  Decision: Running security scan based on conditions above"
+```
+
+### **Expected Performance Impact**
+
+**Optimization Results**:
+- **IaC Scan**: 60-70% reduction in executions (only infrastructure changes)
+- **Semgrep SAST**: 40-50% reduction in executions (only code changes + main branch)
+- **OSV-Scanner**: No change (always run - critical security)
+- **GitLeaks**: No change (always run - critical security)
+- **Overall CI Time**: 20-30% faster for documentation/config-only PRs
+
+**Security Coverage Maintained**:
+- **Main Branch**: All scans always execute (comprehensive security)
+- **Security Changes**: Workflow/config changes trigger full scan suite
+- **Critical Tools**: Dependency and secrets scanning always active
+- **No Gaps**: File patterns cover all relevant security surfaces
+
+### **Risk Assessment & Mitigation**
+
+**Potential Risks**:
+1. **File Pattern Gaps**: Missing file types in change detection
+   - **Mitigation**: Main branch failsafe ensures comprehensive coverage
+   - **Validation**: Compare against original workflow trigger patterns
+
+2. **Conditional Logic Errors**: Incorrect if conditions
+   - **Mitigation**: Extensive testing with various PR scenarios
+   - **Fallback**: Security workflow changes always trigger all scans
+
+3. **Security Coverage Reduction**: Important scans skipped
+   - **Mitigation**: Always-run policy for critical tools (OSV, GitLeaks)
+   - **Validation**: Security team review of optimization logic
+
+**Success Metrics**:
+- CI build time reduction: Target 20-30% for non-code PRs
+- Security coverage maintained: 100% of original detection capabilities
+- False negative rate: 0% (validated through test cases)
+- Developer satisfaction: Faster feedback cycles without security compromise
+
+### **Implementation Validation**
+
+**Testing Strategy**:
+1. **File Pattern Testing**: Create test PRs with different file change patterns
+2. **Security Coverage Testing**: Verify all original security scenarios still trigger
+3. **Performance Testing**: Measure CI time improvements across PR types
+4. **Regression Testing**: Ensure unified security dashboard still functions
+
+**Success Criteria**:
+- [ ] IaC scan only runs when infrastructure files change (+ main branch failsafe)
+- [ ] Semgrep only runs when code files change (+ main branch failsafe)
+- [ ] OSV-Scanner and GitLeaks always run (critical security maintained)
+- [ ] Main branch pushes always run all security scans (comprehensive protection)
+- [ ] Security workflow changes always trigger full scan suite (config protection)
+- [ ] Unified security dashboard continues to work with optimized executions
+- [ ] CI performance improves 20-30% for irrelevant file changes
+- [ ] No security regressions or coverage gaps introduced
+
+### **Fresh Claude Session Instructions**
+
+**Context**: Security workflows currently run with `if: always()` but can be optimized based on file changes to improve CI performance while maintaining security coverage.
+
+**Key Files**:
+- `.github/workflows/detect-changes.yml` - Add enhanced file pattern detection
+- `.github/workflows/main-ci-cd.yml` - Update security job conditional logic
+- Document testing results and performance improvements
+
+**Implementation Order**:
+1. Enhanced change detection (detect-changes.yml)
+2. Security workflow optimization (main-ci-cd.yml) 
+3. Validation testing with various PR scenarios
+4. Performance monitoring and documentation
+
+**Critical Requirements**:
+- Main branch must always run all security scans (failsafe)
+- Security workflow changes must trigger all scans (protection)
+- Critical tools (OSV, GitLeaks) should remain always-on
+- File patterns must cover all original trigger scenarios
+
+---
+
+*Implementation plan updated: 2025-08-29*  
 *Status: Enhanced with comprehensive session continuity for fresh Claude sessions*  
 *Priority: Phase 1 provides immediate AI cost elimination + enhanced security coverage*  
 *Estimated savings: 100% elimination of AI API costs + reduced maintenance overhead*

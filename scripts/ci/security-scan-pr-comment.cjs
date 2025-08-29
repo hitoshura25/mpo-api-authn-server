@@ -108,27 +108,40 @@ function categorizeVulnerabilitiesFromSARIF(scanResults) {
         const results = scanResults.runs[0].results || [];
         console.log(`📋 Processing ${results.length} SARIF results`);
         
-        results.forEach(result => {
-            // Extract severity from SARIF properties
-            const securitySeverity = result.properties?.['security-severity'] || 0;
+        results.forEach((result, index) => {
+            
+            // Extract severity from SARIF properties - Trivy uses different property structures
+            const securitySeverity = result.properties?.['security-severity'] || 
+                                   result.properties?.securitySeverity ||
+                                   extractSecuritySeverityFromMessage(result.message?.text) ||
+                                   0;
             const level = result.level || 'note';
             
-            // Map SARIF level and security-severity to vulnerability categories
+            // Map SARIF level and security-severity to vulnerability categories using GitHub's standard
             let severity = 'low';
-            if (level === 'error' && securitySeverity >= 9.0) {
+            if (securitySeverity >= 9.0) {
                 severity = 'critical';
-            } else if (level === 'error' && securitySeverity >= 7.0) {
+            } else if (securitySeverity >= 7.0) {
                 severity = 'high';
-            } else if (level === 'warning' || (level === 'error' && securitySeverity >= 4.0)) {
+            } else if (securitySeverity >= 4.0) {
                 severity = 'medium';
-            } else {
+            } else if (securitySeverity > 0) {
                 severity = 'low';
+            } else {
+                // Fallback to level-based severity mapping
+                if (level === 'error') {
+                    severity = 'high';
+                } else if (level === 'warning') {
+                    severity = 'medium';
+                } else {
+                    severity = 'low';
+                }
             }
             
             // Extract vulnerability information from SARIF structure
             const vulnerability = {
-                VulnerabilityID: result.ruleId || 'Unknown',
-                Title: result.message?.text?.split(' ')[0] || 'Unknown',
+                VulnerabilityID: result.ruleId || extractVulnIdFromMessage(result.message?.text) || 'Unknown',
+                Title: extractTitleFromMessage(result.message?.text) || 'Unknown',
                 Description: result.message?.text || 'No description available',
                 Severity: severity.toUpperCase(),
                 PkgName: extractPackageFromSARIF(result),
@@ -141,6 +154,7 @@ function categorizeVulnerabilitiesFromSARIF(scanResults) {
                 securitySeverity: securitySeverity
             };
             
+            console.log(`✅ Processed vulnerability: ${vulnerability.VulnerabilityID} (${severity.toUpperCase()})`);
             categories[severity].push(vulnerability);
         });
     }
@@ -149,50 +163,220 @@ function categorizeVulnerabilitiesFromSARIF(scanResults) {
     return categories;
 }
 
+// Helper function to extract security severity from Trivy message text
+function extractSecuritySeverityFromMessage(messageText) {
+    if (!messageText) return 0;
+    
+    // Trivy might encode severity in the message text
+    const severityMatch = messageText.match(/CVSS[\s:]+([0-9]+(\.[0-9]+)?)/i);
+    if (severityMatch) {
+        return parseFloat(severityMatch[1]);
+    }
+    
+    // Check for severity keywords in message
+    if (/critical/i.test(messageText)) return 9.5;
+    if (/high/i.test(messageText)) return 7.5;
+    if (/medium/i.test(messageText)) return 5.0;
+    if (/low/i.test(messageText)) return 2.0;
+    
+    return 0;
+}
+
+// Helper function to extract vulnerability ID from message
+function extractVulnIdFromMessage(messageText) {
+    if (!messageText) return null;
+    
+    // Common CVE pattern
+    const cveMatch = messageText.match(/CVE-\d{4}-\d+/i);
+    if (cveMatch) return cveMatch[0];
+    
+    // GHSA pattern
+    const ghsaMatch = messageText.match(/GHSA-[\w]{4}-[\w]{4}-[\w]{4}/i);
+    if (ghsaMatch) return ghsaMatch[0];
+    
+    return null;
+}
+
+// Helper function to extract title from message
+function extractTitleFromMessage(messageText) {
+    if (!messageText) return null;
+    
+    // Split by common delimiters and take the first substantial part
+    const parts = messageText.split(/[:;\n]/)
+        .map(part => part.trim())
+        .filter(part => part.length > 10);
+    
+    return parts[0] || messageText.substring(0, 100);
+}
+
 // Helper functions to extract information from SARIF structure
 function extractPackageFromSARIF(result) {
+    // First try to extract from properties (Trivy often puts structured data here)
+    if (result.properties) {
+        if (result.properties.pkgName) return result.properties.pkgName;
+        if (result.properties['package-name']) return result.properties['package-name'];
+        if (result.properties.packageName) return result.properties.packageName;
+    }
+    
     // Try to extract package name from locations or message
     if (result.locations && result.locations[0] && result.locations[0].physicalLocation) {
         const artifact = result.locations[0].physicalLocation.artifactLocation?.uri || '';
         // Extract package name from path or message
-        const match = artifact.match(/([^\/]+)\.(jar|lock|json)$/) || result.message?.text?.match(/([a-zA-Z0-9\.\-_]+):/);
-        return match ? match[1] : 'Unknown';
+        const match = artifact.match(/([^\/]+)\.(jar|lock|json)$/);
+        if (match) return match[1];
     }
-    return result.message?.text?.split(' ')[1] || 'Unknown';
+    
+    // Try to extract from message text
+    const messageText = result.message?.text || '';
+    
+    // Look for package patterns in message
+    const packagePatterns = [
+        /Package:\s*([a-zA-Z0-9\.\-_\/]+)/i,
+        /in\s+([a-zA-Z0-9\.\-_\/]+)/i,
+        /([a-zA-Z0-9\.\-_]+)\s*[\(:]?[\s]*version/i,
+        /([a-zA-Z0-9\.\-_]+):[0-9]/,
+    ];
+    
+    for (const pattern of packagePatterns) {
+        const match = messageText.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
+    return 'Unknown';
 }
 
 function extractVersionFromSARIF(result) {
-    // Try to extract version from properties or message
-    return result.properties?.version || 
-           result.message?.text?.match(/version\s+([0-9\.\-\w]+)/i)?.[1] || 
-           'Unknown';
+    // First try to extract from properties (Trivy structured data)
+    if (result.properties) {
+        if (result.properties.installedVersion) return result.properties.installedVersion;
+        if (result.properties['installed-version']) return result.properties['installed-version'];
+        if (result.properties.version) return result.properties.version;
+    }
+    
+    // Try to extract from message text with various patterns
+    const messageText = result.message?.text || '';
+    
+    const versionPatterns = [
+        /version\s+([0-9\.\-\w]+)/i,
+        /([0-9]+\.[0-9]+[0-9\.\-\w]*)/,
+        /:\s*([0-9]+\.[0-9]+[0-9\.\-\w]*)/,
+        /installed:\s*([0-9\.\-\w]+)/i,
+        /\(([0-9\.\-\w]+)\)/
+    ];
+    
+    for (const pattern of versionPatterns) {
+        const match = messageText.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
+    return 'Unknown';
 }
 
 function extractFixedVersionFromSARIF(result) {
-    // Try to extract fixed version from properties
-    return result.properties?.fixedVersion || 
-           result.fixes?.[0]?.description?.text?.match(/([0-9\.\-\w]+)/)?.[1] || 
-           '';
+    // First try to extract from properties (Trivy structured data)
+    if (result.properties) {
+        if (result.properties.fixedVersion) return result.properties.fixedVersion;
+        if (result.properties['fixed-version']) return result.properties['fixed-version'];
+        if (result.properties.fix) return result.properties.fix;
+    }
+    
+    // Try to extract from fixes array
+    if (result.fixes && result.fixes.length > 0) {
+        const fix = result.fixes[0];
+        if (fix.description?.text) {
+            const versionMatch = fix.description.text.match(/([0-9\.\-\w]+)/);
+            if (versionMatch) return versionMatch[1];
+        }
+    }
+    
+    // Try to extract from message text
+    const messageText = result.message?.text || '';
+    const fixPatterns = [
+        /fixed.{0,20}version\s*:?\s*([0-9\.\-\w]+)/i,
+        /upgrade.{0,20}to\s*:?\s*([0-9\.\-\w]+)/i,
+        /fix(?:ed)?\s*:?\s*([0-9\.\-\w]+)/i,
+        /update.{0,20}to\s*:?\s*([0-9\.\-\w]+)/i
+    ];
+    
+    for (const pattern of fixPatterns) {
+        const match = messageText.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
+    return '';
 }
 
 function extractReferencesFromSARIF(result) {
-    // Extract references from help or related locations
-    const refs = [];
+    // Extract references from various SARIF locations
+    const refs = new Set(); // Use Set to avoid duplicates
+    
+    // Check properties for references
+    if (result.properties?.references) {
+        if (Array.isArray(result.properties.references)) {
+            result.properties.references.forEach(ref => refs.add(ref));
+        }
+    }
+    
+    // Check help text and markdown
     if (result.help?.markdown) {
-        const urlMatches = result.help.markdown.match(/https?:\/\/[^\s)]+/g);
-        if (urlMatches) refs.push(...urlMatches);
+        const urlMatches = result.help.markdown.match(/https?:\/\/[^\s)\]]+/g);
+        if (urlMatches) urlMatches.forEach(url => refs.add(url));
     }
+    
+    if (result.help?.text) {
+        const urlMatches = result.help.text.match(/https?:\/\/[^\s)\]]+/g);
+        if (urlMatches) urlMatches.forEach(url => refs.add(url));
+    }
+    
+    // Check helpUri
     if (result.helpUri) {
-        refs.push(result.helpUri);
+        refs.add(result.helpUri);
     }
-    return refs;
+    
+    // Extract URLs from message text
+    const messageText = result.message?.text || '';
+    const urlMatches = messageText.match(/https?:\/\/[^\s)\]]+/g);
+    if (urlMatches) {
+        urlMatches.forEach(url => refs.add(url));
+    }
+    
+    return Array.from(refs);
 }
 
 function extractTargetFromSARIF(result) {
+    // First try properties for target information
+    if (result.properties?.target) return result.properties.target;
+    
     // Extract target file from locations
     if (result.locations && result.locations[0] && result.locations[0].physicalLocation) {
-        return result.locations[0].physicalLocation.artifactLocation?.uri || 'Unknown';
+        const uri = result.locations[0].physicalLocation.artifactLocation?.uri;
+        if (uri) {
+            // Clean up the URI to make it more readable
+            return uri.replace(/^file:\/\//, '').replace(/^\//, '');
+        }
     }
+    
+    // Try to extract from message if location is not available
+    const messageText = result.message?.text || '';
+    const targetPatterns = [
+        /in\s+([^\s]+\.(jar|tar|gz|zip|rpm|deb|apk|py|js|json|lock))/i,
+        /file\s*:?\s*([^\s]+)/i,
+        /target\s*:?\s*([^\s]+)/i
+    ];
+    
+    for (const pattern of targetPatterns) {
+        const match = messageText.match(pattern);
+        if (match && match[1]) {
+            return match[1];
+        }
+    }
+    
     return 'Unknown';
 }
 

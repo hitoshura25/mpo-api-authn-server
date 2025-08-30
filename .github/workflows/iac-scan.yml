@@ -48,6 +48,15 @@ jobs:
         id: process
         if: always()
         run: |
+          # Ensure consistent SARIF filename (Checkov action sometimes creates results.sarif or results_sarif.sarif)
+          if [[ -f "results.sarif" ]]; then
+            mv results.sarif checkov-results.sarif
+            echo "📄 Renamed results.sarif to checkov-results.sarif"
+          elif [[ -f "results_sarif.sarif" ]]; then
+            mv results_sarif.sarif checkov-results.sarif
+            echo "📄 Renamed results_sarif.sarif to checkov-results.sarif"
+          fi
+          
           if [[ -f "checkov-results.sarif" ]]; then
             echo "🔍 Checkov scan completed - SARIF file generated"
             

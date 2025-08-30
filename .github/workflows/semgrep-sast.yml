@@ -37,14 +37,14 @@ jobs:
           # Using registry rules + custom WebAuthn rules
           semgrep ci \
             --config=auto \
-            --config=.semgrep/webauthn-rules.yml \
+            --config=semgrep-rules/webauthn-security.yml \
             --sarif-output=semgrep.sarif \
             --json-output=semgrep-results.json \
             --no-suppress-errors || true
           
           # Alternative approach with explicit rule sets (commented for reference)
           #semgrep --config=p/security-audit --config=p/kotlin --config=p/typescript \
-          #  --config=.semgrep/webauthn-rules.yml \
+          #  --config=semgrep-rules/webauthn-security.yml \
           #  --sarif-output=semgrep.sarif --json-output=semgrep-results.json . || true
 
           # Legacy approach (commented for reference)

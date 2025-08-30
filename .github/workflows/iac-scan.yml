@@ -35,11 +35,11 @@ jobs:
           fetch-depth: 0
 
       - name: Run Checkov IaC scan
-        uses: bridgecrewio/checkov-action@master
+        uses: bridgecrewio/checkov-action@v12
         with:
           directory: .
           output_format: sarif
-          output_file_path: checkov-results
+          output_file_path: checkov-results/results.sarif
           skip_check: CKV_DOCKER_2,CKV_DOCKER_3  # Skip checks not applicable to our use case
           framework: dockerfile,github_actions,yaml
           soft_fail: true  # Don't fail the workflow on security issues
@@ -50,9 +50,9 @@ jobs:
         run: |
           echo "🔍 Debugging Checkov output structure..."
           ls -la .
-          if [[ -d "checkov-results.sarif" ]]; then
-            echo "📁 checkov-results.sarif directory exists, contents:"
-            ls -la checkov-results.sarif/
+          if [[ -d "checkov-results" ]]; then
+            echo "📁 checkov-results directory exists, contents:"
+            ls -la checkov-results/
           fi
 
           # Checkov action creates directory structure: checkov-results.sarif/results_sarif.sarif

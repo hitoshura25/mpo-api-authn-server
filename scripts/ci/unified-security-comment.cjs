@@ -266,21 +266,30 @@ class UnifiedSecurityReporter {
       }
       
       if (!found) {
-        // Special handling for ZAP - check for artifacts instead of SARIF files
+        // Special handling for ZAP - check for ZAP report files instead of SARIF files
         if (toolName === 'owaspZap') {
           try {
-            const zapArtifactCheck = `find security-artifacts -type d -name "*zap*" 2>/dev/null | head -1`;
-            const zapArtifacts = execSync(zapArtifactCheck, { encoding: 'utf8', stdio: 'pipe' }).trim();
+            // ZAP actions create artifacts with directory structure:
+            // security-artifacts/zap-full-scan-webauthn-server/report_json.json
+            // security-artifacts/zap-baseline-scan-webauthn-test-credentials-service/report_json.json
+            const zapReportCheck = `find security-artifacts -type f \\( -name "report_json.json" -o -name "report_html.html" -o -name "report_md.md" \\) 2>/dev/null`;
+            const zapReports = execSync(zapReportCheck, { encoding: 'utf8', stdio: 'pipe' }).trim();
             
-            if (zapArtifacts) {
-              console.log(`🔍 ZAP artifacts found: ${zapArtifacts}`);
+            if (zapReports) {
+              const reportFiles = zapReports.split('\n');
+              console.log(`🔍 ZAP reports found: ${reportFiles.join(', ')}`);
               console.log(`📄 ZAP scans completed - findings uploaded to GitHub Security tab by zaproxy actions`);
+              
+              // Count unique scans by checking for different directories
+              const zapDirs = [...new Set(reportFiles.map(f => f.split('/').slice(0, -1).join('/')))];
+              console.log(`📊 ZAP scans detected: ${zapDirs.length} (${zapDirs.map(d => d.split('/').pop()).join(', ')})`);
+              
               this.summary.toolStatus[toolName] = '✅ Completed';
               // ZAP doesn't add to findings count since results go directly to Security tab
               found = true;
             }
           } catch (e) {
-            console.log(`🔍 ZAP artifact check failed: ${e.message}`);
+            console.log(`🔍 ZAP report check failed: ${e.message}`);
           }
         }
         

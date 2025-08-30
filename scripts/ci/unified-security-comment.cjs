@@ -556,11 +556,18 @@ class UnifiedSecurityReporter {
   }
 
   async parseDependabotAlerts() {
-    // Query Dependabot security alerts
+    // Query Dependabot security alerts using PAT_DEPENDABOT token
     console.log('🔧 Checking Dependabot alerts...');
     
+    // Use PAT_DEPENDABOT token if available, otherwise fail
+    const dependabotToken = process.env.PAT_DEPENDABOT;
+    if (!dependabotToken) {
+      throw new Error('PAT_DEPENDABOT environment variable is required for Dependabot API access');
+    }
+    
     try {
-      const cmd = `gh api repos/${this.github.repository}/dependabot/alerts --jq '.[] | select(.state == "open") | {security_advisory: .security_advisory.summary, package: .dependency.package.name, severity: .security_advisory.severity}'`;
+      // Use curl with PAT_DEPENDABOT token instead of gh cli with GITHUB_TOKEN
+      const cmd = `curl -s -H "Authorization: token ${dependabotToken}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/${this.github.repository}/dependabot/alerts?state=open" | jq '.[] | {security_advisory: .security_advisory.summary, package: .dependency.package.name, severity: .security_advisory.severity}'`;
       const alertsOutput = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' });
       
       if (alertsOutput.trim()) {
@@ -580,8 +587,9 @@ class UnifiedSecurityReporter {
         console.log('  📊 Dependabot: No alerts found');
       }
     } catch (error) {
-      console.error('❌ Dependabot parsing failed:', error.message);
+      console.error('❌ Dependabot API access failed:', error.message);
       this.summary.toolStatus.dependabot = '❌ Error';
+      throw error; // Fail hard - no graceful fallback
     }
   }
 

@@ -360,6 +360,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          PAT_DEPENDABOT: ${{ secrets.PAT_DEPENDABOT }}
         run: |
           echo "🛡️ Generating unified security dashboard..."
           echo "📊 Consolidating findings from all 8 security tools..."

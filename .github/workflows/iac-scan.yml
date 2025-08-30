@@ -48,13 +48,27 @@ jobs:
         id: process
         if: always()
         run: |
-          # Ensure consistent SARIF filename (Checkov action sometimes creates results.sarif or results_sarif.sarif)
-          if [[ -f "results.sarif" ]]; then
+          echo "🔍 Debugging Checkov output structure..."
+          ls -la . | grep -E "(checkov|results|sarif)" || echo "No checkov/sarif files in current directory"
+          if [[ -d "checkov-results.sarif" ]]; then
+            echo "📁 checkov-results.sarif directory exists, contents:"
+            ls -la checkov-results.sarif/
+          fi
+          
+          # Checkov action creates directory structure: checkov-results.sarif/results_sarif.sarif
+          # We need to extract the actual SARIF file to the expected location
+          if [[ -f "checkov-results.sarif/results_sarif.sarif" ]]; then
+            mv checkov-results.sarif/results_sarif.sarif checkov-results.sarif
+            rmdir checkov-results.sarif || rm -rf checkov-results.sarif
+            echo "📄 Extracted SARIF from directory structure to checkov-results.sarif"
+          elif [[ -f "results.sarif" ]]; then
             mv results.sarif checkov-results.sarif
             echo "📄 Renamed results.sarif to checkov-results.sarif"
           elif [[ -f "results_sarif.sarif" ]]; then
             mv results_sarif.sarif checkov-results.sarif
             echo "📄 Renamed results_sarif.sarif to checkov-results.sarif"
+          else
+            echo "⚠️ Checkov scan completed but no SARIF results generated"
           fi
           
           if [[ -f "checkov-results.sarif" ]]; then

@@ -602,18 +602,32 @@ jobs:
           # Create consolidated SARIF for unified security dashboard
           echo "🔄 Creating consolidated ZAP SARIF for unified dashboard..."
           
-          # Check if ZAP actions created SARIF files
-          ZAP_SARIF_FILES=""
-          if [[ -f "results.sarif" ]]; then
-            ZAP_SARIF_FILES="results.sarif"
+          # ZAP actions create XML reports and GitHub issues, not SARIF files
+          # Check if ZAP XML reports exist (they get uploaded as artifacts by the actions)
+          ZAP_REPORTS_FOUND=0
+          
+          echo "🔍 Checking for ZAP scan results..."
+          echo "📁 Current directory contents:"
+          ls -la . | head -20
+          echo ""
+          echo "🔍 Looking for ZAP-related files..."
+          find . -name "*zap*" -o -name "*report*" -o -name "*.xml" | head -10 || echo "No ZAP/report files found"
+          echo ""
+          
+          # Check if ZAP created any XML reports
+          if [[ -f "zap_report.xml" || -f "report_html.html" || -f "report_md.md" ]]; then
+            ZAP_REPORTS_FOUND=1
+            echo "📄 Found ZAP XML/HTML reports"
           fi
           
-          # Look for any SARIF files created by ZAP actions
-          find . -name "*.sarif" -type f -exec echo "Found SARIF: {}" \;
+          # Check if we can find ZAP action artifacts (they may not be available in current directory)
+          if find . -name "*zap*" -type f | grep -q .; then
+            ZAP_REPORTS_FOUND=1
+            echo "📄 Found ZAP-related files"
+          fi
           
-          # Create a basic SARIF if no files found (ZAP findings go to Security tab directly)
-          if [[ -z "$ZAP_SARIF_FILES" ]]; then
-            cat > zap-results.sarif << 'EOF'
+          # Always create a SARIF placeholder since ZAP findings go to Security tab directly
+          cat > zap-results.sarif << 'EOF'
           {
             "version": "2.1.0",
             "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
@@ -629,18 +643,21 @@ jobs:
                 "results": [],
                 "properties": {
                   "note": "ZAP findings are uploaded directly to GitHub Security tab via zaproxy actions",
-                  "webauthn_server_target": "http://localhost:8080",
+                  "webauthn_server_target": "http://localhost:8080", 
                   "test_credentials_target": "http://localhost:8081",
-                  "scan_types": ["full_scan", "baseline_scan"]
+                  "scan_types": ["full_scan", "baseline_scan"],
+                  "zap_reports_found": $ZAP_REPORTS_FOUND,
+                  "scan_completion_status": "$([ $ZAP_REPORTS_FOUND -eq 1 ] && echo 'completed' || echo 'no_reports_detected')"
                 }
               }
             ]
           }
           EOF
-            echo "📄 Created placeholder ZAP SARIF (actual findings in GitHub Security tab)"
+          
+          if [[ $ZAP_REPORTS_FOUND -eq 1 ]]; then
+            echo "📄 Created ZAP SARIF placeholder with scan confirmation (actual findings in GitHub Security tab)"
           else
-            echo "📄 Found ZAP SARIF files: $ZAP_SARIF_FILES"
-            cp $ZAP_SARIF_FILES zap-results.sarif
+            echo "📄 Created ZAP SARIF placeholder - no scan reports detected"
           fi
 
           # Save DAST results for caching

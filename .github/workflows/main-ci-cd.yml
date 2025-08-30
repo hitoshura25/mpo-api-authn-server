@@ -227,27 +227,27 @@ jobs:
           echo "  Branch: ${{ github.ref }}"
           echo ""
           echo "📋 Security Scan Execution Plan:"
-          
+
           # OSV-Scanner (always run)
           echo "  OSV-Scanner: ✅ Always Run (critical dependency security)"
-          
+
           # Semgrep SAST (conditional)
           if [[ "${{ needs.detect-component-changes.outputs.code-files-changed }}" == "true" || "${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}" == "true" ]]; then
             echo "  Semgrep SAST: ✅ Will Run (code changes or security workflow changes detected)"
           else
             echo "  Semgrep SAST: ⏭️ Skipped (no relevant changes, performance optimization)"
           fi
-          
+
           # IaC Scan (conditional)
           if [[ "${{ needs.detect-component-changes.outputs.iac-files-changed }}" == "true" || "${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}" == "true" ]]; then
             echo "  IaC Scan: ✅ Will Run (infrastructure or security workflow changes detected)"
           else
             echo "  IaC Scan: ⏭️ Skipped (no relevant changes, performance optimization)"
           fi
-          
+
           # GitLeaks (always run)
           echo "  GitLeaks: ✅ Always Run (critical secrets detection)"
-          
+
     permissions:
       contents: read
 
@@ -301,9 +301,9 @@ jobs:
     name: 🛡️ Unified Security Dashboard
     runs-on: ubuntu-latest
     if: always() && github.event_name == 'pull_request'
-    needs: [ 
-      detect-component-changes, 
-      build-and-test, 
+    needs: [
+      detect-component-changes,
+      build-and-test,
       security-scanning,
       security-optimization-monitor,
       osv-scanner,
@@ -327,7 +327,6 @@ jobs:
         with:
           pattern: "*results*"
           path: security-artifacts/
-          merge-multiple: true
         continue-on-error: true
 
       - name: Download ZAP scan artifacts from E2E tests
@@ -336,7 +335,6 @@ jobs:
         with:
           pattern: "zap-*"
           path: security-artifacts/
-          merge-multiple: true
         continue-on-error: true
 
       - name: List collected security artifacts
@@ -348,7 +346,7 @@ jobs:
             find security-artifacts/ -type f -name "*.sarif" | sort || echo "No SARIF files found"
             echo ""
             echo "📁 JSON files available for processing:"
-            find security-artifacts/ -type f -name "*.json" | sort || echo "No JSON files found" 
+            find security-artifacts/ -type f -name "*.json" | sort || echo "No JSON files found"
             echo ""
             echo "📁 All security artifacts:"
             ls -la security-artifacts/ | head -20
@@ -365,14 +363,14 @@ jobs:
         run: |
           echo "🛡️ Generating unified security dashboard..."
           echo "📊 Consolidating findings from all 8 security tools..."
-          
+
           # Copy SARIF files to current directory for processing
           find security-artifacts/ -name "*.sarif" -exec cp {} . \; 2>/dev/null || echo "No SARIF files found in artifacts"
-          
+
           # List available SARIF files for processing
           echo "🔍 SARIF files available for processing:"
           ls -la *.sarif 2>/dev/null || echo "No SARIF files found"
-          
+
           # Execute unified security reporting
           chmod +x scripts/ci/unified-security-comment.cjs
           node scripts/ci/unified-security-comment.cjs

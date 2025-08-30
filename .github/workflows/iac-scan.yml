@@ -39,7 +39,7 @@ jobs:
         with:
           directory: .
           output_format: sarif
-          output_file_path: checkov-results/results.sarif
+          output_file_path: checkov-results
           skip_check: CKV_DOCKER_2,CKV_DOCKER_3  # Skip checks not applicable to our use case
           framework: dockerfile,github_actions,yaml
           soft_fail: true  # Don't fail the workflow on security issues

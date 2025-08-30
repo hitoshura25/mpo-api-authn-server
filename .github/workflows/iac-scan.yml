@@ -55,25 +55,17 @@ jobs:
             ls -la checkov-results/
           fi
 
-          # Checkov action creates directory structure: checkov-results.sarif/results_sarif.sarif
+          # Checkov action creates directory structure: checkov-results/results_sarif.sarif
           # We need to extract the actual SARIF file to the expected location
-          if [[ -f "checkov-results.sarif/results_sarif.sarif" ]]; then
+          if [[ -f "checkov-results/results_sarif.sarif" ]]; then
             # Copy the file out first, then clean up the directory
-            cp checkov-results.sarif/results_sarif.sarif checkov-results-temp.sarif
-            rm -rf checkov-results.sarif
-            mv checkov-results-temp.sarif checkov-results.sarif
+            cp checkov-results/results_sarif.sarif checkov-results.sarif
             echo "📄 Extracted SARIF from directory structure to checkov-results.sarif"
-          elif [[ -f "results.sarif" ]]; then
-            mv results.sarif checkov-results.sarif
-            echo "📄 Renamed results.sarif to checkov-results.sarif"
-          elif [[ -f "results_sarif.sarif" ]]; then
-            mv results_sarif.sarif checkov-results.sarif
-            echo "📄 Renamed results_sarif.sarif to checkov-results.sarif"
           else
             echo "⚠️ Checkov scan completed but no SARIF results generated"
           fi
 
-          if [[ -f "reports/checkov-results.sarif" ]]; then
+          if [[ -f "checkov-results.sarif" ]]; then
             echo "🔍 Checkov scan completed - SARIF file generated"
 
             # Count findings from SARIF
@@ -94,10 +86,10 @@ jobs:
           fi
 
       - name: Upload SARIF to GitHub Security tab
-        if: always() && hashFiles('reports/checkov-results.sarif') != ''
+        if: always() && hashFiles('checkov-results.sarif') != ''
         uses: github/codeql-action/upload-sarif@v3
         with:
-          sarif_file: reports/checkov-results.sarif
+          sarif_file: checkov-results.sarif
           category: "Checkov IaC"
         continue-on-error: true
 
@@ -107,6 +99,6 @@ jobs:
         with:
           name: checkov-results-${{ github.event_name }}-${{ github.run_number }}
           path: |
-            reports/checkov-results.sarif
+            checkov-results.sarif
           retention-days: 30
         continue-on-error: true

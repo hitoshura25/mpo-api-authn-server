@@ -44,6 +44,7 @@ class UnifiedSecurityReporter {
       high: 0,
       medium: 0,
       low: 0,
+      informational: 0,
       toolStatus: {}
     };
   }
@@ -266,26 +267,28 @@ class UnifiedSecurityReporter {
       }
       
       if (!found) {
-        // Special handling for ZAP - check for ZAP report files instead of SARIF files
+        // Special handling for ZAP - check for ZAP JSON report files instead of SARIF files
         if (toolName === 'owaspZap') {
           try {
             // ZAP actions create artifacts with directory structure:
             // security-artifacts/zap-full-scan-webauthn-server/report_json.json
             // security-artifacts/zap-baseline-scan-webauthn-test-credentials-service/report_json.json
-            const zapReportCheck = `find security-artifacts -type f \\( -name "report_json.json" -o -name "report_html.html" -o -name "report_md.md" \\) 2>/dev/null`;
+            // Also check in root directory: zap-*-scan-*/report_json.json
+            const zapReportCheck = `find . -path "./zap-*-scan-*/report_json.json" -o -path "./security-artifacts/zap-*/report_json.json" 2>/dev/null`;
             const zapReports = execSync(zapReportCheck, { encoding: 'utf8', stdio: 'pipe' }).trim();
             
             if (zapReports) {
               const reportFiles = zapReports.split('\n');
-              console.log(`🔍 ZAP reports found: ${reportFiles.join(', ')}`);
-              console.log(`📄 ZAP scans completed - findings uploaded to GitHub Security tab by zaproxy actions`);
+              console.log(`🔍 ZAP JSON reports found: ${reportFiles.join(', ')}`);
+              
+              // Parse ZAP JSON reports to extract vulnerability findings
+              this.findings.owaspZap = this.parseZapJsonReports(reportFiles);
               
               // Count unique scans by checking for different directories
               const zapDirs = [...new Set(reportFiles.map(f => f.split('/').slice(0, -1).join('/')))];
               console.log(`📊 ZAP scans detected: ${zapDirs.length} (${zapDirs.map(d => d.split('/').pop()).join(', ')})`);
               
               this.summary.toolStatus[toolName] = '✅ Completed';
-              // ZAP doesn't add to findings count since results go directly to Security tab
               found = true;
             }
           } catch (e) {
@@ -406,6 +409,112 @@ class UnifiedSecurityReporter {
     return score ? parseFloat(score).toFixed(1) : 'N/A';
   }
 
+  parseZapJsonReports(reportFiles) {
+    console.log('📄 Parsing ZAP JSON reports...');
+    const allFindings = [];
+    
+    for (const reportFile of reportFiles) {
+      try {
+        console.log(`🔍 Processing ZAP report: ${reportFile}`);
+        const zapData = JSON.parse(fs.readFileSync(reportFile.trim(), 'utf8'));
+        
+        // Extract service name from file path for better identification
+        const pathParts = reportFile.split('/');
+        const scanType = pathParts.find(part => part.includes('scan'));
+        const serviceId = scanType ? scanType.replace(/^zap-|-scan.*$/g, '') : 'unknown';
+        
+        // Parse each site in the ZAP report
+        if (zapData.site && Array.isArray(zapData.site)) {
+          for (const site of zapData.site) {
+            if (site.alerts && Array.isArray(site.alerts)) {
+              for (const alert of site.alerts) {
+                const finding = {
+                  tool: 'owaspZap',
+                  severity: this.mapZapRiskCode(alert.riskcode),
+                  ruleId: alert.pluginid,
+                  message: alert.alert,
+                  description: this.stripHtmlTags(alert.desc),
+                  location: `${site['@name']} (${serviceId})`,
+                  package: site['@host'] + ':' + site['@port'],
+                  vulnerability: alert.alertRef || alert.pluginid,
+                  cvssScore: 'N/A', // ZAP doesn't provide CVSS scores
+                  instanceCount: parseInt(alert.count) || 1,
+                  confidence: this.mapZapConfidence(alert.confidence),
+                  solution: this.stripHtmlTags(alert.solution),
+                  reference: this.stripHtmlTags(alert.reference)
+                };
+                
+                // Add details about affected endpoints
+                if (alert.instances && Array.isArray(alert.instances)) {
+                  const endpoints = alert.instances.slice(0, 3).map(inst => inst.uri).join(', ');
+                  finding.affectedEndpoints = endpoints;
+                  if (alert.instances.length > 3) {
+                    finding.affectedEndpoints += ` +${alert.instances.length - 3} more`;
+                  }
+                }
+                
+                allFindings.push(finding);
+              }
+            }
+          }
+        }
+        
+        console.log(`  📊 ${reportFile}: processed, ${allFindings.length} total findings so far`);
+        
+      } catch (error) {
+        console.error(`❌ Failed to parse ZAP report ${reportFile}:`, error.message);
+      }
+    }
+    
+    // Group findings by severity for summary
+    const severityCounts = {
+      high: allFindings.filter(f => f.severity === 'high').length,
+      medium: allFindings.filter(f => f.severity === 'medium').length,
+      low: allFindings.filter(f => f.severity === 'low').length,
+      informational: allFindings.filter(f => f.severity === 'informational').length
+    };
+    
+    console.log(`  📈 ZAP Summary: ${allFindings.length} total findings`);
+    console.log(`  🔥 High: ${severityCounts.high} | ⚠️ Medium: ${severityCounts.medium} | ℹ️ Low: ${severityCounts.low} | 📋 Info: ${severityCounts.informational}`);
+    
+    return allFindings;
+  }
+
+  mapZapRiskCode(riskCode) {
+    // ZAP risk codes: 0=Informational, 1=Low, 2=Medium, 3=High
+    switch (parseInt(riskCode)) {
+      case 3: return 'high';
+      case 2: return 'medium';
+      case 1: return 'low';
+      case 0: 
+      default: return 'informational';
+    }
+  }
+
+  mapZapConfidence(confidence) {
+    // ZAP confidence levels: 1=Low, 2=Medium, 3=High
+    switch (parseInt(confidence)) {
+      case 3: return 'High';
+      case 2: return 'Medium';
+      case 1: return 'Low';
+      default: return 'Unknown';
+    }
+  }
+
+  stripHtmlTags(text) {
+    if (!text) return '';
+    // Remove HTML tags and decode common entities
+    return text
+      .replace(/<[^>]*>/g, '')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#x27;/g, "'")
+      .replace(/\s+/g, ' ')
+      .trim();
+  }
+
   async parseGitHubSecurityData() {
     // Query GitHub API for GitLeaks issues and Dependabot alerts
     try {
@@ -496,12 +605,14 @@ class UnifiedSecurityReporter {
     this.summary.high = allFindings.filter(f => f.severity === 'high').length;
     this.summary.medium = allFindings.filter(f => f.severity === 'medium').length;
     this.summary.low = allFindings.filter(f => f.severity === 'low').length;
+    this.summary.informational = allFindings.filter(f => f.severity === 'informational').length;
     
     console.log(`  📈 Total: ${this.summary.total} findings`);
     console.log(`  🚨 Critical: ${this.summary.critical}`);
     console.log(`  🔥 High: ${this.summary.high}`);
     console.log(`  ⚠️ Medium: ${this.summary.medium}`);
     console.log(`  ℹ️ Low: ${this.summary.low}`);
+    console.log(`  📋 Informational: ${this.summary.informational}`);
   }
 
   buildSecurityDashboard() {
@@ -511,21 +622,21 @@ class UnifiedSecurityReporter {
 
 ### 📊 Executive Summary
 - **Total Findings**: ${this.summary.total} vulnerabilities across 8 security tools
-- **Critical**: ${this.summary.critical} 🚨 | **High**: ${this.summary.high} 🔥 | **Medium**: ${this.summary.medium} ⚠️ | **Low**: ${this.summary.low} ℹ️
+- **Critical**: ${this.summary.critical} 🚨 | **High**: ${this.summary.high} 🔥 | **Medium**: ${this.summary.medium} ⚠️ | **Low**: ${this.summary.low} ℹ️ | **Info**: ${this.summary.informational} 📋
 - **Supply Chain**: ${this.findings.gradleLocking.lockedDeps} dependencies locked 🔒
 
 ### 🔍 Security Tool Results
 
-| Tool | Status | Findings | Critical | High | Medium | Low | Details |
-|------|--------|----------|----------|------|--------|-----|---------|
-| 🐳 **Trivy** | ${this.summary.toolStatus.trivy || '❓'} | ${this.findings.trivy.length} | ${this.countBySeverity('trivy', 'critical')} | ${this.countBySeverity('trivy', 'high')} | ${this.countBySeverity('trivy', 'medium')} | ${this.countBySeverity('trivy', 'low')} | Container Security |
-| 🔍 **OSV-Scanner** | ${this.summary.toolStatus.osvScanner || '❓'} | ${this.findings.osvScanner.length} | ${this.countBySeverity('osvScanner', 'critical')} | ${this.countBySeverity('osvScanner', 'high')} | ${this.countBySeverity('osvScanner', 'medium')} | ${this.countBySeverity('osvScanner', 'low')} | Open Source Vulns |
-| 🔒 **Semgrep** | ${this.summary.toolStatus.semgrep || '❓'} | ${this.findings.semgrep.length} | ${this.countBySeverity('semgrep', 'critical')} | ${this.countBySeverity('semgrep', 'high')} | ${this.countBySeverity('semgrep', 'medium')} | ${this.countBySeverity('semgrep', 'low')} | Static Analysis |
-| 🔑 **GitLeaks** | ${this.summary.toolStatus.gitLeaks || '❓'} | ${this.findings.gitLeaks.length} | ${this.countBySeverity('gitLeaks', 'critical')} | ${this.countBySeverity('gitLeaks', 'high')} | ${this.countBySeverity('gitLeaks', 'medium')} | ${this.countBySeverity('gitLeaks', 'low')} | Secret Detection |
-| 🏗️ **Checkov** | ${this.summary.toolStatus.checkov || '❓'} | ${this.findings.checkov.length} | ${this.countBySeverity('checkov', 'critical')} | ${this.countBySeverity('checkov', 'high')} | ${this.countBySeverity('checkov', 'medium')} | ${this.countBySeverity('checkov', 'low')} | Infrastructure |
-| ⚡ **OWASP ZAP** | ${this.summary.toolStatus.owaspZap || '❓'} | ${this.findings.owaspZap.length} | ${this.countBySeverity('owaspZap', 'critical')} | ${this.countBySeverity('owaspZap', 'high')} | ${this.countBySeverity('owaspZap', 'medium')} | ${this.countBySeverity('owaspZap', 'low')} | Dynamic Analysis |
-| 🔧 **Dependabot** | ${this.summary.toolStatus.dependabot || '❓'} | ${this.findings.dependabot.length} | ${this.countBySeverity('dependabot', 'critical')} | ${this.countBySeverity('dependabot', 'high')} | ${this.countBySeverity('dependabot', 'medium')} | ${this.countBySeverity('dependabot', 'low')} | Dependencies |
-| 🔒 **Gradle Lock** | ✅ | 974 deps locked | - | - | - | - | Supply Chain |
+| Tool | Status | Findings | Critical | High | Medium | Low | Info | Details |
+|------|--------|----------|----------|------|--------|-----|------|---------|
+| 🐳 **Trivy** | ${this.summary.toolStatus.trivy || '❓'} | ${this.findings.trivy.length} | ${this.countBySeverity('trivy', 'critical')} | ${this.countBySeverity('trivy', 'high')} | ${this.countBySeverity('trivy', 'medium')} | ${this.countBySeverity('trivy', 'low')} | ${this.countBySeverity('trivy', 'informational')} | Container Security |
+| 🔍 **OSV-Scanner** | ${this.summary.toolStatus.osvScanner || '❓'} | ${this.findings.osvScanner.length} | ${this.countBySeverity('osvScanner', 'critical')} | ${this.countBySeverity('osvScanner', 'high')} | ${this.countBySeverity('osvScanner', 'medium')} | ${this.countBySeverity('osvScanner', 'low')} | ${this.countBySeverity('osvScanner', 'informational')} | Open Source Vulns |
+| 🔒 **Semgrep** | ${this.summary.toolStatus.semgrep || '❓'} | ${this.findings.semgrep.length} | ${this.countBySeverity('semgrep', 'critical')} | ${this.countBySeverity('semgrep', 'high')} | ${this.countBySeverity('semgrep', 'medium')} | ${this.countBySeverity('semgrep', 'low')} | ${this.countBySeverity('semgrep', 'informational')} | Static Analysis |
+| 🔑 **GitLeaks** | ${this.summary.toolStatus.gitLeaks || '❓'} | ${this.findings.gitLeaks.length} | ${this.countBySeverity('gitLeaks', 'critical')} | ${this.countBySeverity('gitLeaks', 'high')} | ${this.countBySeverity('gitLeaks', 'medium')} | ${this.countBySeverity('gitLeaks', 'low')} | ${this.countBySeverity('gitLeaks', 'informational')} | Secret Detection |
+| 🏗️ **Checkov** | ${this.summary.toolStatus.checkov || '❓'} | ${this.findings.checkov.length} | ${this.countBySeverity('checkov', 'critical')} | ${this.countBySeverity('checkov', 'high')} | ${this.countBySeverity('checkov', 'medium')} | ${this.countBySeverity('checkov', 'low')} | ${this.countBySeverity('checkov', 'informational')} | Infrastructure |
+| ⚡ **OWASP ZAP** | ${this.summary.toolStatus.owaspZap || '❓'} | ${this.findings.owaspZap.length} | ${this.countBySeverity('owaspZap', 'critical')} | ${this.countBySeverity('owaspZap', 'high')} | ${this.countBySeverity('owaspZap', 'medium')} | ${this.countBySeverity('owaspZap', 'low')} | ${this.countBySeverity('owaspZap', 'informational')} | Dynamic Analysis |
+| 🔧 **Dependabot** | ${this.summary.toolStatus.dependabot || '❓'} | ${this.findings.dependabot.length} | ${this.countBySeverity('dependabot', 'critical')} | ${this.countBySeverity('dependabot', 'high')} | ${this.countBySeverity('dependabot', 'medium')} | ${this.countBySeverity('dependabot', 'low')} | ${this.countBySeverity('dependabot', 'informational')} | Dependencies |
+| 🔒 **Gradle Lock** | ✅ | 974 deps locked | - | - | - | - | - | Supply Chain |
 
 ${this.buildCriticalSection()}
 

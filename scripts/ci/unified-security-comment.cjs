@@ -566,25 +566,54 @@ class UnifiedSecurityReporter {
     }
     
     try {
-      // Use curl with PAT_DEPENDABOT token instead of gh cli with GITHUB_TOKEN
-      const cmd = `curl -s -H "Authorization: token ${dependabotToken}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/${this.github.repository}/dependabot/alerts?state=open" | jq '.[] | {security_advisory: .security_advisory.summary, package: .dependency.package.name, severity: .security_advisory.severity}'`;
-      const alertsOutput = execSync(cmd, { encoding: 'utf8', stdio: 'pipe' });
+      // First, get the raw response to debug any issues
+      const rawCmd = `curl -s -H "Authorization: token ${dependabotToken}" -H "Accept: application/vnd.github.v3+json" "https://api.github.com/repos/${this.github.repository}/dependabot/alerts?state=open"`;
+      const rawResponse = execSync(rawCmd, { encoding: 'utf8', stdio: 'pipe' });
       
-      if (alertsOutput.trim()) {
-        const alerts = alertsOutput.trim().split('\n').map(line => JSON.parse(line));
-        this.findings.dependabot = alerts.map(alert => ({
+      console.log('🔍 Raw Dependabot API response length:', rawResponse.length);
+      
+      if (!rawResponse.trim()) {
+        this.summary.toolStatus.dependabot = '✅ No alerts';
+        console.log('  📊 Dependabot: No alerts found');
+        this.findings.dependabot = [];
+        return;
+      }
+      
+      // Parse the JSON response
+      let alertsData;
+      try {
+        alertsData = JSON.parse(rawResponse);
+      } catch (parseError) {
+        console.error('❌ JSON parsing failed. Raw response preview:');
+        console.error(rawResponse.substring(0, 200) + '...');
+        throw new Error(`JSON parsing failed: ${parseError.message}`);
+      }
+      
+      // Handle error responses from GitHub API
+      if (alertsData.message) {
+        throw new Error(`GitHub API error: ${alertsData.message}`);
+      }
+      
+      // Ensure we have an array
+      if (!Array.isArray(alertsData)) {
+        throw new Error(`Expected array response, got: ${typeof alertsData}`);
+      }
+      
+      if (alertsData.length > 0) {
+        this.findings.dependabot = alertsData.map(alert => ({
           tool: 'dependabot',
-          severity: alert.severity.toLowerCase(),
-          message: alert.security_advisory,
+          severity: alert.security_advisory.severity.toLowerCase(),
+          message: alert.security_advisory.summary,
           location: 'Dependencies',
-          package: alert.package,
-          vulnerability: 'Dependency Alert'
+          package: alert.dependency.package.name,
+          vulnerability: `${alert.security_advisory.ghsa_id || 'Dependabot Alert'}`
         }));
         this.summary.toolStatus.dependabot = '✅ Completed';
-        console.log(`  📊 Dependabot: ${alerts.length} alerts found`);
+        console.log(`  📊 Dependabot: ${alertsData.length} alerts found`);
       } else {
         this.summary.toolStatus.dependabot = '✅ No alerts';
         console.log('  📊 Dependabot: No alerts found');
+        this.findings.dependabot = [];
       }
     } catch (error) {
       console.error('❌ Dependabot API access failed:', error.message);

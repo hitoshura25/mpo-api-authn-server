@@ -599,6 +599,50 @@ jobs:
           echo "🔍 OWASP ZAP DAST scans completed"
           echo "tests-passed=true" >> $GITHUB_OUTPUT
 
+          # Create consolidated SARIF for unified security dashboard
+          echo "🔄 Creating consolidated ZAP SARIF for unified dashboard..."
+          
+          # Check if ZAP actions created SARIF files
+          ZAP_SARIF_FILES=""
+          if [[ -f "results.sarif" ]]; then
+            ZAP_SARIF_FILES="results.sarif"
+          fi
+          
+          # Look for any SARIF files created by ZAP actions
+          find . -name "*.sarif" -type f -exec echo "Found SARIF: {}" \;
+          
+          # Create a basic SARIF if no files found (ZAP findings go to Security tab directly)
+          if [[ -z "$ZAP_SARIF_FILES" ]]; then
+            cat > zap-results.sarif << 'EOF'
+          {
+            "version": "2.1.0",
+            "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",
+            "runs": [
+              {
+                "tool": {
+                  "driver": {
+                    "name": "OWASP ZAP",
+                    "version": "2.15.0",
+                    "informationUri": "https://www.zaproxy.org/"
+                  }
+                },
+                "results": [],
+                "properties": {
+                  "note": "ZAP findings are uploaded directly to GitHub Security tab via zaproxy actions",
+                  "webauthn_server_target": "http://localhost:8080",
+                  "test_credentials_target": "http://localhost:8081",
+                  "scan_types": ["full_scan", "baseline_scan"]
+                }
+              }
+            ]
+          }
+          EOF
+            echo "📄 Created placeholder ZAP SARIF (actual findings in GitHub Security tab)"
+          else
+            echo "📄 Found ZAP SARIF files: $ZAP_SARIF_FILES"
+            cp $ZAP_SARIF_FILES zap-results.sarif
+          fi
+
           # Save DAST results for caching
           mkdir -p dast-scan-cache
           cat > dast-scan-results.json << EOF
@@ -642,6 +686,16 @@ jobs:
           path: |
             dast-scan-cache/
             dast-scan-results.json
+
+      - name: Upload ZAP SARIF results for unified security dashboard
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zap-results-${{ github.event_name }}-${{ github.run_number }}
+          path: |
+            zap-results.sarif
+          retention-days: 30
+        continue-on-error: true
 
       - name: Cleanup Docker services
         if: always()

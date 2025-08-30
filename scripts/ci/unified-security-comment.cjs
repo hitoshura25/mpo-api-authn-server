@@ -267,6 +267,18 @@ class UnifiedSecurityReporter {
       
       if (!found) {
         console.log(`⚠️ No SARIF file found for ${toolName} (searched patterns: ${searchPatterns.join(', ')})`);
+        
+        // Enhanced debugging: show what files exist for this tool pattern
+        try {
+          const debugCmd = `find security-artifacts -type f -name "*${toolName.toLowerCase()}*" 2>/dev/null || find security-artifacts -type f -name "*${searchPatterns[0].split('.')[0]}*" 2>/dev/null`;
+          const debugFiles = execSync(debugCmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
+          if (debugFiles) {
+            console.log(`🔍 Found related files for ${toolName}:`, debugFiles.split('\n').join(', '));
+          }
+        } catch (e) {
+          // Debug command failed, continue
+        }
+        
         this.summary.toolStatus[toolName] = '⚠️ Missing';
       }
     }

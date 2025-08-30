@@ -49,7 +49,7 @@ jobs:
           echo "🔍 Running OSV-Scanner..."
           set +e  # Don't fail on vulnerabilities
           
-          ./osv-scanner --format json --recursive . > osv-results.json 2>&1
+          ./osv-scanner --format json --recursive . > osv-results.json 2>osv-scanner.log
           SCAN_EXIT_CODE=$?
           
           if [[ -f "osv-results.json" ]]; then

@@ -1,0 +1,104 @@
+name: Infrastructure as Code Security Scan
+
+on:
+  workflow_call:
+    outputs:
+      findings-found:
+        description: 'Whether IaC security findings were detected'
+        value: ${{ jobs.checkov.outputs.findings-found }}
+
+# Ensure only one Checkov scan runs at a time per branch
+concurrency:
+  group: checkov-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  security-events: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  checkov:
+    name: Checkov IaC Security Scan
+    runs-on: ubuntu-latest
+    outputs:
+      findings-found: ${{ steps.process.outputs.findings-found }}
+
+    # Skip on dependabot PRs to avoid permission issues
+    if: github.actor != 'dependabot[bot]'
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run Checkov IaC scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: .
+          output_format: sarif
+          output_file_path: checkov-results
+          skip_check: CKV_DOCKER_2,CKV_DOCKER_3  # Skip checks not applicable to our use case
+          framework: dockerfile,github_actions,yaml
+          soft_fail: true  # Don't fail the workflow on security issues
+
+      - name: Process Checkov results
+        id: process
+        if: always()
+        run: |
+          echo "🔍 Debugging Checkov output structure..."
+          ls -la .
+          if [[ -d "checkov-results" ]]; then
+            echo "📁 checkov-results directory exists, contents:"
+            ls -la checkov-results/
+          fi
+
+          # Checkov action creates directory structure: checkov-results/results_sarif.sarif
+          # We need to extract the actual SARIF file to the expected location
+          if [[ -f "checkov-results/results_sarif.sarif" ]]; then
+            # Copy the file out first, then clean up the directory
+            cp checkov-results/results_sarif.sarif checkov-results.sarif
+            echo "📄 Extracted SARIF from directory structure to checkov-results.sarif"
+          else
+            echo "⚠️ Checkov scan completed but no SARIF results generated"
+          fi
+
+          if [[ -f "checkov-results.sarif" ]]; then
+            echo "🔍 Checkov scan completed - SARIF file generated"
+
+            # Count findings from SARIF
+            TOTAL_FINDINGS=$(jq '.runs[0].results | length' reports/checkov-results.sarif 2>/dev/null || echo "0")
+            echo "📊 Total infrastructure security findings: ${TOTAL_FINDINGS}"
+
+            if [[ ${TOTAL_FINDINGS} -gt 0 ]]; then
+              echo "⚠️ Infrastructure security issues detected:"
+              echo "Check GitHub Security tab for detailed findings"
+              echo "findings-found=true" >> $GITHUB_OUTPUT
+            else
+              echo "✅ No infrastructure security issues detected!"
+              echo "findings-found=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "⚠️ Checkov scan completed but no SARIF results generated"
+            echo "findings-found=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload SARIF to GitHub Security tab
+        if: always() && hashFiles('checkov-results.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov-results.sarif
+          category: "Checkov IaC"
+        continue-on-error: true
+
+      - name: Upload results as artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: checkov-results-${{ github.event_name }}-${{ github.run_number }}
+          path: |
+            checkov-results.sarif
+          retention-days: 30
+        continue-on-error: true

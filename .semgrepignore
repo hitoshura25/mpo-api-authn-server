@@ -1,0 +1,123 @@
+# Semgrep Ignore Configuration for WebAuthn Project
+# This file excludes certain paths and patterns from Semgrep analysis
+
+# Generated and Build Artifacts
+**/build/
+**/dist/
+**/node_modules/
+**/gradle/wrapper/
+**/.gradle/
+**/out/
+**/.idea/
+**/.vscode/
+
+# Test Files - Apply different rules to test code
+# Allow more permissive patterns in test code
+**/src/test/
+**/src/androidTest/
+**/tests/
+**/test/
+**/*Test.kt
+**/*Test.java
+**/*Test.ts
+**/*Test.js
+**/*Spec.kt
+**/*Spec.java
+**/*Spec.ts
+**/*Spec.js
+
+# Generated Client Libraries - Focus on our code, not generated code
+**/android-client-library/src/main/java/io/github/hitoshura25/webauthn/client/
+**/typescript-client-library/src/apis/
+**/typescript-client-library/src/models/
+
+# Documentation and Configuration Files
+**/*.md
+**/*.txt
+**/docs/
+**/README*
+**/LICENSE*
+**/CHANGELOG*
+**/CONTRIBUTING*
+
+# Docker and DevOps Files that don't contain security-critical code
+**/Dockerfile
+**/docker-compose*.yml
+**/.dockerignore
+**/deployment/
+**/scripts/setup/
+
+# Gradle Configuration Files - Low risk for WebAuthn-specific vulnerabilities
+**/gradle.properties
+**/gradlew*
+**/settings.gradle.kts
+
+# MCP and Development Tools
+**/dev-tools-mcp-server.js
+**/setup-dev-tools.sh
+**/node_modules/
+**/package-lock.json
+
+# Log Files and Temporary Files
+**/*.log
+**/*.tmp
+**/tmp/
+**/temp/
+**/.DS_Store
+**/.env.local
+**/.env.*.local
+
+# IDE and Editor Files
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+**/*~
+
+# Specific File Patterns to Ignore
+
+# Allow hardcoded values in test configurations
+**/src/test/**/TestModels.kt
+**/src/test/**/BaseIntegrationTest.kt
+**/src/test/**/WebAuthnTestHelpers.kt
+
+# Allow debug mode in development scripts
+**/start-dev.sh
+**/start-full.sh
+**/debug/
+
+# Allow localhost origins in development configurations
+**/webauthn-server/docker-compose*.yml
+**/web-test-client/src/webauthn-client.ts
+
+# Exclude vulnerability tracking files (they're meant to contain security info)
+**/vulnerability-tracking.json
+**/security-scan-results.json
+
+# Exclude Dependabot configuration (it's meant to manage dependencies)
+**/.github/dependabot.yml
+
+# Performance measurement scripts (may have relaxed security for testing)
+**/scripts/performance/
+**/scripts/testing/
+
+# GitHub Actions workflows (different security model)
+**/.github/workflows/
+
+# Exclude semgrep rules themselves from analysis
+**/semgrep-rules/
+**/.semgrepignore
+
+# Custom Ignores for WebAuthn Specific Patterns
+
+# Allow test credentials service to have relaxed security (it's for testing only)
+**/webauthn-test-credentials-service/src/main/kotlin/com/vmenon/webauthn/testservice/
+
+# Allow development environment configurations
+**/ide.env
+**/local.properties
+**/setup-secure-env.sh
+
+# Exclude monitoring and debugging utilities
+**/scripts/debug/
+**/scripts/monitoring/

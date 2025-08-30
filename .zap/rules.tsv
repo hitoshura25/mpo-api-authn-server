@@ -1,0 +1,9 @@
+# ZAP Scanning Rules
+# Format: IGNORE	SCAN-ID	URL	PARAMETER	CWE	WASCID	DESCRIPTION
+# 
+# Ignore common false positives for WebAuthn application
+IGNORE	10038	http://localhost:8080	.*	200	13	Content Security Policy (CSP) Header Not Set - Expected for test environment
+IGNORE	10021	http://localhost:8081	.*	200	15	X-Content-Type-Options Header Missing - Test service doesn't require this
+IGNORE	10020	http://localhost:8082	.*	200	15	X-Frame-Options Header Not Set - Test client doesn't need frame protection
+IGNORE	90022	http://localhost:.*	.*	200	13	Application Error Disclosure - Expected for development/test environment
+IGNORE	10049	http://localhost:.*	.*	200	16	Non-Storable Content - Cache headers not critical for test environment

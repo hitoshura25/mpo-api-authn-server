@@ -59,12 +59,10 @@ permissions:
   contents: read
 
 jobs:
-  # Job 1: Component change detection for independent processing optimization (Phase 10.1)
   detect-component-changes:
     name: Detect Component Changes
     uses: ./.github/workflows/detect-changes.yml
 
-  # Job 2: Build and test with component-specific conditioning and parallel execution
   build-and-test:
     name: Build & Test (Unit Tests + Docker Images)
     needs: detect-component-changes
@@ -95,7 +93,6 @@ jobs:
       issues: write
     secrets: inherit
 
-  # Job 3: Generate version for staging client libraries
   generate-staging-version:
     name: Generate Staging Version
     runs-on: ubuntu-latest
@@ -125,7 +122,6 @@ jobs:
           echo "🎯 Generating staging client version with centralized version manager"
           ./scripts/core/version-manager.sh generate
 
-  # Job 4: Client library publishing (parallel with build-and-test for optimal performance)
   publish-client-libraries:
     name: Publish Client Libraries (Staging)
     needs: [ detect-component-changes, generate-staging-version ]
@@ -149,7 +145,6 @@ jobs:
     secrets:
       GRADLE_ENCRYPTION_KEY: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
-  # Job 5: E2E tests using built Docker images with smart component-based triggering (waits for both build AND client publishing)
   e2e-tests:
     name: E2E Tests (Web + Android)
     needs: [ detect-component-changes, generate-staging-version, build-and-test, publish-client-libraries ]
@@ -172,6 +167,7 @@ jobs:
       packages: write          # Pull/Push Docker images from GHCR
       pull-requests: write    # Comment on PRs with test results
       id-token: write         # Required for npm publishing
+      issues: write          # Update issues with security findings
     with:
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'N/A' }}
       webauthn_server_image: ${{ needs.build-and-test.outputs.webauthn_server_image }}
@@ -195,7 +191,6 @@ jobs:
       force-docker-build: ${{ inputs.force-docker-build || false }}
     secrets: inherit
 
-  # Job 6: Security scanning using built Docker images (parallel with E2E tests)
   security-scanning:
     name: Security Scanning (Docker Images)
     needs: [ detect-component-changes, build-and-test ]
@@ -215,7 +210,183 @@ jobs:
       skip-scan: false
     secrets: inherit
 
-  # Job 7: Setup configuration for production publishing (main branch only)
+  security-optimization-monitor:
+    name: 📊 Security Optimization Monitor
+    runs-on: ubuntu-latest
+    needs: [ detect-component-changes ]
+    if: always()
+    steps:
+      - name: Log security workflow optimization decisions
+        run: |
+          echo "🔍 Security Workflow Optimization Decision Matrix:"
+          echo "  IaC Files Changed: ${{ needs.detect-component-changes.outputs.iac-files-changed }}"
+          echo "  Code Files Changed: ${{ needs.detect-component-changes.outputs.code-files-changed }}"
+          echo "  Dependency Files Changed: ${{ needs.detect-component-changes.outputs.dependency-files-changed }}"
+          echo "  Security Workflows Changed: ${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}"
+          echo "  Event Type: ${{ github.event_name }}"
+          echo "  Branch: ${{ github.ref }}"
+          echo ""
+          echo "📋 Security Scan Execution Plan:"
+
+          # OSV-Scanner (always run)
+          echo "  OSV-Scanner: ✅ Always Run (critical dependency security)"
+
+          # Semgrep SAST (conditional)
+          if [[ "${{ needs.detect-component-changes.outputs.code-files-changed }}" == "true" || "${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}" == "true" ]]; then
+            echo "  Semgrep SAST: ✅ Will Run (code changes or security workflow changes detected)"
+          else
+            echo "  Semgrep SAST: ⏭️ Skipped (no relevant changes, performance optimization)"
+          fi
+
+          # IaC Scan (conditional)
+          if [[ "${{ needs.detect-component-changes.outputs.iac-files-changed }}" == "true" || "${{ needs.detect-component-changes.outputs.security-affecting-workflows-changed }}" == "true" ]]; then
+            echo "  IaC Scan: ✅ Will Run (infrastructure or security workflow changes detected)"
+          else
+            echo "  IaC Scan: ⏭️ Skipped (no relevant changes, performance optimization)"
+          fi
+
+          # GitLeaks (always run)
+          echo "  GitLeaks: ✅ Always Run (critical secrets detection)"
+
+    permissions:
+      contents: read
+
+  osv-scanner:
+    name: OSV Dependency Scanning
+    needs: [ detect-component-changes, security-optimization-monitor ]
+    if: always()  # Critical dependency security - always run
+    uses: ./.github/workflows/osv-scanner.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  semgrep-sast:
+    name: SAST Code Analysis
+    needs: [ detect-component-changes ]
+    if: |
+      needs.detect-component-changes.outputs.code-files-changed == 'true' ||
+      needs.detect-component-changes.outputs.security-affecting-workflows-changed == 'true'
+    uses: ./.github/workflows/semgrep-sast.yml
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+  iac-scan:
+    name: Infrastructure Security Scan
+    needs: [ detect-component-changes ]
+    if: |
+      needs.detect-component-changes.outputs.iac-files-changed == 'true' ||
+      needs.detect-component-changes.outputs.security-affecting-workflows-changed == 'true'
+    uses: ./.github/workflows/iac-scan.yml
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      actions: read
+
+  secrets-scan:
+    name: Secrets Detection
+    needs: [ detect-component-changes ]
+    if: always()  # Critical security - secrets can be in any file type
+    uses: ./.github/workflows/secrets-scan.yml
+    permissions:
+      contents: read
+      security-events: write
+      pull-requests: write
+      actions: read
+
+  unified-security-report:
+    name: 🛡️ Unified Security Dashboard
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'pull_request'
+    needs: [
+      detect-component-changes,
+      build-and-test,
+      security-scanning,
+      security-optimization-monitor,
+      osv-scanner,
+      semgrep-sast,
+      iac-scan,
+      secrets-scan,
+      e2e-tests
+    ]
+    permissions:
+      contents: read          # Read repository code
+      issues: write          # Query GitLeaks issues via GitHub API
+      pull-requests: write    # Post unified security comment
+      security-events: read   # Access security events and advisories
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download security artifacts from all tools
+        uses: actions/download-artifact@v4
+        if: always()
+        with:
+          pattern: "*results*"
+          path: security-artifacts/
+        continue-on-error: true
+
+      - name: Download ZAP scan artifacts from E2E tests
+        uses: actions/download-artifact@v4
+        if: always()
+        with:
+          pattern: "zap-*"
+          path: security-artifacts/
+        continue-on-error: true
+
+      - name: List collected security artifacts
+        if: always()
+        run: |
+          echo "🔍 Security artifacts collected:"
+          if [[ -d security-artifacts/ ]]; then
+            echo "📁 SARIF files available for processing:"
+            find security-artifacts/ -type f -name "*.sarif" | sort || echo "No SARIF files found"
+            echo ""
+            echo "📁 JSON files available for processing:"
+            find security-artifacts/ -type f -name "*.json" | sort || echo "No JSON files found"
+            echo ""
+            echo "📁 All security artifacts:"
+            ls -la security-artifacts/ | head -20
+          else
+            echo "⚠️ No security artifacts directory found"
+          fi
+
+      - name: Generate unified security dashboard
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PAT_DEPENDABOT: ${{ secrets.PAT_DEPENDABOT }}
+        run: |
+          echo "🛡️ Generating unified security dashboard..."
+          echo "📊 Consolidating findings from all 8 security tools..."
+
+          # Copy SARIF files to current directory for processing
+          find security-artifacts/ -name "*.sarif" -exec cp {} . \; 2>/dev/null || echo "No SARIF files found in artifacts"
+
+          # List available SARIF files for processing
+          echo "🔍 SARIF files available for processing:"
+          ls -la *.sarif 2>/dev/null || echo "No SARIF files found"
+
+          # Execute unified security reporting
+          chmod +x scripts/ci/unified-security-comment.cjs
+          node scripts/ci/unified-security-comment.cjs
+
+      - name: Upload unified security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unified-security-dashboard-${{ github.run_number }}
+          path: |
+            unified-security-report.json
+            security-artifacts/
+          retention-days: 30
+        continue-on-error: true
+
   setup-production-config:
     name: Setup Production Configuration
     runs-on: ubuntu-latest

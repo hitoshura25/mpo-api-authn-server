@@ -1,27 +1,12 @@
 #!/bin/bash
 #
-# DEPRECATED: Custom Docker Security Scanning Script - REPLACED BY TRIVY ACTION
+# Docker Security Scanning Script
 #
-# ⚠️  WARNING: This script is deprecated and no longer used in CI/CD workflows.
-# 
-# MIGRATION COMPLETED: 
-# - This 451-line custom script has been replaced with the official Trivy Action
-# - The new implementation is in .github/workflows/docker-security-scan.yml
-# - Benefits: Better performance, zero maintenance, built-in caching
-# 
-# MIGRATION DATE: [Current Date]
-# BACKUP LOCATION: scripts/docker/scan-security.sh.backup
-# 
-# This file is kept temporarily for rollback purposes and will be removed
-# after the migration is validated in production.
-#
-# FOR REFERENCE ONLY - DO NOT USE IN NEW IMPLEMENTATIONS
-#
-# This script performed comprehensive security scanning of Docker images using Trivy scanner.
-# It scanned for vulnerabilities, secrets, and configuration issues, providing detailed JSON output
+# This script performs comprehensive security scanning of Docker images using Trivy scanner.
+# It scans for vulnerabilities, secrets, and configuration issues, providing detailed JSON output
 # and blocking publication on critical vulnerabilities.
 #
-# USAGE (DEPRECATED):
+# USAGE:
 #   ./scan-security.sh <webauthn_changed> <test_credentials_changed> [webauthn_image_tag] [test_credentials_image_tag]
 #   where first two parameters are "true" or "false"
 #   and optional image tags specify the actual built images to scan
@@ -31,7 +16,7 @@
 #   DOCKER_IMAGE_NAME - GHCR image name for webauthn-server
 #   DOCKER_TEST_CREDENTIALS_IMAGE_NAME - GHCR image name for test-credentials
 #
-# OUTPUTS (NOW HANDLED BY TRIVY ACTION):
+# OUTPUTS:
 #   - docker-security-scan-results.json - Comprehensive scan results
 #   - Individual scan files (*-vulns.json, *-secrets.json, *-config.json)
 #   - GitHub Actions outputs:
@@ -45,25 +30,6 @@
 #
 
 set -euo pipefail
-
-# DEPRECATION NOTICE - Fail execution with clear message
-echo "❌ ERROR: This custom security scanning script is deprecated and no longer supported"
-echo ""
-echo "📋 MIGRATION COMPLETED:"
-echo "   - This 451-line custom script has been replaced with the official Trivy Action"
-echo "   - The new implementation is in .github/workflows/docker-security-scan.yml"
-echo "   - Benefits: Better performance, zero maintenance, built-in caching"
-echo ""
-echo "🔧 ACTION REQUIRED:"
-echo "   - Update your workflow to use the new Trivy Action implementation"
-echo "   - See docker-security-scan.yml for the complete migration"
-echo "   - Remove references to scripts/docker/scan-security.sh"
-echo ""
-echo "📁 BACKUP: Complete original script available at scripts/docker/scan-security.sh.backup"
-echo ""
-exit 1
-
-# ORIGINAL IMPLEMENTATION BELOW (DEPRECATED - FOR REFERENCE ONLY)
 
 # Function to log with timestamp
 log() {

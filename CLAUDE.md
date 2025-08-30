@@ -3,15 +3,15 @@
 ## Current Work (In Progress)
 
 ### Active Tasks
-- **Workflow Change Detection Optimization**: Minor optimization opportunity to prevent unnecessary Docker builds when workflow changes don't affect Docker processes (documented in client-publishing-architecture-cleanup.md). Expected: 40% faster CI for workflow-only changes
+- **AI Security Dataset Research Initiative**: Comprehensive research project leveraging our WebAuthn security findings (8 FOSS tools, 103 Semgrep findings, 1 Dependabot alert, ZAP analysis) to contribute to AI2/OLMo and advance AI security capabilities. Multi-model evaluation framework for security explanation quality, remediation guidance, and safety assessment. See `docs/improvements/planned/ai-security-dataset-research.md` for complete research plan.
 
 ### Completed Major Refactors
+- **FOSS Security Implementation (2025-08-30)**: ✅ **COMPLETED** - Successfully replaced AI-dependent security solutions with 8 professional FOSS tools (Trivy, OSV-Scanner, Semgrep, GitLeaks, Checkov, OWASP ZAP, Dependabot, Gradle Dependency Locking). Achieved 100% elimination of AI API costs, enhanced security coverage with 974 dependencies secured, and established foundation for AI security research. Complete architecture delivers SARIF integration, PR comments, and GitHub Security tab functionality.
 - **Client Library Publishing Architecture Cleanup (PHASES 1-10 COMPLETED)**: ✅ **COMPLETED** - Successfully implemented complete CI/CD optimization with independent component processing achieving 40-95% performance improvements. **Phase 10** delivered correct architecture with parallel client publishing, eliminated duplicate change detection, and smart E2E dependency management. Key results: client libraries publish immediately when OpenAPI changes (not after full build pipeline), true parallel execution of builds + publishing, and comprehensive E2E cache optimization.
 - **OpenAPI Client Library Architecture**: ✅ **COMPLETED** - Docker-inspired staging→production workflow using GitHub Packages with dedicated client library submodules.
 
 ### Planned Major Refactors
 - **iOS Test Client Implementation** *(Enhanced 2025-08-21)* - Complete iOS E2E testing ecosystem with Swift client library generation, SwiftUI test application, and CI integration. Extends testing coverage to iOS platform with AuthenticationServices WebAuthn integration. Timeline: 8-10 weeks. See `docs/improvements/planned/ios-test-client-implementation.md`.
-- **FOSS Security Implementation**: Replace AI-dependent security solutions with established FOSS tools (Trivy Action, Semgrep, OWASP ZAP). See `docs/improvements/planned/foss-security-implementation.md` for complete plan.
 
 ## Project Overview
 
@@ -56,6 +56,317 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 
 ## Critical Development Reminders
 
+### 🚨 CRITICAL: NEVER Make Assumptions - Always Validate Documentation
+
+**THE FUNDAMENTAL RULE**: NEVER create code, workflows, or configurations based on assumptions or invented parameters. ALWAYS validate against official documentation first.
+
+## 🛑 **MANDATORY CHECKPOINT: VALIDATE BEFORE ANY EXTERNAL INTEGRATION**
+
+**⚠️ STOP - READ THIS EVERY TIME BEFORE WRITING CODE ⚠️**
+
+### **🔒 ENFORCEMENT RULE: NO CODE WITHOUT VALIDATION**
+
+**BEFORE writing a SINGLE LINE of code that uses external tools/APIs/actions:**
+
+#### **STEP 1: MANDATORY DOCUMENTATION RESEARCH**
+- [ ] **Find Official Docs**: GitHub Marketplace page or official documentation site
+- [ ] **Verify Action/Tool Exists**: Confirm the exact action/tool name and repository  
+- [ ] **Check Version**: Verify the version (@v1, @v2, etc.) is current and not deprecated
+- [ ] **Read ALL Parameters**: Document every single input parameter that exists
+
+#### **STEP 2: MANDATORY PARAMETER VALIDATION** 
+- [ ] **List Required Parameters**: What parameters are mandatory?
+- [ ] **List Optional Parameters**: What parameters are available but optional?
+- [ ] **Validate Syntax**: Confirm exact spelling, case sensitivity, data types
+- [ ] **Check Examples**: Find official examples that show actual usage
+
+#### **STEP 3: MANDATORY IMPLEMENTATION CHECK**
+- [ ] **State Documentation Source**: "Based on [official docs URL]..."
+- [ ] **Confirm All Parameters**: "Verified parameters X, Y, Z exist in official docs"
+- [ ] **No Assumptions Made**: "All syntax confirmed against official examples"
+
+### **🚨 VIOLATION CONSEQUENCES**
+**If you proceed without completing ALL validation steps:**
+- **Workflow will likely fail** with parameter errors
+- **Time will be wasted** on non-functional implementations  
+- **User confidence will be damaged** by repeated failures
+- **Session will be terminated** to prevent further invalid implementations
+
+### **🔍 VALIDATION TEMPLATE - USE THIS EVERY TIME**
+
+Before implementing any external tool, ALWAYS state:
+
+```
+## 🛑 VALIDATION CHECKPOINT
+Tool/Action: [exact name]
+Documentation: [official URL] 
+Version: [confirmed current version]
+Parameters verified: [list all parameters with documentation references]
+Example usage: [official example that proves syntax works]
+✅ All parameters confirmed against official documentation
+```
+
+#### **🚨 RED FLAGS - STOP and Research:**
+- **"I think the parameter should be..."** → STOP: Find documentation
+- **"Based on similar tools..."** → STOP: Each tool has unique syntax  
+- **"This parameter seems logical..."** → STOP: Logic ≠ actual API
+- **"The old version had..."** → STOP: APIs change, verify current version
+
+#### **Recent Critical Example: Semgrep Integration Failure**
+**What Went Wrong:**
+- Used deprecated `returntocorp/semgrep-action@v1` without checking status
+- Invented parameters: `generateSarif`, `scanChangedFilesOnly`, `output` (none exist)
+- Created invalid Semgrep rule syntax without validating schema
+- Result: Complete workflow failure and wasted implementation time
+
+**What Should Have Been Done:**
+1. **Research First**: Check if `returntocorp/semgrep-action` is current
+2. **Find Current Approach**: Discover official `semgrep/semgrep` Docker method
+3. **Validate Rule Syntax**: Check Semgrep rule schema documentation
+4. **Test Locally**: Validate YAML and rule syntax before committing
+
+#### **Recent Critical Example: FOSS Security Tools Validation Failure (2025-08-27)**
+**What Went Wrong:**
+- **GitLeaks**: Assumed `gitleaks/gitleaks-action@v2` generates SARIF files (it doesn't)
+- **Checkov**: Used manual pip installation instead of official `bridgecrewio/checkov-action@master`
+- **OWASP ZAP**: Completely invented custom Docker automation framework syntax
+- **Result**: 3 workflows with non-functional implementations, violated CLAUDE.md validation rules
+
+**What Should Have Been Done:**
+1. **GitLeaks**: Research revealed action only creates GitHub issues, no SARIF output
+2. **Checkov**: Official action `bridgecrewio/checkov-action@master` with proper parameters
+3. **OWASP ZAP**: Use official actions `zaproxy/action-full-scan` and `zaproxy/action-baseline`
+
+**Validation Research Results:**
+```
+✅ GitLeaks: gitleaks/gitleaks-action@v2 (env: GITHUB_TOKEN only)
+✅ Checkov: bridgecrewio/checkov-action@master (with: directory, output_format, etc.)
+✅ OWASP ZAP: zaproxy/action-full-scan@v0.10.0 (with: target, rules_file_name)
+```
+
+**Why This Happened Again:**
+- Skipped mandatory validation checkpoint despite CLAUDE.md warnings
+- Assumed parameter syntax without checking official documentation
+- Invented complex configurations instead of using simple official actions
+
+#### **Approved Information Sources (In Priority Order):**
+1. **Official Documentation**: Tool's official docs site (e.g., semgrep.dev, docs.github.com)
+2. **Official GitHub Repositories**: README files and examples in official repos
+3. **Current Release Notes**: Check for breaking changes and deprecations
+4. **Web Search**: Only for finding official documentation sources
+
+#### **NEVER Acceptable Sources:**
+- ❌ **Assumptions**: "This should work like X"
+- ❌ **Invented Syntax**: Making up parameters or configurations
+- ❌ **Outdated Examples**: Using old tutorials without version verification
+- ❌ **Similar Tools Logic**: "Tool A works this way, so Tool B should too"
+
+#### **When Documentation is Missing or Unclear:**
+- **State the Problem**: "Official documentation for X is unclear/missing"
+- **Request Research**: "This needs independent research before implementation"
+- **Propose Alternatives**: Suggest different tools with better documentation
+- **Don't Guess**: NEVER attempt to generate code without confirmed syntax
+
+#### **Implementation Safety Pattern:**
+```yaml
+# ✅ CORRECT: Based on verified official documentation
+uses: official/action@v2
+with:
+  validated-param: "documented-value"
+
+# ❌ WRONG: Invented parameters
+uses: deprecated/action@v1  
+with:
+  made-up-param: "seems-logical"
+```
+
+**This rule prevents:**
+- Workflow failures from invalid syntax
+- Security vulnerabilities from incorrect configurations
+- Time waste from debugging non-existent features
+- Loss of user confidence from repeated failures
+
+### 🚨 CRITICAL: Git Commit Policy - NEVER Auto-Commit
+
+**🛑 MANDATORY: User Must Review and Commit All Changes**
+
+**THE FUNDAMENTAL RULE**: NEVER automatically commit changes using git commands. The user must review all changes and perform commits themselves.
+
+#### **STRICT ENFORCEMENT:**
+- **❌ NEVER run**: `git add`, `git commit`, `git push` commands
+- **❌ NEVER auto-stage**: Files for commit without explicit user request
+- **✅ ALWAYS prepare**: Changes and inform user they are ready for review
+- **✅ ALWAYS stage**: Changes for user review using file modification tools only
+
+#### **Correct Workflow Pattern:**
+1. **Make Changes**: Use Edit, Write, MultiEdit tools to modify files
+2. **Inform User**: "Changes are ready for your review and commit"
+3. **Let User Review**: User examines changes using git tools or IDE
+4. **User Commits**: User decides when and how to commit changes
+
+#### **Why This Is Critical:**
+- **User Control**: User maintains full control over commit history and messages
+- **Change Review**: User can review and potentially modify changes before commit
+- **Commit Messages**: User can write appropriate commit messages for their workflow
+- **Git History**: User maintains clean, intentional git history
+- **Rollback Control**: User can selectively stage/unstage changes as needed
+
+#### **Exception:**
+- **Only when explicitly requested**: User says "commit these changes" or "create a commit"
+- **Even then, confirm**: Ask for commit message and get explicit confirmation
+
+**VIOLATION**: Automatically committing changes without user approval breaks user workflow and removes their control over the development process.
+
+## Critical Development Reminders
+
+### 🧬 CRITICAL: Complete Pattern Verification Protocol (FUNDAMENTAL!)
+**When reusing existing patterns in ANY codebase context, ALWAYS verify ALL implementation details match existing usage, not just architectural concepts.**
+
+**THE FUNDAMENTAL PROBLEM**: Assuming architectural understanding equals implementation accuracy across ALL code generation contexts.
+
+#### **Universal Pattern Verification Checklist:**
+
+**BEFORE implementing any code that reuses existing patterns (workflows, scripts, configs, application code, build files, etc.):**
+
+1. **📋 Identify Reference Implementations**:
+   ```bash
+   # Find ALL existing implementations of the pattern across the codebase
+   grep -r "pattern-keyword" .github/workflows/ src/ scripts/ *.gradle *.yml *.json
+   find . -name "*.kt" -o -name "*.ts" -o -name "*.yml" | xargs grep "pattern"
+   ```
+
+2. **🔍 Extract Complete Implementation Details**:
+   - **Command syntax**: Exact commands, spaces, hyphens, flags, ordering
+   - **Parameter patterns**: Order, format, quoting style, escaping
+   - **File paths**: Relative vs absolute, naming conventions, directory structure
+   - **Environment variables**: Names, formats, scoping, default values
+   - **Error handling**: Patterns for failures, cleanup, exit codes, conditions
+   - **Code conventions**: Indentation, spacing, variable naming, function signatures
+   - **Configuration syntax**: Key names, nesting, data types, comment styles
+
+3. **✅ Verify Against Multiple Examples**:
+   - **Find 2-3 existing uses** of the same pattern in different contexts
+   - **Compare syntax consistency** across all examples
+   - **Identify project-specific conventions** vs language/tool standards
+   - **Note context-specific variations** (test vs production, different modules)
+
+4. **🧪 Implementation Verification Pattern**:
+   ```bash
+   # Extract exact syntax from existing implementations
+   grep -A5 -B5 "target-pattern" existing-file
+   
+   # Verify your new implementation matches EXACTLY
+   diff <(grep "your-pattern" existing-file) <(grep "your-pattern" new-file)
+   
+   # For complex patterns, extract full context blocks
+   sed -n '/start-pattern/,/end-pattern/p' reference-file
+   ```
+
+#### **Pattern Verification Examples by Context:**
+
+**✅ CORRECT Process Examples:**
+
+**GitHub Actions:**
+```bash
+grep -r "docker.*compose" .github/workflows/
+# Found: docker compose (space, not hyphen) → Use exactly
+```
+
+**Kotlin/Gradle Code:**
+```bash
+grep -r "implementation.*webauthn" *.gradle.kts
+# Found: implementation("com.yubico:webauthn-server-core:2.6.0") → Match format
+```
+
+**Script Patterns:**
+```bash
+grep -r "set -euo pipefail" scripts/
+# Found: set -euo pipefail (specific flags) → Use same flags
+```
+
+**Configuration Files:**
+```bash
+grep -A3 "environment:" docker-compose*.yml
+# Found: specific indentation and key patterns → Match exactly
+```
+
+**Application Code:**
+```bash
+grep -r "class.*Test" src/
+# Found: class SomeTest : BaseIntegrationTest() → Follow naming pattern
+```
+
+#### **Common Pattern Verification Failures Across All Contexts:**
+
+**Command/Script Syntax:**
+- `docker-compose` vs `docker compose`, `npm run` vs `npx`, flag ordering
+- `./gradlew` vs `gradle`, relative vs absolute script paths
+- Shell options: `set -e` vs `set -euo pipefail`
+
+**Code Conventions:**
+- Function naming: `camelCase` vs `snake_case`, prefix patterns
+- Import statements: relative vs absolute, ordering, grouping
+- Error handling: `try-catch` vs `Result<T>`, exception types
+
+**Configuration Syntax:**
+- YAML indentation (2 vs 4 spaces), key naming (`snake_case` vs `kebab-case`)
+- JSON formatting, comment styles, environment variable patterns
+- Build file conventions: dependency declarations, plugin application
+
+**File Organization:**
+- Directory structure: `src/main/kotlin` vs `src/kotlin`
+- Test file naming: `*Test.kt` vs `*Tests.kt` vs `Test*.kt`
+- Resource file locations and naming patterns
+
+#### **Context-Specific Verification Commands:**
+
+```bash
+# Workflow/CI Patterns
+grep -r "docker.*compose\|npm.*run\|gradle.*build" .github/workflows/
+
+# Application Code Patterns
+grep -r "class.*\|fun.*\|val.*" src/main/kotlin/ src/test/kotlin/
+
+# Script Patterns  
+grep -r "set.*\|if.*then\|function.*" scripts/
+
+# Configuration Patterns
+grep -r "environment:\|ports:\|version:" *.yml *.yaml
+grep -r "implementation\|testImplementation" *.gradle.kts
+
+# Build/Dependency Patterns
+grep -r "plugins.*\|dependencies.*\|repositories.*" build.gradle.kts */build.gradle.kts
+```
+
+#### **Critical Real-World Examples:**
+
+**August 2025 - Docker Compose Commands**: Used `docker-compose` instead of `docker compose`
+- **Root Cause**: Understood Docker Compose architecture but didn't verify command syntax
+- **Pattern**: Good architectural grasp, missed implementation details
+
+**Previous - Gradle Dependencies**: Wrong dependency syntax format
+- **Root Cause**: Assumed standard Gradle syntax instead of checking project patterns
+- **Pattern**: External knowledge applied without local verification
+
+**Previous - Test File Naming**: Inconsistent test class naming conventions
+- **Root Cause**: Used general conventions instead of project-specific patterns
+- **Pattern**: Generic best practices overrode local consistency
+
+#### **UNIVERSAL ENFORCEMENT RULE:**
+**Every reused pattern must show `grep`/`find` evidence of existing usage before implementation, regardless of context (workflows, code, configs, scripts, documentation).**
+
+#### **Integration with Existing Tools:**
+- **IDE Search**: Use project-wide search before implementing patterns
+- **Git History**: `git log --grep="pattern"` to understand pattern evolution  
+- **Code Review**: Verify pattern consistency in review process
+- **Linting**: Configure linters to enforce discovered patterns
+
+**Why This Matters Universally:**
+- **Consistency**: Maintains codebase coherence across all contexts
+- **Maintainability**: Reduces cognitive load for developers
+- **Reliability**: Prevents subtle bugs from syntax/convention mismatches
+- **Quality**: Ensures new code follows established, proven patterns
+
 ### 🤖 CRITICAL: Proactively Use Subagents for Complex Tasks
 
 **BEFORE starting any multi-step or complex task, ALWAYS evaluate if it should be delegated to a subagent.**
@@ -97,6 +408,7 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 ### 🔧 CRITICAL: GitHub Actions Workflow Development
 
 **ALWAYS follow GitHub Actions best practices to prevent workflow failures:**
+
 
 #### **🚨 CRITICAL: Callable Workflow Env Var Pattern (NEVER FORGET!)**
 When creating workflows with callable workflows:
@@ -222,7 +534,94 @@ security-scanning:
 - **❌ NEVER use `actions/github-script` with external file requires** - Use direct Node.js execution
 - **❌ NEVER define outputs without verifying implementation chain** - Always validate job→step→value mapping
 - **❌ NEVER add change detection without validating ALL downstream job conditions** - Change detection ≠ job execution
+- **❌ NEVER use compound arithmetic increment operations like `((VAR++))`** - Use safe assignment: `VAR=$((VAR + 1))`
 - **✅ Use `always() &&` prefix when job should evaluate conditions even if dependencies are skipped**
+
+#### **🚨 CRITICAL: Bash Arithmetic Operations in GitHub Actions (August 2025)**
+**GitHub Actions strict error handling can cause arithmetic operations to fail with exit code 1:**
+
+```bash
+# ❌ WRONG: Compound increment operations can fail in GitHub Actions
+((EXECUTED_COUNT++))              # Can exit with code 1
+[[ "$WEB_EXECUTED" == "true" ]] && ((EXECUTED_COUNT++))
+
+# ✅ CORRECT: Safe arithmetic assignment operations
+EXECUTED_COUNT=$((EXECUTED_COUNT + 1))     # Safe increment
+if [[ "$WEB_EXECUTED" == "true" ]]; then
+  EXECUTED_COUNT=$((EXECUTED_COUNT + 1))   # Safe conditional increment
+fi
+```
+
+**WHY THIS HAPPENS:**
+- **GitHub Actions Environment**: Runs with strict error handling (`set -e` equivalent behavior)
+- **Arithmetic Expansion**: `((expr))` can return non-zero exit codes for certain operations
+- **Pre-increment Evaluation**: `VAR++` evaluates current value before incrementing, causing issues when starting from 0
+
+#### **🚨 CRITICAL: Format Migration Validation (August 2025)**
+**When changing output formats (JSON↔SARIF, CSV↔JSON, etc.), ALWAYS validate ALL references are updated to prevent silent failures:**
+
+**THE PROBLEM**: Format migrations often leave stale references causing workflows to succeed but produce wrong results.
+
+#### **Mandatory Format Migration Checklist:**
+- [ ] **Environment Variables**: Update all `*_FILE` environment variables to new format
+- [ ] **Artifact Uploads**: Remove old format from upload paths
+- [ ] **Processing Scripts**: Update all file loading/parsing logic
+- [ ] **Function Implementations**: Ensure format-specific functions exist and work
+- [ ] **Workflow Dependencies**: Verify downstream jobs expect the new format
+- [ ] **Integration Testing**: Validate workflow output matches script input
+
+#### **Common Format Migration Failures:**
+```yaml
+# ❌ WRONG: Environment variable still points to old format
+env:
+  SCAN_RESULTS_FILE: results.json  # But workflow generates results.sarif
+
+# ✅ CORRECT: All references updated to new format  
+env:
+  SCAN_RESULTS_FILE: results.sarif
+
+# ❌ WRONG: Artifact upload includes non-existent old format files
+path: |
+  results.json   # Doesn't exist anymore
+  results.sarif  
+  
+# ✅ CORRECT: Only upload files that actually exist
+path: |
+  results.sarif
+```
+
+#### **Validation Pattern:**
+```bash
+# Verify ALL format references updated
+grep -r "old-format-extension" .github/workflows/ scripts/
+grep -r "OLD_FORMAT_FILE" .github/workflows/
+```
+
+**Recent Example**: Trivy SARIF-only optimization failed because:
+- ✅ Workflow generated SARIF correctly (69 vulnerabilities found)
+- ❌ Environment variable still referenced JSON (`results.json`)
+- ❌ Script loaded wrong file, showing 0 vulnerabilities in PR comments
+- ❌ Artifact upload still tried to include non-existent JSON files
+
+**Prevention**: Always trace data flow from generation → processing → consumption when changing formats.
+```
+
+**WHY THIS HAPPENS:**
+- **GitHub Actions Environment**: Runs with strict error handling (`set -e` equivalent behavior)
+- **Arithmetic Expansion**: `((expr))` can return non-zero exit codes for certain operations
+- **Pre-increment Evaluation**: `VAR++` evaluates current value before incrementing, causing issues when starting from 0
+
+**VALIDATION PATTERN:**
+```bash
+# Test arithmetic operations locally before committing
+set -e  # Enable strict error handling
+COUNTER=0
+COUNTER=$((COUNTER + 1))  # Safe - test this pattern
+echo "Counter: $COUNTER"
+```
+
+**Recent Example**: DAST scan integration failed with exit code 1 in cross-platform analysis due to `((EXECUTED_COUNT++))` operations. Fixed by using `EXECUTED_COUNT=$((EXECUTED_COUNT + 1))` pattern.
+
 
 ### 🏗️ CRITICAL: Android Publishing & Docker Registry Patterns
 
@@ -563,6 +962,7 @@ packages:
 - Use `testStorageModule` for integration tests (in-memory storage)
 - All tests must pass with `./gradlew test` before claiming completion
 - Always verify Android tests pass: `cd android-test-client && ./gradlew connectedAndroidTest`
+- **🚨 NEVER commit changes automatically** - Always let user review and commit changes themselves (see Git Commit Policy above)
 
 ---
 

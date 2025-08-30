@@ -49,7 +49,7 @@ jobs:
         if: always()
         run: |
           echo "🔍 Debugging Checkov output structure..."
-          ls -la . | grep -E "(checkov|results|sarif)" || echo "No checkov/sarif files in current directory"
+          ls -la .
           if [[ -d "checkov-results.sarif" ]]; then
             echo "📁 checkov-results.sarif directory exists, contents:"
             ls -la checkov-results.sarif/

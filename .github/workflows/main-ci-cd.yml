@@ -324,7 +324,7 @@ jobs:
         uses: actions/download-artifact@v4
         if: always()
         with:
-          pattern: "*security*"
+          pattern: "*results*"
           path: security-artifacts/
           merge-multiple: true
         continue-on-error: true

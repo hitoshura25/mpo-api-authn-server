@@ -76,8 +76,8 @@ class UnifiedSecurityReporter {
   async collectFindings() {
     console.log('📋 Collecting findings from all security tools...');
     
-    // Download artifacts from security workflow runs
-    await this.downloadSecurityArtifacts();
+    // Check what artifacts are available
+    await this.checkAvailableArtifacts();
     
     // Parse SARIF files from security tools
     await this.parseSarifFindings();
@@ -91,85 +91,94 @@ class UnifiedSecurityReporter {
     console.log(`📊 Collection complete: ${this.summary.total} total findings`);
   }
 
-  async downloadSecurityArtifacts() {
-    console.log('⬇️ Downloading security artifacts from workflow runs...');
-    
-    const workflowRunId = process.env.GITHUB_RUN_ID;
-    const eventNumber = process.env.GITHUB_RUN_NUMBER;
-    
-    const artifactPatterns = [
-      `osv-scanner-results-*-${eventNumber}`,
-      `semgrep-results-*-${eventNumber}`, 
-      `checkov-results-*-${eventNumber}`,
-      `docker-security-scan-results-*-${eventNumber}`,
-      `zap-results-*-${eventNumber}`
-    ];
+  async checkAvailableArtifacts() {
+    console.log('📋 Checking available security artifacts...');
     
     try {
-      // List all artifacts for this workflow run
-      const listCmd = `gh api repos/${this.github.repository}/actions/runs/${workflowRunId}/artifacts --jq '.artifacts[] | {name, download_url}'`;
-      const artifactsOutput = execSync(listCmd, { encoding: 'utf8', stdio: 'pipe' });
+      // List all security-related files in the security-artifacts directory
+      const artifactDirs = ['security-artifacts', '.', 'downloaded-artifacts'];
       
-      if (artifactsOutput.trim()) {
-        const artifacts = artifactsOutput.trim().split('\n').map(line => JSON.parse(line));
-        
-        for (const artifact of artifacts) {
-          // Check if this artifact matches our security tool patterns
-          for (const pattern of artifactPatterns) {
-            const patternRegex = new RegExp(pattern.replace('*', '.*'));
-            if (patternRegex.test(artifact.name)) {
-              console.log(`  📦 Downloading ${artifact.name}...`);
-              try {
-                // Download and extract artifact
-                const downloadCmd = `gh api ${artifact.download_url} > ${artifact.name}.zip`;
-                execSync(downloadCmd, { stdio: 'pipe' });
-                execSync(`unzip -o ${artifact.name}.zip`, { stdio: 'pipe' });
-                execSync(`rm ${artifact.name}.zip`, { stdio: 'pipe' });
-                console.log(`  ✅ ${artifact.name} downloaded and extracted`);
-              } catch (downloadError) {
-                console.warn(`  ⚠️ Failed to download ${artifact.name}: ${downloadError.message}`);
-              }
-              break;
-            }
+      for (const dir of artifactDirs) {
+        try {
+          const listCmd = `find ${dir} -name "*.sarif" -o -name "*.json" 2>/dev/null | head -20`;
+          const files = execSync(listCmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
+          
+          if (files) {
+            console.log(`📄 Security files found in ${dir}/:`);
+            files.split('\n').forEach(file => {
+              console.log(`  - ${file}`);
+            });
           }
+        } catch (dirError) {
+          // Directory doesn't exist or no files found
         }
       }
+      
+      // Also list artifact directories that were downloaded
+      try {
+        const artifactDirsCmd = `find security-artifacts -type d -name "*results*" 2>/dev/null`;
+        const dirs = execSync(artifactDirsCmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
+        
+        if (dirs) {
+          console.log(`📁 Artifact directories found:`);
+          dirs.split('\n').forEach(dir => {
+            console.log(`  - ${dir}/`);
+          });
+        }
+      } catch (dirListError) {
+        console.log('📁 No artifact directories found in security-artifacts/');
+      }
+      
     } catch (error) {
-      console.warn('⚠️ Artifact download failed, will check for existing files:', error.message);
+      console.warn('⚠️ Could not list available artifacts:', error.message);
     }
   }
 
   async parseJsonFindings() {
     console.log('📄 Parsing JSON security findings...');
     
-    const jsonTools = {
-      'osvScanner': { 
-        files: ['osv-results.json'], 
-        parser: this.parseOsvScannerJson.bind(this) 
-      }
+    // Search for JSON files by pattern
+    const jsonSearchPatterns = {
+      'osvScanner': ['osv-results.json', '*osv*.json']
     };
 
-    for (const [toolName, config] of Object.entries(jsonTools)) {
+    for (const [toolName, searchPatterns] of Object.entries(jsonSearchPatterns)) {
       let found = false;
       
-      for (const jsonFile of config.files) {
-        if (fs.existsSync(jsonFile)) {
-          console.log(`🔍 Parsing ${toolName} JSON file: ${jsonFile}`);
-          try {
-            const jsonContent = JSON.parse(fs.readFileSync(jsonFile, 'utf8'));
-            await config.parser(jsonContent, toolName);
-            this.summary.toolStatus[toolName] = '✅ Completed';
-            found = true;
-            break;
-          } catch (error) {
-            console.error(`❌ Failed to parse ${toolName} JSON:`, error.message);
-            this.summary.toolStatus[toolName] = '❌ Error';
+      for (const pattern of searchPatterns) {
+        try {
+          // Search for files matching the pattern in artifact directories
+          const searchDirs = ['security-artifacts', '.', 'downloaded-artifacts'];
+          let foundFile = '';
+          
+          for (const dir of searchDirs) {
+            const findCmd = `find ${dir} -name "${pattern}" -type f 2>/dev/null | head -1`;
+            foundFile = execSync(findCmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
+            if (foundFile) break;
           }
+          
+          if (foundFile && fs.existsSync(foundFile)) {
+            console.log(`🔍 Parsing ${toolName} JSON file: ${foundFile}`);
+            try {
+              const jsonContent = JSON.parse(fs.readFileSync(foundFile, 'utf8'));
+              if (toolName === 'osvScanner') {
+                this.parseOsvScannerJson(jsonContent, toolName);
+              }
+              this.summary.toolStatus[toolName] = '✅ Completed';
+              found = true;
+              break;
+            } catch (parseError) {
+              console.error(`❌ Failed to parse ${toolName} JSON:`, parseError.message);
+              this.summary.toolStatus[toolName] = '❌ Error';
+            }
+          }
+        } catch (searchError) {
+          // Continue with next pattern
         }
       }
       
       if (!found) {
-        console.log(`⚠️ ${toolName} JSON files not found`);
+        console.log(`⚠️ No JSON file found for ${toolName} (searched patterns: ${searchPatterns.join(', ')})`);
         this.summary.toolStatus[toolName] = '⚠️ Missing';
       }
     }
@@ -219,27 +228,46 @@ class UnifiedSecurityReporter {
   }
 
   async parseSarifFindings() {
-    const sarifTools = {
-      'trivy': 'docker-security-scan-results.sarif',
-      'osvScanner': 'osv-scanner-results.sarif', 
-      'semgrep': 'semgrep-results.sarif',
-      'checkov': 'checkov-results.sarif',
-      'owaspZap': 'zap-results.sarif'
+    console.log('📄 Parsing SARIF security findings...');
+    
+    // Search for SARIF files by tool name patterns
+    const sarifSearchPatterns = {
+      'trivy': ['docker-security-scan-results.sarif', '*trivy*.sarif'],
+      'semgrep': ['semgrep.sarif', 'semgrep-results.sarif', '*semgrep*.sarif'],
+      'checkov': ['checkov-results.sarif', '*checkov*.sarif'],
+      'owaspZap': ['zap-results.sarif', '*zap*.sarif']
     };
 
-    for (const [toolName, sarifFile] of Object.entries(sarifTools)) {
-      try {
-        if (fs.existsSync(sarifFile)) {
-          console.log(`🔍 Parsing ${toolName} SARIF file: ${sarifFile}`);
-          this.findings[toolName] = this.parseSarifFile(sarifFile, toolName);
-          this.summary.toolStatus[toolName] = '✅ Completed';
-        } else {
-          console.log(`⚠️ SARIF file not found for ${toolName}: ${sarifFile}`);
-          this.summary.toolStatus[toolName] = '❌ Missing';
+    for (const [toolName, searchPatterns] of Object.entries(sarifSearchPatterns)) {
+      let found = false;
+      
+      for (const pattern of searchPatterns) {
+        try {
+          // Search for files matching the pattern in artifact directories
+          const searchDirs = ['security-artifacts', '.', 'downloaded-artifacts'];
+          let foundFile = '';
+          
+          for (const dir of searchDirs) {
+            const findCmd = `find ${dir} -name "${pattern}" -type f 2>/dev/null | head -1`;
+            foundFile = execSync(findCmd, { encoding: 'utf8', stdio: 'pipe' }).trim();
+            if (foundFile) break;
+          }
+          
+          if (foundFile && fs.existsSync(foundFile)) {
+            console.log(`🔍 Parsing ${toolName} SARIF file: ${foundFile}`);
+            this.findings[toolName] = this.parseSarifFile(foundFile, toolName);
+            this.summary.toolStatus[toolName] = '✅ Completed';
+            found = true;
+            break;
+          }
+        } catch (searchError) {
+          // Continue with next pattern
         }
-      } catch (error) {
-        console.error(`❌ Failed to parse ${toolName} SARIF:`, error.message);
-        this.summary.toolStatus[toolName] = '❌ Error';
+      }
+      
+      if (!found) {
+        console.log(`⚠️ No SARIF file found for ${toolName} (searched patterns: ${searchPatterns.join(', ')})`);
+        this.summary.toolStatus[toolName] = '⚠️ Missing';
       }
     }
   }

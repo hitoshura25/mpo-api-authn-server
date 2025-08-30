@@ -310,7 +310,7 @@ jobs:
       semgrep-sast,
       iac-scan,
       secrets-scan,
-      call-e2e-tests
+      e2e-tests
     ]
     permissions:
       contents: read          # Read repository code
@@ -334,9 +334,18 @@ jobs:
         if: always()
         run: |
           echo "🔍 Security artifacts collected:"
-          find security-artifacts/ -type f -name "*.sarif" -o -name "*security*" | head -20
-          echo ""
-          ls -la security-artifacts/ || echo "No security artifacts directory found"
+          if [[ -d security-artifacts/ ]]; then
+            echo "📁 SARIF files available for processing:"
+            find security-artifacts/ -type f -name "*.sarif" | sort || echo "No SARIF files found"
+            echo ""
+            echo "📁 JSON files available for processing:"
+            find security-artifacts/ -type f -name "*.json" | sort || echo "No JSON files found" 
+            echo ""
+            echo "📁 All security artifacts:"
+            ls -la security-artifacts/ | head -20
+          else
+            echo "⚠️ No security artifacts directory found"
+          fi
 
       - name: Generate unified security dashboard
         if: always()
@@ -373,7 +382,7 @@ jobs:
   setup-production-config:
     name: Setup Production Configuration
     runs-on: ubuntu-latest
-    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, unified-security-report ]
+    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning ]
     if: |
       always() &&
       github.ref_name == 'main' &&

@@ -2,7 +2,7 @@
 
 [![codecov](https://codecov.io/github/hitoshura25/mpo-api-authn-server/graph/badge.svg?token=G4WWCSG5KR)](https://codecov.io/github/hitoshura25/mpo-api-authn-server)
 
-A production-ready WebAuthn (FIDO2/Passkeys) authentication server built with KTor, comprehensive security testing, and **3-tier AI-powered security analysis** for continuous protection.
+A WebAuthn (FIDO2/Passkeys) authentication server built with KTor, and comprehensive security testing.
 
 ## 🏗️ Multi-Module Project Structure
 
@@ -143,6 +143,7 @@ npm install @vmenon25/mpo-webauthn-client
 ### Client Library Architecture (Implemented)
 
 **Staging→Production Workflow** (similar to Docker workflow):
+
 1. **PR Testing**: Staging packages published to GitHub Packages (e.g., `pr-123.456`)
 2. **E2E Validation**: Test clients consume staging packages for validation
 3. **Production Publishing**: Successful main branch merges publish to npm + GitHub Packages

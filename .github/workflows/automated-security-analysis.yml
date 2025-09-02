@@ -1,0 +1,22 @@
+name: Automated Security Analysis
+
+on:
+  workflow_run:
+    workflows:
+      - "Main CI/CD Pipeline"
+    types:
+      - completed
+    branches:
+      - main
+
+jobs:
+  check-and-analyze:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    uses: ./.github/workflows/olmo-security-analysis.yml
+    with:
+      run_id: ${{ github.event.workflow_run.id }}
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+      pull-requests: write

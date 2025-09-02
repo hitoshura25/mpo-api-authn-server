@@ -59,3 +59,13 @@ android-client-library/build.gradle.kts
 android-client-library/.openapi-generator/
 
 android-client-library/local.properties
+
+# Security AI Analysis generated files
+security-ai-analysis/data/
+security-ai-analysis/venv/
+security-ai-analysis/__pycache__/
+security-ai-analysis/**/__pycache__/
+security-ai-analysis/**/*.pyc
+security-ai-analysis/.DS_Store
+security-ai-analysis/**/.DS_Store
+security-ai-analysis/check-results.json

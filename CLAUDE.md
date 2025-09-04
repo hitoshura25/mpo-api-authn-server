@@ -389,6 +389,96 @@ grep -r "plugins.*\|dependencies.*\|repositories.*" build.gradle.kts */build.gra
 - **cross-platform-testing-agent**: Multi-platform test coordination
 - **security-vulnerability-analyst**: Threat modeling, vulnerability assessment
 
+### 🐳 CRITICAL: Docker Image Validation with Fail-Fast Pattern (RECURRING ISSUE!)
+
+**MANDATORY fail-fast validation for Docker image availability to prevent silent E2E test failures.**
+
+**THE RECURRING PROBLEM**: Multi-line Docker image tags from docker/metadata-action cause E2E validation to check wrong tags, leading to silent test skipping instead of clear failures.
+
+#### **Critical Issue Pattern (Happened Multiple Times):**
+```yaml
+# Docker build outputs multi-line tags:
+webauthn_server_image: |
+  ghcr.io/repo/image:latest
+  ghcr.io/repo/image:sha256-abc123-branch-main-123
+
+# E2E validation naively uses first line:
+docker manifest inspect "${{ env.WEBAUTHN_SERVER_IMAGE }}"  # Only checks 'latest'!
+
+# Result: 'latest' doesn't exist → validation fails → E2E tests SKIP SILENTLY
+```
+
+#### **Mandatory Docker Validation Pattern:**
+```yaml
+# ✅ CORRECT: Event-aware tag selection with fail-fast validation
+extract_image_tag() {
+  local full_output="$1"
+  local line_count=$(echo "$full_output" | wc -l)
+  
+  if [[ $line_count -gt 1 ]]; then
+    case "${{ github.event_name }}" in
+      "workflow_dispatch") 
+        selected_tag=$(echo "$full_output" | tail -n1)  # SHA-based tag
+        ;;
+      "pull_request"|"push") 
+        selected_tag=$(echo "$full_output" | head -n1)  # PR/latest tag
+        ;;
+    esac
+  else
+    selected_tag="$full_output"  # Single tag
+  fi
+  
+  echo "$selected_tag"
+}
+
+# Validate with FAIL-FAST logic
+if ! docker manifest inspect "$IMAGE_TAG" > /dev/null 2>&1; then
+  echo "❌ CRITICAL ERROR: Image not found: $IMAGE_TAG"
+  echo "Event: ${{ github.event_name }}, Branch: ${{ github.ref_name }}"
+  echo "❌ FAILING FAST: E2E tests require valid Docker images"
+  exit 1  # FAIL THE JOB - Don't skip silently!
+fi
+```
+
+#### **Event-Specific Tag Selection Logic:**
+- **`workflow_dispatch`**: Use SHA-based tag (last line) - `sha256-abc123-branch-main-123`
+- **`pull_request`**: Use PR tag (first line) - `pr-123`  
+- **`push` to main**: Use latest tag (first line) - `latest`
+- **`push` to feature**: Use branch tag (first line) - `branch-feature-name`
+
+#### **Why Fail-Fast is Critical:**
+```yaml
+# ❌ WRONG: Silent skipping masks infrastructure failures
+if: needs.validate-images.outputs.webauthn-server-ready == 'true'  # Silently skips if false
+
+# ✅ CORRECT: Fail-fast exposes the real problem immediately  
+# validate-images job exits with error code 1 → entire workflow fails with clear error
+```
+
+#### **Validation Requirements:**
+- [ ] **Multi-line tag detection**: Count lines in Docker image output
+- [ ] **Event-aware selection**: Use correct tag based on `github.event_name`
+- [ ] **Format validation**: Ensure extracted tag contains no newlines
+- [ ] **Registry authentication**: Login before manifest inspection
+- [ ] **Clear error reporting**: Include event type, branch, original input in error messages
+- [ ] **Fail-fast behavior**: `exit 1` on any validation failure
+- [ ] **Success confirmation**: Only set output variables after ALL images validated
+
+#### **Testing All Event Types:**
+```bash
+# Validate pattern works for all event types:
+# 1. Pull Request → Should use first tag (pr-XXX)
+# 2. Push to main → Should use first tag (latest) 
+# 3. Push to feature → Should use first tag (branch-name)
+# 4. Workflow dispatch → Should use last tag (SHA-based)
+```
+
+**This pattern prevents:**
+- Silent E2E test skipping due to wrong tag validation
+- Infrastructure issues being masked as conditional skips
+- Recurring debugging sessions for "why didn't E2E tests run?"
+- Workflow completing successfully while missing critical testing
+
 ### 🧹 CRITICAL: Dead Code Cleanup After Refactoring
 
 **ALWAYS perform comprehensive cleanup after removing or refactoring functionality to eliminate orphaned code.**

@@ -467,8 +467,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ setup-config, analyze-e2e-requirements ]
     outputs:
-      webauthn-server-ready: ${{ steps.check-webauthn.outputs.available }}
-      test-credentials-ready: ${{ steps.check-test-credentials.outputs.available }}
+      webauthn-server-ready: ${{ steps.validate-images.outputs.webauthn-server-ready }}
+      test-credentials-ready: ${{ steps.validate-images.outputs.test-credentials-ready }}
+      webauthn-server-image: ${{ steps.validate-images.outputs.webauthn-server-image }}
+      test-credentials-image: ${{ steps.validate-images.outputs.test-credentials-image }}
     steps:
       - name: Log in to the Container registry
         uses: docker/login-action@v3
@@ -477,29 +479,154 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Check WebAuthn Server image availability
-        id: check-webauthn
+      - name: Validate Docker images with fail-fast logic
+        id: validate-images
         run: |
-          echo "🔍 Checking WebAuthn Server image: ${{ env.WEBAUTHN_SERVER_IMAGE }}"
-          if docker manifest inspect "${{ env.WEBAUTHN_SERVER_IMAGE }}" > /dev/null 2>&1; then
-            echo "✅ WebAuthn Server image is available"
-            echo "available=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ WebAuthn Server image not found"
-            echo "available=false" >> $GITHUB_OUTPUT
+          echo "🔍 Docker Image Validation with Fail-Fast Logic"
+          echo "================================================"
+          
+          # Function to extract correct image tag based on event type and validate multi-line handling
+          extract_image_tag() {
+            local full_output="$1"
+            local image_type="$2"
+            
+            echo "🔧 Processing $image_type image tags:"
+            echo "Full output: $full_output"
+            
+            # Count lines to detect multi-line vs single-line tags
+            local line_count=$(echo "$full_output" | wc -l)
+            echo "Lines detected: $line_count"
+            
+            local selected_tag=""
+            
+            if [[ $line_count -gt 1 ]]; then
+              echo "📋 Multi-line tags detected, selecting based on event type..."
+              
+              case "${{ github.event_name }}" in
+                "workflow_dispatch")
+                  # For workflow_dispatch on main, use SHA-based tag (typically last line)
+                  selected_tag=$(echo "$full_output" | tail -n1)
+                  echo "🚀 Workflow dispatch: Using SHA-based tag (last line)"
+                  ;;
+                "pull_request")
+                  # For PRs, use PR-based tag (typically first line)
+                  selected_tag=$(echo "$full_output" | head -n1)
+                  echo "📝 Pull request: Using PR tag (first line)"
+                  ;;
+                "push")
+                  if [[ "${{ github.ref_name }}" == "main" ]]; then
+                    # For main branch push, use 'latest' tag (typically first line)
+                    selected_tag=$(echo "$full_output" | head -n1)
+                    echo "🌟 Main branch push: Using latest tag (first line)"
+                  else
+                    # For feature branch push, use branch-based tag (typically first line)
+                    selected_tag=$(echo "$full_output" | head -n1)
+                    echo "🌿 Feature branch push: Using branch tag (first line)"
+                  fi
+                  ;;
+                *)
+                  # Fallback: use first tag
+                  selected_tag=$(echo "$full_output" | head -n1)
+                  echo "⚠️ Unknown event type, using first tag as fallback"
+                  ;;
+              esac
+            else
+              # Single line - use as-is
+              selected_tag="$full_output"
+              echo "📄 Single tag detected, using as-is"
+            fi
+            
+            # Validate tag format
+            if [[ -z "$selected_tag" || "$selected_tag" == *$'\n'* ]]; then
+              echo "❌ ERROR: Invalid tag extracted: '$selected_tag'"
+              return 1
+            fi
+            
+            echo "✅ Selected tag: $selected_tag"
+            echo "$selected_tag"
+          }
+          
+          # Extract WebAuthn Server image tag
+          echo ""
+          echo "🔍 Processing WebAuthn Server Image"
+          echo "-----------------------------------"
+          WEBAUTHN_TAG=$(extract_image_tag "${{ env.WEBAUTHN_SERVER_IMAGE }}" "WebAuthn Server")
+          if [[ $? -ne 0 ]]; then
+            echo "❌ CRITICAL: Failed to extract WebAuthn Server image tag"
+            exit 1
           fi
-
-      - name: Check Test Credentials Service image availability
-        id: check-test-credentials
-        run: |
-          echo "🔍 Checking Test Credentials Service image: ${{ env.TEST_CREDENTIALS_IMAGE }}"
-          if docker manifest inspect "${{ env.TEST_CREDENTIALS_IMAGE }}" > /dev/null 2>&1; then
-            echo "✅ Test Credentials Service image is available"
-            echo "available=true" >> $GITHUB_OUTPUT
-          else
-            echo "❌ Test Credentials Service image not found"
-            echo "available=false" >> $GITHUB_OUTPUT
+          
+          # Extract Test Credentials image tag  
+          echo ""
+          echo "🔍 Processing Test Credentials Image"
+          echo "------------------------------------"
+          TEST_CREDENTIALS_TAG=$(extract_image_tag "${{ env.TEST_CREDENTIALS_IMAGE }}" "Test Credentials")
+          if [[ $? -ne 0 ]]; then
+            echo "❌ CRITICAL: Failed to extract Test Credentials image tag"
+            exit 1
           fi
+          
+          # Validate WebAuthn Server image availability
+          echo ""
+          echo "🔍 Validating WebAuthn Server Image Availability"
+          echo "================================================"
+          echo "Checking: $WEBAUTHN_TAG"
+          
+          if docker manifest inspect "$WEBAUTHN_TAG" > /dev/null 2>&1; then
+            echo "✅ WebAuthn Server image is available and accessible"
+            WEBAUTHN_AVAILABLE="true"
+          else
+            echo "❌ CRITICAL ERROR: WebAuthn Server image not found or not accessible"
+            echo "Image tag: $WEBAUTHN_TAG" 
+            echo "Registry: ${{ needs.setup-config.outputs.docker-registry }}"
+            echo "Event: ${{ github.event_name }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo ""
+            echo "🔍 Debugging information:"
+            echo "Original input: ${{ env.WEBAUTHN_SERVER_IMAGE }}"
+            echo "Processed tag: $WEBAUTHN_TAG"
+            
+            # This is a critical failure - E2E tests cannot proceed without Docker images
+            echo "❌ FAILING FAST: E2E tests require valid Docker images to proceed"
+            exit 1
+          fi
+          
+          # Validate Test Credentials image availability
+          echo ""
+          echo "🔍 Validating Test Credentials Image Availability"
+          echo "================================================"
+          echo "Checking: $TEST_CREDENTIALS_TAG"
+          
+          if docker manifest inspect "$TEST_CREDENTIALS_TAG" > /dev/null 2>&1; then
+            echo "✅ Test Credentials image is available and accessible"
+            TEST_CREDENTIALS_AVAILABLE="true"
+          else
+            echo "❌ CRITICAL ERROR: Test Credentials image not found or not accessible"
+            echo "Image tag: $TEST_CREDENTIALS_TAG"
+            echo "Registry: ${{ needs.setup-config.outputs.docker-registry }}"
+            echo "Event: ${{ github.event_name }}"
+            echo "Branch: ${{ github.ref_name }}"
+            echo ""
+            echo "🔍 Debugging information:"
+            echo "Original input: ${{ env.TEST_CREDENTIALS_IMAGE }}"
+            echo "Processed tag: $TEST_CREDENTIALS_TAG"
+            
+            # This is a critical failure - E2E tests cannot proceed without Docker images
+            echo "❌ FAILING FAST: E2E tests require valid Docker images to proceed"
+            exit 1
+          fi
+          
+          # Set outputs - only reached if both images are available
+          echo "webauthn-server-ready=$WEBAUTHN_AVAILABLE" >> $GITHUB_OUTPUT
+          echo "test-credentials-ready=$TEST_CREDENTIALS_AVAILABLE" >> $GITHUB_OUTPUT
+          echo "webauthn-server-image=$WEBAUTHN_TAG" >> $GITHUB_OUTPUT
+          echo "test-credentials-image=$TEST_CREDENTIALS_TAG" >> $GITHUB_OUTPUT
+          
+          echo ""
+          echo "🎉 SUCCESS: All Docker images validated and available!"
+          echo "✅ WebAuthn Server: $WEBAUTHN_TAG"
+          echo "✅ Test Credentials: $TEST_CREDENTIALS_TAG"
+          echo "🚀 E2E tests can proceed safely"
 
 
   # Job 4: Enhanced Web E2E tests with parallel execution optimization
@@ -516,8 +643,8 @@ jobs:
       )
     secrets: inherit
     with:
-      webauthn-server-image: ${{ inputs.webauthn_server_image }}
-      test-credentials-image: ${{ inputs.test_credentials_image }}
+      webauthn-server-image: ${{ needs.validate-images.outputs.webauthn-server-image }}
+      test-credentials-image: ${{ needs.validate-images.outputs.test-credentials-image }}
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'main' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       # Use actual published client library information from main orchestrator (via setup-config)
@@ -540,8 +667,8 @@ jobs:
       )
     secrets: inherit
     with:
-      webauthn-server-image: ${{ inputs.webauthn_server_image }}
-      test-credentials-image: ${{ inputs.test_credentials_image }}
+      webauthn-server-image: ${{ needs.validate-images.outputs.webauthn-server-image }}
+      test-credentials-image: ${{ needs.validate-images.outputs.test-credentials-image }}
       workflow-identifier: ${{ github.event.pull_request.number || github.run_number || 'main' }}
       java-version: ${{ needs.setup-config.outputs.java-version }}
       android-api-version: ${{ needs.setup-config.outputs.android-api-version }}
@@ -590,9 +717,9 @@ jobs:
           # Override Docker images to use the built ones for this PR/workflow
           cat >> .env << EOF
 
-          # Override with built Docker images for DAST scanning
-          WEBAUTHN_SERVER_IMAGE=${{ env.WEBAUTHN_SERVER_IMAGE }}
-          TEST_CREDENTIALS_IMAGE=${{ env.TEST_CREDENTIALS_IMAGE }}
+          # Override with validated Docker images for DAST scanning
+          WEBAUTHN_SERVER_IMAGE=${{ needs.validate-images.outputs.webauthn-server-image }}
+          TEST_CREDENTIALS_IMAGE=${{ needs.validate-images.outputs.test-credentials-image }}
           EOF
 
           # Create docker compose override for DAST scanning

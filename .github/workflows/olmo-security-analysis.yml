@@ -188,8 +188,19 @@ jobs:
     runs-on: ubuntu-latest
     if: success() && (inputs.create_dataset == true || github.event_name == 'workflow_call')
     timeout-minutes: 30
+    
+    outputs:
+      huggingface_enabled: ${{ steps.check-hf.outputs.enabled }}
 
     steps:
+      - name: Check Hugging Face availability
+        id: check-hf
+        run: |
+          if [[ "${{ secrets.HF_TOKEN }}" != "" ]]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+          fi
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -407,7 +418,7 @@ jobs:
           retention-days: 90
 
       - name: Upload to Hugging Face Hub
-        if: inputs.upload_to_hf == true && secrets.HF_TOKEN != ''
+        if: inputs.upload_to_hf == true && steps.check-hf.outputs.enabled == 'true'
         continue-on-error: true
         run: |
           cd security-ai-analysis

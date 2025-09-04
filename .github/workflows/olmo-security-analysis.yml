@@ -1,7 +1,7 @@
 name: OLMo Security Analysis
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch: # Manual trigger
     inputs:
       run_id:
         description: 'GitHub Actions Run ID to analyze (leave empty for latest)'
@@ -23,7 +23,7 @@ on:
         type: boolean
         default: false
 
-  workflow_call:  # Can be called from other workflows
+  workflow_call: # Can be called from other workflows
     inputs:
       run_id:
         description: 'GitHub Actions Run ID to analyze'
@@ -34,26 +34,26 @@ jobs:
   analyze-security:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    
+
     permissions:
       contents: read
       actions: read
       issues: write
       pull-requests: write
-    
+
     outputs:
       run_id: ${{ steps.download.outputs.run_id }}
       summary_file: ${{ steps.analysis.outputs.summary_file }}
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      
+
       - name: Cache Python dependencies
         uses: actions/cache@v3
         with:
@@ -61,7 +61,7 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('security-ai-analysis/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip-
-      
+
       - name: Cache OLMo model
         uses: actions/cache@v3
         with:
@@ -69,18 +69,18 @@ jobs:
           key: ${{ runner.os }}-olmo-1b-model-v2
           restore-keys: |
             ${{ runner.os }}-olmo-
-      
+
       - name: Install dependencies
         run: |
           cd security-ai-analysis
           pip install --upgrade pip
           pip install -r requirements.txt
-      
+
       - name: Download security artifacts
         id: download
         run: |
           cd security-ai-analysis
-          
+
           # Determine which run to analyze
           if [ -n "${{ inputs.run_id }}" ]; then
             RUN_ID="${{ inputs.run_id }}"
@@ -95,12 +95,12 @@ jobs:
               --jq '.[0].databaseId')
             echo "Using latest successful run: $RUN_ID"
           fi
-          
+
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
-          
+
           # Download artifacts
           mkdir -p data/security_artifacts
-          
+
           # Download security scan artifacts
           echo "Downloading security scan artifacts..."
           gh run download $RUN_ID \
@@ -112,29 +112,31 @@ jobs:
             --pattern "*zap*" \
             --pattern "*gitleaks*" \
             --dir data/security_artifacts || true
-          
+
           # List what was downloaded
           echo "Downloaded artifacts:"
           ls -la data/security_artifacts/
         env:
           GH_TOKEN: ${{ github.token }}
-      
+
       - name: Run OLMo Security Analysis
         id: analysis
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd security-ai-analysis
-          
+
           # Run the analysis
           echo "🔍 Starting OLMo security analysis..."
           python process_artifacts.py
-          
+
           # Check if results were created
           if ls data/olmo_analysis_results/olmo_analysis_summary_*.json 1> /dev/null 2>&1; then
             echo "✅ Analysis completed successfully"
             # Get the latest summary file
             SUMMARY_FILE=$(ls -t data/olmo_analysis_results/olmo_analysis_summary_*.json | head -1)
             echo "summary_file=$SUMMARY_FILE" >> $GITHUB_OUTPUT
-            
+
             # Extract key metrics
             TOTAL=$(jq '.total_analyzed' $SUMMARY_FILE)
             SUCCESS=$(jq '.successful' $SUMMARY_FILE)
@@ -143,7 +145,7 @@ jobs:
             echo "❌ No analysis results found"
             exit 1
           fi
-      
+
       - name: Upload analysis results
         uses: actions/upload-artifact@v4
         with:
@@ -151,33 +153,33 @@ jobs:
           path: |
             security-ai-analysis/data/olmo_analysis_results/
           retention-days: 30
-      
+
       - name: Generate analysis summary
         if: success()
         run: |
           cd security-ai-analysis
-          
+
           SUMMARY_FILE="${{ steps.analysis.outputs.summary_file }}"
-          
+
           # Create markdown summary
           cat > $GITHUB_STEP_SUMMARY << 'EOF'
           # 🔒 OLMo Security Analysis Results
-          
+
           ## 📊 Summary
           EOF
-          
+
           echo "- **Total Vulnerabilities Analyzed**: $(jq '.total_analyzed' $SUMMARY_FILE)" >> $GITHUB_STEP_SUMMARY
           echo "- **Successful Analyses**: $(jq '.successful' $SUMMARY_FILE)" >> $GITHUB_STEP_SUMMARY
           echo "- **Failed Analyses**: $(jq '.failed' $SUMMARY_FILE)" >> $GITHUB_STEP_SUMMARY
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## 🎯 By Severity" >> $GITHUB_STEP_SUMMARY
           jq -r '.by_severity | to_entries[] | "- **\(.key)**: \(.value)"' $SUMMARY_FILE >> $GITHUB_STEP_SUMMARY
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "## 🛠️ By Tool" >> $GITHUB_STEP_SUMMARY
           jq -r '.by_tool | to_entries[] | "- **\(.key)**: \(.value)"' $SUMMARY_FILE >> $GITHUB_STEP_SUMMARY
-          
+
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "📁 Full results available in artifacts" >> $GITHUB_STEP_SUMMARY
 
@@ -186,61 +188,61 @@ jobs:
     runs-on: ubuntu-latest
     if: success() && (inputs.create_dataset == true || github.event_name == 'workflow_call')
     timeout-minutes: 30
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-      
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      
+
       - name: Download analysis results
         uses: actions/download-artifact@v4
         with:
           name: olmo-security-analysis-${{ needs.analyze-security.outputs.run_id }}
           path: security-ai-analysis/
-      
+
       - name: Install dependencies
         run: |
           cd security-ai-analysis
           pip install --upgrade pip
           pip install -r requirements.txt
           pip install huggingface_hub
-      
+
       - name: Create evaluation dataset
         run: |
           cd security-ai-analysis
           echo "📊 Creating evaluation dataset..."
           python create_security_dataset.py
           echo "✅ Evaluation dataset created"
-      
+
       - name: Create narrativized dataset
         run: |
           cd security-ai-analysis
           echo "📝 Creating narrativized dataset..."
           python create_narrativized_dataset.py
           echo "✅ Narrativization complete"
-      
+
       - name: Prepare fine-tuning dataset
         id: prepare
         run: |
           cd security-ai-analysis
           echo "🔧 Preparing fine-tuning dataset..."
           python prepare_finetuning_dataset.py
-          
+
           # Get dataset info
           DATASET_PATH="data/finetuning_dataset"
           if [ -d "$DATASET_PATH" ]; then
             DATASET_SIZE=$(du -sh $DATASET_PATH | cut -f1)
             TRAIN_COUNT=$(wc -l < $DATASET_PATH/train.jsonl 2>/dev/null || echo "0")
             VAL_COUNT=$(wc -l < $DATASET_PATH/validation.jsonl 2>/dev/null || echo "0")
-            
+
             echo "dataset_size=$DATASET_SIZE" >> $GITHUB_OUTPUT
             echo "train_count=$TRAIN_COUNT" >> $GITHUB_OUTPUT
             echo "val_count=$VAL_COUNT" >> $GITHUB_OUTPUT
-            
+
             # Create archive
             echo "📦 Creating archive..."
             zip -r finetuning_dataset.zip $DATASET_PATH/
@@ -249,11 +251,11 @@ jobs:
             echo "❌ Dataset directory not found"
             exit 1
           fi
-      
+
       - name: Create Colab notebook
         run: |
           cd security-ai-analysis
-          
+
           cat > finetune_olmo_colab.ipynb << 'NOTEBOOK_EOF'
           {
             "cells": [
@@ -391,9 +393,9 @@ jobs:
             "nbformat_minor": 0
           }
           NOTEBOOK_EOF
-          
+
           echo "✅ Created Colab notebook"
-      
+
       - name: Upload fine-tuning artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -403,24 +405,24 @@ jobs:
             security-ai-analysis/finetune_olmo_colab.ipynb
             security-ai-analysis/data/finetuning_dataset/
           retention-days: 90
-      
+
       - name: Upload to Hugging Face Hub
-        if: inputs.upload_to_hf == true && env.HF_TOKEN != ''
+        if: inputs.upload_to_hf == true && secrets.HF_TOKEN != ''
         continue-on-error: true
         run: |
           cd security-ai-analysis
-          
+
           python << 'SCRIPT_EOF'
           from huggingface_hub import HfApi, create_repo
           from datasets import load_from_disk
           import os
-          
+
           token = os.environ.get('HF_TOKEN')
           username = os.environ.get('HF_USERNAME', 'your-username')
-          
+
           dataset = load_from_disk("data/finetuning_dataset/olmo_security_dataset")
           repo_id = f"{username}/webauthn-security-dataset"
-          
+
           try:
               create_repo(repo_id, repo_type="dataset", token=token, private=True, exist_ok=True)
               dataset.push_to_hub(repo_id, token=token, private=True)
@@ -431,35 +433,35 @@ jobs:
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
           HF_USERNAME: ${{ secrets.HF_USERNAME }}
-      
+
       - name: Generate fine-tuning summary
         run: |
           cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY_EOF'
-          
+
           ## 🚀 Fine-Tuning Dataset Ready!
-          
+
           ### 📊 Dataset Statistics
           - **Size**: ${{ steps.prepare.outputs.dataset_size }}
           - **Training Examples**: ${{ steps.prepare.outputs.train_count }}
           - **Validation Examples**: ${{ steps.prepare.outputs.val_count }}
-          
+
           ### 📥 Quick Start Instructions
-          
+
           1. **Download the artifact**: `olmo-finetuning-dataset-${{ github.run_id }}`
           2. **Upload to Google Drive**: Upload `finetuning_dataset.zip`
           3. **Open in Colab**: Use the included `finetune_olmo_colab.ipynb`
           4. **Enable GPU**: Runtime → Change runtime type → T4 GPU
           5. **Run all cells**: The notebook handles everything!
-          
+
           ### 🎯 Expected Results After Fine-Tuning
-          
+
           Your fine-tuned OLMo will generate:
           - ✅ Specific code patches for vulnerabilities
           - ✅ WebAuthn-specific security fixes
           - ✅ Actionable remediation steps
           - ✅ Configuration changes with examples
-          
+
           Instead of: "Review security best practices"
           You'll get: Actual code fixes and patches!
-          
+
           SUMMARY_EOF

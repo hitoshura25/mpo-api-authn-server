@@ -1,0 +1,465 @@
+name: OLMo Security Analysis
+
+on:
+  workflow_dispatch:  # Manual trigger
+    inputs:
+      run_id:
+        description: 'GitHub Actions Run ID to analyze (leave empty for latest)'
+        required: false
+        type: string
+      batch_size:
+        description: 'Number of vulnerabilities to process per batch'
+        required: false
+        type: number
+        default: 20
+      create_dataset:
+        description: 'Create fine-tuning dataset after analysis'
+        required: false
+        type: boolean
+        default: true
+      upload_to_hf:
+        description: 'Upload dataset to Hugging Face Hub'
+        required: false
+        type: boolean
+        default: false
+
+  workflow_call:  # Can be called from other workflows
+    inputs:
+      run_id:
+        description: 'GitHub Actions Run ID to analyze'
+        required: false
+        type: string
+
+jobs:
+  analyze-security:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+      pull-requests: write
+    
+    outputs:
+      run_id: ${{ steps.download.outputs.run_id }}
+      summary_file: ${{ steps.analysis.outputs.summary_file }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Cache Python dependencies
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('security-ai-analysis/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Cache OLMo model
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/huggingface
+          key: ${{ runner.os }}-olmo-1b-model-v2
+          restore-keys: |
+            ${{ runner.os }}-olmo-
+      
+      - name: Install dependencies
+        run: |
+          cd security-ai-analysis
+          pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Download security artifacts
+        id: download
+        run: |
+          cd security-ai-analysis
+          
+          # Determine which run to analyze
+          if [ -n "${{ inputs.run_id }}" ]; then
+            RUN_ID="${{ inputs.run_id }}"
+            echo "Using specified run ID: $RUN_ID"
+          else
+            # Get the latest successful run from main branch
+            RUN_ID=$(gh run list \
+              --branch main \
+              --status success \
+              --limit 1 \
+              --json databaseId \
+              --jq '.[0].databaseId')
+            echo "Using latest successful run: $RUN_ID"
+          fi
+          
+          echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
+          
+          # Download artifacts
+          mkdir -p data/security_artifacts
+          
+          # Download security scan artifacts
+          echo "Downloading security scan artifacts..."
+          gh run download $RUN_ID \
+            --pattern "*checkov*" \
+            --pattern "*trivy*" \
+            --pattern "*semgrep*" \
+            --pattern "*sarif*" \
+            --pattern "*osv*" \
+            --pattern "*zap*" \
+            --pattern "*gitleaks*" \
+            --dir data/security_artifacts || true
+          
+          # List what was downloaded
+          echo "Downloaded artifacts:"
+          ls -la data/security_artifacts/
+        env:
+          GH_TOKEN: ${{ github.token }}
+      
+      - name: Run OLMo Security Analysis
+        id: analysis
+        run: |
+          cd security-ai-analysis
+          
+          # Run the analysis
+          echo "🔍 Starting OLMo security analysis..."
+          python process_artifacts.py
+          
+          # Check if results were created
+          if ls data/olmo_analysis_results/olmo_analysis_summary_*.json 1> /dev/null 2>&1; then
+            echo "✅ Analysis completed successfully"
+            # Get the latest summary file
+            SUMMARY_FILE=$(ls -t data/olmo_analysis_results/olmo_analysis_summary_*.json | head -1)
+            echo "summary_file=$SUMMARY_FILE" >> $GITHUB_OUTPUT
+            
+            # Extract key metrics
+            TOTAL=$(jq '.total_analyzed' $SUMMARY_FILE)
+            SUCCESS=$(jq '.successful' $SUMMARY_FILE)
+            echo "Analyzed $SUCCESS out of $TOTAL vulnerabilities"
+          else
+            echo "❌ No analysis results found"
+            exit 1
+          fi
+      
+      - name: Upload analysis results
+        uses: actions/upload-artifact@v4
+        with:
+          name: olmo-security-analysis-${{ steps.download.outputs.run_id }}
+          path: |
+            security-ai-analysis/data/olmo_analysis_results/
+          retention-days: 30
+      
+      - name: Generate analysis summary
+        if: success()
+        run: |
+          cd security-ai-analysis
+          
+          SUMMARY_FILE="${{ steps.analysis.outputs.summary_file }}"
+          
+          # Create markdown summary
+          cat > $GITHUB_STEP_SUMMARY << 'EOF'
+          # 🔒 OLMo Security Analysis Results
+          
+          ## 📊 Summary
+          EOF
+          
+          echo "- **Total Vulnerabilities Analyzed**: $(jq '.total_analyzed' $SUMMARY_FILE)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Successful Analyses**: $(jq '.successful' $SUMMARY_FILE)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Failed Analyses**: $(jq '.failed' $SUMMARY_FILE)" >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🎯 By Severity" >> $GITHUB_STEP_SUMMARY
+          jq -r '.by_severity | to_entries[] | "- **\(.key)**: \(.value)"' $SUMMARY_FILE >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🛠️ By Tool" >> $GITHUB_STEP_SUMMARY
+          jq -r '.by_tool | to_entries[] | "- **\(.key)**: \(.value)"' $SUMMARY_FILE >> $GITHUB_STEP_SUMMARY
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "📁 Full results available in artifacts" >> $GITHUB_STEP_SUMMARY
+
+  create-finetuning-dataset:
+    needs: analyze-security
+    runs-on: ubuntu-latest
+    if: success() && (inputs.create_dataset == true || github.event_name == 'workflow_call')
+    timeout-minutes: 30
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      - name: Download analysis results
+        uses: actions/download-artifact@v4
+        with:
+          name: olmo-security-analysis-${{ needs.analyze-security.outputs.run_id }}
+          path: security-ai-analysis/
+      
+      - name: Install dependencies
+        run: |
+          cd security-ai-analysis
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install huggingface_hub
+      
+      - name: Create evaluation dataset
+        run: |
+          cd security-ai-analysis
+          echo "📊 Creating evaluation dataset..."
+          python create_security_dataset.py
+          echo "✅ Evaluation dataset created"
+      
+      - name: Create narrativized dataset
+        run: |
+          cd security-ai-analysis
+          echo "📝 Creating narrativized dataset..."
+          python create_narrativized_dataset.py
+          echo "✅ Narrativization complete"
+      
+      - name: Prepare fine-tuning dataset
+        id: prepare
+        run: |
+          cd security-ai-analysis
+          echo "🔧 Preparing fine-tuning dataset..."
+          python prepare_finetuning_dataset.py
+          
+          # Get dataset info
+          DATASET_PATH="data/finetuning_dataset"
+          if [ -d "$DATASET_PATH" ]; then
+            DATASET_SIZE=$(du -sh $DATASET_PATH | cut -f1)
+            TRAIN_COUNT=$(wc -l < $DATASET_PATH/train.jsonl 2>/dev/null || echo "0")
+            VAL_COUNT=$(wc -l < $DATASET_PATH/validation.jsonl 2>/dev/null || echo "0")
+            
+            echo "dataset_size=$DATASET_SIZE" >> $GITHUB_OUTPUT
+            echo "train_count=$TRAIN_COUNT" >> $GITHUB_OUTPUT
+            echo "val_count=$VAL_COUNT" >> $GITHUB_OUTPUT
+            
+            # Create archive
+            echo "📦 Creating archive..."
+            zip -r finetuning_dataset.zip $DATASET_PATH/
+            echo "✅ Created finetuning_dataset.zip"
+          else
+            echo "❌ Dataset directory not found"
+            exit 1
+          fi
+      
+      - name: Create Colab notebook
+        run: |
+          cd security-ai-analysis
+          
+          cat > finetune_olmo_colab.ipynb << 'NOTEBOOK_EOF'
+          {
+            "cells": [
+              {
+                "cell_type": "markdown",
+                "metadata": {},
+                "source": [
+                  "# 🔒 Fine-Tune OLMo for Security Remediation\\n",
+                  "\\n",
+                  "This notebook fine-tunes OLMo-1B on your security dataset to generate specific fixes.\\n",
+                  "\\n",
+                  "**Prerequisites:**\\n",
+                  "1. Upload `finetuning_dataset.zip` to Google Drive\\n",
+                  "2. Enable GPU: Runtime → Change runtime type → T4 GPU"
+                ]
+              },
+              {
+                "cell_type": "code",
+                "execution_count": null,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                  "# Install packages\\n",
+                  "!pip install -q transformers datasets torch accelerate"
+                ]
+              },
+              {
+                "cell_type": "code",
+                "execution_count": null,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                  "# Mount Drive and extract dataset\\n",
+                  "from google.colab import drive\\n",
+                  "drive.mount('/content/drive')\\n",
+                  "\\n",
+                  "!cp /content/drive/MyDrive/finetuning_dataset.zip .\\n",
+                  "!unzip -q finetuning_dataset.zip\\n",
+                  "print('Dataset ready!')"
+                ]
+              },
+              {
+                "cell_type": "code",
+                "execution_count": null,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                  "# Load model and dataset\\n",
+                  "from transformers import AutoModelForCausalLM, AutoTokenizer\\n",
+                  "from datasets import load_from_disk\\n",
+                  "import torch\\n",
+                  "\\n",
+                  "model = AutoModelForCausalLM.from_pretrained(\\n",
+                  "    'allenai/OLMo-1B',\\n",
+                  "    trust_remote_code=True,\\n",
+                  "    torch_dtype=torch.float16\\n",
+                  ")\\n",
+                  "tokenizer = AutoTokenizer.from_pretrained(\\n",
+                  "    'allenai/OLMo-1B',\\n",
+                  "    trust_remote_code=True\\n",
+                  ")\\n",
+                  "\\n",
+                  "if tokenizer.pad_token is None:\\n",
+                  "    tokenizer.pad_token = tokenizer.eos_token\\n",
+                  "\\n",
+                  "dataset = load_from_disk('data/finetuning_dataset/olmo_security_dataset')\\n",
+                  "print(f'Dataset loaded: {len(dataset[\\\"train\\\"])} training examples')"
+                ]
+              },
+              {
+                "cell_type": "code",
+                "execution_count": null,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                  "# Fine-tune\\n",
+                  "from transformers import TrainingArguments, Trainer, DataCollatorForLanguageModeling\\n",
+                  "\\n",
+                  "def tokenize_function(examples):\\n",
+                  "    return tokenizer(examples['text'], truncation=True, padding='max_length', max_length=512)\\n",
+                  "\\n",
+                  "tokenized_dataset = dataset.map(tokenize_function, batched=True)\\n",
+                  "\\n",
+                  "training_args = TrainingArguments(\\n",
+                  "    output_dir='./olmo-security-finetuned',\\n",
+                  "    num_train_epochs=3,\\n",
+                  "    per_device_train_batch_size=2,\\n",
+                  "    gradient_accumulation_steps=4,\\n",
+                  "    warmup_steps=100,\\n",
+                  "    logging_steps=25,\\n",
+                  "    save_steps=250,\\n",
+                  "    eval_steps=250,\\n",
+                  "    evaluation_strategy='steps',\\n",
+                  "    fp16=True,\\n",
+                  "    save_total_limit=2,\\n",
+                  "    load_best_model_at_end=True\\n",
+                  ")\\n",
+                  "\\n",
+                  "trainer = Trainer(\\n",
+                  "    model=model,\\n",
+                  "    args=training_args,\\n",
+                  "    data_collator=DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False),\\n",
+                  "    train_dataset=tokenized_dataset['train'],\\n",
+                  "    eval_dataset=tokenized_dataset['validation']\\n",
+                  ")\\n",
+                  "\\n",
+                  "print('Starting training...')\\n",
+                  "trainer.train()\\n",
+                  "print('Training complete!')"
+                ]
+              },
+              {
+                "cell_type": "code",
+                "execution_count": null,
+                "metadata": {},
+                "outputs": [],
+                "source": [
+                  "# Save and test\\n",
+                  "trainer.save_model('./olmo-security-finetuned')\\n",
+                  "tokenizer.save_pretrained('./olmo-security-finetuned')\\n",
+                  "\\n",
+                  "# Save to Drive\\n",
+                  "!cp -r ./olmo-security-finetuned /content/drive/MyDrive/\\n",
+                  "print('Model saved to Google Drive!')\\n",
+                  "\\n",
+                  "# Test\\n",
+                  "prompt = 'Fix the GitHub Actions permission vulnerability:'\\n",
+                  "inputs = tokenizer(prompt, return_tensors='pt')\\n",
+                  "outputs = model.generate(**inputs, max_new_tokens=100, temperature=0.3)\\n",
+                  "print(tokenizer.decode(outputs[0], skip_special_tokens=True))"
+                ]
+              }
+            ],
+            "nbformat": 4,
+            "nbformat_minor": 0
+          }
+          NOTEBOOK_EOF
+          
+          echo "✅ Created Colab notebook"
+      
+      - name: Upload fine-tuning artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: olmo-finetuning-dataset-${{ github.run_id }}
+          path: |
+            security-ai-analysis/finetuning_dataset.zip
+            security-ai-analysis/finetune_olmo_colab.ipynb
+            security-ai-analysis/data/finetuning_dataset/
+          retention-days: 90
+      
+      - name: Upload to Hugging Face Hub
+        if: inputs.upload_to_hf == true && env.HF_TOKEN != ''
+        continue-on-error: true
+        run: |
+          cd security-ai-analysis
+          
+          python << 'SCRIPT_EOF'
+          from huggingface_hub import HfApi, create_repo
+          from datasets import load_from_disk
+          import os
+          
+          token = os.environ.get('HF_TOKEN')
+          username = os.environ.get('HF_USERNAME', 'your-username')
+          
+          dataset = load_from_disk("data/finetuning_dataset/olmo_security_dataset")
+          repo_id = f"{username}/webauthn-security-dataset"
+          
+          try:
+              create_repo(repo_id, repo_type="dataset", token=token, private=True, exist_ok=True)
+              dataset.push_to_hub(repo_id, token=token, private=True)
+              print(f"✅ Uploaded to: https://huggingface.co/datasets/{repo_id}")
+          except Exception as e:
+              print(f"Upload failed: {e}")
+          SCRIPT_EOF
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          HF_USERNAME: ${{ secrets.HF_USERNAME }}
+      
+      - name: Generate fine-tuning summary
+        run: |
+          cat >> $GITHUB_STEP_SUMMARY << 'SUMMARY_EOF'
+          
+          ## 🚀 Fine-Tuning Dataset Ready!
+          
+          ### 📊 Dataset Statistics
+          - **Size**: ${{ steps.prepare.outputs.dataset_size }}
+          - **Training Examples**: ${{ steps.prepare.outputs.train_count }}
+          - **Validation Examples**: ${{ steps.prepare.outputs.val_count }}
+          
+          ### 📥 Quick Start Instructions
+          
+          1. **Download the artifact**: `olmo-finetuning-dataset-${{ github.run_id }}`
+          2. **Upload to Google Drive**: Upload `finetuning_dataset.zip`
+          3. **Open in Colab**: Use the included `finetune_olmo_colab.ipynb`
+          4. **Enable GPU**: Runtime → Change runtime type → T4 GPU
+          5. **Run all cells**: The notebook handles everything!
+          
+          ### 🎯 Expected Results After Fine-Tuning
+          
+          Your fine-tuned OLMo will generate:
+          - ✅ Specific code patches for vulnerabilities
+          - ✅ WebAuthn-specific security fixes
+          - ✅ Actionable remediation steps
+          - ✅ Configuration changes with examples
+          
+          Instead of: "Review security best practices"
+          You'll get: Actual code fixes and patches!
+          
+          SUMMARY_EOF

@@ -1,0 +1,101 @@
+"""
+Use OLMo for security analysis via AI2's native OLMo implementation
+Based on: https://huggingface.co/allenai/OLMo-1B
+"""
+from olmo import Tokenizer
+from olmo.model import OLMo
+from transformers import AutoTokenizer, AutoModelForCausalLM
+import torch
+from typing import Dict, List
+
+
+class OLMoSecurityAnalyzer:
+    def __init__(self, model_name: str = "allenai/OLMo-1B"):
+        """
+        Initialize OLMo using AI2's native implementation
+        Falls back to Hugging Face transformers if needed
+        """
+        print(f"Loading {model_name}...")
+        
+        # Try native OLMo first, then fall back to transformers
+        try:
+            # Use Hugging Face transformers with trust_remote_code for OLMo
+            self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+                device_map="auto" if torch.cuda.is_available() else None,
+                trust_remote_code=True
+            )
+            print("✅ OLMo model loaded successfully via transformers")
+            
+        except Exception as e:
+            print(f"❌ Failed to load OLMo model: {e}")
+            raise RuntimeError(f"OLMo model loading failed: {e}")
+
+        print("Model loaded successfully")
+    
+    def analyze_vulnerability(self, vulnerability: Dict) -> str:
+        """
+        Generate analysis for a single vulnerability
+        """
+        # Create a clear, structured prompt
+        prompt = f"""Security Vulnerability Analysis:
+
+Tool: {vulnerability.get('tool', 'Unknown')}
+ID: {vulnerability.get('id', 'Unknown')}
+Severity: {vulnerability.get('severity', 'Unknown')}
+Description: {vulnerability.get('description', 'No description')}
+
+Please provide:
+1. Risk Assessment: What is the potential impact?
+2. Remediation: How should this be fixed?
+3. Prevention: How can this be prevented in the future?
+
+Analysis:"""
+        
+        # Tokenize input (avoid token_type_ids for OLMo)
+        inputs = self.tokenizer(
+            prompt, 
+            return_tensors="pt",
+            truncation=True,
+            max_length=512,
+            return_token_type_ids=False
+        )
+        
+        # Move to same device as model
+        if torch.cuda.is_available():
+            inputs = {k: v.cuda() for k, v in inputs.items()}
+        
+        # Generate response
+        with torch.no_grad():
+            outputs = self.model.generate(
+                **inputs,
+                max_new_tokens=200,
+                temperature=0.7,
+                do_sample=True,
+                top_p=0.95,
+                pad_token_id=self.tokenizer.eos_token_id
+            )
+        
+        # Decode response
+        response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        
+        # Extract only the generated part (after the prompt)
+        analysis = response[len(prompt):].strip()
+        
+        return analysis
+    
+    def batch_analyze(self, vulnerabilities: List[Dict]) -> List[Dict]:
+        """
+        Analyze multiple vulnerabilities
+        """
+        results = []
+        for i, vuln in enumerate(vulnerabilities):
+            print(f"Analyzing vulnerability {i+1}/{len(vulnerabilities)}...")
+            analysis = self.analyze_vulnerability(vuln)
+            results.append({
+                'vulnerability': vuln,
+                'analysis': analysis
+            })
+        return results

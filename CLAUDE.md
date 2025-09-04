@@ -604,12 +604,54 @@ grep -r "OLD_FORMAT_FILE" .github/workflows/
 - ❌ Artifact upload still tried to include non-existent JSON files
 
 **Prevention**: Always trace data flow from generation → processing → consumption when changing formats.
+
+#### **🚨 CRITICAL: Secrets Cannot Be Referenced in if Conditions (Recurring Issue)**
+**GitHub Actions security limitation: Secrets cannot be accessed directly in workflow if conditions.**
+
+**FAILURE PATTERN:**
+```yaml
+# ❌ WRONG: This causes "Unrecognized named-value: 'secrets'" error
+- name: Upload to service
+  if: inputs.enable_upload == true && secrets.API_TOKEN != ''
 ```
 
-**WHY THIS HAPPENS:**
-- **GitHub Actions Environment**: Runs with strict error handling (`set -e` equivalent behavior)
-- **Arithmetic Expansion**: `((expr))` can return non-zero exit codes for certain operations
-- **Pre-increment Evaluation**: `VAR++` evaluates current value before incrementing, causing issues when starting from 0
+**SOLUTION PATTERN:**
+```yaml
+# ✅ CORRECT: Use job/step outputs to handle secret availability
+jobs:
+  my-job:
+    outputs:
+      service_enabled: ${{ steps.check-token.outputs.enabled }}
+    
+    steps:
+      - name: Check service token availability  
+        id: check-token
+        run: |
+          if [[ "${{ secrets.API_TOKEN }}" != "" ]]; then
+            echo "enabled=true" >> $GITHUB_OUTPUT
+          else
+            echo "enabled=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Upload to service
+        if: inputs.enable_upload == true && steps.check-token.outputs.enabled == 'true'
+        env:
+          API_TOKEN: ${{ secrets.API_TOKEN }}
+        run: |
+          # Use the secret here in env, not in if condition
+```
+
+**WHY THIS RESTRICTION EXISTS:**
+- **Security**: Prevents accidental secret exposure in workflow logs
+- **GitHub Policy**: Secrets are only accessible in `env:` context and step `run:` blocks
+- **Error Prevention**: Stops workflows from accidentally logging secret values
+
+**RECENT EXAMPLE:** OLMo Security Analysis workflow failed with HF_TOKEN reference in if condition. Fixed by creating `huggingface_enabled` output.
+
+**Prevention**: Always use step outputs to check secret availability before using secrets in conditional steps.
+
+#### **🚨 CRITICAL: Bash Arithmetic Operations in GitHub Actions (August 2025)**
+**GitHub Actions strict error handling can cause arithmetic operations to fail with exit code 1:**
 
 **VALIDATION PATTERN:**
 ```bash

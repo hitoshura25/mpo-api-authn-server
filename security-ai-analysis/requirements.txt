@@ -4,9 +4,8 @@ torch>=2.0.0
 accelerate>=0.24.0  # For efficient model loading
 datasets>=2.14.0    # For dataset handling
 
-# OLMo specific (optional - will work without, but better with)
-# ai2-olmo>=0.2.0  # Uncomment if AI2's OLMo package becomes available
-# hf-olmo>=0.1.0   # Uncomment if available
+# OLMo specific (required for OLMo model loading)
+git+https://github.com/allenai/OLMo.git  # AI2's official OLMo package
 
 # Data processing
 pyyaml>=6.0

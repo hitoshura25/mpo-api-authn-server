@@ -315,7 +315,10 @@ jobs:
             RUN_WEB="true"
             RUN_ANDROID="true"
             RUN_DAST="true"
-            echo "🚀 Force flags detected - running full E2E test suite including DAST scan (ignoring cache)"
+            USE_WEB_CACHE="false"    # Force fresh execution, ignore cache
+            USE_ANDROID_CACHE="false"
+            USE_DAST_CACHE="false"
+            echo "🚀 Force flags detected - running full E2E test suite including DAST scan (ignoring cache and component logic)"
           else
             # Component-specific E2E test triggering logic
             SERVER_CHANGED="${{ inputs.webauthn-server-changed }}"
@@ -388,6 +391,60 @@ jobs:
           echo "  Android E2E: $([ "$RUN_ANDROID" == "true" ] && echo "RUN" || ([ "$USE_ANDROID_CACHE" == "true" ] && echo "CACHE" || echo "SKIP"))"
           echo "  DAST Scan: $([ "$RUN_DAST" == "true" ] && echo "RUN" || ([ "$USE_DAST_CACHE" == "true" ] && echo "CACHE" || echo "SKIP"))"
 
+      - name: Validate force flag processing
+        run: |
+          echo "🔍 Force Flag Validation:"
+          echo "  Force Full Pipeline: ${{ inputs.force-full-pipeline }}"
+          echo "  Force Docker Build: ${{ inputs.force-docker-build }}"
+          echo "  Web E2E Decision: ${{ steps.determine-scope.outputs.run-web-e2e }}"
+          echo "  Android E2E Decision: ${{ steps.determine-scope.outputs.run-android-e2e }}"
+          echo "  DAST Scan Decision: ${{ steps.determine-scope.outputs.run-dast-scan }}"
+          echo "  Web Cache Decision: ${{ steps.determine-scope.outputs.use-web-cache }}"
+          echo "  Android Cache Decision: ${{ steps.determine-scope.outputs.use-android-cache }}"
+          echo "  DAST Cache Decision: ${{ steps.determine-scope.outputs.use-dast-cache }}"
+          echo ""
+          
+          # Validate that force flags are properly processed
+          if [[ "${{ inputs.force-full-pipeline }}" == "true" || "${{ inputs.force-docker-build }}" == "true" ]]; then
+            echo "✅ Force flags detected - validating execution decisions..."
+            
+            # All tests should be set to RUN when force flags are active
+            if [[ "${{ steps.determine-scope.outputs.run-web-e2e }}" != "true" ]]; then
+              echo "❌ ERROR: Force flags set but Web E2E not enabled (expected: true, actual: ${{ steps.determine-scope.outputs.run-web-e2e }})"
+              exit 1
+            fi
+            
+            if [[ "${{ steps.determine-scope.outputs.run-android-e2e }}" != "true" ]]; then
+              echo "❌ ERROR: Force flags set but Android E2E not enabled (expected: true, actual: ${{ steps.determine-scope.outputs.run-android-e2e }})"
+              exit 1
+            fi
+            
+            if [[ "${{ steps.determine-scope.outputs.run-dast-scan }}" != "true" ]]; then
+              echo "❌ ERROR: Force flags set but DAST scan not enabled (expected: true, actual: ${{ steps.determine-scope.outputs.run-dast-scan }})"
+              exit 1
+            fi
+            
+            # All cache decisions should be FALSE when force flags are active
+            if [[ "${{ steps.determine-scope.outputs.use-web-cache }}" != "false" ]]; then
+              echo "❌ ERROR: Force flags set but Web cache not disabled (expected: false, actual: ${{ steps.determine-scope.outputs.use-web-cache }})"
+              exit 1
+            fi
+            
+            if [[ "${{ steps.determine-scope.outputs.use-android-cache }}" != "false" ]]; then
+              echo "❌ ERROR: Force flags set but Android cache not disabled (expected: false, actual: ${{ steps.determine-scope.outputs.use-android-cache }})"
+              exit 1
+            fi
+            
+            if [[ "${{ steps.determine-scope.outputs.use-dast-cache }}" != "false" ]]; then
+              echo "❌ ERROR: Force flags set but DAST cache not disabled (expected: false, actual: ${{ steps.determine-scope.outputs.use-dast-cache }})"
+              exit 1
+            fi
+            
+            echo "✅ Force flag validation passed - all tests will run fresh (no cache)"
+          else
+            echo "ℹ️ No force flags detected - using component-based logic"
+          fi
+
       - name: Component-aware execution and cache summary
         run: |
           echo "📊 E2E Test Strategy Summary:"
@@ -452,7 +509,11 @@ jobs:
     if: |
       needs.validate-images.outputs.webauthn-server-ready == 'true' &&
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
-      needs.analyze-e2e-requirements.outputs.run-web-e2e == 'true'
+      (
+        needs.analyze-e2e-requirements.outputs.run-web-e2e == 'true' ||
+        inputs.force-full-pipeline == 'true' ||
+        inputs.force-docker-build == 'true'
+      )
     secrets: inherit
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
@@ -472,7 +533,11 @@ jobs:
     if: |
       needs.validate-images.outputs.webauthn-server-ready == 'true' &&
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
-      needs.analyze-e2e-requirements.outputs.run-android-e2e == 'true'
+      (
+        needs.analyze-e2e-requirements.outputs.run-android-e2e == 'true' ||
+        inputs.force-full-pipeline == 'true' ||
+        inputs.force-docker-build == 'true'
+      )
     secrets: inherit
     with:
       webauthn-server-image: ${{ inputs.webauthn_server_image }}
@@ -493,7 +558,11 @@ jobs:
     if: |
       needs.validate-images.outputs.webauthn-server-ready == 'true' &&
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
-      needs.analyze-e2e-requirements.outputs.run-dast-scan == 'true'
+      (
+        needs.analyze-e2e-requirements.outputs.run-dast-scan == 'true' ||
+        inputs.force-full-pipeline == 'true' ||
+        inputs.force-docker-build == 'true'
+      )
     permissions:
       issues: write          # Update issues with security findings
     steps:
@@ -603,7 +672,10 @@ jobs:
   web-e2e-cached:
     runs-on: ubuntu-latest
     needs: [ analyze-e2e-requirements ]
-    if: needs.analyze-e2e-requirements.outputs.use-web-cache == 'true'
+    if: |
+      needs.analyze-e2e-requirements.outputs.use-web-cache == 'true' &&
+      inputs.force-full-pipeline != 'true' &&
+      inputs.force-docker-build != 'true'
     outputs:
       tests-passed: "true"
       artifact-name: "web-e2e-cached-results"
@@ -631,7 +703,10 @@ jobs:
   android-e2e-cached:
     runs-on: ubuntu-latest
     needs: [ analyze-e2e-requirements ]
-    if: needs.analyze-e2e-requirements.outputs.use-android-cache == 'true'
+    if: |
+      needs.analyze-e2e-requirements.outputs.use-android-cache == 'true' &&
+      inputs.force-full-pipeline != 'true' &&
+      inputs.force-docker-build != 'true'
     outputs:
       tests-passed: "true"
       artifact-name: "android-e2e-cached-results"
@@ -659,7 +734,10 @@ jobs:
   dast-scan-cached:
     runs-on: ubuntu-latest
     needs: [ analyze-e2e-requirements ]
-    if: needs.analyze-e2e-requirements.outputs.use-dast-cache == 'true'
+    if: |
+      needs.analyze-e2e-requirements.outputs.use-dast-cache == 'true' &&
+      inputs.force-full-pipeline != 'true' &&
+      inputs.force-docker-build != 'true'
     outputs:
       tests-passed: "true"
       artifact-name: "dast-scan-cached-results"

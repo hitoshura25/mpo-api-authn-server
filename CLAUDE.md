@@ -479,6 +479,100 @@ if: needs.validate-images.outputs.webauthn-server-ready == 'true'  # Silently sk
 - Recurring debugging sessions for "why didn't E2E tests run?"
 - Workflow completing successfully while missing critical testing
 
+### 📤 CRITICAL: Bash Function Output Redirection (RECURRING ISSUE!)
+
+**MANDATORY output redirection for bash functions that return values to prevent debug pollution.**
+
+**THE RECURRING PROBLEM**: Bash functions with debug/logging output pollute captured return values, causing failures with confusing multi-line variable assignments.
+
+#### **Critical Issue Pattern (Happened Multiple Times):**
+```bash
+# ❌ WRONG: Function outputs debug info to stdout
+extract_value() {
+  echo "🔧 Processing input..."     # Goes to stdout!
+  echo "Debug: $1"                 # Goes to stdout!
+  echo "✅ Result ready"            # Goes to stdout!
+  echo "$final_result"             # Goes to stdout!
+}
+
+# Variable captures ALL output, not just the result
+RESULT=$(extract_value "input")
+# RESULT now contains:
+# "🔧 Processing input...
+# Debug: input
+# ✅ Result ready
+# final_result"
+```
+
+#### **Mandatory Bash Function Output Pattern:**
+```bash
+# ✅ CORRECT: Debug output to stderr, only result to stdout
+extract_value() {
+  echo "🔧 Processing input..." >&2     # Goes to stderr (visible in logs)
+  echo "Debug: $1" >&2                 # Goes to stderr (visible in logs)
+  echo "✅ Result ready" >&2            # Goes to stderr (visible in logs)
+  echo "$final_result"                 # ONLY this goes to stdout
+}
+
+# Variable captures ONLY the final result
+RESULT=$(extract_value "input")
+# RESULT now contains: "final_result"
+```
+
+#### **Output Redirection Rules:**
+- **Debug messages**: `echo "Debug info" >&2`
+- **Progress indicators**: `echo "🔧 Processing..." >&2`
+- **Status messages**: `echo "✅ Complete" >&2`
+- **Error messages**: `echo "❌ Error" >&2`
+- **Return value**: `echo "$result"` (NO redirection)
+
+#### **Common Failure Scenarios:**
+```bash
+# ❌ Docker tag validation with polluted output
+IMAGE_TAG=$(extract_tag "$input")
+docker manifest inspect "$IMAGE_TAG"  # Fails - IMAGE_TAG contains debug output
+
+# ❌ Version extraction with debug pollution
+VERSION=$(get_version "$config")
+echo "version=$VERSION" >> $GITHUB_OUTPUT  # GitHub output corrupted
+
+# ❌ Path resolution with logging noise
+FILE_PATH=$(find_config_file "$name")
+cat "$FILE_PATH"  # Fails - path contains logging output
+```
+
+#### **Validation Pattern:**
+```bash
+# Test function output capture
+test_function() {
+  echo "Debug: Processing" >&2  # Should appear in logs
+  echo "actual-result"          # Should be captured
+}
+
+RESULT=$(test_function)
+echo "Captured: '$RESULT'"      # Should show only 'actual-result'
+```
+
+#### **GitHub Actions Specific Issues:**
+- **Environment variables**: `echo "var=$polluted_value" >> $GITHUB_OUTPUT`
+- **Artifact paths**: `path: ${{ steps.get-path.outputs.polluted-path }}`
+- **Docker commands**: `docker build -t "$polluted_tag"`
+- **File operations**: `cp "$polluted_source" "$dest"`
+
+#### **Prevention Checklist:**
+- [ ] **All debug output**: Redirect to stderr with `>&2`
+- [ ] **Only final result**: Goes to stdout (no redirection)
+- [ ] **Function testing**: Test output capture before committing
+- [ ] **Variable validation**: Verify captured values contain only expected data
+- [ ] **Error handling**: Function errors go to stderr, return non-zero exit code
+
+**This pattern prevents:**
+- Variable pollution with debug output causing command failures
+- GitHub Actions output corruption leading to downstream failures
+- Docker operations failing due to malformed tags/paths
+- File operations failing due to paths containing logging noise
+- Complex debugging sessions to identify output capture issues
+
 ### 🧹 CRITICAL: Dead Code Cleanup After Refactoring
 
 **ALWAYS perform comprehensive cleanup after removing or refactoring functionality to eliminate orphaned code.**

@@ -490,60 +490,60 @@ jobs:
             local full_output="$1"
             local image_type="$2"
             
-            echo "🔧 Processing $image_type image tags:"
-            echo "Full output: $full_output"
+            echo "🔧 Processing $image_type image tags:" >&2
+            echo "Full output: $full_output" >&2
             
             # Count lines to detect multi-line vs single-line tags
             local line_count=$(echo "$full_output" | wc -l)
-            echo "Lines detected: $line_count"
+            echo "Lines detected: $line_count" >&2
             
             local selected_tag=""
             
             if [[ $line_count -gt 1 ]]; then
-              echo "📋 Multi-line tags detected, selecting based on event type..."
+              echo "📋 Multi-line tags detected, selecting based on event type..." >&2
               
               case "${{ github.event_name }}" in
                 "workflow_dispatch")
                   # For workflow_dispatch on main, use SHA-based tag (typically last line)
                   selected_tag=$(echo "$full_output" | tail -n1)
-                  echo "🚀 Workflow dispatch: Using SHA-based tag (last line)"
+                  echo "🚀 Workflow dispatch: Using SHA-based tag (last line)" >&2
                   ;;
                 "pull_request")
                   # For PRs, use PR-based tag (typically first line)
                   selected_tag=$(echo "$full_output" | head -n1)
-                  echo "📝 Pull request: Using PR tag (first line)"
+                  echo "📝 Pull request: Using PR tag (first line)" >&2
                   ;;
                 "push")
                   if [[ "${{ github.ref_name }}" == "main" ]]; then
                     # For main branch push, use 'latest' tag (typically first line)
                     selected_tag=$(echo "$full_output" | head -n1)
-                    echo "🌟 Main branch push: Using latest tag (first line)"
+                    echo "🌟 Main branch push: Using latest tag (first line)" >&2
                   else
                     # For feature branch push, use branch-based tag (typically first line)
                     selected_tag=$(echo "$full_output" | head -n1)
-                    echo "🌿 Feature branch push: Using branch tag (first line)"
+                    echo "🌿 Feature branch push: Using branch tag (first line)" >&2
                   fi
                   ;;
                 *)
                   # Fallback: use first tag
                   selected_tag=$(echo "$full_output" | head -n1)
-                  echo "⚠️ Unknown event type, using first tag as fallback"
+                  echo "⚠️ Unknown event type, using first tag as fallback" >&2
                   ;;
               esac
             else
               # Single line - use as-is
               selected_tag="$full_output"
-              echo "📄 Single tag detected, using as-is"
+              echo "📄 Single tag detected, using as-is" >&2
             fi
             
             # Validate tag format
             if [[ -z "$selected_tag" || "$selected_tag" == *$'\n'* ]]; then
-              echo "❌ ERROR: Invalid tag extracted: '$selected_tag'"
+              echo "❌ ERROR: Invalid tag extracted: '$selected_tag'" >&2
               return 1
             fi
             
-            echo "✅ Selected tag: $selected_tag"
-            echo "$selected_tag"
+            echo "✅ Selected tag: $selected_tag" >&2
+            echo "$selected_tag"  # This is the ONLY line that goes to stdout
           }
           
           # Extract WebAuthn Server image tag

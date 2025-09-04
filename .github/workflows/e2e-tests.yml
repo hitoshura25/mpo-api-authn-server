@@ -511,8 +511,8 @@ jobs:
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
       (
         needs.analyze-e2e-requirements.outputs.run-web-e2e == 'true' ||
-        inputs.force-full-pipeline == true ||
-        inputs.force-docker-build == true
+        inputs.force-full-pipeline == 'true' ||
+        inputs.force-docker-build == 'true'
       )
     secrets: inherit
     with:
@@ -535,8 +535,8 @@ jobs:
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
       (
         needs.analyze-e2e-requirements.outputs.run-android-e2e == 'true' ||
-        inputs.force-full-pipeline == true ||
-        inputs.force-docker-build == true
+        inputs.force-full-pipeline == 'true' ||
+        inputs.force-docker-build == 'true'
       )
     secrets: inherit
     with:
@@ -560,8 +560,8 @@ jobs:
       needs.validate-images.outputs.test-credentials-ready == 'true' &&
       (
         needs.analyze-e2e-requirements.outputs.run-dast-scan == 'true' ||
-        inputs.force-full-pipeline == true ||
-        inputs.force-docker-build == true
+        inputs.force-full-pipeline == 'true' ||
+        inputs.force-docker-build == 'true'
       )
     permissions:
       issues: write          # Update issues with security findings
@@ -674,8 +674,8 @@ jobs:
     needs: [ analyze-e2e-requirements ]
     if: |
       needs.analyze-e2e-requirements.outputs.use-web-cache == 'true' &&
-      inputs.force-full-pipeline != true &&
-      inputs.force-docker-build != true
+      inputs.force-full-pipeline != 'true' &&
+      inputs.force-docker-build != 'true'
     outputs:
       tests-passed: "true"
       artifact-name: "web-e2e-cached-results"
@@ -705,8 +705,8 @@ jobs:
     needs: [ analyze-e2e-requirements ]
     if: |
       needs.analyze-e2e-requirements.outputs.use-android-cache == 'true' &&
-      inputs.force-full-pipeline != true &&
-      inputs.force-docker-build != true
+      inputs.force-full-pipeline != 'true' &&
+      inputs.force-docker-build != 'true'
     outputs:
       tests-passed: "true"
       artifact-name: "android-e2e-cached-results"
@@ -736,8 +736,8 @@ jobs:
     needs: [ analyze-e2e-requirements ]
     if: |
       needs.analyze-e2e-requirements.outputs.use-dast-cache == 'true' &&
-      inputs.force-full-pipeline != true &&
-      inputs.force-docker-build != true
+      inputs.force-full-pipeline != 'true' &&
+      inputs.force-docker-build != 'true'
     outputs:
       tests-passed: "true"
       artifact-name: "dast-scan-cached-results"

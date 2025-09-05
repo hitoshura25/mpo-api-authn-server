@@ -271,8 +271,10 @@ with:
 #### **Recent Example: OLMo GitHub Actions Failure (2025-09-05)**
 **Issue**: `'NoneType' object has no attribute 'size'` errors in GitHub Actions, working perfectly locally
 **Wrong Approach**: ❌ Auto-implement fallback mode without user approval  
-**Correct Approach**: ✅ Version pinning, enhanced diagnostics, environment comparison
-**Status**: Enhanced debugging implemented, awaiting root cause identification
+**Correct Approach**: ✅ Version pinning, enhanced diagnostics, progressive failure isolation
+**Root Cause Identified**: OLMo `model.generate()` hangs indefinitely in GitHub Actions environment
+**Solution**: Signal-based timeout (60s) around `model.generate()` with automatic template fallback
+**Status**: ✅ Resolved - Process no longer hangs, continues with template analysis on timeout
 
 #### **Why This Protocol Matters:**
 - **Problem Resolution**: Fixes underlying issues rather than masking them

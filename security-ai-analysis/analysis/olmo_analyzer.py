@@ -183,22 +183,47 @@ Security Analysis:
             print(f"         Tokenizer eos_token: {self.tokenizer.eos_token}", flush=True)
             
             print(f"      🚀 Calling model.generate() for {vuln_id}...", flush=True)
-            with torch.no_grad():
-                # Even more conservative generation parameters
-                outputs = self.model.generate(
-                    input_ids=inputs['input_ids'],  # Use explicit input_ids only
-                    attention_mask=inputs.get('attention_mask'),  # Include attention mask if available
-                    max_new_tokens=50,              # Further reduced
-                    min_new_tokens=10,              # Lower minimum  
-                    temperature=1.0,                # Default temperature
-                    do_sample=False,                # Use greedy decoding for stability
-                    pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
-                    eos_token_id=self.tokenizer.eos_token_id,
-                    use_cache=False,                # Disable caching to avoid issues
-                    output_attentions=False,        # Disable attention outputs
-                    output_hidden_states=False      # Disable hidden state outputs
-                )
-            print(f"      ✅ Generation completed for {vuln_id}", flush=True)
+            
+            # Use signal-based timeout for model.generate() - known OLMo hanging issue
+            import signal
+            import time
+            
+            def timeout_handler(signum, frame):
+                raise TimeoutError("OLMo model.generate() timed out after 60 seconds")
+            
+            # Set up timeout signal (60 seconds for generation)
+            old_handler = signal.signal(signal.SIGALRM, timeout_handler)
+            signal.alarm(60)
+            
+            try:
+                with torch.no_grad():
+                    # Even more conservative generation parameters
+                    outputs = self.model.generate(
+                        input_ids=inputs['input_ids'],  # Use explicit input_ids only
+                        attention_mask=inputs.get('attention_mask'),  # Include attention mask if available
+                        max_new_tokens=30,              # Further reduced to prevent hanging
+                        min_new_tokens=5,               # Lower minimum  
+                        temperature=1.0,                # Default temperature
+                        do_sample=False,                # Use greedy decoding for stability
+                        pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+                        eos_token_id=self.tokenizer.eos_token_id,
+                        use_cache=False,                # Disable caching to avoid issues
+                        output_attentions=False,        # Disable attention outputs
+                        output_hidden_states=False      # Disable hidden state outputs
+                    )
+                print(f"      ✅ Generation completed for {vuln_id}", flush=True)
+                
+            except TimeoutError as e:
+                print(f"      ⏰ Generation timed out for {vuln_id} - using fallback", flush=True)
+                # Fall back to template-based analysis for this specific vulnerability
+                signal.alarm(0)  # Cancel alarm
+                signal.signal(signal.SIGALRM, old_handler)  # Restore handler
+                return self._generate_template_analysis(vulnerability)
+                
+            finally:
+                # Always restore the signal handler and cancel alarm
+                signal.alarm(0)
+                signal.signal(signal.SIGALRM, old_handler)
             
             # Check if generation was successful
             print(f"      Validating generation output for {vuln_id}...", flush=True)

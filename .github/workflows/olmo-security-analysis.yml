@@ -97,14 +97,22 @@ jobs:
             RUN_ID="${{ inputs.run_id }}"
             echo "Using specified run ID: $RUN_ID"
           else
-            # Get the latest successful run from main branch
+            # Get the latest successful Main CI/CD run from main branch
             RUN_ID=$(gh run list \
               --branch main \
+              --workflow main-ci-cd.yml \
               --status success \
               --limit 1 \
               --json databaseId \
               --jq '.[0].databaseId')
-            echo "Using latest successful run: $RUN_ID"
+            
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+              echo "❌ No successful Main CI/CD runs found on main branch"
+              echo "💡 Make sure the Main CI/CD pipeline has run successfully on main branch"
+              exit 1
+            fi
+            
+            echo "Using latest successful Main CI/CD run: $RUN_ID"
           fi
 
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT

@@ -260,19 +260,19 @@ def download_latest_artifacts(output_dir: str) -> Path | None:
         default_branch = branch_proc.stdout.strip()
         print(f"    ✅ Default branch is '{default_branch}'")
 
-        # 5. Get the latest successful run ID on the default branch
-        print(f"  Finding latest successful run on branch '{default_branch}'...")
-        # Note: This finds the latest run across ALL workflows.
-        # You might want to add `--workflow <workflow_file.yml>` to filter.
+        # 5. Get the latest successful run ID on the default branch from Main CI/CD workflow
+        print(f"  Finding latest successful Main CI/CD run on branch '{default_branch}'...")
+        # Filter specifically for the Main CI/CD workflow that generates security artifacts
         run_id_proc = subprocess.run(
-            ["gh", "run", "list", "-R", repo, "-b", default_branch, "--status", "success", "--limit", "1", "--json", "databaseId", "-q", ".[0].databaseId"],
+            ["gh", "run", "list", "-R", repo, "-b", default_branch, "--workflow", "main-ci-cd.yml", "--status", "success", "--limit", "1", "--json", "databaseId", "-q", ".[0].databaseId"],
             capture_output=True, text=True, check=True
         )
         run_id = run_id_proc.stdout.strip()
         if not run_id:
-            print(f"    ❌ No successful runs found on branch '{default_branch}'.")
+            print(f"    ❌ No successful Main CI/CD runs found on branch '{default_branch}'.")
+            print(f"    💡 Make sure the Main CI/CD pipeline has run successfully on main branch.")
             return None
-        print(f"    ✅ Found run ID: {run_id}")
+        print(f"    ✅ Found Main CI/CD run ID: {run_id}")
 
         # 6. Download artifacts for that run
         print(f"  Downloading artifacts for run {run_id} to {output_path}...")

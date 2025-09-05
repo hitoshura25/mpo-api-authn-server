@@ -85,12 +85,16 @@ Validation: Checkov scan should pass after fix
 
 - **`olmo-security-analysis.yml`**: Complete workflow for analysis and dataset creation
 - **`automated-security-analysis.yml`**: Triggers after security scans
-- Features:
+- **Trigger Options**:
+    - **Manual**: `workflow_dispatch` with customizable parameters
+    - **Auto-PR**: Triggers on PRs modifying `security-ai-analysis/` code
+    - **Callable**: Can be invoked by other workflows
+- **Features**:
     - Automatic artifact download from latest security scans
     - OLMo model caching (~2GB)
     - Fine-tuning dataset generation
     - Google Colab notebook creation
-    - Optional Hugging Face Hub upload
+    - Optional Hugging Face Hub upload (disabled for PRs)
 
 ---
 

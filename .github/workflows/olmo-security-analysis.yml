@@ -23,6 +23,17 @@ on:
         type: boolean
         default: false
 
+  pull_request: # Auto-trigger on PRs that modify OLMo analysis code
+    paths:
+      - 'security-ai-analysis/**'
+      - '.github/workflows/olmo-security-analysis.yml'
+      - '.github/workflows/automated-security-analysis.yml'
+    types: [opened, synchronize, ready_for_review]
+    # Note: PR triggers use default settings:
+    # - batch_size: 20 (from script default)
+    # - create_dataset: true (enabled for PR testing)
+    # - upload_to_hf: false (disabled for PR testing)
+
   workflow_call: # Can be called from other workflows
     inputs:
       run_id:
@@ -70,11 +81,35 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-olmo-
 
-      - name: Install dependencies
+      - name: Install dependencies with version pinning
         run: |
           cd security-ai-analysis
           pip install --upgrade pip
+          
+          # Install with explicit version constraints to match local environment
+          echo "📦 Installing pinned dependencies for GitHub Actions compatibility..."
           pip install -r requirements.txt
+          
+          # Verify installation and show versions
+          echo "🔍 Verifying installation:"
+          python -c "import torch; print(f'PyTorch: {torch.__version__}')"
+          python -c "import transformers; print(f'Transformers: {transformers.__version__}')"
+          python -c "import psutil; print(f'psutil: {psutil.__version__}')"
+          python -c "import numpy; print(f'NumPy: {numpy.__version__}')"
+          
+          # Test basic functionality
+          echo "🧪 Testing basic model functionality:"
+          python -c "
+          import torch
+          from transformers import AutoTokenizer
+          print('Testing tokenizer loading...')
+          try:
+              tokenizer = AutoTokenizer.from_pretrained('allenai/OLMo-1B', trust_remote_code=True)
+              print(f'✅ Tokenizer loaded successfully, vocab size: {len(tokenizer.vocab) if hasattr(tokenizer, \"vocab\") else \"Unknown\"}')
+          except Exception as e:
+              print(f'❌ Tokenizer loading failed: {e}')
+              raise
+          "
 
       - name: Download security artifacts
         id: download
@@ -86,14 +121,22 @@ jobs:
             RUN_ID="${{ inputs.run_id }}"
             echo "Using specified run ID: $RUN_ID"
           else
-            # Get the latest successful run from main branch
+            # Get the latest successful Main CI/CD run from main branch
             RUN_ID=$(gh run list \
               --branch main \
+              --workflow main-ci-cd.yml \
               --status success \
               --limit 1 \
               --json databaseId \
               --jq '.[0].databaseId')
-            echo "Using latest successful run: $RUN_ID"
+            
+            if [ -z "$RUN_ID" ] || [ "$RUN_ID" = "null" ]; then
+              echo "❌ No successful Main CI/CD runs found on main branch"
+              echo "💡 Make sure the Main CI/CD pipeline has run successfully on main branch"
+              exit 1
+            fi
+            
+            echo "Using latest successful Main CI/CD run: $RUN_ID"
           fi
 
           echo "run_id=$RUN_ID" >> $GITHUB_OUTPUT
@@ -119,16 +162,73 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Run OLMo Security Analysis
+      - name: Run OLMo Security Analysis with Environment Diagnostics
         id: analysis
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd security-ai-analysis
 
-          # Run the analysis
-          echo "🔍 Starting OLMo security analysis..."
-          python process_artifacts.py
+          # Pre-analysis environment check
+          echo "🔍 Pre-analysis environment diagnostics..."
+          python -c "
+          import psutil
+          import platform
+          import sys
+          print(f'Available memory: {psutil.virtual_memory().available / (1024**3):.1f} GB')
+          print(f'Total memory: {psutil.virtual_memory().total / (1024**3):.1f} GB')
+          print(f'CPU count: {psutil.cpu_count()}')
+          print(f'Platform: {platform.platform()}')
+          print(f'Python executable: {sys.executable}')
+          "
+
+          # Run the analysis with timeout and detailed progress tracking
+          echo "🔍 Starting OLMo security analysis with timeout..."
+          timeout 10m python -c "
+          import psutil
+          import subprocess
+          import threading
+          import time
+          import signal
+          import sys
+
+          # Monitor memory usage during execution
+          def monitor_memory():
+              start_time = time.time()
+              while True:
+                  elapsed = int(time.time() - start_time)
+                  mem = psutil.virtual_memory()
+                  print(f'[{elapsed}s] Memory usage: {mem.percent}% ({mem.used / (1024**3):.1f}/{mem.total / (1024**3):.1f} GB)', flush=True)
+                  time.sleep(15)  # More frequent updates
+
+          monitor_thread = threading.Thread(target=monitor_memory, daemon=True)
+          monitor_thread.start()
+
+          # Run the actual analysis with timeout handling
+          print('📊 Executing process_artifacts.py...', flush=True)
+          try:
+              result = subprocess.run(
+                  ['python', 'process_artifacts.py'], 
+                  capture_output=False,
+                  timeout=600  # 10 minute timeout
+              )
+              exit(result.returncode)
+          except subprocess.TimeoutExpired:
+              print('❌ Analysis timed out after 10 minutes', flush=True)
+              exit(124)  # Standard timeout exit code
+          except Exception as e:
+              print(f'❌ Analysis failed with exception: {e}', flush=True)
+              exit(1)
+          " || {
+            EXIT_CODE=$?
+            if [ $EXIT_CODE -eq 124 ]; then
+              echo "⏰ Analysis was terminated due to timeout (10 minutes)"
+              echo "💡 This suggests the process is hanging during model loading"
+            else
+              echo "❌ Analysis failed with exit code: $EXIT_CODE"
+            fi
+            exit $EXIT_CODE
+          }
 
           # Check if results were created
           if ls data/olmo_analysis_results/olmo_analysis_summary_*.json 1> /dev/null 2>&1; then
@@ -186,7 +286,7 @@ jobs:
   create-finetuning-dataset:
     needs: analyze-security
     runs-on: ubuntu-latest
-    if: success() && (inputs.create_dataset == true || github.event_name == 'workflow_call')
+    if: success() && (inputs.create_dataset == true || github.event_name == 'workflow_call' || github.event_name == 'pull_request')
     timeout-minutes: 30
     
     outputs:

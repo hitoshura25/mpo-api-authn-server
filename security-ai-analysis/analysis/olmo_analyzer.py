@@ -15,23 +15,39 @@ class OLMoSecurityAnalyzer:
         """
         print(f"Loading {model_name} with security-optimized configuration...")
         
-        self.tokenizer = AutoTokenizer.from_pretrained(
-            model_name, 
-            trust_remote_code=True
-        )
-        
-        self.model = AutoModelForCausalLM.from_pretrained(
-            model_name,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-            device_map="auto" if torch.cuda.is_available() else None,
-            trust_remote_code=True
-        )
-        
-        # Set pad token if not set
-        if self.tokenizer.pad_token is None:
-            self.tokenizer.pad_token = self.tokenizer.eos_token
-        
-        print("✅ OLMo model loaded and optimized for security analysis")
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(
+                model_name, 
+                trust_remote_code=True
+            )
+            print(f"✅ Tokenizer loaded successfully")
+            
+            # More conservative model loading for CPU environment
+            self.model = AutoModelForCausalLM.from_pretrained(
+                model_name,
+                torch_dtype=torch.float32,  # Always use float32 for stability
+                device_map=None,            # Let PyTorch handle device placement
+                trust_remote_code=True,
+                low_cpu_mem_usage=True,    # Enable memory optimization
+                use_cache=True             # Enable caching
+            )
+            print(f"✅ Model loaded successfully")
+            
+            # Set pad token if not set
+            if self.tokenizer.pad_token is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+                print(f"✅ Pad token set to EOS token")
+            
+            # Print device info
+            device = next(self.model.parameters()).device
+            print(f"✅ Model device: {device}")
+            print(f"✅ Model dtype: {next(self.model.parameters()).dtype}")
+            
+            print("✅ OLMo model loaded and optimized for security analysis")
+            
+        except Exception as e:
+            print(f"❌ Failed to load OLMo model: {str(e)}")
+            raise
     
     def analyze_vulnerability(self, vulnerability: Dict) -> str:
         """
@@ -64,26 +80,47 @@ Security Analysis:
             return_token_type_ids=False  # OLMo doesn't use token_type_ids
         )
         
-        # Move to device if available
-        if torch.cuda.is_available():
-            inputs = {k: v.cuda() for k, v in inputs.items()}
+        # Move to device if available (be more careful about device placement)
+        device = next(self.model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items()}
         
         # Generate with settings optimized for security analysis
-        with torch.no_grad():
-            outputs = self.model.generate(
-                **inputs,
-                max_new_tokens=150,  # Focused response length
-                min_new_tokens=50,   # Ensure meaningful response
-                temperature=0.3,     # Lower temperature for more focused output
-                do_sample=True,
-                top_p=0.9,          # Slightly lower for consistency
-                repetition_penalty=1.2,  # Reduce repetition
-                pad_token_id=self.tokenizer.pad_token_id,
-                eos_token_id=self.tokenizer.eos_token_id
-            )
-        
-        # Decode and extract generated part
-        full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+        try:
+            with torch.no_grad():
+                # More conservative generation parameters for CPU environment
+                outputs = self.model.generate(
+                    **inputs,
+                    max_new_tokens=100,     # Reduced to avoid memory issues
+                    min_new_tokens=20,      # More reasonable minimum
+                    temperature=0.7,        # Higher temperature for more diversity
+                    do_sample=True,
+                    top_p=0.95,             # More conservative top_p
+                    repetition_penalty=1.15, # Slightly lower repetition penalty
+                    pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id,
+                    eos_token_id=self.tokenizer.eos_token_id,
+                    use_cache=True,         # Enable caching for efficiency
+                    early_stopping=True     # Allow early stopping
+                )
+            
+            # Check if generation was successful
+            if outputs is None:
+                raise ValueError("Model generation returned None")
+            if len(outputs) == 0:
+                raise ValueError("Model generation returned empty tensor list")
+            if outputs[0] is None:
+                raise ValueError("Model generation returned None in first position")
+                
+            # Decode and extract generated part
+            full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
+            
+        except Exception as e:
+            # Handle generation failures gracefully with more detailed error info
+            print(f"❌ Model generation failed for vulnerability {vulnerability.get('id', 'UNKNOWN')}")
+            print(f"   Error details: {str(e)}")
+            print(f"   Device: {device}")
+            print(f"   Input shape: {inputs['input_ids'].shape if 'input_ids' in inputs else 'N/A'}")
+            # Return a fallback response
+            full_response = f"{prompt}\n\nAnalysis failed due to model generation error: {str(e)}. Manual review recommended."
         
         # Extract only the generated analysis
         if "Security Analysis:" in full_response:

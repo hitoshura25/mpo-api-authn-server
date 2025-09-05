@@ -23,6 +23,17 @@ on:
         type: boolean
         default: false
 
+  pull_request: # Auto-trigger on PRs that modify OLMo analysis code
+    paths:
+      - 'security-ai-analysis/**'
+      - '.github/workflows/olmo-security-analysis.yml'
+      - '.github/workflows/automated-security-analysis.yml'
+    types: [opened, synchronize, ready_for_review]
+    # Note: PR triggers use default settings:
+    # - batch_size: 20 (from script default)
+    # - create_dataset: true (enabled for PR testing)
+    # - upload_to_hf: false (disabled for PR testing)
+
   workflow_call: # Can be called from other workflows
     inputs:
       run_id:
@@ -186,7 +197,7 @@ jobs:
   create-finetuning-dataset:
     needs: analyze-security
     runs-on: ubuntu-latest
-    if: success() && (inputs.create_dataset == true || github.event_name == 'workflow_call')
+    if: success() && (inputs.create_dataset == true || github.event_name == 'workflow_call' || github.event_name == 'pull_request')
     timeout-minutes: 30
     
     outputs:

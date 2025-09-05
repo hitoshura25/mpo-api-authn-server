@@ -487,8 +487,10 @@ jobs:
           
           # Function to extract correct image tag based on event type and validate multi-line handling
           extract_image_tag() {
-            local full_output="$1"
-            local image_type="$2"
+            local image_type="$1"
+            # Read from stdin (here-string) to preserve multi-line strings correctly
+            local full_output
+            full_output=$(cat)
             
             echo "🔧 Processing $image_type image tags:" >&2
             echo "Full output: $full_output" >&2
@@ -536,9 +538,19 @@ jobs:
               echo "📄 Single tag detected, using as-is" >&2
             fi
             
-            # Validate tag format
-            if [[ -z "$selected_tag" || "$selected_tag" == *$'\n'* ]]; then
+            # Clean and validate tag format - remove all whitespace including newlines and carriage returns
+            selected_tag=$(echo "$selected_tag" | tr -d '\n\r' | xargs)
+            
+            # Validate tag format using line count check for more robust whitespace detection
+            if [[ -z "$selected_tag" ]] || [[ $(echo "$selected_tag" | wc -l) -ne 1 ]]; then
               echo "❌ ERROR: Invalid tag extracted: '$selected_tag'" >&2
+              return 1
+            fi
+            
+            # Additional validation: ensure tag looks like a Docker tag
+            if [[ ! "$selected_tag" =~ ^[a-zA-Z0-9._/-]+:[a-zA-Z0-9._-]+$ ]]; then
+              echo "❌ ERROR: Tag format validation failed: '$selected_tag'" >&2
+              echo "Expected format: registry/image:tag" >&2
               return 1
             fi
             
@@ -550,7 +562,8 @@ jobs:
           echo ""
           echo "🔍 Processing WebAuthn Server Image"
           echo "-----------------------------------"
-          WEBAUTHN_TAG=$(extract_image_tag "${{ env.WEBAUTHN_SERVER_IMAGE }}" "WebAuthn Server")
+          # Preserve multi-line strings by using here-string to avoid command substitution issues
+          WEBAUTHN_TAG=$(echo "${{ env.WEBAUTHN_SERVER_IMAGE }}" | extract_image_tag "WebAuthn Server")
           if [[ $? -ne 0 ]]; then
             echo "❌ CRITICAL: Failed to extract WebAuthn Server image tag"
             exit 1
@@ -560,7 +573,8 @@ jobs:
           echo ""
           echo "🔍 Processing Test Credentials Image"
           echo "------------------------------------"
-          TEST_CREDENTIALS_TAG=$(extract_image_tag "${{ env.TEST_CREDENTIALS_IMAGE }}" "Test Credentials")
+          # Preserve multi-line strings by using here-string to avoid command substitution issues
+          TEST_CREDENTIALS_TAG=$(echo "${{ env.TEST_CREDENTIALS_IMAGE }}" | extract_image_tag "Test Credentials")
           if [[ $? -ne 0 ]]; then
             echo "❌ CRITICAL: Failed to extract Test Credentials image tag"
             exit 1

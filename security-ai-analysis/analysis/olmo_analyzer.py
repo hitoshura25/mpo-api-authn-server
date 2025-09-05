@@ -54,17 +54,21 @@ class OLMoSecurityAnalyzer:
             print(f"   Model resolution test failed: {e}")
         
         try:
-            print("🔧 Loading tokenizer...")
+            print("🔧 Loading tokenizer...", flush=True)
+            import sys
+            sys.stdout.flush()
             self.tokenizer = AutoTokenizer.from_pretrained(
                 model_name, 
                 trust_remote_code=True
             )
-            print(f"✅ Tokenizer loaded successfully")
+            print(f"✅ Tokenizer loaded successfully", flush=True)
             print(f"   Vocab size: {len(self.tokenizer.vocab) if hasattr(self.tokenizer, 'vocab') else 'Unknown'}")
             print(f"   Model max length: {self.tokenizer.model_max_length}")
             
-            print("🔧 Loading model with conservative settings...")
+            print("🔧 Loading model with conservative settings...", flush=True)
+            sys.stdout.flush()
             # More conservative model loading with additional debugging
+            print("   Starting AutoModelForCausalLM.from_pretrained()...", flush=True)
             self.model = AutoModelForCausalLM.from_pretrained(
                 model_name,
                 torch_dtype=torch.float32,  # Always use float32 for stability
@@ -74,22 +78,26 @@ class OLMoSecurityAnalyzer:
                 use_cache=True,            # Enable caching
                 local_files_only=False     # Allow downloading if needed
             )
-            print(f"✅ Model loaded successfully")
+            print(f"✅ Model loaded successfully", flush=True)
             
             # Validate model integrity
-            print("🔧 Validating model integrity...")
+            print("🔧 Validating model integrity...", flush=True)
+            print("   Extracting model parameters...", flush=True)
             model_params = list(self.model.parameters())
+            print(f"   Found {len(model_params)} parameter tensors", flush=True)
+            
             if not model_params:
                 raise ValueError("Model has no parameters - loading failed")
             
+            print("   Checking first parameter...", flush=True)
             first_param = model_params[0]
             if first_param is None:
                 raise ValueError("First model parameter is None - corrupted loading")
                 
-            print(f"   Model has {len(model_params)} parameter tensors")
-            print(f"   First parameter shape: {first_param.shape}")
-            print(f"   First parameter device: {first_param.device}")
-            print(f"   First parameter dtype: {first_param.dtype}")
+            print(f"   ✅ Model has {len(model_params)} parameter tensors", flush=True)
+            print(f"   ✅ First parameter shape: {first_param.shape}", flush=True)
+            print(f"   ✅ First parameter device: {first_param.device}", flush=True)
+            print(f"   ✅ First parameter dtype: {first_param.dtype}", flush=True)
             
             # Set pad token if not set
             if self.tokenizer.pad_token is None:

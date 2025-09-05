@@ -721,8 +721,17 @@ jobs:
 
       - name: Setup secure environment and start services with Docker Compose
         working-directory: webauthn-server
+        env:
+          # Override problematic multi-line environment variables with clean validated outputs
+          WEBAUTHN_SERVER_IMAGE: ${{ needs.validate-images.outputs.webauthn-server-image }}
+          TEST_CREDENTIALS_IMAGE: ${{ needs.validate-images.outputs.test-credentials-image }}
         run: |
           echo "🔐 Setting up secure environment for DAST scanning..."
+          
+          # Debug: Verify validated image tags are being used (validation already done by validate-images job)
+          echo "🔍 Using validated Docker images:"
+          echo "WEBAUTHN_SERVER_IMAGE: $WEBAUTHN_SERVER_IMAGE"
+          echo "TEST_CREDENTIALS_IMAGE: $TEST_CREDENTIALS_IMAGE"
 
           # Use existing secure environment setup script
           chmod +x setup-secure-env.sh

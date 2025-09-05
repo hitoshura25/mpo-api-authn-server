@@ -114,18 +114,20 @@ def process_all_scans(scan_files: dict, output_dir: str):
     # Initialize OLMo analyzer
     print("\n🤖 Initializing OLMo Security Analyzer...")
     analyzer = OLMoSecurityAnalyzer()
+    print("✅ OLMo analyzer initialized successfully", flush=True)
     
     all_vulnerabilities = []
     
     # Process each scan type
+    print(f"\n📂 Starting vulnerability parsing from {len(scan_files)} scan types...", flush=True)
     for scan_type, files in scan_files.items():
         if not files:
             continue
             
-        print(f"\n📊 Processing {scan_type} scans...")
+        print(f"\n📊 Processing {scan_type} scans ({len(files)} files)...", flush=True)
         
-        for file_path in files:
-            print(f"  Processing {Path(file_path).name}...")
+        for file_index, file_path in enumerate(files, 1):
+            print(f"  [{file_index}/{len(files)}] Processing {Path(file_path).name}...", flush=True)
             
             try:
                 # Parse based on type
@@ -158,21 +160,30 @@ def process_all_scans(scan_files: dict, output_dir: str):
     
     # Analyze with OLMo
     if all_vulnerabilities:
-        print(f"\n🔍 Analyzing {len(all_vulnerabilities)} total vulnerabilities with OLMo...")
+        print(f"\n🔍 Starting analysis of {len(all_vulnerabilities)} total vulnerabilities with OLMo...", flush=True)
         
         # Process ALL vulnerabilities in batches
         batch_size = 20  # Process 20 at a time for memory efficiency
         results = []
         
+        print(f"📊 Will process {len(all_vulnerabilities)} vulnerabilities in batches of {batch_size}", flush=True)
+        total_batches = (len(all_vulnerabilities) + batch_size - 1) // batch_size
+        print(f"📊 Total batches needed: {total_batches}", flush=True)
+        
         for i in range(0, len(all_vulnerabilities), batch_size):
             batch = all_vulnerabilities[i:i+batch_size]
             batch_end = min(i+batch_size, len(all_vulnerabilities))
-            print(f"\n  Processing batch {i//batch_size + 1}: vulnerabilities {i+1}-{batch_end} of {len(all_vulnerabilities)}")
+            batch_num = i//batch_size + 1
+            
+            print(f"\n🔄 Starting batch {batch_num}/{total_batches}: vulnerabilities {i+1}-{batch_end} of {len(all_vulnerabilities)}", flush=True)
+            print(f"   Batch size: {len(batch)} vulnerabilities", flush=True)
+            print(f"   Calling analyzer.batch_analyze()...", flush=True)
             
             batch_results = analyzer.batch_analyze(
                 batch,
                 max_items=len(batch)
             )
+            print(f"   ✅ Batch {batch_num} completed, got {len(batch_results)} results", flush=True)
             results.extend(batch_results)
             
             # Optional: Add a small delay between batches to avoid overloading

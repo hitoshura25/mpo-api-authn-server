@@ -134,9 +134,15 @@ class OLMoSecurityAnalyzer:
         vuln_id = vulnerability.get('id', 'UNKNOWN')
         description = vulnerability.get('description', vulnerability.get('message', 'No description'))
         
+        print(f"      analyze_vulnerability() called for {vuln_id}", flush=True)
+        print(f"      fallback_mode: {self.fallback_mode}, model is None: {self.model is None}", flush=True)
+        
         # If in fallback mode or model failed, use template-based analysis
         if self.fallback_mode or self.model is None:
+            print(f"      Using template-based analysis for {vuln_id}", flush=True)
             return self._generate_template_analysis(vulnerability)
+        
+        print(f"      Using model-based analysis for {vuln_id}", flush=True)
         
         # Simplified, direct prompt that OLMo handles better
         prompt = f"""Vulnerability: {vuln_id}
@@ -148,6 +154,7 @@ Security Analysis:
 1. Impact: This vulnerability could"""
         
         # Tokenize with proper settings for OLMo
+        print(f"      Starting tokenization for {vuln_id}...", flush=True)
         inputs = self.tokenizer(
             prompt,
             return_tensors="pt",
@@ -156,22 +163,26 @@ Security Analysis:
             padding=False,
             return_token_type_ids=False  # OLMo doesn't use token_type_ids
         )
+        print(f"      ✅ Tokenization completed for {vuln_id}", flush=True)
         
         # Move to device if available (be more careful about device placement)
+        print(f"      Moving inputs to device for {vuln_id}...", flush=True)
         device = next(self.model.parameters()).device
         inputs = {k: v.to(device) for k, v in inputs.items()}
+        print(f"      ✅ Inputs moved to device {device}", flush=True)
         
         # Generate with settings optimized for security analysis
         try:
             # Add additional debugging before generation
-            print(f"🔧 Debug - About to generate for {vulnerability.get('id', 'UNKNOWN')}")
-            print(f"   Model device: {next(self.model.parameters()).device}")
-            print(f"   Input device: {inputs['input_ids'].device}")
-            print(f"   Input dtype: {inputs['input_ids'].dtype}")
-            print(f"   Model dtype: {next(self.model.parameters()).dtype}")
-            print(f"   Tokenizer pad_token: {self.tokenizer.pad_token}")
-            print(f"   Tokenizer eos_token: {self.tokenizer.eos_token}")
+            print(f"      🔧 Starting generation for {vuln_id}...", flush=True)
+            print(f"         Model device: {next(self.model.parameters()).device}", flush=True)
+            print(f"         Input device: {inputs['input_ids'].device}", flush=True)
+            print(f"         Input dtype: {inputs['input_ids'].dtype}", flush=True)
+            print(f"         Model dtype: {next(self.model.parameters()).dtype}", flush=True)
+            print(f"         Tokenizer pad_token: {self.tokenizer.pad_token}", flush=True)
+            print(f"         Tokenizer eos_token: {self.tokenizer.eos_token}", flush=True)
             
+            print(f"      🚀 Calling model.generate() for {vuln_id}...", flush=True)
             with torch.no_grad():
                 # Even more conservative generation parameters
                 outputs = self.model.generate(
@@ -187,8 +198,10 @@ Security Analysis:
                     output_attentions=False,        # Disable attention outputs
                     output_hidden_states=False      # Disable hidden state outputs
                 )
+            print(f"      ✅ Generation completed for {vuln_id}", flush=True)
             
             # Check if generation was successful
+            print(f"      Validating generation output for {vuln_id}...", flush=True)
             if outputs is None:
                 raise ValueError("Model generation returned None")
             if len(outputs) == 0:
@@ -370,22 +383,26 @@ Security Analysis:
         # Limit to max_items for performance
         items_to_process = vulnerabilities[:max_items]
         
-        print(f"\n🔍 Analyzing {len(items_to_process)} vulnerabilities with OLMo...")
+        print(f"\n🔍 batch_analyze called with {len(vulnerabilities)} vulnerabilities, processing {len(items_to_process)}", flush=True)
         print("-" * 50)
         
         for i, vuln in enumerate(items_to_process, 1):
-            print(f"[{i}/{len(items_to_process)}] Analyzing {vuln.get('id', 'unknown')}...", end=" ")
+            vuln_id = vuln.get('id', 'unknown')
+            print(f"[{i}/{len(items_to_process)}] Starting analysis of {vuln_id}...", flush=True)
             
             try:
+                print(f"   Calling analyze_vulnerability() for {vuln_id}...", flush=True)
                 analysis = self.analyze_vulnerability(vuln)
+                print(f"   ✅ Got analysis result for {vuln_id}", flush=True)
+                
                 results.append({
                     'vulnerability': vuln,
                     'analysis': analysis,
                     'status': 'success'
                 })
-                print("✅")
+                print(f"[{i}/{len(items_to_process)}] ✅ Completed {vuln_id}", flush=True)
             except Exception as e:
-                print(f"❌ Error: {str(e)}")
+                print(f"   ❌ Error analyzing {vuln_id}: {str(e)}", flush=True)
                 results.append({
                     'vulnerability': vuln,
                     'analysis': {'error': str(e)},
@@ -393,7 +410,7 @@ Security Analysis:
                 })
         
         print("-" * 50)
-        print(f"✅ Analysis complete: {len(results)} items processed\n")
+        print(f"✅ batch_analyze complete: {len(results)} items processed", flush=True)
         
         return results
     

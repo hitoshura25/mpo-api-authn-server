@@ -539,7 +539,25 @@ jobs:
   report-pipeline-status:
     name: Report Pipeline Status
     runs-on: ubuntu-latest
-    needs: [ detect-component-changes, build-and-test, generate-staging-version, publish-client-libraries, e2e-tests, security-scanning, setup-production-config, publish-docker-production, publish-clients-production ]
+    needs: [ 
+      detect-component-changes, 
+      build-and-test, 
+      generate-staging-version, 
+      publish-client-libraries, 
+      e2e-tests, 
+      security-scanning, 
+      # All security jobs - pipeline status should wait for complete security validation
+      security-optimization-monitor,
+      osv-scanner,
+      semgrep-sast,
+      iac-scan,
+      secrets-scan,
+      unified-security-report,
+      # Production jobs (main branch only)
+      setup-production-config, 
+      publish-docker-production, 
+      publish-clients-production 
+    ]
     if: always()
     outputs:
       pipeline-success: ${{ steps.determine-outcome.outputs.pipeline-success }}

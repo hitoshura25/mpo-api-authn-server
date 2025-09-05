@@ -14,7 +14,7 @@ This document outlines the coding standards and conventions used in this project
 
 #### ❌ Bad - Wildcard Imports
 ```kotlin
-import com.vmenon.mpo.api.authn.client.model.*
+import io.github.hitoshura25.webauthn.client.model.*
 import java.security.*
 import io.ktor.server.application.*
 ```
@@ -35,9 +35,9 @@ class MyService {
 
 #### ✅ Good - Explicit Imports Only What's Used
 ```kotlin
-import com.vmenon.mpo.api.authn.client.model.RegistrationRequest
-import com.vmenon.mpo.api.authn.client.model.RegistrationCompleteRequest
-import com.vmenon.mpo.api.authn.client.model.AuthenticationRequest
+import io.github.hitoshura25.webauthn.client.model.RegistrationRequest
+import io.github.hitoshura25.webauthn.client.model.RegistrationCompleteRequest
+import io.github.hitoshura25.webauthn.client.model.AuthenticationRequest
 import java.security.KeyPair
 import java.security.SecureRandom
 import java.security.Signature
@@ -65,7 +65,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import io.ktor.server.application.Application
 
 // Project-specific imports
-import com.vmenon.mpo.api.authn.client.model.RegistrationRequest
+import io.github.hitoshura25.webauthn.client.model.RegistrationRequest
 import com.vmenon.webauthn.testlib.WebAuthnTestAuthenticator
 ```
 

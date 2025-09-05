@@ -166,12 +166,12 @@ repositories {
 # Staging configuration verified:
 ./gradlew generateTsClient generateAndroidClient \
   -PclientVersion=pr-999.123 \
-  -PnpmName=@vmenon25/mpo-webauthn-client-staging \
+  -PnpmName=@hitoshura25/mpo-webauthn-client-staging \
   -PandroidArtifactId=mpo-webauthn-android-client-staging
 
 # Results:
-# TypeScript: @vmenon25/mpo-webauthn-client-staging@pr-999.123
-# Android: com.vmenon.mpo.api.authn:mpo-webauthn-android-client-staging:pr-999.123
+# TypeScript: @hitoshura25/mpo-webauthn-client-staging@pr-999.123
+# Android: io.github.hitoshura25:mpo-webauthn-android-client-staging:pr-999.123
 
 # Production configuration verified:
 ./gradlew generateTsClient generateAndroidClient \
@@ -181,7 +181,7 @@ repositories {
 
 # Results:
 # TypeScript: @vmenon25/mpo-webauthn-client@1.0.32
-# Android: com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.32
+# Android: io.github.hitoshura25:mpo-webauthn-android-client:1.0.32
 ```
 
 ### ✅ Authentication Setup Verification
@@ -202,7 +202,7 @@ repositories {
 
 ### ✅ Test Client Migration Complete  
 - Web-test-client now imports from `@vmenon25/mpo-webauthn-client` 
-- Android-test-client now uses `com.vmenon.mpo.api.authn:mpo-webauthn-android-client` from GitHub Packages
+- Android-test-client now uses `io.github.hitoshura25:mpo-webauthn-android-client` from GitHub Packages
 - Legacy file copying tasks commented out in `build.gradle.kts`
 - `.npmrc` configured for GitHub Packages scoped package resolution
 - Android `settings.gradle` configured with GitHub Packages Maven repository

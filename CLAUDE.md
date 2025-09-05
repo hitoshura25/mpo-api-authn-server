@@ -18,12 +18,13 @@
 This is a KTor-based WebAuthn authentication server using the Yubico java-webauthn-server library for FIDO2/WebAuthn implementation.
 
 ### Key Technologies
-- **Framework**: KTor (Kotlin web framework)
-- **WebAuthn Library**: Yubico java-webauthn-server
-- **Storage**: PostgreSQL (credentials), Redis (sessions)
-- **DI**: Koin dependency injection
-- **Testing**: JUnit 5, Kotlin Test
-- **Build**: Gradle with Kotlin DSL
+- **Framework**: KTor 2.3.7 (Kotlin web framework)
+- **Language**: Kotlin 1.9.23 (targeting JVM 21)
+- **WebAuthn Library**: Yubico java-webauthn-server 2.6.0
+- **Storage**: PostgreSQL 15-alpine (credentials), Redis 7-alpine (sessions)
+- **DI**: Koin 3.5.3 dependency injection
+- **Testing**: JUnit 5.11.3, Kotlin Test, TestContainers 1.21.3
+- **Build**: Gradle with Kotlin DSL, dependency locking enabled
 - **Containerization**: Docker with docker-compose
 
 ### Multi-Module Project Structure
@@ -607,7 +608,7 @@ setup-config:
 
 # Then use job outputs in callable workflows
 callable-job:
-  uses: ./.github/workflows/some-workflow.yml
+  uses: ./.github/workflows/docker-build.yml
   needs: setup-config
   with:
     package-name: ${{ needs.setup-config.outputs.package-name }}  # ✅ CORRECT
@@ -976,7 +977,7 @@ grep -A 5 "force-publish" .github/workflows/publish-typescript.yml # Callable
 **Step 3: Automated Syntax Validation**
 ```bash
 # GitHub Actions will validate on push, but local validation prevents failed commits
-yq eval '.on.workflow_call.inputs' .github/workflows/callable-workflow.yml
+yq eval '.on.workflow_call.inputs' .github/workflows/publish-android.yml
 ```
 
 #### **Input/Output Synchronization Patterns:**
@@ -1149,9 +1150,9 @@ dependencies {
 - **WebAuthn Server**: 8080 (main API)
 - **WebAuthn Test Service**: 8081 (cross-platform credential generation)  
 - **Web Test Client**: 8082 (E2E test web frontend)
-- **PostgreSQL**: 5432
-- **Redis**: 6379  
-- **Jaeger UI**: 16686
+- **PostgreSQL**: 5432 (postgres:15-alpine container)
+- **Redis**: 6379 (redis:7-alpine container)
+- **Jaeger UI**: 16686 (jaegertracing/all-in-one:1.53)
 
 ## Centralized Package Configuration
 
@@ -1170,8 +1171,14 @@ packages:
 ```
 
 ### Published Package Names
-- **npm**: `@vmenon25/mpo-webauthn-client`
-- **Android**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client`
+
+#### Production Packages (Stable Releases)
+- **npm**: `@vmenon25/mpo-webauthn-client` (public npm registry)
+- **Android**: `io.github.hitoshura25:mpo-webauthn-android-client` (Maven Central)
+
+#### Staging Packages (Development/Testing)  
+- **npm**: `@hitoshura25/mpo-webauthn-client-staging` (GitHub Packages npm)
+- **Android**: `io.github.hitoshura25:mpo-webauthn-android-client-staging` (GitHub Packages Maven)
 
 ## Testing Architecture
 

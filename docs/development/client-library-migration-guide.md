@@ -32,7 +32,7 @@ cp -r build/generated-clients/typescript/* web-test-client/generated-client/
 npm install @vmenon25/mpo-webauthn-client@1.0.32
 
 # Staging packages (published automatically for PRs)
-npm install @vmenon25/mpo-webauthn-client-staging@pr-123.456
+npm install @hitoshura25/mpo-webauthn-client-staging@pr-123.456
 ```
 
 **Benefits of new approach:**
@@ -59,7 +59,7 @@ npm install @vmenon25/mpo-webauthn-client-staging@pr-123.456
    npm install @vmenon25/mpo-webauthn-client
    
    # For testing PR changes
-   npm install @vmenon25/mpo-webauthn-client-staging@pr-{PR_NUMBER}.{RUN_NUMBER}
+   npm install @hitoshura25/mpo-webauthn-client-staging@pr-{PR_NUMBER}.{RUN_NUMBER}
    ```
 
 3. **Update build scripts** to remove file copying:
@@ -87,7 +87,7 @@ Example workflow update:
 - name: Install staging client
   env:
     NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-  run: npm install @vmenon25/mpo-webauthn-client-staging@pr-${{ github.event.number }}.${{ github.run_number }}
+  run: npm install @hitoshura25/mpo-webauthn-client-staging@pr-${{ github.event.number }}.${{ github.run_number }}
 ```
 
 ### For Local Development
@@ -144,7 +144,7 @@ env:
 ## Package Registry Locations
 
 ### TypeScript Packages
-- **Staging**: https://npm.pkg.github.com/@vmenon25/mpo-webauthn-client-staging
+- **Staging**: https://npm.pkg.github.com/@hitoshura25/mpo-webauthn-client-staging
 - **Production**: https://registry.npmjs.org/@vmenon25/mpo-webauthn-client
 
 ### Android Packages
@@ -164,7 +164,7 @@ env:
 2. **Package not found**:
    ```bash
    # Check if package exists for specific PR
-   npm view @vmenon25/mpo-webauthn-client-staging@pr-123.456
+   npm view @hitoshura25/mpo-webauthn-client-staging@pr-123.456
    ```
 
 3. **Version conflicts**:

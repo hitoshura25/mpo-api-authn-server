@@ -21,7 +21,7 @@
 #-renamesourcefileattribute SourceFile
 
 # Keep generated API client classes
--keep class com.vmenon.mpo.api.authn.android.client.** { *; }
+-keep class io.github.hitoshura25.webauthn.client.** { *; }
 -keep class org.openapitools.client.** { *; }
 
 # Keep WebAuthn related classes

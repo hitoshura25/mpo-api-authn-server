@@ -6,8 +6,8 @@ This guide explains how to use the published WebAuthn client libraries in your p
 
 The WebAuthn server automatically publishes client libraries for multiple platforms through a **consolidated E2E testing and publishing workflow**:
 
-- **Android Library**: Published to GitHub Packages
-- **TypeScript/npm Library**: Published to npm registry (main branch) or GitHub Packages (PRs)
+- **Android Library**: Published to Maven Central (production) or GitHub Packages (staging)
+- **TypeScript/npm Library**: Published to npm registry (production) or GitHub Packages (staging)
 
 ## 🔄 Publishing Workflow
 
@@ -22,7 +22,7 @@ Client libraries are now published as part of the same workflow that:
 Libraries are automatically published when:
 - **OpenAPI specification changes** (in `webauthn-server/src/main/resources/openapi/**`)
 - **Client generation configuration changes** (in `webauthn-server/build.gradle.kts`)
-- **Workflow configuration changes** (in `.github/workflows/client-e2e-tests.yml`)
+- **Workflow configuration changes** (in `.github/workflows/e2e-tests.yml`)
 - **Force publish** via manual workflow dispatch
 
 ## 📱 Android Library Usage
@@ -163,7 +163,7 @@ npm install @vmenon25/mpo-webauthn-client
 
 ### Centralized npm Configuration
 
-The npm package configuration is managed centrally in the GitHub Actions workflow (`.github/workflows/client-e2e-tests.yml`):
+The npm package configuration is managed centrally in the GitHub Actions workflow (`.github/workflows/e2e-tests.yml`):
 
 ```yaml
 env:
@@ -172,7 +172,7 @@ env:
 ```
 
 **To change the npm scope:**
-1. Update `NPM_SCOPE` and `NPM_PACKAGE_NAME` in `.github/workflows/client-e2e-tests.yml`
+1. Update `NPM_SCOPE` and `NPM_PACKAGE_NAME` in `.github/workflows/e2e-tests.yml`
 2. This single change will update all documentation examples and publishing configurations
 3. The workflow automatically generates the full package name as `${NPM_SCOPE}/${NPM_PACKAGE_NAME}`
 
@@ -359,7 +359,7 @@ export function useWebAuthn(serverUrl: string) {
 
 ### Consolidated Publishing Strategy
 
-Both Android and npm libraries are published through the **same consolidated workflow** (`client-e2e-tests.yml`) that:
+Both Android and npm libraries are published through the **same consolidated workflow** (`e2e-tests.yml`) that:
 
 1. **Generates** clients from OpenAPI specification
 2. **Tests** clients with comprehensive E2E testing
@@ -369,7 +369,7 @@ Both Android and npm libraries are published through the **same consolidated wor
 ### Publishing Events
 
 **Main Branch Push**:
-- Publishes to **production registries** (GitHub Packages for Android, npm registry for TypeScript)
+- Publishes to **production registries** (Maven Central for Android, npm registry for TypeScript)
 - Creates **GitHub releases** with full installation documentation
 - Uses **production versions** (`1.0.26`, `1.0.27`, `1.0.28`) with enhanced regex validation
 
@@ -462,7 +462,7 @@ Force publish both libraries through the consolidated workflow:
 
 ```bash
 # Trigger consolidated workflow with force publish
-gh workflow run client-e2e-tests.yml
+gh workflow run e2e-tests.yml
 
 # Or trigger via main branch push workflow (which calls client-e2e-tests.yml)
 gh workflow run default-branch-push.yml

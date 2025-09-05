@@ -6,9 +6,9 @@
 - **AI Security Dataset Research Initiative**: Comprehensive research project leveraging our WebAuthn security findings (8 FOSS tools, 103 Semgrep findings, 1 Dependabot alert, ZAP analysis) to contribute to AI2/OLMo and advance AI security capabilities. Multi-model evaluation framework for security explanation quality, remediation guidance, and safety assessment. See `docs/improvements/planned/ai-security-dataset-research.md` for complete research plan.
 
 ### Completed Major Refactors
-- **FOSS Security Implementation (2025-08-30)**: ✅ **COMPLETED** - Successfully replaced AI-dependent security solutions with 8 professional FOSS tools (Trivy, OSV-Scanner, Semgrep, GitLeaks, Checkov, OWASP ZAP, Dependabot, Gradle Dependency Locking). Achieved 100% elimination of AI API costs, enhanced security coverage with 974 dependencies secured, and established foundation for AI security research. Complete architecture delivers SARIF integration, PR comments, and GitHub Security tab functionality.
-- **Client Library Publishing Architecture Cleanup (PHASES 1-10 COMPLETED)**: ✅ **COMPLETED** - Successfully implemented complete CI/CD optimization with independent component processing achieving 40-95% performance improvements. **Phase 10** delivered correct architecture with parallel client publishing, eliminated duplicate change detection, and smart E2E dependency management. Key results: client libraries publish immediately when OpenAPI changes (not after full build pipeline), true parallel execution of builds + publishing, and comprehensive E2E cache optimization.
-- **OpenAPI Client Library Architecture**: ✅ **COMPLETED** - Docker-inspired staging→production workflow using GitHub Packages with dedicated client library submodules.
+- **✅ FOSS Security Implementation (2025-08-30)**: Replaced AI-dependent security with 8 professional FOSS tools. 100% elimination of AI API costs, enhanced security coverage with 974 dependencies secured.
+- **✅ Client Library Publishing Architecture (2025)**: Complete CI/CD optimization with 40-95% performance improvements. Parallel client publishing, smart E2E dependency management.
+- **✅ OpenAPI Client Library Architecture**: Docker-inspired staging→production workflow using GitHub Packages.
 
 ### Planned Major Refactors
 - **iOS Test Client Implementation** *(Enhanced 2025-08-21)* - Complete iOS E2E testing ecosystem with Swift client library generation, SwiftUI test application, and CI integration. Extends testing coverage to iOS platform with AuthenticationServices WebAuthn integration. Timeline: 8-10 weeks. See `docs/improvements/planned/ios-test-client-implementation.md`.
@@ -414,185 +414,63 @@ grep -r "plugins.*\|dependencies.*\|repositories.*" build.gradle.kts */build.gra
 
 **MANDATORY fail-fast validation for Docker image availability to prevent silent E2E test failures.**
 
-**THE RECURRING PROBLEM**: Multi-line Docker image tags from docker/metadata-action cause E2E validation to check wrong tags, leading to silent test skipping instead of clear failures.
+**THE PROBLEM**: Multi-line Docker image tags from docker/metadata-action cause E2E validation to check wrong tags, leading to silent test skipping instead of clear failures.
 
-#### **Critical Issue Pattern (Happened Multiple Times):**
+#### **Essential Validation Pattern:**
 ```yaml
-# Docker build outputs multi-line tags:
-webauthn_server_image: |
-  ghcr.io/repo/image:latest
-  ghcr.io/repo/image:sha256-abc123-branch-main-123
-
-# E2E validation naively uses first line:
-docker manifest inspect "${{ env.WEBAUTHN_SERVER_IMAGE }}"  # Only checks 'latest'!
-
-# Result: 'latest' doesn't exist → validation fails → E2E tests SKIP SILENTLY
-```
-
-#### **Mandatory Docker Validation Pattern:**
-```yaml
-# ✅ CORRECT: Event-aware tag selection with fail-fast validation
+# Event-aware tag selection with fail-fast validation
 extract_image_tag() {
   local full_output="$1"
-  local line_count=$(echo "$full_output" | wc -l)
-  
-  if [[ $line_count -gt 1 ]]; then
-    case "${{ github.event_name }}" in
-      "workflow_dispatch") 
-        selected_tag=$(echo "$full_output" | tail -n1)  # SHA-based tag
-        ;;
-      "pull_request"|"push") 
-        selected_tag=$(echo "$full_output" | head -n1)  # PR/latest tag
-        ;;
-    esac
-  else
-    selected_tag="$full_output"  # Single tag
-  fi
-  
+  case "${{ github.event_name }}" in
+    "workflow_dispatch") selected_tag=$(echo "$full_output" | tail -n1) ;;  # SHA-based
+    "pull_request"|"push") selected_tag=$(echo "$full_output" | head -n1) ;;  # PR/latest
+  esac
   echo "$selected_tag"
 }
 
-# Validate with FAIL-FAST logic
+# FAIL-FAST validation
 if ! docker manifest inspect "$IMAGE_TAG" > /dev/null 2>&1; then
-  echo "❌ CRITICAL ERROR: Image not found: $IMAGE_TAG"
-  echo "Event: ${{ github.event_name }}, Branch: ${{ github.ref_name }}"
-  echo "❌ FAILING FAST: E2E tests require valid Docker images"
+  echo "❌ CRITICAL: Image not found: $IMAGE_TAG (Event: ${{ github.event_name }})"
   exit 1  # FAIL THE JOB - Don't skip silently!
 fi
 ```
 
-#### **Event-Specific Tag Selection Logic:**
-- **`workflow_dispatch`**: Use SHA-based tag (last line) - `sha256-abc123-branch-main-123`
-- **`pull_request`**: Use PR tag (first line) - `pr-123`  
-- **`push` to main**: Use latest tag (first line) - `latest`
-- **`push` to feature**: Use branch tag (first line) - `branch-feature-name`
+**Key Requirements:**
+- Multi-line tag detection with event-aware selection
+- `exit 1` on validation failure (never silent skip)
+- Clear error reporting with event context
 
-#### **Why Fail-Fast is Critical:**
-```yaml
-# ❌ WRONG: Silent skipping masks infrastructure failures
-if: needs.validate-images.outputs.webauthn-server-ready == 'true'  # Silently skips if false
-
-# ✅ CORRECT: Fail-fast exposes the real problem immediately  
-# validate-images job exits with error code 1 → entire workflow fails with clear error
-```
-
-#### **Validation Requirements:**
-- [ ] **Multi-line tag detection**: Count lines in Docker image output
-- [ ] **Event-aware selection**: Use correct tag based on `github.event_name`
-- [ ] **Format validation**: Ensure extracted tag contains no newlines
-- [ ] **Registry authentication**: Login before manifest inspection
-- [ ] **Clear error reporting**: Include event type, branch, original input in error messages
-- [ ] **Fail-fast behavior**: `exit 1` on any validation failure
-- [ ] **Success confirmation**: Only set output variables after ALL images validated
-
-#### **Testing All Event Types:**
-```bash
-# Validate pattern works for all event types:
-# 1. Pull Request → Should use first tag (pr-XXX)
-# 2. Push to main → Should use first tag (latest) 
-# 3. Push to feature → Should use first tag (branch-name)
-# 4. Workflow dispatch → Should use last tag (SHA-based)
-```
-
-**This pattern prevents:**
-- Silent E2E test skipping due to wrong tag validation
-- Infrastructure issues being masked as conditional skips
-- Recurring debugging sessions for "why didn't E2E tests run?"
-- Workflow completing successfully while missing critical testing
+**For detailed examples:** `docs/development/patterns/docker-image-validation-detailed-examples.md`
 
 ### 📤 CRITICAL: Bash Function Output Redirection (RECURRING ISSUE!)
 
 **MANDATORY output redirection for bash functions that return values to prevent debug pollution.**
 
-**THE RECURRING PROBLEM**: Bash functions with debug/logging output pollute captured return values, causing failures with confusing multi-line variable assignments.
+**THE PROBLEM**: Bash functions with debug output pollute captured return values, causing failures with multi-line variable assignments.
 
-#### **Critical Issue Pattern (Happened Multiple Times):**
+#### **Essential Pattern:**
 ```bash
-# ❌ WRONG: Function outputs debug info to stdout
+# ❌ WRONG: Debug output goes to stdout
 extract_value() {
-  echo "🔧 Processing input..."     # Goes to stdout!
-  echo "Debug: $1"                 # Goes to stdout!
-  echo "✅ Result ready"            # Goes to stdout!
-  echo "$final_result"             # Goes to stdout!
+  echo "🔧 Processing..."     # Pollutes output!
+  echo "$final_result"        # What we want
 }
 
-# Variable captures ALL output, not just the result
-RESULT=$(extract_value "input")
-# RESULT now contains:
-# "🔧 Processing input...
-# Debug: input
-# ✅ Result ready
-# final_result"
-```
-
-#### **Mandatory Bash Function Output Pattern:**
-```bash
-# ✅ CORRECT: Debug output to stderr, only result to stdout
+# ✅ CORRECT: Debug to stderr, result to stdout
 extract_value() {
-  echo "🔧 Processing input..." >&2     # Goes to stderr (visible in logs)
-  echo "Debug: $1" >&2                 # Goes to stderr (visible in logs)
-  echo "✅ Result ready" >&2            # Goes to stderr (visible in logs)
-  echo "$final_result"                 # ONLY this goes to stdout
+  echo "🔧 Processing..." >&2  # Debug to stderr
+  echo "$final_result"         # Only result to stdout
 }
 
-# Variable captures ONLY the final result
-RESULT=$(extract_value "input")
-# RESULT now contains: "final_result"
+RESULT=$(extract_value "input")  # Captures only final_result
 ```
 
-#### **Output Redirection Rules:**
-- **Debug messages**: `echo "Debug info" >&2`
-- **Progress indicators**: `echo "🔧 Processing..." >&2`
-- **Status messages**: `echo "✅ Complete" >&2`
-- **Error messages**: `echo "❌ Error" >&2`
-- **Return value**: `echo "$result"` (NO redirection)
+**Key Rules:**
+- **Debug/status messages**: `echo "Debug" >&2`
+- **Return value**: `echo "$result"` (no redirection)
+- **Always test**: `RESULT=$(func); echo "Got: '$RESULT'"`
 
-#### **Common Failure Scenarios:**
-```bash
-# ❌ Docker tag validation with polluted output
-IMAGE_TAG=$(extract_tag "$input")
-docker manifest inspect "$IMAGE_TAG"  # Fails - IMAGE_TAG contains debug output
-
-# ❌ Version extraction with debug pollution
-VERSION=$(get_version "$config")
-echo "version=$VERSION" >> $GITHUB_OUTPUT  # GitHub output corrupted
-
-# ❌ Path resolution with logging noise
-FILE_PATH=$(find_config_file "$name")
-cat "$FILE_PATH"  # Fails - path contains logging output
-```
-
-#### **Validation Pattern:**
-```bash
-# Test function output capture
-test_function() {
-  echo "Debug: Processing" >&2  # Should appear in logs
-  echo "actual-result"          # Should be captured
-}
-
-RESULT=$(test_function)
-echo "Captured: '$RESULT'"      # Should show only 'actual-result'
-```
-
-#### **GitHub Actions Specific Issues:**
-- **Environment variables**: `echo "var=$polluted_value" >> $GITHUB_OUTPUT`
-- **Artifact paths**: `path: ${{ steps.get-path.outputs.polluted-path }}`
-- **Docker commands**: `docker build -t "$polluted_tag"`
-- **File operations**: `cp "$polluted_source" "$dest"`
-
-#### **Prevention Checklist:**
-- [ ] **All debug output**: Redirect to stderr with `>&2`
-- [ ] **Only final result**: Goes to stdout (no redirection)
-- [ ] **Function testing**: Test output capture before committing
-- [ ] **Variable validation**: Verify captured values contain only expected data
-- [ ] **Error handling**: Function errors go to stderr, return non-zero exit code
-
-**This pattern prevents:**
-- Variable pollution with debug output causing command failures
-- GitHub Actions output corruption leading to downstream failures
-- Docker operations failing due to malformed tags/paths
-- File operations failing due to paths containing logging noise
-- Complex debugging sessions to identify output capture issues
+**For detailed examples:** `docs/development/patterns/bash-function-output-detailed-examples.md`
 
 ### 🧹 CRITICAL: Dead Code Cleanup After Refactoring
 

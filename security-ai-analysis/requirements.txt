@@ -1,28 +1,28 @@
-# Core ML packages (pinned to working versions)
-transformers==4.36.2   # Pinned - working version from local testing
-torch==2.1.2          # Pinned - stable CPU version
-accelerate==0.24.1    # For efficient model loading
-datasets==2.14.6      # For dataset handling
+# Core ML packages (pinned to actual working local versions)
+torch>=2.6.0           # OLMo compatibility requirement (local: 2.8.0)
+transformers==4.36.0   # Actual working version from local testing
+accelerate>=0.24.0     # For efficient model loading
+datasets>=2.14.0       # For dataset handling
 
 # OLMo specific (required for OLMo model loading)
 git+https://github.com/allenai/OLMo.git  # AI2's official OLMo package
 
-# Data processing (pinned versions)
-pyyaml==6.0.1
-pandas==2.1.4
-numpy==1.24.4
+# Data processing (compatible versions)
+pyyaml>=6.0
+pandas>=2.0.0
+numpy>=1.24.0
 
 # System monitoring and debugging
-psutil==5.9.8         # For memory monitoring in GitHub Actions
+psutil>=5.9.0          # For memory monitoring (local: 7.0.0)
 
 # Utilities
-python-dotenv==1.0.0  # For environment variables
-tqdm==4.66.1          # For progress bars
+python-dotenv>=1.0.0   # For environment variables
+tqdm>=4.65.0           # For progress bars
 
-# Tokenization dependencies (pinned)
-sentencepiece==0.1.99  # Some models need this
-protobuf==4.25.1       # For some model formats
-tokenizers==0.15.0     # Core tokenization library
+# Tokenization dependencies (compatible versions)
+sentencepiece>=0.1.99  # Some models need this
+protobuf>=4.20.0       # For some model formats
+tokenizers>=0.15.0     # Core tokenization library
 
 # For Git integration (used in narrativizer)
-gitpython==3.1.40      # For collecting git history fixes
+gitpython>=3.1.30      # For collecting git history fixes

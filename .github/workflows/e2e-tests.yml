@@ -728,23 +728,10 @@ jobs:
         run: |
           echo "🔐 Setting up secure environment for DAST scanning..."
           
-          # Debug: Verify clean environment variables are being used
-          echo "🔍 Verifying Docker image environment variables:"
+          # Debug: Verify validated image tags are being used (validation already done by validate-images job)
+          echo "🔍 Using validated Docker images:"
           echo "WEBAUTHN_SERVER_IMAGE: $WEBAUTHN_SERVER_IMAGE"
           echo "TEST_CREDENTIALS_IMAGE: $TEST_CREDENTIALS_IMAGE"
-          
-          # Validate image names don't contain newlines (critical for multi-line tag issue)
-          if echo "$WEBAUTHN_SERVER_IMAGE" | grep -q $'\n'; then
-            echo "❌ ERROR: WEBAUTHN_SERVER_IMAGE contains newlines!"
-            exit 1
-          fi
-          
-          if echo "$TEST_CREDENTIALS_IMAGE" | grep -q $'\n'; then
-            echo "❌ ERROR: TEST_CREDENTIALS_IMAGE contains newlines!"
-            exit 1
-          fi
-          
-          echo "✅ Environment variables are clean (no newlines detected)"
 
           # Use existing secure environment setup script
           chmod +x setup-secure-env.sh

@@ -484,6 +484,97 @@ RESULT=$(extract_value "input")  # Captures only final_result
 - [ ] **Configuration Files**: Clean up orphaned config files and references
 - [ ] **Dependencies**: Remove unused npm/gradle dependencies introduced for removed features
 
+### 🔄 CRITICAL: Eliminate Code Duplication (DRY Principle)
+
+**ALWAYS identify and eliminate code duplication to improve maintainability and reduce bugs.**
+
+**THE FUNDAMENTAL PRINCIPLE**: Don't Repeat Yourself (DRY) - Each piece of knowledge should have a single, authoritative representation.
+
+#### **Duplication Detection Patterns:**
+```bash
+# Search for similar function/validation patterns across codebase
+grep -r "function_name\|validation_pattern" .github/workflows/ scripts/
+rg "similar.*logic" --type yaml --type sh
+```
+
+#### **Common Duplication Scenarios:**
+1. **Validation Logic**: Same validation checks in multiple jobs/scripts
+2. **Environment Setup**: Repeated Docker/service configuration patterns  
+3. **Error Handling**: Identical error checking and reporting logic
+4. **Data Processing**: Similar parsing/transformation functions
+5. **Configuration Management**: Repeated parameter validation and setup
+
+#### **Refactoring Strategies:**
+
+**✅ Extract Functions (Bash/Scripts):**
+```bash
+# ❌ BEFORE: Duplicated validation in multiple places
+validate_docker_tag() {
+  if echo "$1" | grep -q $'\n'; then
+    echo "❌ ERROR: Tag contains newlines!"
+    exit 1
+  fi
+}
+
+# ✅ AFTER: Single validation function, reused everywhere
+source scripts/common/docker-utils.sh
+validate_docker_tag "$DOCKER_IMAGE"
+```
+
+**✅ Centralize Configuration:**
+```yaml
+# ❌ BEFORE: Repeated job configuration
+job1:
+  env:
+    WEBAUTHN_SERVER_IMAGE: ${{ needs.validate.outputs.server-image }}
+    TEST_CREDENTIALS_IMAGE: ${{ needs.validate.outputs.test-image }}
+
+job2:
+  env:
+    WEBAUTHN_SERVER_IMAGE: ${{ needs.validate.outputs.server-image }}  # Duplicate!
+    TEST_CREDENTIALS_IMAGE: ${{ needs.validate.outputs.test-image }}   # Duplicate!
+
+# ✅ AFTER: Callable workflow with centralized env handling
+uses: ./.github/workflows/common-setup.yml
+with:
+  server-image: ${{ needs.validate.outputs.server-image }}
+  test-image: ${{ needs.validate.outputs.test-image }}
+```
+
+**✅ Single Source of Truth Pattern:**
+```yaml
+# ✅ Validation happens ONCE, results trusted by all consumers
+validate-images:
+  outputs:
+    server-image: ${{ steps.validate.outputs.clean-server-image }}  # Already validated
+    
+dast-scan:
+  needs: [validate-images]
+  env:
+    # Trust validated output - no need to re-validate
+    WEBAUTHN_SERVER_IMAGE: ${{ needs.validate-images.outputs.server-image }}
+```
+
+#### **Quality Gates for Duplication:**
+- [ ] **GitHub Copilot Feedback**: Address "duplicated logic" warnings immediately
+- [ ] **Code Review**: Reviewers must flag repeated patterns
+- [ ] **Refactoring Priority**: Duplication removal has high priority in technical debt
+- [ ] **Documentation**: Extract common patterns to shared documentation/utilities
+
+#### **Benefits of Duplication Elimination:**
+1. **Maintainability**: Fix bugs/improvements in one place, affects all usages
+2. **Consistency**: Identical behavior across all implementations
+3. **Testing**: Validate shared logic once instead of multiple implementations  
+4. **Performance**: Reduced codebase size and complexity
+5. **Reliability**: Fewer places for inconsistent implementations to emerge
+
+#### **Recent Success Example (DAST Scan Fix):**
+- **Problem**: Duplicated Docker tag validation in multiple E2E jobs
+- **Solution**: Centralized validation in `validate-images` job, eliminated duplication in DAST scan
+- **Result**: Single source of truth, consistent behavior, easier maintenance
+
+**Why This Matters**: Duplication creates maintenance burden, inconsistent behavior, and increases bug surface area. Always prefer extracting common logic over copying it.
+
 ### ⚠️ CRITICAL: Always Validate Generated Markdown
 
 **ALWAYS run `bash scripts/core/validate-markdown.sh` after generating or modifying any markdown files.**

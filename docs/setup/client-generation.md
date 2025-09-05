@@ -79,7 +79,7 @@ npm install @vmenon25/mpo-webauthn-client
 **Staging Package** (for PR testing):
 
 ```bash
-npm install @vmenon25/mpo-webauthn-client-staging@pr-123.456
+npm install @hitoshura25/mpo-webauthn-client-staging@pr-123.456
 ```
 
 ## Automated Publishing Workflows

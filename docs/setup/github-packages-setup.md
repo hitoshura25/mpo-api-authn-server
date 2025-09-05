@@ -18,21 +18,21 @@ The workflow automatically:
 - **Format**: `1.0.26`, `1.0.27`, `1.0.28` (3-part production versions)
 - **Trigger**: Push to `main` branch  
 - **Creates**: GitHub Release
-- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26`
+- **Example**: `io.github.hitoshura25:mpo-webauthn-android-client:1.0.26`
 - **Validation**: Enhanced regex ensures full npm semver compliance
 
 ### Pull Requests
 - **Format**: `1.0.0-pr.42.123`, `1.0.0-pr.43.124` (with enhanced validation)
 - **Trigger**: PR opened/updated
 - **Creates**: Prerelease package + PR comment
-- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123`
+- **Example**: `io.github.hitoshura25:mpo-webauthn-android-client-staging:1.0.0-pr.42.123`
 - **Advanced**: `1.0.0-alpha-beta.1` (hyphens now supported in prerelease identifiers)
 
 ### Feature Branches
 - **Format**: `1.0.0-feature-branch.1`, `1.0.0-develop.2`
 - **Trigger**: Push to non-main branches
 - **Creates**: Prerelease package
-- **Example**: `com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-develop.15`
+- **Example**: `io.github.hitoshura25:mpo-webauthn-android-client-staging:1.0.0-develop.15`
 
 ## 🔧 Enhanced Version Validation
 
@@ -76,7 +76,7 @@ Ensure your repository has GitHub Packages enabled:
 
 ### 2. Update Base Version (Optional)
 
-To change the base version, edit `.github/workflows/client-e2e-tests.yml`:
+To change the base version, edit `.github/workflows/e2e-tests.yml`:
 
 ```yaml
 env:
@@ -110,13 +110,13 @@ repositories {
 
 dependencies {
     // Production version
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.26'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client:1.0.26'
     
     // PR version (for testing)
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client-staging:1.0.0-pr.42.123'
     
     // Advanced prerelease with hyphens (now supported)
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-alpha-beta.1'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client-staging:1.0.0-alpha-beta.1'
 }
 ```
 
@@ -152,7 +152,7 @@ gpr.key=your-github-token
 ### Manual Triggers
 ```bash
 # Force publish regardless of changes
-gh workflow run client-e2e-tests.yml
+gh workflow run e2e-tests.yml
 ```
 
 ## 📋 Workflow Jobs
@@ -223,10 +223,10 @@ When a PR is created, the bot comments with usage instructions:
 ```gradle
 dependencies {
     // Test the PR version
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-pr.42.123'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client-staging:1.0.0-pr.42.123'
     
     // Advanced prerelease with hyphens (now supported)
-    implementation 'com.vmenon.mpo.api.authn:mpo-webauthn-android-client:1.0.0-alpha-beta.1'
+    implementation 'io.github.hitoshura25:mpo-webauthn-android-client-staging:1.0.0-alpha-beta.1'
 }
 ```
 
@@ -238,7 +238,7 @@ dependencies {
 webauthn-client = "1.0.123"
 
 [libraries]
-webauthn-android = { module = "com.vmenon.mpo.api.authn:mpo-webauthn-android-client", version.ref = "webauthn-client" }
+webauthn-android = { module = "io.github.hitoshura25:mpo-webauthn-android-client", version.ref = "webauthn-client" }
 ```
 
 ### Dependabot Updates
@@ -252,7 +252,7 @@ updates:
     schedule:
       interval: "weekly"
     allow:
-      - dependency-name: "com.vmenon.mpo.api.authn:mpo-webauthn-android-client"
+      - dependency-name: "io.github.hitoshura25:mpo-webauthn-android-client"
 ```
 
 ## 🛡️ Security Considerations

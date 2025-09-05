@@ -20,10 +20,10 @@ This project follows a multi-module architecture for clear separation of concern
 
 ### Prerequisites
 
-- Java 21+
-- Docker & Docker Compose
-- Node.js 18+ (for web client and tests)
-- TypeScript 5.3+ (for web client development)
+- **Java 21** - Required for Kotlin JVM target
+- **Docker & Docker Compose** - For containerized PostgreSQL, Redis, and Jaeger
+- **Node.js 18+** - For web client and TypeScript tests
+- **TypeScript 5.3+** - For web client development
 
 ### Running the Server
 
@@ -75,27 +75,27 @@ cd typescript-client-library && npm test
 - **Cross-origin protection** - Proper RP ID validation
 - **Comprehensive vulnerability testing** - 7 security test categories
 
-### 🤖 3-Tier AI Security Analysis System
+### 🛡️ Professional FOSS Security Implementation
 
-Automatic security analysis on all pull requests with intelligent fallback strategy:
+Comprehensive security analysis using 8 professional FOSS tools with GitHub Security integration:
 
-**Tier 1: Anthropic Official Security Action** (Primary)
+**Core Security Tools**:
 
-- Uses official `anthropics/claude-code-security-review@v1` action
-- Comprehensive security coverage maintained by Anthropic
-- Broad attack pattern detection and analysis
+- **Trivy** - Container vulnerability scanning with secrets detection
+- **Semgrep** - Static Application Security Testing (SAST) with custom WebAuthn rules
+- **GitLeaks** - Git history secrets detection and remediation
+- **OSV-Scanner** - Open source vulnerability database scanning
+- **Checkov** - Infrastructure as Code (IaC) security validation
+- **OWASP ZAP** - Dynamic Application Security Testing (DAST) during E2E tests
+- **Dependabot** - Automated dependency security updates
+- **Gradle Dependency Locking** - Build reproducibility and tamper detection
 
-**Tier 2: Gemini WebAuthn-Focused Analysis** (Fallback)
+**Performance Optimized Architecture**:
 
-- Custom WebAuthn-specific security analysis using Gemini AI
-- Focused on FIDO2/WebAuthn vulnerability patterns
-- PoisonSeed attacks, username enumeration, credential tampering detection
-
-**Tier 3: Template-Based Analysis** (Final Fallback)
-
-- Zero-cost security pattern analysis
-- Template-driven vulnerability detection
-- Ensures security coverage even when AI providers unavailable
+- **75% scan reduction** - Optimized Trivy implementation (2 scans instead of 8)
+- **SARIF-only processing** - Unified reporting format for GitHub Security tab
+- **Smart change detection** - Conditional execution based on file change patterns
+- **Parallel execution** - Multiple security tools run simultaneously
 
 **Security Focus Areas**:
 
@@ -104,13 +104,16 @@ Automatic security analysis on all pull requests with intelligent fallback strat
 - Cross-origin authentication abuse
 - Credential tampering and replay attacks
 - Information leakage in error responses
+- Container and infrastructure security
+- Supply chain security with dependency validation
 
 **Automated Features**:
 
-- 🚨 **Critical vulnerability blocking** - PRs with high security scores cannot merge
-- 🏷️ **Automatic security labeling** - PRs tagged with analysis tier and risk level
-- 💬 **Detailed security comments** - AI-generated analysis and recommendations
-- 🧪 **Security test generation** - Automated test creation for discovered vulnerabilities
+- 🚨 **Critical vulnerability blocking** - PRs with CRITICAL findings cannot merge
+- 📊 **GitHub Security integration** - SARIF results in Security tab
+- 💬 **Unified security dashboard** - Consolidated findings from all 8 tools
+- 🔄 **Automated remediation** - Dependabot PRs for security updates
+- ⚡ **Zero AI API costs** - Professional FOSS tools eliminate external dependencies
 
 ## 📱 Published Client Libraries
 
@@ -198,29 +201,28 @@ The project uses a **layered testing approach** with different access patterns:
 - **Micrometer** metrics with Prometheus export
 - **Code coverage** reports with Kover
 
-### 🔍 AI-Enhanced Security Monitoring
+### 🔍 Automated Security Monitoring
 
 **Weekly Vulnerability Monitoring**:
 
-- Automated WebAuthn vulnerability database scanning
-- AI-enhanced risk assessment using Anthropic Claude
-- Automatic security test generation and PR creation
-- Complete test implementations (not just stubs)
-- Library correlation analysis with java-webauthn-server
+- Automated WebAuthn vulnerability database scanning via OSV-Scanner
+- GitHub Security Advisory integration for risk assessment
+- Automated security test generation and PR creation with complete implementations
+- Dependency correlation analysis with java-webauthn-server library
 
 **Docker Security Scanning**:
 
-- Multi-layer vulnerability detection (OS, dependencies, secrets)
-- AI-powered vulnerability analysis and prioritization
-- GitHub Security integration with SARIF reporting
-- Automated security gate for DockerHub publishing
+- Multi-layer vulnerability detection (OS packages, application dependencies, secrets)
+- SARIF-based vulnerability reporting and prioritization
+- GitHub Security tab integration for centralized monitoring
+- Automated security gate blocking Docker publishing on critical vulnerabilities
 
 **Continuous Security Validation**:
 
-- PR-triggered security analysis with 3-tier AI system
-- Environment variable pattern security validation
+- PR-triggered security analysis using professional FOSS tool suite
+- Environment variable pattern security validation via GitLeaks
 - Automated security labeling and workflow management
-- Real-time security feedback in pull request comments
+- Real-time security feedback via unified dashboard in pull request comments
 
 ## 🏛️ Architecture
 
@@ -292,26 +294,26 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 
 ### 🔒 Security Automation Workflows
 
-**3-Tier Security Analysis**: `security-analysis.yml`
+**Multi-Tool Security Analysis**: Parallel execution of specialized FOSS tools
 
-- Triggered on security-sensitive file changes
-- Intelligent tier selection with fallback strategy
-- Automated security gates and PR labeling
-- Complete security analysis consolidation
+- **docker-security-scan.yml** - Trivy container vulnerability and secrets scanning
+- **semgrep-sast.yml** - Static application security testing with custom WebAuthn rules
+- **secrets-scan.yml** - GitLeaks git history secrets detection
+- **osv-scanner.yml** - Open source vulnerability database scanning
+- **iac-scan.yml** - Checkov infrastructure as code security validation
 
-**Docker Security & Publishing**: `main-ci-cd.yml`
+**OWASP ZAP Integration**: `e2e-tests.yml`
 
-- AI-enhanced Docker vulnerability scanning
-- Change detection to prevent unnecessary publishing
-- Automated DockerHub publishing with security gates
-- GHCR cleanup and git tagging on successful publish
+- Dynamic application security testing during E2E test execution
+- Live application vulnerability scanning with real authentication flows
+- SARIF integration for GitHub Security tab reporting
 
-**Vulnerability Monitoring**: `vulnerability-monitor.yml`
+**Unified Security Dashboard**: `main-ci-cd.yml`
 
-- Weekly WebAuthn vulnerability database scans
-- AI-enhanced analysis and test generation
-- Automated PR creation with complete test implementations
-- Security label management and prioritization
+- Consolidated reporting from all 8 security tools
+- SARIF-based findings aggregation and GitHub Security integration
+- Automated critical vulnerability blocking for production deployments
+- Performance optimized with smart change detection and parallel execution
 
 ### 🏗️ Environment Variable Management
 
@@ -319,11 +321,10 @@ The project uses a **smart CI/CD pipeline** with conditional execution and optim
 
 ```yaml
 env:
-  # Security Analysis Configuration
-  HIGH_RISK_SCORE_THRESHOLD: 7.0
-  ANTHROPIC_TIER_ENABLED: true
-  GEMINI_TIER_ENABLED: true
-  TEMPLATE_TIER_ENABLED: true
+  # Security Scanning Configuration
+  TRIVY_SCAN_TIMEOUT: 300
+  SEMGREP_TIMEOUT: 300
+  CRITICAL_CVE_THRESHOLD: 9.0
 
   # Docker Registry Configuration  
   DOCKER_REGISTRY: ghcr.io

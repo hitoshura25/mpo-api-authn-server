@@ -69,7 +69,7 @@ jobs:
 ```yaml
 jobs:
   client-tests:
-    uses: ./.github/workflows/client-e2e-tests.yml
+    uses: ./.github/workflows/e2e-tests.yml
     # Missing secrets propagation
     with:
       # ... inputs only
@@ -102,7 +102,7 @@ jobs:
 ```yaml
 jobs:
   client-tests:
-    uses: ./.github/workflows/client-e2e-tests.yml
+    uses: ./.github/workflows/e2e-tests.yml
     secrets:
       npm_publish_token: ${{ secrets.NPM_PUBLISH_TOKEN }}
     with:
@@ -240,7 +240,7 @@ on:
 
 jobs:
   publish-client-library:
-    uses: ./.github/workflows/publish-npm-package.yml
+    uses: ./.github/workflows/publish-typescript.yml
     secrets:
       npm_publish_token: ${{ secrets.NPM_PUBLISH_TOKEN }}
       github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -467,7 +467,7 @@ Check that secrets are properly declared in the callable workflow:
 
 ```bash
 # Check workflow file for secret declarations
-grep -A 10 "secrets:" .github/workflows/your-callable-workflow.yml
+grep -A 10 "secrets:" .github/workflows/publish-typescript.yml
 ```
 
 #### 2. Verify Secret Propagation
@@ -476,7 +476,7 @@ Check that secrets are being passed from calling workflows:
 
 ```bash
 # Check calling workflow for secret passing
-grep -A 5 "secrets:" .github/workflows/your-calling-workflow.yml
+grep -A 5 "secrets:" .github/workflows/client-publish.yml
 ```
 
 #### 3. Test Secret Access

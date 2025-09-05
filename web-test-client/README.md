@@ -43,11 +43,11 @@ npm test
 The project consumes the published TypeScript client library from npm:
 
 ```bash
-# Published client is installed as npm dependency:
+# Production package (stable releases):
 @vmenon25/mpo-webauthn-client
 
-# For E2E testing, staging packages are used:
-@vmenon25/mpo-webauthn-client-staging
+# Staging package (development/testing):
+@hitoshura25/mpo-webauthn-client-staging
 
 # No manual generation needed - uses published packages
 ```

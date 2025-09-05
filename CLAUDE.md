@@ -27,33 +27,53 @@ This is a KTor-based WebAuthn authentication server using the Yubico java-webaut
 - **Build**: Gradle with Kotlin DSL, dependency locking enabled
 - **Containerization**: Docker with docker-compose
 
-### Multi-Module Project Structure
+### Project Architecture Overview
+
+This project uses a **hybrid architecture** combining Gradle multi-module build with standalone subprojects:
+
+#### **Gradle Multi-Module Build** (settings.gradle.kts)
 - **webauthn-server/** - Main WebAuthn KTor server
 - **webauthn-test-credentials-service/** - HTTP service for cross-platform testing  
 - **webauthn-test-lib/** - Shared WebAuthn test utilities library
-- **android-test-client/** - Android E2E test client consuming published Android library
-- **web-test-client/** - TypeScript E2E test client consuming published npm library
-- **android-client-library/** - Dedicated Android client library submodule with publishing configuration
-- **typescript-client-library/** - Dedicated TypeScript client library submodule with npm publishing
+- **android-client-library/** - Dedicated Android client library with publishing configuration
+
+#### **Standalone Subprojects** (Independent Build Systems)
+- **android-test-client/** - Android E2E test client (independent Gradle project)
+- **web-test-client/** - TypeScript E2E test client (Node.js/npm project)
+- **typescript-client-library/** - TypeScript client library (Node.js/npm project)
 
 ## Development Commands
 
-### Main Server
+### **Gradle Multi-Module Build Commands** (Root Project)
+
+#### Main Server
 - **Tests**: `./gradlew :webauthn-server:test`
 - **Build**: `./gradlew :webauthn-server:build`
 - **Run**: `./gradlew :webauthn-server:run` or `cd webauthn-server && ./start-dev.sh`
 - **Coverage**: `./gradlew :webauthn-server:koverHtmlReport`
 
-### Test Service
+#### Test Service
 - **Tests**: `./gradlew :webauthn-test-credentials-service:test`
 - **Build**: `./gradlew :webauthn-test-credentials-service:build`
 - **Run**: `./gradlew :webauthn-test-credentials-service:run`
 
-### All Modules
+#### All Gradle Modules
 - **Full Build**: `./gradlew build`
 - **All Tests**: `./gradlew test`
 - **Lint**: `./gradlew detekt`
 - **Gradle Config Cache Validation**: `./scripts/core/validate-gradle-config-cache.sh`
+
+### **Standalone Subproject Commands**
+
+#### Android Test Client (Independent Gradle Project)
+- **Tests**: `cd android-test-client && ./gradlew test`
+- **Build**: `cd android-test-client && ./gradlew build`
+
+#### Web Test Client & TypeScript Client Library (Node.js/npm Projects)
+- **Install**: `cd web-test-client && npm install`
+- **Tests**: `cd web-test-client && npm test`
+- **Build**: `cd web-test-client && npm run build`
+- **Dev Server**: `cd web-test-client && npm run dev`
 
 ## Critical Development Reminders
 

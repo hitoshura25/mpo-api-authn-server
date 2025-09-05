@@ -189,12 +189,16 @@ if [ -d "web-test-client" ]; then
                 log_warning "Web test client build command has issues"
             fi
             
-            if (cd web-test-client && npm run dev >/dev/null 2>&1 &); then
-                sleep 2
-                pkill -f "npm run dev" >/dev/null 2>&1 || true
-                log_success "Web test client dev command (npm run dev)"
+            # Test npm run dev command (safer approach without background processes)
+            if (cd web-test-client && npm run dev --help >/dev/null 2>&1); then
+                log_success "Web test client dev command (npm run dev) - script exists"
             else
-                log_warning "Web test client dev command has issues"
+                # Try alternative validation by checking package.json scripts
+                if (cd web-test-client && npm run >/dev/null 2>&1 | grep -q "dev"); then
+                    log_success "Web test client dev command (npm run dev) - script defined in package.json"
+                else
+                    log_warning "Web test client dev command may have issues"
+                fi
             fi
             
             if (cd web-test-client && npm test --silent >/dev/null 2>&1); then

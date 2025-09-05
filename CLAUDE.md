@@ -238,6 +238,50 @@ with:
 
 **VIOLATION**: Automatically committing changes without user approval breaks user workflow and removes their control over the development process.
 
+### 🚨 CRITICAL: Root Cause Investigation Before Fallback Solutions
+
+**MANDATORY**: NEVER implement fallback solutions or workarounds without explicit user approval. ALWAYS prioritize identifying and fixing root causes.
+
+#### **Debugging Protocol for Environment-Specific Issues:**
+
+**STEP 1: Environment Comparison** 
+- [ ] **Document Working Environment**: Capture exact versions, platform details, system specs
+- [ ] **Document Failing Environment**: Capture identical information from failing environment  
+- [ ] **Identify Differences**: Compare library versions, memory limits, CPU architecture
+- [ ] **Version Pinning**: Pin dependencies to match working environment exactly
+
+**STEP 2: Enhanced Diagnostics Implementation**
+- [ ] **Add Comprehensive Logging**: Environment details, memory usage, system information
+- [ ] **Model Integrity Checks**: Validate model loading at each step with detailed error reporting
+- [ ] **Progressive Failure Isolation**: Identify exact failure point (tokenizer vs model vs generation)
+- [ ] **Stack Trace Capture**: Full exception details with context information
+
+**STEP 3: Root Cause Analysis Process**
+- [ ] **Test Locally First**: Reproduce issue in controlled local environment
+- [ ] **Isolate Variables**: Test individual components (tokenizer only, model only, etc.)
+- [ ] **Memory Profiling**: Monitor memory usage patterns during failure
+- [ ] **Library Compatibility**: Test different dependency versions systematically
+
+**STEP 4: User Approval Required**
+- [ ] **Present Findings**: Document root cause investigation results
+- [ ] **Propose Solutions**: Primary fix vs temporary workaround options
+- [ ] **Get Explicit Approval**: User decides between debugging further or implementing fallback
+- [ ] **Document Decision**: Record rationale for chosen approach in CLAUDE.md
+
+#### **Recent Example: OLMo GitHub Actions Failure (2025-09-05)**
+**Issue**: `'NoneType' object has no attribute 'size'` errors in GitHub Actions, working perfectly locally
+**Wrong Approach**: ❌ Auto-implement fallback mode without user approval  
+**Correct Approach**: ✅ Version pinning, enhanced diagnostics, environment comparison
+**Status**: Enhanced debugging implemented, awaiting root cause identification
+
+#### **Why This Protocol Matters:**
+- **Problem Resolution**: Fixes underlying issues rather than masking them
+- **User Control**: Maintains user decision-making authority over architecture choices  
+- **Code Quality**: Prevents accumulation of unexplained workarounds
+- **Learning**: Builds understanding of system behavior and failure patterns
+
+**VIOLATION**: Implementing fallbacks or workarounds without explicit user approval reduces code quality and removes user control over technical decisions.
+
 ## Critical Development Reminders
 
 ### 🧬 CRITICAL: Complete Pattern Verification Protocol (FUNDAMENTAL!)

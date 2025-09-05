@@ -81,11 +81,35 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-olmo-
 
-      - name: Install dependencies
+      - name: Install dependencies with version pinning
         run: |
           cd security-ai-analysis
           pip install --upgrade pip
+          
+          # Install with explicit version constraints to match local environment
+          echo "📦 Installing pinned dependencies for GitHub Actions compatibility..."
           pip install -r requirements.txt
+          
+          # Verify installation and show versions
+          echo "🔍 Verifying installation:"
+          python -c "import torch; print(f'PyTorch: {torch.__version__}')"
+          python -c "import transformers; print(f'Transformers: {transformers.__version__}')"
+          python -c "import psutil; print(f'psutil: {psutil.__version__}')"
+          python -c "import numpy; print(f'NumPy: {numpy.__version__}')"
+          
+          # Test basic functionality
+          echo "🧪 Testing basic model functionality:"
+          python -c "
+          import torch
+          from transformers import AutoTokenizer
+          print('Testing tokenizer loading...')
+          try:
+              tokenizer = AutoTokenizer.from_pretrained('allenai/OLMo-1B', trust_remote_code=True)
+              print(f'✅ Tokenizer loaded successfully, vocab size: {len(tokenizer.vocab) if hasattr(tokenizer, \"vocab\") else \"Unknown\"}')
+          except Exception as e:
+              print(f'❌ Tokenizer loading failed: {e}')
+              raise
+          "
 
       - name: Download security artifacts
         id: download
@@ -138,16 +162,48 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-      - name: Run OLMo Security Analysis
+      - name: Run OLMo Security Analysis with Environment Diagnostics
         id: analysis
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cd security-ai-analysis
 
-          # Run the analysis
+          # Pre-analysis environment check
+          echo "🔍 Pre-analysis environment diagnostics..."
+          python -c "
+          import psutil
+          import platform
+          import sys
+          print(f'Available memory: {psutil.virtual_memory().available / (1024**3):.1f} GB')
+          print(f'Total memory: {psutil.virtual_memory().total / (1024**3):.1f} GB')
+          print(f'CPU count: {psutil.cpu_count()}')
+          print(f'Platform: {platform.platform()}')
+          print(f'Python executable: {sys.executable}')
+          "
+
+          # Run the analysis with memory monitoring
           echo "🔍 Starting OLMo security analysis..."
-          python process_artifacts.py
+          python -c "
+          import psutil
+          import subprocess
+          import threading
+          import time
+
+          # Monitor memory usage during execution
+          def monitor_memory():
+              while True:
+                  mem = psutil.virtual_memory()
+                  print(f'Memory usage: {mem.percent}% ({mem.used / (1024**3):.1f}/{mem.total / (1024**3):.1f} GB)')
+                  time.sleep(30)
+
+          monitor_thread = threading.Thread(target=monitor_memory, daemon=True)
+          monitor_thread.start()
+
+          # Run the actual analysis
+          result = subprocess.run(['python', 'process_artifacts.py'], capture_output=False)
+          exit(result.returncode)
+          "
 
           # Check if results were created
           if ls data/olmo_analysis_results/olmo_analysis_summary_*.json 1> /dev/null 2>&1; then

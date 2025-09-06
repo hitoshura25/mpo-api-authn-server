@@ -106,6 +106,29 @@ This project uses a **hybrid architecture** combining Gradle multi-module build 
 - [ ] **Confirm All Parameters**: "Verified parameters X, Y, Z exist in official docs"
 - [ ] **No Assumptions Made**: "All syntax confirmed against official examples"
 
+#### **🚨 CRITICAL: SUBAGENT VALIDATION PROTOCOL**
+**BEFORE using Task tool with subagents, ALWAYS include explicit validation instructions:**
+
+```
+MANDATORY VALIDATION REQUIREMENT:
+- Do NOT generate any code without validating syntax against official documentation
+- ALWAYS use WebFetch to verify API calls, parameters, and integration patterns  
+- Mark any unvalidated components with ❌ warnings
+- Only include code that has been confirmed against official sources
+- If documentation is unclear, mark as "REQUIRES VALIDATION" instead of assuming
+```
+
+#### **🔍 VALIDATION EVIDENCE REQUIREMENT**
+**Every code block MUST include validation evidence:**
+```python
+# ✅ VALIDATED: Based on GitHub CLI official docs
+# https://cli.github.com/manual/gh_run_download
+gh run download <run-id> --pattern "*security*"
+
+# ❌ UNVALIDATED: Requires research against OLMo documentation
+# model = OLMoModel.from_pretrained("allenai/OLMo-1B")
+```
+
 ### **🚨 VIOLATION CONSEQUENCES**
 **If you proceed without completing ALL validation steps:**
 - **Workflow will likely fail** with parameter errors

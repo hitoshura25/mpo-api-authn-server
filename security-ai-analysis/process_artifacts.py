@@ -11,6 +11,7 @@ from datetime import datetime
 import zipfile
 import shutil
 import subprocess
+from typing import List, Dict, Tuple
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -22,6 +23,8 @@ from parsers.semgrep_parser import parse_semgrep_json
 from parsers.osv_parser import parse_osv_json
 from parsers.zap_parser import parse_zap_json
 from analysis.olmo_analyzer import OLMoSecurityAnalyzer
+import argparse
+import logging
 
 
 def extract_artifacts(zip_dir: str, output_dir: str):
@@ -102,6 +105,154 @@ def find_security_files(directory: str):
                 print(f"    - {Path(f).name}")
     
     return scan_files
+
+
+def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple[List, Dict]:
+    """
+    Enhanced processing with OLMo-2-1B support and improved error handling.
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize OLMo analyzer with enhanced configuration
+    print(f"\\n🤖 Initializing {args.model_name} Security Analyzer...")
+    print(f"   Branch: {args.branch}")
+    print(f"   Commit: {args.commit}")
+    
+    try:
+        # Enhanced analyzer configuration for OLMo-2-1B
+        analyzer = OLMoSecurityAnalyzer(
+            model_name=args.model_name,
+            fallback_mode=False
+        )
+        print("✅ OLMo analyzer initialized successfully", flush=True)
+    except Exception as e:
+        print(f"❌ Failed to initialize OLMo analyzer: {e}")
+        return [], {}
+    
+    all_vulnerabilities = []
+    
+    # Process each scan type with enhanced logging
+    print(f"\\n📂 Starting vulnerability parsing from {len(scan_files)} scan types...", flush=True)
+    for scan_type, files in scan_files.items():
+        if not files:
+            continue
+            
+        print(f"\\n📊 Processing {scan_type} scans ({len(files)} files)...", flush=True)
+        
+        for file_index, file_path in enumerate(files, 1):
+            print(f"  [{file_index}/{len(files)}] Processing {Path(file_path).name}...", flush=True)
+            
+            try:
+                # Parse based on type
+                if scan_type == 'trivy':
+                    vulns = parse_trivy_json(file_path)
+                elif scan_type == 'checkov':
+                    if file_path.endswith('.sarif'):
+                        vulns = parse_sarif_json(file_path)
+                    else:
+                        vulns = parse_checkov_json(file_path)
+                elif scan_type == 'semgrep':
+                    vulns = parse_semgrep_json(file_path)
+                elif scan_type == 'osv':
+                    vulns = parse_osv_json(file_path)
+                elif scan_type == 'sarif':
+                    vulns = parse_sarif_json(file_path)
+                elif scan_type == 'zap':
+                    vulns = parse_zap_json(file_path)
+                else:
+                    continue
+                
+                if vulns:
+                    print(f"    Found {len(vulns)} vulnerabilities")
+                    all_vulnerabilities.extend(vulns)
+                else:
+                    print(f"    No vulnerabilities found")
+                    
+            except Exception as e:
+                print(f"    ❌ Error processing file: {e}")
+    
+    # Enhanced analysis with OLMo-2-1B
+    if all_vulnerabilities:
+        print(f"\\n🔍 Starting analysis of {len(all_vulnerabilities)} total vulnerabilities with {args.model_name}...", flush=True)
+        
+        # Process ALL vulnerabilities in batches with enhanced batch size for OLMo-2-1B
+        batch_size = 30 if "OLMo-2" in args.model_name else 20  # Larger batches for OLMo-2
+        results = []
+        
+        print(f"📊 Will process {len(all_vulnerabilities)} vulnerabilities in batches of {batch_size}", flush=True)
+        total_batches = (len(all_vulnerabilities) + batch_size - 1) // batch_size
+        print(f"📊 Total batches needed: {total_batches}", flush=True)
+        
+        for i in range(0, len(all_vulnerabilities), batch_size):
+            batch = all_vulnerabilities[i:i+batch_size]
+            batch_end = min(i+batch_size, len(all_vulnerabilities))
+            batch_num = i//batch_size + 1
+            
+            print(f"\\n🔄 Starting batch {batch_num}/{total_batches}: vulnerabilities {i+1}-{batch_end} of {len(all_vulnerabilities)}", flush=True)
+            print(f"   Batch size: {len(batch)} vulnerabilities", flush=True)
+            print(f"   Using {args.model_name} with enhanced context length", flush=True)
+            
+            try:
+                batch_results = analyzer.batch_analyze(
+                    batch,
+                    max_items=len(batch)
+                )
+                print(f"   ✅ Batch {batch_num} completed, got {len(batch_results)} results", flush=True)
+                results.extend(batch_results)
+            except Exception as e:
+                print(f"   ❌ Batch {batch_num} failed: {e}", flush=True)
+                continue
+            
+            # Optional: Add a small delay between batches to avoid overloading
+            if i + batch_size < len(all_vulnerabilities):
+                print("  Preparing next batch...")
+        
+        # Generate enhanced summary report
+        summary = analyzer.generate_summary_report(results)
+        summary['model_used'] = args.model_name
+        summary['branch'] = args.branch
+        summary['commit'] = args.commit
+        summary['analysis_timestamp'] = datetime.now().isoformat()
+        
+        # Save results with enhanced metadata
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Save detailed results
+        results_file = output_path / f"olmo_analysis_results_{timestamp}.json"
+        with open(results_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f"\\n💾 Detailed results saved to: {results_file}")
+        
+        # Save summary
+        summary_file = output_path / f"olmo_analysis_summary_{timestamp}.json"
+        with open(summary_file, 'w') as f:
+            json.dump(summary, f, indent=2)
+        print(f"💾 Summary saved to: {summary_file}")
+        
+        # Print enhanced summary
+        print("\\n📈 Analysis Summary:")
+        print(f"  Model Used: {summary.get('model_used', 'Unknown')}")
+        print(f"  Total Analyzed: {summary['total_analyzed']}")
+        print(f"  Successful: {summary['successful']}")
+        print(f"  Failed: {summary['failed']}")
+        print(f"  Branch: {summary.get('branch', 'Unknown')}")
+        print(f"  Commit: {summary.get('commit', 'Unknown')[:8]}...")
+        
+        if summary['by_severity']:
+            print("\\n  By Severity:")
+            for sev, count in summary['by_severity'].items():
+                print(f"    {sev}: {count}")
+        
+        if summary['by_tool']:
+            print("\\n  By Tool:")
+            for tool, count in summary['by_tool'].items():
+                print(f"    {tool}: {count}")
+        
+        return results, summary
+    else:
+        print("\\n⚠️ No vulnerabilities found to analyze")
+        return [], {}
 
 
 def process_all_scans(scan_files: dict, output_dir: str):
@@ -330,19 +481,61 @@ def main():
     """
     Main entry point for processing security artifacts
     """
+    parser = argparse.ArgumentParser(
+        description="Process security artifacts with OLMo analysis",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Mode selection
+    parser.add_argument("--local-mode", action="store_true",
+                       help="Run in local mode using provided artifacts directory")
+    parser.add_argument("--artifacts-dir", type=Path, 
+                       help="Directory containing downloaded artifacts (local mode)")
+    parser.add_argument("--output-dir", type=Path, 
+                       help="Output directory for analysis results")
+    parser.add_argument("--model-name", type=str, default="allenai/OLMo-2-0425-1B",
+                       help="OLMo-2-1B model to use for analysis")
+    parser.add_argument("--branch", type=str, default="unknown",
+                       help="Git branch being analyzed")
+    parser.add_argument("--commit", type=str, default="unknown", 
+                       help="Git commit SHA being analyzed")
+    
+    args = parser.parse_args()
+    
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    
     print("=" * 60)
-    print("🔒 WebAuthn Security Analysis with OLMo")
+    print(f"🔒 WebAuthn Security Analysis with {args.model_name}")
+    print(f"Mode: {'Local' if args.local_mode else 'GitHub Actions'}")
     print("=" * 60)
 
-    # Download latest artifacts from GitHub Actions
-    artifact_dir = "data/security_artifacts"
-    downloaded_path = download_latest_artifacts(artifact_dir)
+    if args.local_mode:
+        # Local mode: use provided artifacts directory
+        if not args.artifacts_dir:
+            print("❌ --artifacts-dir required for local mode")
+            return 1
+            
+        if not args.artifacts_dir.exists():
+            print(f"❌ Artifacts directory does not exist: {args.artifacts_dir}")
+            return 1
+            
+        print(f"📂 Using local artifacts directory: {args.artifacts_dir}")
+        downloaded_path = args.artifacts_dir
+        
+    else:
+        # GitHub Actions mode: download latest artifacts
+        artifact_dir = "data/security_artifacts"
+        downloaded_path = download_latest_artifacts(artifact_dir)
 
-    if not downloaded_path:
-        print("\n❌ Failed to download artifacts. Exiting.")
-        return 1
+        if not downloaded_path:
+            print("\n❌ Failed to download artifacts. Exiting.")
+            return 1
 
-    print(f"\n📂 Using artifact directory: {downloaded_path}")
+        print(f"\n📂 Using downloaded artifact directory: {downloaded_path}")
 
     # Check for zip files (gh run download creates zips)
     zip_files = list(downloaded_path.glob("*.zip"))
@@ -360,8 +553,13 @@ def main():
     scan_files = find_security_files(search_dir)
 
     # Process all scans
-    output_dir = "data/olmo_analysis_results"
-    results, summary = process_all_scans(scan_files, output_dir)
+    if args.output_dir:
+        output_dir = str(args.output_dir)
+    else:
+        output_dir = "data/olmo_analysis_results"
+    
+    # Enhanced processing with OLMo-2-1B
+    results, summary = process_all_scans_enhanced(scan_files, output_dir, args)
 
     print("\n" + "=" * 60)
     print("✅ Processing complete!")

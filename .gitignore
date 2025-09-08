@@ -69,3 +69,6 @@ security-ai-analysis/**/*.pyc
 security-ai-analysis/.DS_Store
 security-ai-analysis/**/.DS_Store
 security-ai-analysis/check-results.json
+
+# Local AI Analysis generated files
+local-analysis/**/__pycache__/

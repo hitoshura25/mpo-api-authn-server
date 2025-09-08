@@ -80,6 +80,24 @@ python3 process_artifacts.py --local-mode --artifacts-dir "data" --output-dir "d
 - ✅ Fine-tuning datasets automatically uploaded to HuggingFace
 - ✅ Complete hands-off automation: GitHub Actions → Analysis → Training Data
 
+### 🤗 Fine-Tuning with Google Colab
+
+**Ready-to-use Colab Notebook**: `security-ai-analysis/olmo_security_finetune.ipynb`
+
+Complete fine-tuning process available as a Google Colab notebook:
+
+**📋 Usage Steps:**
+1. **📁 Get Dataset Files**: Download `train_*.jsonl` and `validation_*.jsonl` from local pipeline results
+2. **☁️ Upload to Drive**: Place dataset files in your Google Drive  
+3. **🚀 Run in Colab**: Open notebook and enable T4 GPU (Runtime → Change runtime type)
+4. **🎯 Fine-tuned Model**: Automatically saved to Google Drive
+
+**🔧 Features:**
+- **OLMo-2-1B Base**: Latest OLMo-2 series for security analysis
+- **Memory Optimized**: Works with free Google Colab T4 GPU
+- **Quality Testing**: Built-in security prompts to verify results
+- **Export Options**: Save to Drive or upload to HuggingFace Hub
+
 ### 📋 **Implementation Plan Reference**
 
 **SEE**: `docs/improvements/in-progress/ai-security-dataset-research-technical-implementation-plan.md` for validated technical implementation addressing all gaps.
@@ -233,7 +251,7 @@ The AI Security Dataset Research Initiative is **FULLY DEPLOYED** and operationa
 - **`.github/workflows/automated-security-analysis.yml`**: ❌ **REMOVED** (replaced by continuous polling)
 
 **Remaining Workflow (Needs Update):**
-- **`.github/workflows/create-finetuning-dataset.yml`**: ⚠️ **DEPRECATED** (references removed workflows, needs updating for local system)
+- **`security-ai-analysis/olmo_security_finetune.ipynb`**: Google Colab notebook for fine-tuning OLMo on the security dataset
 
 ### Generated Artifacts (Don't Commit)
 
@@ -477,7 +495,7 @@ ls -la .github/workflows/olmo-security-analysis.yml .github/workflows/automated-
 # Expected: "No such file or directory" for both
 
 # Check deprecated workflow that needs updating
-grep -n "OLMo Security Analysis" .github/workflows/create-finetuning-dataset.yml
+ls -la security-ai-analysis/olmo_security_finetune.ipynb
 # Expected: Lines 17,52 show references to removed workflow (needs updating)
 
 # Verify executable permissions
@@ -749,7 +767,7 @@ test ! -f .github/workflows/olmo-security-analysis.yml && echo "✅ Workflow rem
 test ! -f .github/workflows/automated-security-analysis.yml && echo "✅ Auto-workflow removed" || echo "❌ Auto-workflow still exists"
 
 # Check for deprecated workflow that needs updating (shows we need to fix this)
-grep -c "OLMo Security Analysis" .github/workflows/create-finetuning-dataset.yml  # Should be > 0 (indicates needs fixing)
+cat security-ai-analysis/olmo_security_finetune.ipynb | grep -c "OLMo-2-1B"  # Should show OLMo-2 references
 ```
 
 ### 🎯 Overview

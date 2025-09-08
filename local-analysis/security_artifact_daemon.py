@@ -281,7 +281,7 @@ class SecurityArtifactDaemon:
                 "--local-mode",
                 "--artifacts-dir", str(artifacts_dir),
                 "--output-dir", str(analysis_output),
-                "--model-name", "allenai/OLMo-2-0425-1B",  # OLMo-2-1B
+                "--model-name", "/Users/vinayakmenon/olmo-security-analysis/models/OLMo-2-1B-mlx-q4",  # MLX-optimized OLMo-2-1B
                 "--branch", "main",
                 "--commit", run_info['head_sha']
             ]

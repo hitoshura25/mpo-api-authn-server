@@ -11,6 +11,7 @@ from datetime import datetime
 import zipfile
 import shutil
 import subprocess
+import random
 from typing import List, Dict, Tuple
 
 # Add parent directory to path for imports
@@ -230,6 +231,7 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
             json.dump(summary, f, indent=2)
         print(f"💾 Summary saved to: {summary_file}")
         
+        
         # Print enhanced summary
         print("\\n📈 Analysis Summary:")
         print(f"  Model Used: {summary.get('model_used', 'Unknown')}")
@@ -248,6 +250,153 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
             print("\\n  By Tool:")
             for tool, count in summary['by_tool'].items():
                 print(f"    {tool}: {count}")
+        
+        # **Phase 2: Narrativization Integration**
+        print("\\n" + "="*60)
+        print("🎯 Phase 2: Creating Rich Security Narratives")
+        print("="*60)
+        
+        try:
+            from create_narrativized_dataset import SecurityNarrativizer
+            
+            narrativized_results = []
+            narrativizer = SecurityNarrativizer()
+            
+            print(f"📝 Creating narratives for {len(results)} analysis results...")
+            
+            for item in results:
+                if item.get('status') == 'success':
+                    vuln_data = item.get('vulnerability', {})
+                    
+                    # Create narrativized version
+                    try:
+                        narrative = narrativizer.narrativize_vulnerability(vuln_data)
+                        
+                        narrativized_item = {
+                            'vulnerability_id': vuln_data.get('id', 'unknown'),
+                            'original_analysis': item.get('analysis', ''),
+                            'narrative': narrative,
+                            'created_at': timestamp
+                        }
+                        
+                        narrativized_results.append(narrativized_item)
+                        
+                    except Exception as e:
+                        print(f"  ⚠️ Failed to create narrative for {vuln_data.get('id', 'unknown')}: {e}")
+            
+            # Save narrativized dataset
+            narrativized_file = output_path / f"narrativized_dataset_{timestamp}.json"
+            with open(narrativized_file, 'w') as f:
+                json.dump(narrativized_results, f, indent=2)
+            print(f"✅ Narrativized dataset saved to: {narrativized_file}")
+            print(f"📊 Created {len(narrativized_results)} narratives")
+            
+            # **Phase 3: Fine-tuning Dataset Preparation**
+            print("\\n" + "="*60)
+            print("🚀 Phase 3: Preparing Fine-Tuning Dataset")  
+            print("="*60)
+            
+            if narrativized_results:
+                print(f"📚 Preparing fine-tuning dataset from {len(narrativized_results)} narratives...")
+                
+                training_pairs = []
+                
+                for item in narrativized_results:
+                    # Create training pair
+                    vulnerability_info = f"Vulnerability ID: {item['vulnerability_id']}"
+                    
+                    training_pair = {
+                        'prompt': f"Analyze this security vulnerability and provide remediation guidance:\\n\\n{vulnerability_info}",
+                        'completion': item['narrative'],
+                        'metadata': {
+                            'vulnerability_id': item['vulnerability_id'],
+                            'created_at': timestamp
+                        }
+                    }
+                    
+                    training_pairs.append(training_pair)
+                
+                # Split into training and validation sets (80/20)
+                import random
+                random.shuffle(training_pairs)
+                split_point = int(len(training_pairs) * 0.8)
+                train_data = training_pairs[:split_point]
+                val_data = training_pairs[split_point:]
+                
+                # Save training set  
+                train_file = output_path / f"train_{timestamp}.jsonl"
+                with open(train_file, 'w') as f:
+                    for item in train_data:
+                        f.write(json.dumps(item) + '\\n')
+                
+                # Save validation set
+                val_file = output_path / f"validation_{timestamp}.jsonl"
+                with open(val_file, 'w') as f:
+                    for item in val_data:
+                        f.write(json.dumps(item) + '\\n')
+                
+                # Create dataset info file
+                dataset_info = {
+                    'created_at': timestamp,
+                    'total_examples': len(training_pairs),
+                    'train_examples': len(train_data), 
+                    'validation_examples': len(val_data),
+                    'source_vulnerabilities': len(narrativized_results)
+                }
+                
+                info_file = output_path / f"dataset_info_{timestamp}.json"
+                with open(info_file, 'w') as f:
+                    json.dump(dataset_info, f, indent=2)
+                
+                print(f"✅ Fine-tuning dataset prepared:")
+                print(f"  📚 Training examples: {len(train_data)}")
+                print(f"  📖 Validation examples: {len(val_data)}") 
+                print(f"  💾 Files saved:")
+                print(f"    - {train_file}")
+                print(f"    - {val_file}")
+                print(f"    - {info_file}")
+                
+                # **Phase 4: Production Dataset Upload**
+                print("\\n" + "="*60)
+                print("🚀 Phase 4: Uploading to Production HuggingFace Dataset")
+                print("="*60)
+                
+                try:
+                    from datasets import Dataset
+                    from huggingface_hub import HfApi
+                    
+                    print(f"📤 Uploading {len(training_pairs)} training pairs to production dataset...")
+                    print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
+                    
+                    # Create HuggingFace Dataset from training pairs
+                    dataset = Dataset.from_list(training_pairs)
+                    
+                    # Upload to production dataset (PUBLIC)
+                    dataset.push_to_hub(
+                        repo_id="hitoshura25/webauthn-security-vulnerabilities-olmo",
+                        private=False,  # PUBLIC dataset for research community
+                        token=True      # Use saved HuggingFace token
+                    )
+                    
+                    print(f"✅ SUCCESS: Production dataset updated!")
+                    print(f"🔗 Dataset URL: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo")
+                    print(f"📊 Uploaded {len(training_pairs)} training examples")
+                    
+                except ImportError as e:
+                    print(f"⚠️ HuggingFace libraries not available for upload: {e}")
+                    print("   Install with: pip install datasets huggingface_hub")
+                except Exception as e:
+                    print(f"❌ Production dataset upload failed: {e}")
+                    print(f"   Training data saved locally for manual upload if needed")
+                
+            else:
+                print("⚠️ No narrativized results available for fine-tuning dataset preparation")
+        
+        except ImportError as e:
+            print(f"⚠️ Narrativization module not available: {e}")
+            print("   Phase 2 and Phase 3 will be skipped")
+        except Exception as e:
+            print(f"❌ Error in Phase 2/3: {e}")
         
         return results, summary
     else:
@@ -375,6 +524,152 @@ def process_all_scans(scan_files: dict, output_dir: str):
             for tool, count in summary['by_tool'].items():
                 print(f"    {tool}: {count}")
         
+        # **Phase 2: Narrativization Integration**
+        print("\n" + "="*60)
+        print("🎯 Phase 2: Creating Rich Security Narratives")
+        print("="*60)
+        
+        try:
+            from create_narrativized_dataset import SecurityNarrativizer
+            
+            narrativized_results = []
+            narrativizer = SecurityNarrativizer()
+            
+            print(f"📝 Creating narratives for {len(results)} analysis results...")
+            
+            for item in results:
+                if item.get('status') == 'success':
+                    vuln_data = item.get('vulnerability', {})
+                    
+                    # Create narrativized version
+                    try:
+                        narrative = narrativizer.narrativize_vulnerability(vuln_data)
+                        
+                        narrativized_item = {
+                            'vulnerability_id': vuln_data.get('id', 'unknown'),
+                            'original_analysis': item.get('analysis', ''),
+                            'narrative': narrative,
+                            'created_at': timestamp
+                        }
+                        
+                        narrativized_results.append(narrativized_item)
+                        
+                    except Exception as e:
+                        print(f"  ⚠️ Failed to create narrative for {vuln_data.get('id', 'unknown')}: {e}")
+            
+            # Save narrativized dataset
+            narrativized_file = output_path / f"narrativized_dataset_{timestamp}.json"
+            with open(narrativized_file, 'w') as f:
+                json.dump(narrativized_results, f, indent=2)
+            print(f"✅ Narrativized dataset saved to: {narrativized_file}")
+            print(f"📊 Created {len(narrativized_results)} narratives")
+            
+            # **Phase 3: Fine-tuning Dataset Preparation**
+            print("\n" + "="*60)
+            print("🚀 Phase 3: Preparing Fine-Tuning Dataset")  
+            print("="*60)
+            
+            if narrativized_results:
+                print(f"📚 Preparing fine-tuning dataset from {len(narrativized_results)} narratives...")
+                
+                training_pairs = []
+                
+                for item in narrativized_results:
+                    # Create training pair
+                    vulnerability_info = f"Vulnerability ID: {item['vulnerability_id']}"
+                    
+                    training_pair = {
+                        'prompt': f"Analyze this security vulnerability and provide remediation guidance:\n\n{vulnerability_info}",
+                        'completion': item['narrative'],
+                        'metadata': {
+                            'vulnerability_id': item['vulnerability_id'],
+                            'created_at': timestamp
+                        }
+                    }
+                    
+                    training_pairs.append(training_pair)
+                
+                # Split into training and validation sets (80/20)
+                random.shuffle(training_pairs)
+                split_point = int(len(training_pairs) * 0.8)
+                train_data = training_pairs[:split_point]
+                val_data = training_pairs[split_point:]
+                
+                # Save training set  
+                train_file = output_path / f"train_{timestamp}.jsonl"
+                with open(train_file, 'w') as f:
+                    for item in train_data:
+                        f.write(json.dumps(item) + '\n')
+                
+                # Save validation set
+                val_file = output_path / f"validation_{timestamp}.jsonl"
+                with open(val_file, 'w') as f:
+                    for item in val_data:
+                        f.write(json.dumps(item) + '\n')
+                
+                # Create dataset info file
+                dataset_info = {
+                    'created_at': timestamp,
+                    'total_examples': len(training_pairs),
+                    'train_examples': len(train_data), 
+                    'validation_examples': len(val_data),
+                    'source_vulnerabilities': len(narrativized_results)
+                }
+                
+                info_file = output_path / f"dataset_info_{timestamp}.json"
+                with open(info_file, 'w') as f:
+                    json.dump(dataset_info, f, indent=2)
+                
+                print(f"✅ Fine-tuning dataset prepared:")
+                print(f"  📚 Training examples: {len(train_data)}")
+                print(f"  📖 Validation examples: {len(val_data)}") 
+                print(f"  💾 Files saved:")
+                print(f"    - {train_file}")
+                print(f"    - {val_file}")
+                print(f"    - {info_file}")
+                
+                # **Phase 4: Production Dataset Upload**
+                print("\n" + "="*60)
+                print("🚀 Phase 4: Uploading to Production HuggingFace Dataset")
+                print("="*60)
+                
+                try:
+                    from datasets import Dataset
+                    from huggingface_hub import HfApi
+                    
+                    print(f"📤 Uploading {len(training_pairs)} training pairs to production dataset...")
+                    print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
+                    
+                    # Create HuggingFace Dataset from training pairs
+                    dataset = Dataset.from_list(training_pairs)
+                    
+                    # Upload to production dataset (PUBLIC)
+                    dataset.push_to_hub(
+                        repo_id="hitoshura25/webauthn-security-vulnerabilities-olmo",
+                        private=False,  # PUBLIC dataset for research community
+                        token=True      # Use saved HuggingFace token
+                    )
+                    
+                    print(f"✅ SUCCESS: Production dataset updated!")
+                    print(f"🔗 Dataset URL: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo")
+                    print(f"📊 Uploaded {len(training_pairs)} training examples")
+                    
+                except ImportError as e:
+                    print(f"⚠️ HuggingFace libraries not available for upload: {e}")
+                    print("   Install with: pip install datasets huggingface_hub")
+                except Exception as e:
+                    print(f"❌ Production dataset upload failed: {e}")
+                    print(f"   Training data saved locally for manual upload if needed")
+                
+            else:
+                print("⚠️ No narrativized results available for fine-tuning dataset preparation")
+        
+        except ImportError as e:
+            print(f"⚠️ Narrativization module not available: {e}")
+            print("   Phase 2 and Phase 3 will be skipped")
+        except Exception as e:
+            print(f"❌ Error in Phase 2/3: {e}")
+        
         return results, summary
     else:
         print("\n⚠️ No vulnerabilities found to analyze")
@@ -493,8 +788,8 @@ def main():
                        help="Directory containing downloaded artifacts (local mode)")
     parser.add_argument("--output-dir", type=Path, 
                        help="Output directory for analysis results")
-    parser.add_argument("--model-name", type=str, default="allenai/OLMo-2-0425-1B",
-                       help="OLMo-2-1B model to use for analysis")
+    parser.add_argument("--model-name", type=str, default="/Users/vinayakmenon/olmo-security-analysis/models/OLMo-2-1B-mlx-q4",
+                       help="OLMo-2-1B model to use for analysis (defaults to local MLX-optimized model)")
     parser.add_argument("--branch", type=str, default="unknown",
                        help="Git branch being analyzed")
     parser.add_argument("--commit", type=str, default="unknown", 

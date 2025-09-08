@@ -100,7 +100,7 @@ Complete fine-tuning process available as a Google Colab notebook:
 
 ### 📋 **Implementation Plan Reference**
 
-**SEE**: `docs/improvements/in-progress/ai-security-dataset-research-technical-implementation-plan.md` for validated technical implementation addressing all gaps.
+**SEE**: `docs/improvements/completed/ai-security-dataset-research-technical-implementation-plan.md` for validated technical implementation addressing all gaps.
 
 ---
 
@@ -748,7 +748,7 @@ Research Dataset Available for AI Security Community
 
 **File Locations Quick Reference**:
 - **Implementation**: `local-analysis/` (4 Python scripts)  
-- **Documentation**: `docs/improvements/in-progress/ai-security-dataset-research.md`
+- **Documentation**: `docs/improvements/completed/ai-security-dataset-research.md`
 - **Enhanced Processor**: `security-ai-analysis/process_artifacts.py`
 - **Data Directory**: `~/olmo-security-analysis/` (created automatically)
 - **Logs**: `~/olmo-security-analysis/daemon.log`

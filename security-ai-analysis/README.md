@@ -116,8 +116,8 @@ The notebook handles everything: data loading, tokenization, training, and model
 ## 📖 Documentation
 
 Complete documentation available at:
-- **Main Project**: `docs/improvements/in-progress/ai-security-dataset-research.md`
-- **Technical Implementation**: `docs/improvements/in-progress/ai-security-dataset-research-technical-implementation-plan.md`
+- **Main Project**: `docs/improvements/completed/ai-security-dataset-research.md`
+- **Technical Implementation**: `docs/improvements/completed/ai-security-dataset-research-technical-implementation-plan.md`
 
 The system is ready for:
 1. **OLMo Model Fine-tuning** using the published dataset

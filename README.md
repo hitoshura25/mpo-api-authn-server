@@ -140,7 +140,7 @@ This project extends beyond traditional WebAuthn authentication to contribute to
 
 ### 🔗 Research Resources
 
-- **📖 Complete Documentation**: [AI Security Dataset Research Guide](docs/improvements/in-progress/ai-security-dataset-research.md)
+- **📖 Complete Documentation**: [AI Security Dataset Research Guide](docs/improvements/completed/ai-security-dataset-research.md)
 - **⚙️ Developer Setup**: [Local OLMo Analysis Setup Guide](docs/development/local-olmo-analysis-setup.md)
 - **🏃‍♂️ System Status**: LaunchAgent running continuously (PID 79249) for automated processing
 

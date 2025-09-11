@@ -1,173 +1,368 @@
-# AI Security Dataset Research Initiative - Portable Implementation
+# AI Security Analysis System
 
-## ✅ System Status: PRODUCTION READY WITH PORTABLE ARCHITECTURE
+## What Does This System Do?
 
-**Production Dataset**: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo
+This system automatically analyzes security vulnerabilities using advanced AI models to generate high-quality explanations and remediation guidance. It's designed to help developers understand security issues and learn how to fix them effectively.
 
-The complete AI Security Dataset Research Initiative features a portable, configurable architecture that works across different development environments while maintaining MLX-optimized performance and full automation.
+**Key Capabilities:**
+- 🔍 **Processes real security scan results** from 8+ professional tools (Trivy, Semgrep, etc.)
+- 🤖 **AI-powered analysis** using OLMo-2-1B model optimized for Apple Silicon (20-30x faster)
+- 📖 **Rich explanations** with context, impact assessment, and step-by-step remediation
+- 🔄 **Automated workflow** from vulnerability detection to training dataset creation
+- 📊 **Research contribution** via published datasets for AI security research
 
-## 🤖 Automated Production System
+**Real-World Impact:**
+- Processes 440+ actual vulnerabilities from production security scans
+- Creates training datasets for improving AI security capabilities
+- Provides immediate actionable guidance for vulnerability remediation
 
-### Automated LaunchAgent Daemon (Continuous Operation)
-- **Setup**: Configured via portable setup script in `security-ai-analysis/scripts/setup.py`
-- **Python Daemon**: `local-analysis/security_artifact_daemon.py` (uses project-relative paths)
-- **Operation**: Polls GitHub Actions for new security artifacts every 5 minutes
-- **Target Repository**: `hitoshura25/mpo-api-authn-server` (configurable)
-- **Status**: ✅ PORTABLE - Works across different development environments
+## How The System Works
 
-### MLX-Optimized Performance
-- **Model Configuration**: Configurable via `config/olmo-security-config.yaml`
-- **Default Model**: `~/shared-olmo-models/base/OLMo-2-1B-mlx-q4` (shared across projects)
-- **Performance Gain**: 20-30X faster than standard model implementation
-- **Inference Speed**: ~0.8 seconds per vulnerability (214.6 tokens/sec on Apple Silicon)
-- **Apple Silicon Optimization**: Advanced MLX framework integration for M-series processors
-
-## 🏗️ Architecture
-
-### Core Components (Integrated Pipeline)
-
-1. **`process_artifacts.py`** - Complete integrated pipeline
-   - Phase 1: MLX-optimized analysis (20-30X faster)
-   - Phase 2: Rich narrativization (integrated lines 500-539)
-   - Phase 3: Fine-tuning dataset prep (integrated lines 540-612)
-
-2. **`analysis/olmo_analyzer.py`** - MLX-optimized OLMo-2 security analyzer
-
-3. **`create_narrativized_dataset.py`** - Core narrativization logic (used by main pipeline)
-
-### Removed Files (Consolidated)
-- ✅ `IMPLEMENTATION_COMPLETE_STATUS.md` → Consolidated into main project docs
-- ✅ `NEXT_SESSION_QUICKSTART.md` → Consolidated into main project docs  
-- ✅ `create_security_dataset.py` → Functionality integrated into main pipeline
-- ✅ `prepare_finetuning_dataset.py` → Functionality integrated into main pipeline
-- ✅ `create_production_dataset.py` → One-time script, no longer needed
-
-## 🚀 Quick Start
-
-### Setup (2 minutes)
-
-```bash
-# 1. Clone and setup
-git clone https://github.com/hitoshura25/mpo-api-authn-server.git
-cd mpo-api-authn-server
-python3 security-ai-analysis/setup.py
-
-# 2. Activate environment
-source security-ai-analysis/venv/bin/activate
-cd security-ai-analysis
-
-# 3. Test installation
-python3 process_artifacts.py --help
-python3 -c "from config_manager import OLMoSecurityConfig; print('Config loaded!')"
+```
+GitHub Actions Security Scans → Artifact Download → AI Analysis → Rich Narratives → Training Datasets
 ```
 
-### Run Complete Pipeline
+### Complete Workflow
+
+1. **Security Scanning**: Professional FOSS tools (Trivy, Semgrep, etc.) scan code and generate findings
+2. **Automated Monitoring**: Daemon polls GitHub Actions every 5 minutes for new security artifacts  
+3. **AI Processing**: OLMo-2-1B model analyzes each vulnerability with MLX optimization
+4. **Rich Narrativization**: Creates detailed explanations with remediation guidance
+5. **Dataset Creation**: Produces training datasets in JSONL format for AI research
+6. **Publication**: Results published to HuggingFace for community benefit
+
+### Two Usage Modes
+
+**🔄 Automated Mode (Production)**
+- Daemon runs continuously via macOS LaunchAgent
+- Automatically processes new security findings
+- Zero user intervention required
+
+**⚡ Manual Mode (Development/Testing)**
+- Run analysis on-demand with custom data
+- Process existing security artifacts
+- Test with sample vulnerabilities
+
+## Complete Setup From Scratch
+
+### Prerequisites
+- macOS with Apple Silicon (M1/M2/M3) for optimal performance
+- Python 3.9+
+- GitHub CLI (`gh`) - Install with `brew install gh`
+- Git repository access
+
+### Step 1: Initial Setup (5 minutes)
+
 ```bash
-# Activate project environment
+# Clone the repository
+git clone https://github.com/hitoshura25/mpo-api-authn-server.git
+cd mpo-api-authn-server
+
+# Run automated setup (creates everything needed)
+python3 security-ai-analysis/setup.py
+```
+
+**What setup.py does:**
+- ✅ Creates project directory structure (`data/`, `results/`, `venv/`)
+- ✅ Creates shared model directory (`~/shared-olmo-models/`)  
+- ✅ Sets up virtual environment with all dependencies
+- ✅ Downloads and converts OLMo-2-1B model to MLX format (~2GB download)
+- ✅ Validates entire system is ready to use
+
+### Step 2: Authenticate with GitHub
+
+```bash
+# Required for downloading security artifacts from GitHub Actions
+gh auth login
+```
+
+### Step 3: Test the System
+
+```bash
+# Activate the project environment
 source security-ai-analysis/venv/bin/activate
 cd security-ai-analysis
 
-# Run complete pipeline (auto-downloads latest GitHub Actions artifacts)
+# Test configuration loads correctly
+python3 -c "from config_manager import OLMoSecurityConfig; print('✅ Config loaded!')"
+
+# Test the main pipeline (uses sample data)
+python3 process_artifacts.py --artifacts-dir "test_data"
+
+# Test with real GitHub Actions artifacts (auto-downloads latest)
+python3 process_artifacts.py
+```
+
+**Expected Output:**
+- Analysis results appear in `results/` directory
+- Rich narratives with explanations and remediation guidance
+- Training datasets in JSONL format
+- Processing ~0.8 seconds per vulnerability with MLX optimization
+
+## Understanding the Daemon System
+
+The daemon system provides continuous automated processing of new security findings.
+
+### How Path Resolution Works
+
+**Working Directory**: The daemon runs from your project root (`/Users/yourname/mpo-api-authn-server`)
+
+**Key Directories**:
+- `security-ai-analysis/data/security_artifacts/` - Downloaded GitHub Actions artifacts
+- `security-ai-analysis/results/` - AI analysis outputs  
+- `local-analysis/` - Contains daemon script
+- `~/shared-olmo-models/` - Shared AI models (reused across projects)
+
+### How Daemon Integrates with Analysis
+
+1. **Daemon downloads artifacts** to `data/security_artifacts/`
+2. **Daemon calls process_artifacts.py** with default directories
+3. **process_artifacts.py automatically finds** downloaded artifacts 
+4. **Results appear in** `results/` directory
+
+**Why different directory structures?**
+- `data/artifacts/run_***` - Raw GitHub Actions downloads (daemon uses this)
+- `data/security_artifacts/` - Processed artifacts ready for analysis
+- `results/` - Final analysis outputs
+
+The system automatically handles the flow between these directories.
+
+## LaunchAgent Setup (Automated Mode)
+
+To run the system continuously in the background:
+
+### Install the Daemon
+
+```bash
+cd security-ai-analysis
+python3 setup_launchagent.py --dry-run  # Preview first
+python3 setup_launchagent.py           # Install LaunchAgent
+```
+
+**What this does:**
+- Creates `~/Library/LaunchAgents/com.mpo.security-analysis.daemon.plist`
+- Configures daemon to run every 5 minutes
+- Sets up proper paths and environment variables
+- Starts the daemon automatically
+
+### Monitor Daemon Activity
+
+```bash
+# Check if daemon is running
+launchctl list com.mpo.security-analysis.daemon
+
+# View real-time logs
+tail -f security-ai-analysis/results/daemon_stdout.log
+tail -f security-ai-analysis/results/daemon_stderr.log
+
+# Test daemon manually (safe, exits after one cycle)
+cd /Users/yourname/mpo-api-authn-server  # Use your actual path
+source security-ai-analysis/venv/bin/activate
+python3 local-analysis/security_artifact_daemon.py --test-mode
+```
+
+### Control the Daemon
+
+```bash
+# Stop daemon
+launchctl unload ~/Library/LaunchAgents/com.mpo.security-analysis.daemon.plist
+
+# Start daemon
+launchctl load ~/Library/LaunchAgents/com.mpo.security-analysis.daemon.plist
+
+# Restart daemon (after changes)
+launchctl unload ~/Library/LaunchAgents/com.mpo.security-analysis.daemon.plist
+launchctl load ~/Library/LaunchAgents/com.mpo.security-analysis.daemon.plist
+```
+
+## Daily Usage Patterns
+
+### Manual Analysis (Development)
+
+```bash
+# Activate environment
+source security-ai-analysis/venv/bin/activate
+cd security-ai-analysis
+
+# Process latest GitHub Actions artifacts
 python3 process_artifacts.py
 
-# Or specify custom directories
-python3 process_artifacts.py --artifacts-dir "custom_location" --output-dir "custom_results"
+# Process specific artifact directory
+python3 process_artifacts.py --artifacts-dir "path/to/custom/artifacts"
 
-# Or test with sample data
+# Process with custom output location
+python3 process_artifacts.py --output-dir "custom_results"
+
+# Test with sample data
 python3 process_artifacts.py --artifacts-dir "test_data"
 ```
 
-### Usage Notes
-- **Default behavior**: Automatically downloads latest security artifacts from GitHub Actions
-- **Custom artifacts**: Use `--artifacts-dir` to process your own security scan results  
-- **Custom output**: Use `--output-dir` to specify where results are saved
-- **Test data**: The `test_data/` directory contains sample vulnerabilities for testing
-- **GitHub CLI required**: Install and authenticate with `gh auth login` for auto-download
+### Understanding Results
 
-### Test Daemon Operation (Safe)
+**Generated Files:**
+- `results/olmo_analysis_results_YYYYMMDD_HHMMSS.json` - Complete analysis with explanations
+- `results/narrativized_dataset_YYYYMMDD_HHMMSS.json` - Rich training narratives
+- `results/train_YYYYMMDD_HHMMSS.jsonl` - Training dataset for fine-tuning
+- `results/validation_YYYYMMDD_HHMMSS.jsonl` - Validation dataset
+- `results/dataset_info_YYYYMMDD_HHMMSS.json` - Dataset metadata
+
+**Analysis Content:**
+- Vulnerability details and severity assessment
+- Root cause analysis with code context
+- Step-by-step remediation instructions
+- Best practices and prevention guidance
+
+## Troubleshooting Guide
+
+### Setup Issues
+
+**Problem**: `setup.py` fails with model download error
 ```bash
-# From project root
+# Check virtual environment
 source security-ai-analysis/venv/bin/activate
-cd local-analysis
-python3 security_artifact_daemon.py --test-mode
+pip install mlx-lm transformers>=4.39.3
+
+# Test model download manually
+python3 -c "from model_manager import OLMoModelManager; OLMoModelManager().setup_project_structure()"
 ```
 
-### Manual Daemon Control
+**Problem**: Configuration errors
+```bash
+# Validate configuration
+python3 -c "from config_manager import get_default_config; print(get_default_config().get_config_summary())"
+
+# Check model path
+ls ~/shared-olmo-models/base/OLMo-2-1B-mlx-q4/
+```
+
+### Runtime Issues
+
+**Problem**: `process_artifacts.py` can't find artifacts
+- Check if GitHub CLI is authenticated: `gh auth status`
+- Verify repository access: `gh repo view hitoshura25/mpo-api-authn-server`
+- Check artifact directory: `ls -la data/security_artifacts/`
+
+**Problem**: Daemon not processing new artifacts
 ```bash
 # Check daemon status
-launchctl list | grep com.webauthn.security-artifact-daemon
+launchctl list com.mpo.security-analysis.daemon
 
-# Stop daemon (if needed)
-launchctl unload ~/Library/LaunchAgents/com.webauthn.security-artifact-daemon.plist
+# View daemon logs for errors
+tail -50 security-ai-analysis/results/daemon_stderr.log
 
-# Start daemon (LaunchAgent configured by setup script)
-launchctl load ~/Library/LaunchAgents/com.webauthn.security-artifact-daemon.plist
+# Test daemon manually
+python3 local-analysis/security_artifact_daemon.py --test-mode
 ```
 
-### Output Files
-- `olmo_analysis_results_*.json` - Complete analysis results
-- `narrativized_dataset_*.json` - Rich training narratives
-- `train_*.jsonl` + `validation_*.jsonl` - Fine-tuning datasets
-- `dataset_info_*.json` - Dataset metadata
+**Problem**: Model performance issues
+- Verify Apple Silicon optimization: Model should process ~0.8 seconds per vulnerability
+- Check MLX installation: `python3 -c "import mlx.core; print('✅ MLX working')"`
+- Monitor memory usage during processing
 
-## 🤗 Fine-Tuning with Google Colab
+### Common Error Messages
 
-Use `olmo_security_finetune.ipynb` for easy OLMo-2-1B fine-tuning:
+**"No module named 'mlx_lm'"**
+```bash
+source security-ai-analysis/venv/bin/activate
+pip install mlx-lm
+```
 
-1. **Generate Dataset**: Run the pipeline above to create training files
-2. **Upload to Drive**: Place `train_*.jsonl` and `validation_*.jsonl` in Google Drive
-3. **Open Colab**: Upload and run the notebook with T4 GPU enabled
-4. **Get Model**: Fine-tuned model automatically saved to your Drive
+**"Config file not found"**
+```bash
+# Verify config file exists
+ls config/olmo-security-config.yaml
+```
 
-The notebook handles everything: data loading, tokenization, training, and model export.
+**"Model not found"**
+```bash
+# Check model directory
+ls ~/shared-olmo-models/base/OLMo-2-1B-mlx-q4/
+# Re-run setup if empty
+python3 setup.py
+```
 
-## 🔄 Production Data Flow
+## Advanced Configuration
 
-1. **Security Scanning**: 8 FOSS tools generate security artifacts in GitHub Actions
-2. **Daemon Monitoring**: LaunchAgent polls for new artifacts every 5 minutes
-3. **Artifact Download**: Daemon downloads latest security scan results
-4. **MLX Processing**: OLMo-2-1B analyzes vulnerabilities with 20-30X speed improvement
-5. **Narrativization**: Rich security narratives created with remediation guidance
-6. **Dataset Creation**: Fine-tuning datasets prepared in JSONL format
-7. **HuggingFace Upload**: Results published to production dataset for research use
+### Custom Model Paths
 
-## 🏗️ Portable Architecture
+Edit `config/olmo-security-config.yaml`:
+```yaml
+base_models_dir: "/custom/path/to/models"
+default_base_model: "your-preferred-model"
+```
+
+### Environment Variable Overrides
+
+```bash
+export OLMO_BASE_MODELS_DIR="/custom/models"
+export OLMO_DEFAULT_BASE_MODEL="custom-model-name"
+python3 process_artifacts.py
+```
+
+### Different Repositories
+
+```bash
+# Process artifacts from different repository
+cd local-analysis
+python3 security_artifact_daemon.py --repo "other-org/other-repo" --test-mode
+```
+
+## Architecture Overview (For Developers)
+
+### Core Components
+
+**`process_artifacts.py`** - Main pipeline integrating:
+- Artifact download and validation
+- MLX-optimized security analysis  
+- Rich narrativization
+- Training dataset creation
+
+**`analysis/olmo_analyzer.py`** - MLX-optimized OLMo-2 security analyzer
+
+**`local-analysis/security_artifact_daemon.py`** - Continuous monitoring daemon
+
+**`config_manager.py`** - Portable configuration system
+
+### Directory Structure
+
+```
+security-ai-analysis/
+├── setup.py              # Automated setup
+├── setup_launchagent.py  # Daemon installation
+├── process_artifacts.py  # Main pipeline
+├── config_manager.py     # Configuration
+├── analysis/             # AI analysis components
+├── config/               # YAML configuration
+├── templates/            # LaunchAgent template
+├── data/                 # Project-specific artifacts
+├── results/              # Analysis outputs
+├── test_data/            # Sample vulnerabilities
+└── venv/                 # Project environment
+
+~/shared-olmo-models/     # Shared across projects
+├── base/                 # Base models
+└── fine-tuned/           # Fine-tuned models (future)
+```
 
 ### Sharing Philosophy
-**🎯 What Gets Shared (High-Value, Reusable)**:
-- **Base Models**: `~/shared-olmo-models/base/` - OLMo-2-1B variants reused across projects
-- **Fine-tuned Models**: `~/shared-olmo-models/fine-tuned/` - Project-specific models (future)
-- **Training Datasets**: Published to HuggingFace for community benefit
-- **Source Code**: All processing scripts in git (fully portable)
 
-**🏠 What Stays Local (Project-Specific, Temporary)**:
-- **Raw Security Artifacts** (`security-ai-analysis/data/`): Project-specific GitHub Actions artifacts
-- **Intermediate Processing** (`security-ai-analysis/results/`): Work-in-progress before final datasets
-- **Virtual Environment** (`security-ai-analysis/venv/`): Project-specific dependencies
+**Shared Across Projects** (High-Value, Reusable):
+- AI models in `~/shared-olmo-models/`
+- Published datasets on HuggingFace
+- Source code (fully portable)
 
-### Configuration
-- **Models**: Configurable paths in `config/olmo-security-config.yaml`
-- **Project Structure**: Self-contained in `security-ai-analysis/`
-- **Cross-Platform**: No hardcoded paths, works on any development environment
+**Project-Specific** (Temporary Processing):
+- Raw security artifacts (`data/`)
+- Intermediate results (`results/`)  
+- Virtual environment (`venv/`)
 
-## 📊 Achievement Summary
+---
 
-- **440+ vulnerabilities** processed and analyzed
-- **20-30X performance improvement** with MLX-optimized Apple Silicon processing
-- **Portable architecture**: Configurable paths, shared models, self-contained system
-- **Complete automation**: Security scans → Analysis → Narratives → Training data → HuggingFace
-- **Production dataset**: Published at `hitoshura25/webauthn-security-vulnerabilities-olmo`
-- **Cross-project sharing**: Models and datasets reusable across different security domains
-- **Research impact**: Open dataset contributing to AI security research community
+## Getting Help
 
-## 📖 Documentation
+- **System Issues**: Check logs in `results/daemon_*.log`
+- **Model Problems**: Verify `~/shared-olmo-models/base/OLMo-2-1B-mlx-q4/` exists
+- **GitHub Access**: Ensure `gh auth status` shows authentication
+- **Performance**: Expected ~0.8 seconds per vulnerability on Apple Silicon
 
-Complete documentation available at:
-- **Main Project**: `docs/improvements/completed/ai-security-dataset-research.md`
-- **Technical Implementation**: `docs/improvements/completed/ai-security-dataset-research-technical-implementation-plan.md`
-
-The system is ready for:
-1. **OLMo Model Fine-tuning** using the published dataset
-2. **Research Publication** of methodology and results
-3. **Multi-project Expansion** to other security repositories
-4. **CI/CD Integration** for automated security remediation
+**Production Dataset**: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo

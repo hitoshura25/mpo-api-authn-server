@@ -3,7 +3,7 @@
 ## Current Work (In Progress)
 
 ### Active Tasks
-- **AI Security Dataset Research Initiative**: Comprehensive research project leveraging our WebAuthn security findings (8 FOSS tools, 103 Semgrep findings, 1 Dependabot alert, ZAP analysis) to contribute to AI2/OLMo and advance AI security capabilities. Multi-model evaluation framework for security explanation quality, remediation guidance, and safety assessment. See `docs/improvements/planned/ai-security-dataset-research.md` for complete research plan.
+- **AI Security Dataset Research Initiative**: ✅ **REPAIRED AND OPERATIONAL (September 7, 2025)** - System damage from cleanup has been fixed. Complete 4-phase pipeline now working: LaunchAgent polling → MLX analysis → narrativization → fine-tuning → production upload to `hitoshura25/webauthn-security-vulnerabilities-olmo`. **CRITICAL**: Read `security-ai-analysis/CRITICAL_SYSTEM_ARCHITECTURE.md` BEFORE making ANY changes to prevent future breakage.
 
 ### Completed Major Refactors
 - **✅ FOSS Security Implementation (2025-08-30)**: Replaced AI-dependent security with 8 professional FOSS tools. 100% elimination of AI API costs, enhanced security coverage with 974 dependencies secured.
@@ -105,6 +105,29 @@ This project uses a **hybrid architecture** combining Gradle multi-module build 
 - [ ] **State Documentation Source**: "Based on [official docs URL]..."
 - [ ] **Confirm All Parameters**: "Verified parameters X, Y, Z exist in official docs"
 - [ ] **No Assumptions Made**: "All syntax confirmed against official examples"
+
+#### **🚨 CRITICAL: SUBAGENT VALIDATION PROTOCOL**
+**BEFORE using Task tool with subagents, ALWAYS include explicit validation instructions:**
+
+```
+MANDATORY VALIDATION REQUIREMENT:
+- Do NOT generate any code without validating syntax against official documentation
+- ALWAYS use WebFetch to verify API calls, parameters, and integration patterns  
+- Mark any unvalidated components with ❌ warnings
+- Only include code that has been confirmed against official sources
+- If documentation is unclear, mark as "REQUIRES VALIDATION" instead of assuming
+```
+
+#### **🔍 VALIDATION EVIDENCE REQUIREMENT**
+**Every code block MUST include validation evidence:**
+```python
+# ✅ VALIDATED: Based on GitHub CLI official docs
+# https://cli.github.com/manual/gh_run_download
+gh run download <run-id> --pattern "*security*"
+
+# ❌ UNVALIDATED: Requires research against OLMo documentation
+# model = OLMoModel.from_pretrained("allenai/OLMo-1B")
+```
 
 ### **🚨 VIOLATION CONSEQUENCES**
 **If you proceed without completing ALL validation steps:**
@@ -237,6 +260,52 @@ with:
 - **Even then, confirm**: Ask for commit message and get explicit confirmation
 
 **VIOLATION**: Automatically committing changes without user approval breaks user workflow and removes their control over the development process.
+
+### 🚨 CRITICAL: Root Cause Investigation Before Fallback Solutions
+
+**MANDATORY**: NEVER implement fallback solutions or workarounds without explicit user approval. ALWAYS prioritize identifying and fixing root causes.
+
+#### **Debugging Protocol for Environment-Specific Issues:**
+
+**STEP 1: Environment Comparison** 
+- [ ] **Document Working Environment**: Capture exact versions, platform details, system specs
+- [ ] **Document Failing Environment**: Capture identical information from failing environment  
+- [ ] **Identify Differences**: Compare library versions, memory limits, CPU architecture
+- [ ] **Version Pinning**: Pin dependencies to match working environment exactly
+
+**STEP 2: Enhanced Diagnostics Implementation**
+- [ ] **Add Comprehensive Logging**: Environment details, memory usage, system information
+- [ ] **Model Integrity Checks**: Validate model loading at each step with detailed error reporting
+- [ ] **Progressive Failure Isolation**: Identify exact failure point (tokenizer vs model vs generation)
+- [ ] **Stack Trace Capture**: Full exception details with context information
+
+**STEP 3: Root Cause Analysis Process**
+- [ ] **Test Locally First**: Reproduce issue in controlled local environment
+- [ ] **Isolate Variables**: Test individual components (tokenizer only, model only, etc.)
+- [ ] **Memory Profiling**: Monitor memory usage patterns during failure
+- [ ] **Library Compatibility**: Test different dependency versions systematically
+
+**STEP 4: User Approval Required**
+- [ ] **Present Findings**: Document root cause investigation results
+- [ ] **Propose Solutions**: Primary fix vs temporary workaround options
+- [ ] **Get Explicit Approval**: User decides between debugging further or implementing fallback
+- [ ] **Document Decision**: Record rationale for chosen approach in CLAUDE.md
+
+#### **Recent Example: OLMo GitHub Actions Failure (2025-09-05)**
+**Issue**: `'NoneType' object has no attribute 'size'` errors in GitHub Actions, working perfectly locally
+**Wrong Approach**: ❌ Auto-implement fallback mode without user approval  
+**Correct Approach**: ✅ Version pinning, enhanced diagnostics, progressive failure isolation
+**Root Cause Identified**: OLMo `model.generate()` hangs indefinitely in GitHub Actions environment
+**Solution**: Signal-based timeout (60s) around `model.generate()` with automatic template fallback
+**Status**: ✅ Resolved - Process no longer hangs, continues with template analysis on timeout
+
+#### **Why This Protocol Matters:**
+- **Problem Resolution**: Fixes underlying issues rather than masking them
+- **User Control**: Maintains user decision-making authority over architecture choices  
+- **Code Quality**: Prevents accumulation of unexplained workarounds
+- **Learning**: Builds understanding of system behavior and failure patterns
+
+**VIOLATION**: Implementing fallbacks or workarounds without explicit user approval reduces code quality and removes user control over technical decisions.
 
 ## Critical Development Reminders
 

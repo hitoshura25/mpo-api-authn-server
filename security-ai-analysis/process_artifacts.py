@@ -11,6 +11,8 @@ from datetime import datetime
 import zipfile
 import shutil
 import subprocess
+import random
+from typing import List, Dict, Tuple
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -22,6 +24,9 @@ from parsers.semgrep_parser import parse_semgrep_json
 from parsers.osv_parser import parse_osv_json
 from parsers.zap_parser import parse_zap_json
 from analysis.olmo_analyzer import OLMoSecurityAnalyzer
+from config_manager import OLMoSecurityConfig
+import argparse
+import logging
 
 
 def extract_artifacts(zip_dir: str, output_dir: str):
@@ -104,6 +109,301 @@ def find_security_files(directory: str):
     return scan_files
 
 
+def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple[List, Dict]:
+    """
+    Enhanced processing with OLMo-2-1B support and improved error handling.
+    """
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+    
+    # Initialize OLMo analyzer with enhanced configuration
+    print(f"\\n🤖 Initializing {args.model_name} Security Analyzer...")
+    print(f"   Branch: {args.branch}")
+    print(f"   Commit: {args.commit}")
+    
+    try:
+        # Enhanced analyzer configuration for OLMo-2-1B
+        analyzer = OLMoSecurityAnalyzer(
+            model_name=args.model_name
+        )
+        print("✅ OLMo analyzer initialized successfully", flush=True)
+    except Exception as e:
+        print(f"❌ Failed to initialize OLMo analyzer: {e}")
+        return [], {}
+    
+    all_vulnerabilities = []
+    
+    # Process each scan type with enhanced logging
+    print(f"\\n📂 Starting vulnerability parsing from {len(scan_files)} scan types...", flush=True)
+    for scan_type, files in scan_files.items():
+        if not files:
+            continue
+            
+        print(f"\\n📊 Processing {scan_type} scans ({len(files)} files)...", flush=True)
+        
+        for file_index, file_path in enumerate(files, 1):
+            print(f"  [{file_index}/{len(files)}] Processing {Path(file_path).name}...", flush=True)
+            
+            try:
+                # Parse based on type
+                if scan_type == 'trivy':
+                    vulns = parse_trivy_json(file_path)
+                elif scan_type == 'checkov':
+                    if file_path.endswith('.sarif'):
+                        vulns = parse_sarif_json(file_path)
+                    else:
+                        vulns = parse_checkov_json(file_path)
+                elif scan_type == 'semgrep':
+                    vulns = parse_semgrep_json(file_path)
+                elif scan_type == 'osv':
+                    vulns = parse_osv_json(file_path)
+                elif scan_type == 'sarif':
+                    vulns = parse_sarif_json(file_path)
+                elif scan_type == 'zap':
+                    vulns = parse_zap_json(file_path)
+                else:
+                    continue
+                
+                if vulns:
+                    print(f"    Found {len(vulns)} vulnerabilities")
+                    all_vulnerabilities.extend(vulns)
+                else:
+                    print(f"    No vulnerabilities found")
+                    
+            except Exception as e:
+                print(f"    ❌ Error processing file: {e}")
+    
+    # Enhanced analysis with OLMo-2-1B
+    if all_vulnerabilities:
+        print(f"\\n🔍 Starting analysis of {len(all_vulnerabilities)} total vulnerabilities with {args.model_name}...", flush=True)
+        
+        # Process ALL vulnerabilities in batches with enhanced batch size for OLMo-2-1B
+        batch_size = 30 if "OLMo-2" in args.model_name else 20  # Larger batches for OLMo-2
+        results = []
+        
+        print(f"📊 Will process {len(all_vulnerabilities)} vulnerabilities in batches of {batch_size}", flush=True)
+        total_batches = (len(all_vulnerabilities) + batch_size - 1) // batch_size
+        print(f"📊 Total batches needed: {total_batches}", flush=True)
+        
+        for i in range(0, len(all_vulnerabilities), batch_size):
+            batch = all_vulnerabilities[i:i+batch_size]
+            batch_end = min(i+batch_size, len(all_vulnerabilities))
+            batch_num = i//batch_size + 1
+            
+            print(f"\\n🔄 Starting batch {batch_num}/{total_batches}: vulnerabilities {i+1}-{batch_end} of {len(all_vulnerabilities)}", flush=True)
+            print(f"   Batch size: {len(batch)} vulnerabilities", flush=True)
+            print(f"   Using {args.model_name} with enhanced context length", flush=True)
+            
+            try:
+                batch_results = analyzer.batch_analyze(
+                    batch,
+                    max_items=len(batch)
+                )
+                print(f"   ✅ Batch {batch_num} completed, got {len(batch_results)} results", flush=True)
+                results.extend(batch_results)
+            except Exception as e:
+                print(f"   ❌ Batch {batch_num} failed: {e}", flush=True)
+                continue
+            
+            # Optional: Add a small delay between batches to avoid overloading
+            if i + batch_size < len(all_vulnerabilities):
+                print("  Preparing next batch...")
+        
+        # Generate enhanced summary report
+        summary = analyzer.generate_summary_report(results)
+        summary['model_used'] = args.model_name
+        summary['branch'] = args.branch
+        summary['commit'] = args.commit
+        summary['analysis_timestamp'] = datetime.now().isoformat()
+        
+        # Save results with enhanced metadata
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        # Save detailed results
+        results_file = output_path / f"olmo_analysis_results_{timestamp}.json"
+        with open(results_file, 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f"\\n💾 Detailed results saved to: {results_file}")
+        
+        # Save summary
+        summary_file = output_path / f"olmo_analysis_summary_{timestamp}.json"
+        with open(summary_file, 'w') as f:
+            json.dump(summary, f, indent=2)
+        print(f"💾 Summary saved to: {summary_file}")
+        
+        
+        # Print enhanced summary
+        print("\\n📈 Analysis Summary:")
+        print(f"  Model Used: {summary.get('model_used', 'Unknown')}")
+        print(f"  Total Analyzed: {summary['total_analyzed']}")
+        print(f"  Successful: {summary['successful']}")
+        print(f"  Failed: {summary['failed']}")
+        print(f"  Branch: {summary.get('branch', 'Unknown')}")
+        print(f"  Commit: {summary.get('commit', 'Unknown')[:8]}...")
+        
+        if summary['by_severity']:
+            print("\\n  By Severity:")
+            for sev, count in summary['by_severity'].items():
+                print(f"    {sev}: {count}")
+        
+        if summary['by_tool']:
+            print("\\n  By Tool:")
+            for tool, count in summary['by_tool'].items():
+                print(f"    {tool}: {count}")
+        
+        # **Phase 2: Narrativization Integration**
+        print("\\n" + "="*60)
+        print("🎯 Phase 2: Creating Rich Security Narratives")
+        print("="*60)
+        
+        try:
+            from create_narrativized_dataset import SecurityNarrativizer
+            
+            narrativized_results = []
+            narrativizer = SecurityNarrativizer()
+            
+            print(f"📝 Creating narratives for {len(results)} analysis results...")
+            
+            for item in results:
+                if item.get('status') == 'success':
+                    vuln_data = item.get('vulnerability', {})
+                    
+                    # Create narrativized version
+                    try:
+                        narrative = narrativizer.narrativize_vulnerability(vuln_data)
+                        
+                        narrativized_item = {
+                            'vulnerability_id': vuln_data.get('id', 'unknown'),
+                            'original_analysis': item.get('analysis', ''),
+                            'narrative': narrative,
+                            'created_at': timestamp
+                        }
+                        
+                        narrativized_results.append(narrativized_item)
+                        
+                    except Exception as e:
+                        print(f"  ⚠️ Failed to create narrative for {vuln_data.get('id', 'unknown')}: {e}")
+            
+            # Save narrativized dataset
+            narrativized_file = output_path / f"narrativized_dataset_{timestamp}.json"
+            with open(narrativized_file, 'w') as f:
+                json.dump(narrativized_results, f, indent=2)
+            print(f"✅ Narrativized dataset saved to: {narrativized_file}")
+            print(f"📊 Created {len(narrativized_results)} narratives")
+            
+            # **Phase 3: Fine-tuning Dataset Preparation**
+            print("\\n" + "="*60)
+            print("🚀 Phase 3: Preparing Fine-Tuning Dataset")  
+            print("="*60)
+            
+            if narrativized_results:
+                print(f"📚 Preparing fine-tuning dataset from {len(narrativized_results)} narratives...")
+                
+                training_pairs = []
+                
+                for item in narrativized_results:
+                    # Create training pair
+                    vulnerability_info = f"Vulnerability ID: {item['vulnerability_id']}"
+                    
+                    training_pair = {
+                        'prompt': f"Analyze this security vulnerability and provide remediation guidance:\\n\\n{vulnerability_info}",
+                        'completion': item['narrative'],
+                        'metadata': {
+                            'vulnerability_id': item['vulnerability_id'],
+                            'created_at': timestamp
+                        }
+                    }
+                    
+                    training_pairs.append(training_pair)
+                
+                # Split into training and validation sets (80/20)
+                import random
+                random.shuffle(training_pairs)
+                split_point = int(len(training_pairs) * 0.8)
+                train_data = training_pairs[:split_point]
+                val_data = training_pairs[split_point:]
+                
+                # Save training set  
+                train_file = output_path / f"train_{timestamp}.jsonl"
+                with open(train_file, 'w') as f:
+                    for item in train_data:
+                        f.write(json.dumps(item) + '\\n')
+                
+                # Save validation set
+                val_file = output_path / f"validation_{timestamp}.jsonl"
+                with open(val_file, 'w') as f:
+                    for item in val_data:
+                        f.write(json.dumps(item) + '\\n')
+                
+                # Create dataset info file
+                dataset_info = {
+                    'created_at': timestamp,
+                    'total_examples': len(training_pairs),
+                    'train_examples': len(train_data), 
+                    'validation_examples': len(val_data),
+                    'source_vulnerabilities': len(narrativized_results)
+                }
+                
+                info_file = output_path / f"dataset_info_{timestamp}.json"
+                with open(info_file, 'w') as f:
+                    json.dump(dataset_info, f, indent=2)
+                
+                print(f"✅ Fine-tuning dataset prepared:")
+                print(f"  📚 Training examples: {len(train_data)}")
+                print(f"  📖 Validation examples: {len(val_data)}") 
+                print(f"  💾 Files saved:")
+                print(f"    - {train_file}")
+                print(f"    - {val_file}")
+                print(f"    - {info_file}")
+                
+                # **Phase 4: Production Dataset Upload**
+                print("\\n" + "="*60)
+                print("🚀 Phase 4: Uploading to Production HuggingFace Dataset")
+                print("="*60)
+                
+                try:
+                    from datasets import Dataset
+                    from huggingface_hub import HfApi
+                    
+                    print(f"📤 Uploading {len(training_pairs)} training pairs to production dataset...")
+                    print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
+                    
+                    # Create HuggingFace Dataset from training pairs
+                    dataset = Dataset.from_list(training_pairs)
+                    
+                    # Upload to production dataset (PUBLIC)
+                    dataset.push_to_hub(
+                        repo_id="hitoshura25/webauthn-security-vulnerabilities-olmo",
+                        private=False,  # PUBLIC dataset for research community
+                        token=True      # Use saved HuggingFace token
+                    )
+                    
+                    print(f"✅ SUCCESS: Production dataset updated!")
+                    print(f"🔗 Dataset URL: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo")
+                    print(f"📊 Uploaded {len(training_pairs)} training examples")
+                    
+                except ImportError as e:
+                    print(f"⚠️ HuggingFace libraries not available for upload: {e}")
+                    print("   Install with: pip install datasets huggingface_hub")
+                except Exception as e:
+                    print(f"❌ Production dataset upload failed: {e}")
+                    print(f"   Training data saved locally for manual upload if needed")
+                
+            else:
+                print("⚠️ No narrativized results available for fine-tuning dataset preparation")
+        
+        except ImportError as e:
+            print(f"⚠️ Narrativization module not available: {e}")
+            print("   Phase 2 and Phase 3 will be skipped")
+        except Exception as e:
+            print(f"❌ Error in Phase 2/3: {e}")
+        
+        return results, summary
+    else:
+        print("\\n⚠️ No vulnerabilities found to analyze")
+        return [], {}
+
+
 def process_all_scans(scan_files: dict, output_dir: str):
     """
     Process all found security scan files with OLMo
@@ -114,18 +414,20 @@ def process_all_scans(scan_files: dict, output_dir: str):
     # Initialize OLMo analyzer
     print("\n🤖 Initializing OLMo Security Analyzer...")
     analyzer = OLMoSecurityAnalyzer()
+    print("✅ OLMo analyzer initialized successfully", flush=True)
     
     all_vulnerabilities = []
     
     # Process each scan type
+    print(f"\n📂 Starting vulnerability parsing from {len(scan_files)} scan types...", flush=True)
     for scan_type, files in scan_files.items():
         if not files:
             continue
             
-        print(f"\n📊 Processing {scan_type} scans...")
+        print(f"\n📊 Processing {scan_type} scans ({len(files)} files)...", flush=True)
         
-        for file_path in files:
-            print(f"  Processing {Path(file_path).name}...")
+        for file_index, file_path in enumerate(files, 1):
+            print(f"  [{file_index}/{len(files)}] Processing {Path(file_path).name}...", flush=True)
             
             try:
                 # Parse based on type
@@ -158,21 +460,30 @@ def process_all_scans(scan_files: dict, output_dir: str):
     
     # Analyze with OLMo
     if all_vulnerabilities:
-        print(f"\n🔍 Analyzing {len(all_vulnerabilities)} total vulnerabilities with OLMo...")
+        print(f"\n🔍 Starting analysis of {len(all_vulnerabilities)} total vulnerabilities with OLMo...", flush=True)
         
         # Process ALL vulnerabilities in batches
         batch_size = 20  # Process 20 at a time for memory efficiency
         results = []
         
+        print(f"📊 Will process {len(all_vulnerabilities)} vulnerabilities in batches of {batch_size}", flush=True)
+        total_batches = (len(all_vulnerabilities) + batch_size - 1) // batch_size
+        print(f"📊 Total batches needed: {total_batches}", flush=True)
+        
         for i in range(0, len(all_vulnerabilities), batch_size):
             batch = all_vulnerabilities[i:i+batch_size]
             batch_end = min(i+batch_size, len(all_vulnerabilities))
-            print(f"\n  Processing batch {i//batch_size + 1}: vulnerabilities {i+1}-{batch_end} of {len(all_vulnerabilities)}")
+            batch_num = i//batch_size + 1
+            
+            print(f"\n🔄 Starting batch {batch_num}/{total_batches}: vulnerabilities {i+1}-{batch_end} of {len(all_vulnerabilities)}", flush=True)
+            print(f"   Batch size: {len(batch)} vulnerabilities", flush=True)
+            print(f"   Calling analyzer.batch_analyze()...", flush=True)
             
             batch_results = analyzer.batch_analyze(
                 batch,
                 max_items=len(batch)
             )
+            print(f"   ✅ Batch {batch_num} completed, got {len(batch_results)} results", flush=True)
             results.extend(batch_results)
             
             # Optional: Add a small delay between batches to avoid overloading
@@ -212,6 +523,152 @@ def process_all_scans(scan_files: dict, output_dir: str):
             print("\n  By Tool:")
             for tool, count in summary['by_tool'].items():
                 print(f"    {tool}: {count}")
+        
+        # **Phase 2: Narrativization Integration**
+        print("\n" + "="*60)
+        print("🎯 Phase 2: Creating Rich Security Narratives")
+        print("="*60)
+        
+        try:
+            from create_narrativized_dataset import SecurityNarrativizer
+            
+            narrativized_results = []
+            narrativizer = SecurityNarrativizer()
+            
+            print(f"📝 Creating narratives for {len(results)} analysis results...")
+            
+            for item in results:
+                if item.get('status') == 'success':
+                    vuln_data = item.get('vulnerability', {})
+                    
+                    # Create narrativized version
+                    try:
+                        narrative = narrativizer.narrativize_vulnerability(vuln_data)
+                        
+                        narrativized_item = {
+                            'vulnerability_id': vuln_data.get('id', 'unknown'),
+                            'original_analysis': item.get('analysis', ''),
+                            'narrative': narrative,
+                            'created_at': timestamp
+                        }
+                        
+                        narrativized_results.append(narrativized_item)
+                        
+                    except Exception as e:
+                        print(f"  ⚠️ Failed to create narrative for {vuln_data.get('id', 'unknown')}: {e}")
+            
+            # Save narrativized dataset
+            narrativized_file = output_path / f"narrativized_dataset_{timestamp}.json"
+            with open(narrativized_file, 'w') as f:
+                json.dump(narrativized_results, f, indent=2)
+            print(f"✅ Narrativized dataset saved to: {narrativized_file}")
+            print(f"📊 Created {len(narrativized_results)} narratives")
+            
+            # **Phase 3: Fine-tuning Dataset Preparation**
+            print("\n" + "="*60)
+            print("🚀 Phase 3: Preparing Fine-Tuning Dataset")  
+            print("="*60)
+            
+            if narrativized_results:
+                print(f"📚 Preparing fine-tuning dataset from {len(narrativized_results)} narratives...")
+                
+                training_pairs = []
+                
+                for item in narrativized_results:
+                    # Create training pair
+                    vulnerability_info = f"Vulnerability ID: {item['vulnerability_id']}"
+                    
+                    training_pair = {
+                        'prompt': f"Analyze this security vulnerability and provide remediation guidance:\n\n{vulnerability_info}",
+                        'completion': item['narrative'],
+                        'metadata': {
+                            'vulnerability_id': item['vulnerability_id'],
+                            'created_at': timestamp
+                        }
+                    }
+                    
+                    training_pairs.append(training_pair)
+                
+                # Split into training and validation sets (80/20)
+                random.shuffle(training_pairs)
+                split_point = int(len(training_pairs) * 0.8)
+                train_data = training_pairs[:split_point]
+                val_data = training_pairs[split_point:]
+                
+                # Save training set  
+                train_file = output_path / f"train_{timestamp}.jsonl"
+                with open(train_file, 'w') as f:
+                    for item in train_data:
+                        f.write(json.dumps(item) + '\n')
+                
+                # Save validation set
+                val_file = output_path / f"validation_{timestamp}.jsonl"
+                with open(val_file, 'w') as f:
+                    for item in val_data:
+                        f.write(json.dumps(item) + '\n')
+                
+                # Create dataset info file
+                dataset_info = {
+                    'created_at': timestamp,
+                    'total_examples': len(training_pairs),
+                    'train_examples': len(train_data), 
+                    'validation_examples': len(val_data),
+                    'source_vulnerabilities': len(narrativized_results)
+                }
+                
+                info_file = output_path / f"dataset_info_{timestamp}.json"
+                with open(info_file, 'w') as f:
+                    json.dump(dataset_info, f, indent=2)
+                
+                print(f"✅ Fine-tuning dataset prepared:")
+                print(f"  📚 Training examples: {len(train_data)}")
+                print(f"  📖 Validation examples: {len(val_data)}") 
+                print(f"  💾 Files saved:")
+                print(f"    - {train_file}")
+                print(f"    - {val_file}")
+                print(f"    - {info_file}")
+                
+                # **Phase 4: Production Dataset Upload**
+                print("\n" + "="*60)
+                print("🚀 Phase 4: Uploading to Production HuggingFace Dataset")
+                print("="*60)
+                
+                try:
+                    from datasets import Dataset
+                    from huggingface_hub import HfApi
+                    
+                    print(f"📤 Uploading {len(training_pairs)} training pairs to production dataset...")
+                    print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
+                    
+                    # Create HuggingFace Dataset from training pairs
+                    dataset = Dataset.from_list(training_pairs)
+                    
+                    # Upload to production dataset (PUBLIC)
+                    dataset.push_to_hub(
+                        repo_id="hitoshura25/webauthn-security-vulnerabilities-olmo",
+                        private=False,  # PUBLIC dataset for research community
+                        token=True      # Use saved HuggingFace token
+                    )
+                    
+                    print(f"✅ SUCCESS: Production dataset updated!")
+                    print(f"🔗 Dataset URL: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo")
+                    print(f"📊 Uploaded {len(training_pairs)} training examples")
+                    
+                except ImportError as e:
+                    print(f"⚠️ HuggingFace libraries not available for upload: {e}")
+                    print("   Install with: pip install datasets huggingface_hub")
+                except Exception as e:
+                    print(f"❌ Production dataset upload failed: {e}")
+                    print(f"   Training data saved locally for manual upload if needed")
+                
+            else:
+                print("⚠️ No narrativized results available for fine-tuning dataset preparation")
+        
+        except ImportError as e:
+            print(f"⚠️ Narrativization module not available: {e}")
+            print("   Phase 2 and Phase 3 will be skipped")
+        except Exception as e:
+            print(f"❌ Error in Phase 2/3: {e}")
         
         return results, summary
     else:
@@ -260,19 +717,19 @@ def download_latest_artifacts(output_dir: str) -> Path | None:
         default_branch = branch_proc.stdout.strip()
         print(f"    ✅ Default branch is '{default_branch}'")
 
-        # 5. Get the latest successful run ID on the default branch
-        print(f"  Finding latest successful run on branch '{default_branch}'...")
-        # Note: This finds the latest run across ALL workflows.
-        # You might want to add `--workflow <workflow_file.yml>` to filter.
+        # 5. Get the latest successful run ID on the default branch from Main CI/CD workflow
+        print(f"  Finding latest successful Main CI/CD run on branch '{default_branch}'...")
+        # Filter specifically for the Main CI/CD workflow that generates security artifacts
         run_id_proc = subprocess.run(
-            ["gh", "run", "list", "-R", repo, "-b", default_branch, "--status", "success", "--limit", "1", "--json", "databaseId", "-q", ".[0].databaseId"],
+            ["gh", "run", "list", "-R", repo, "-b", default_branch, "--workflow", "main-ci-cd.yml", "--status", "success", "--limit", "1", "--json", "databaseId", "-q", ".[0].databaseId"],
             capture_output=True, text=True, check=True
         )
         run_id = run_id_proc.stdout.strip()
         if not run_id:
-            print(f"    ❌ No successful runs found on branch '{default_branch}'.")
+            print(f"    ❌ No successful Main CI/CD runs found on branch '{default_branch}'.")
+            print(f"    💡 Make sure the Main CI/CD pipeline has run successfully on main branch.")
             return None
-        print(f"    ✅ Found run ID: {run_id}")
+        print(f"    ✅ Found Main CI/CD run ID: {run_id}")
 
         # 6. Download artifacts for that run
         print(f"  Downloading artifacts for run {run_id} to {output_path}...")
@@ -319,19 +776,66 @@ def main():
     """
     Main entry point for processing security artifacts
     """
+    # Initialize configuration for default model path
+    config = OLMoSecurityConfig()
+    
+    # Get default model path from configuration, with fallback
+    try:
+        default_model = str(config.get_base_model_path())
+    except FileNotFoundError:
+        default_model = None
+        print(f"⚠️  Default model not found at {config.base_models_dir}/{config.default_base_model}")
+        print("🔄 Will use fallback mode if no model specified")
+    
+    parser = argparse.ArgumentParser(
+        description="Process security artifacts with OLMo analysis",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    
+    # Directory configuration
+    parser.add_argument("--artifacts-dir", type=Path, default="data/security_artifacts",
+                       help="Directory for security artifacts (default: data/security_artifacts)")
+    parser.add_argument("--output-dir", type=Path, default="results",
+                       help="Output directory for analysis results (default: results)")
+    parser.add_argument("--model-name", type=str, default=default_model,
+                       help="OLMo-2-1B model to use for analysis (defaults to configured model)")
+    parser.add_argument("--branch", type=str, default="unknown",
+                       help="Git branch being analyzed")
+    parser.add_argument("--commit", type=str, default="unknown", 
+                       help="Git commit SHA being analyzed")
+    
+    args = parser.parse_args()
+    
+    # Setup logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    
     print("=" * 60)
-    print("🔒 WebAuthn Security Analysis with OLMo")
+    print(f"🔒 WebAuthn Security Analysis with {args.model_name}")
+    print(f"Artifacts: {args.artifacts_dir}")
+    print(f"Output: {args.output_dir}")
     print("=" * 60)
 
-    # Download latest artifacts from GitHub Actions
-    artifact_dir = "data/security_artifacts"
-    downloaded_path = download_latest_artifacts(artifact_dir)
+    # Check if artifacts directory exists and has content
+    artifacts_dir = Path(args.artifacts_dir)
+    
+    if artifacts_dir.exists() and any(artifacts_dir.iterdir()):
+        # Directory exists and has content - process existing artifacts
+        print(f"📂 Using existing artifacts directory: {artifacts_dir}")
+        downloaded_path = artifacts_dir
+        
+    else:
+        # Directory is empty/missing - download latest artifacts there
+        print(f"📥 Downloading latest artifacts to: {artifacts_dir}")
+        downloaded_path = download_latest_artifacts(str(artifacts_dir))
 
-    if not downloaded_path:
-        print("\n❌ Failed to download artifacts. Exiting.")
-        return 1
+        if not downloaded_path:
+            print("\n❌ Failed to download artifacts. Exiting.")
+            return 1
 
-    print(f"\n📂 Using artifact directory: {downloaded_path}")
+        print(f"✅ Downloaded artifacts to: {downloaded_path}")
 
     # Check for zip files (gh run download creates zips)
     zip_files = list(downloaded_path.glob("*.zip"))
@@ -349,8 +853,10 @@ def main():
     scan_files = find_security_files(search_dir)
 
     # Process all scans
-    output_dir = "data/olmo_analysis_results"
-    results, summary = process_all_scans(scan_files, output_dir)
+    output_dir = str(args.output_dir)
+    
+    # Enhanced processing with OLMo-2-1B
+    results, summary = process_all_scans_enhanced(scan_files, output_dir, args)
 
     print("\n" + "=" * 60)
     print("✅ Processing complete!")

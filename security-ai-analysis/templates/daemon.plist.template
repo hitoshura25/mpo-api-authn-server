@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.mpo.security-analysis.daemon</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>{{PROJECT_ROOT}}/security-ai-analysis/venv/bin/python3</string>
+        <string>{{PROJECT_ROOT}}/local-analysis/security_artifact_daemon.py</string>
+        <string>--repo</string>
+        <string>hitoshura25/mpo-api-authn-server</string>
+    </array>
+    
+    <key>WorkingDirectory</key>
+    <string>{{PROJECT_ROOT}}</string>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <true/>
+    
+    <key>StandardOutPath</key>
+    <string>{{PROJECT_ROOT}}/security-ai-analysis/results/daemon_stdout.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>{{PROJECT_ROOT}}/security-ai-analysis/results/daemon_stderr.log</string>
+    
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin</string>
+        <key>PYTHONPATH</key>
+        <string>{{PROJECT_ROOT}}/security-ai-analysis:{{PROJECT_ROOT}}</string>
+    </dict>
+    
+    <key>StartInterval</key>
+    <integer>300</integer>
+    
+    <key>ThrottleInterval</key>
+    <integer>10</integer>
+</dict>
+</plist>

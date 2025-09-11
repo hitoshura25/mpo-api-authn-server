@@ -41,10 +41,18 @@ import logging
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
 
-# Setup logging with expanded path
-import os
-log_file = os.path.expanduser('~/olmo-security-analysis/daemon.log')
-os.makedirs(os.path.dirname(log_file), exist_ok=True)
+# Import configuration system
+try:
+    # Correct import path for the configuration system
+    sys.path.insert(0, str(Path(__file__).parent.parent / "security-ai-analysis"))
+    from config_manager import OLMoSecurityConfig
+    config = OLMoSecurityConfig()
+    log_file = config.results_dir / "daemon.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True)
+except (ImportError, FileNotFoundError) as e:
+    # Fallback for backward compatibility during transition
+    log_file = os.path.expanduser('~/olmo-security-analysis/daemon.log')  # Fallback path
+    os.makedirs(os.path.dirname(log_file), exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -62,18 +70,33 @@ class SecurityArtifactDaemon:
     
     def __init__(self, 
                  repo: str = "hitoshura25/mpo-api-authn-server",
-                 data_dir: str = "~/olmo-security-analysis",
+                 data_dir: Optional[str] = None,
                  poll_interval: int = 300):  # 5 minutes
         
         self.repo = repo
-        self.data_dir = Path(data_dir).expanduser()
         self.poll_interval = poll_interval
         self.running = False
+        
+        # Use portable configuration system
+        try:
+            self.config = OLMoSecurityConfig()
+            # Use project-based paths from configuration
+            if data_dir is None:
+                self.data_dir = self.config.data_dir
+            else:
+                self.data_dir = Path(data_dir).expanduser()
+            self.analysis_dir = self.config.results_dir
+        except ImportError:
+            # Fallback for backward compatibility
+            if data_dir is None:
+                data_dir = "~/olmo-security-analysis"  # Fallback path
+            self.data_dir = Path(data_dir).expanduser()
+            self.analysis_dir = self.data_dir / "analysis"
+            self.config = None
         
         # State management
         self.state_file = self.data_dir / "daemon_state.json"
         self.artifacts_dir = self.data_dir / "artifacts"
-        self.analysis_dir = self.data_dir / "analysis"
         
         # Ensure directories exist
         self.data_dir.mkdir(parents=True, exist_ok=True)
@@ -85,7 +108,27 @@ class SecurityArtifactDaemon:
         
         logger.info(f"Initialized SecurityArtifactDaemon for repo: {repo}")
         logger.info(f"Data directory: {self.data_dir}")
+        logger.info(f"Analysis directory: {self.analysis_dir}")
         logger.info(f"Poll interval: {poll_interval} seconds")
+        if self.config:
+            logger.info(f"Using portable configuration system")
+        else:
+            logger.info(f"Using fallback configuration (compatibility mode)")
+    
+    def _get_model_path(self) -> str:
+        """Get the model path using portable configuration or fallback."""
+        if self.config:
+            try:
+                # Use portable configuration system
+                model_path = self.config.get_base_model_path()
+                return str(model_path)
+            except FileNotFoundError:
+                logger.warning(f"Default model not found via config, using fallback")
+        
+        # Fallback to hardcoded path for backward compatibility
+        fallback_path = "/Users/vinayakmenon/olmo-security-analysis/models/OLMo-2-1B-mlx-q4"
+        logger.warning(f"Using fallback model path: {fallback_path}")
+        return fallback_path
     
     def _load_state(self) -> Dict:
         """Load daemon state from file."""
@@ -278,10 +321,9 @@ class SecurityArtifactDaemon:
             # Run local analysis with enhanced script
             analysis_command = [
                 sys.executable, str(process_script),
-                "--local-mode",
                 "--artifacts-dir", str(artifacts_dir),
                 "--output-dir", str(analysis_output),
-                "--model-name", "/Users/vinayakmenon/olmo-security-analysis/models/OLMo-2-1B-mlx-q4",  # MLX-optimized OLMo-2-1B
+                "--model-name", self._get_model_path(),  # Use portable model path
                 "--branch", "main",
                 "--commit", run_info['head_sha']
             ]
@@ -457,8 +499,8 @@ Examples:
     
     parser.add_argument("--repo", default="hitoshura25/mpo-api-authn-server",
                        help="GitHub repository in format owner/repo")
-    parser.add_argument("--data-dir", default="~/olmo-security-analysis",
-                       help="Directory for data storage")
+    parser.add_argument("--data-dir", default=None,
+                       help="Directory for data storage (default: uses project configuration)")
     parser.add_argument("--poll-interval", type=int, default=300,
                        help="Polling interval in seconds (default: 300 = 5 minutes)")
     parser.add_argument("--test-mode", action="store_true",

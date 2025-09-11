@@ -13,26 +13,35 @@ except ImportError:
     import torch
     MLX_AVAILABLE = False
 
-from typing import Dict, List
+from typing import Dict, List, Optional
 import json
 import time
+import sys
+from pathlib import Path
+
+# Add parent directory to path for config manager import
+sys.path.append(str(Path(__file__).parent.parent))
+from config_manager import OLMoSecurityConfig
 
 
 class OLMoSecurityAnalyzer:
-    def __init__(self, model_name: str = "/Users/vinayakmenon/olmo-security-analysis/models/OLMo-2-1B-mlx-q4", fallback_mode: bool = False):
+    def __init__(self, model_name: Optional[str] = None):
         """
         Initialize OLMo-2 with MLX optimization for Apple Silicon
-        Default model path points to local MLX-optimized OLMo-2-0425-1B model
+        Uses configuration manager for portable model paths
         """
-        self.fallback_mode = fallback_mode
+        # Initialize configuration
+        self.config = OLMoSecurityConfig()
+        
+        # Use configured model path if not specified
+        if model_name is None:
+            # Fail-fast: Model must be available
+            model_name = str(self.config.get_base_model_path())
+        
         self.model = None
         self.tokenizer = None
         self.model_name = model_name
         self.mlx_optimized = False
-        
-        if fallback_mode:
-            print("🔄 Running in fallback mode - using template-based analysis only")
-            return
             
         print(f"🚀 Initializing MLX-Optimized OLMo-2 Security Analyzer...")
         print(f"   Model path: {model_name}")
@@ -41,18 +50,9 @@ class OLMoSecurityAnalyzer:
         # Environment debugging
         self._print_environment_info()
         
-        try:
-            self._load_model()
-            print("✅ OLMo-2 analyzer initialized successfully")
-            
-        except Exception as e:
-            print(f"❌ Failed to initialize OLMo-2 analyzer: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            print("🔄 Falling back to template-based analysis mode")
-            self.fallback_mode = True
-            self.model = None
-            self.tokenizer = None
+        # Fail-fast: No fallback mode, model must work
+        self._load_model()
+        print("✅ OLMo-2 analyzer initialized successfully")
     
     def _print_environment_info(self):
         """Print comprehensive environment debugging information"""
@@ -166,12 +166,11 @@ class OLMoSecurityAnalyzer:
         description = vulnerability.get('description', vulnerability.get('message', 'No description'))
         
         print(f"      analyze_vulnerability() called for {vuln_id}", flush=True)
-        print(f"      fallback_mode: {self.fallback_mode}, model is None: {self.model is None}", flush=True)
+        print(f"      model is None: {self.model is None}", flush=True)
         
-        # If in fallback mode or model failed, use template-based analysis
-        if self.fallback_mode or self.model is None:
-            print(f"      Using template-based analysis for {vuln_id}", flush=True)
-            return self._generate_template_analysis(vulnerability)
+        # Fail-fast: Model must be loaded and functional
+        if self.model is None:
+            raise RuntimeError(f"Model not loaded - cannot analyze {vuln_id}")
         
         print(f"      Using {'MLX-optimized' if self.mlx_optimized else 'transformers'} model for {vuln_id}", flush=True)
         

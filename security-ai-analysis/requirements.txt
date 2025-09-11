@@ -1,11 +1,14 @@
 # Core ML packages (pinned to actual working local versions)
 torch>=2.6.0           # OLMo compatibility requirement (local: 2.8.0)
-transformers==4.36.0   # Actual working version from local testing
+transformers>=4.39.3   # Required for mlx-lm compatibility
 accelerate>=0.24.0     # For efficient model loading
 datasets>=2.14.0       # For dataset handling
 
 # OLMo specific (required for OLMo model loading)
 git+https://github.com/allenai/OLMo.git  # AI2's official OLMo package
+
+# MLX support for Apple Silicon (automatic model download and conversion)
+mlx-lm>=0.20.0          # MLX language models with HuggingFace integration
 
 # Data processing (compatible versions)
 pyyaml>=6.0
@@ -23,6 +26,7 @@ tqdm>=4.65.0           # For progress bars
 sentencepiece>=0.1.99  # Some models need this
 protobuf>=4.20.0       # For some model formats
 tokenizers>=0.15.0     # Core tokenization library
+tiktoken>=0.5.0        # Required for OLMo tokenization
 
 # For Git integration (used in narrativizer)
 gitpython>=3.1.30      # For collecting git history fixes

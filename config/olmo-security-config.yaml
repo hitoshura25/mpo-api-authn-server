@@ -1,0 +1,29 @@
+# AI Security Analysis Configuration
+# 
+# This configuration supports portable deployment across different development
+# environments while maintaining optimal model sharing and project isolation.
+#
+# Architecture:
+# - External directories: Shareable across projects (models)
+# - Internal directories: Project-specific (data/, results/, venv/) - not configurable
+#
+# Environment Variable Overrides (for testing/CI):
+# - OLMO_BASE_MODELS_DIR: Override base_models_dir
+# - OLMO_FINE_TUNED_MODELS_DIR: Override fine_tuned_models_dir  
+# - OLMO_DEFAULT_BASE_MODEL: Override default_base_model
+
+# External model directories (shareable across projects)
+# These contain valuable, reusable AI model artifacts
+base_models_dir: "~/shared-olmo-models/base"
+fine_tuned_models_dir: "~/shared-olmo-models/fine-tuned"
+
+# Model configuration
+# Default model optimized for Apple Silicon with MLX
+default_base_model: "OLMo-2-1B-mlx-q4"
+
+# Note: Project directories are fixed within security-ai-analysis/:
+# - data/ : Raw security artifacts (JSON/SARIF from GitHub Actions) 
+# - results/ : Intermediate analysis before final dataset creation
+# - venv/ : Project-specific virtual environment
+# These are not configurable to maintain standard project layout and
+# proper separation of concerns (temporary processing vs valuable artifacts)

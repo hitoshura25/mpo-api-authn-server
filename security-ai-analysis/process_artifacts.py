@@ -24,6 +24,7 @@ from parsers.semgrep_parser import parse_semgrep_json
 from parsers.osv_parser import parse_osv_json
 from parsers.zap_parser import parse_zap_json
 from analysis.olmo_analyzer import OLMoSecurityAnalyzer
+from config_manager import OLMoSecurityConfig
 import argparse
 import logging
 
@@ -123,8 +124,7 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
     try:
         # Enhanced analyzer configuration for OLMo-2-1B
         analyzer = OLMoSecurityAnalyzer(
-            model_name=args.model_name,
-            fallback_mode=False
+            model_name=args.model_name
         )
         print("✅ OLMo analyzer initialized successfully", flush=True)
     except Exception as e:
@@ -776,20 +776,29 @@ def main():
     """
     Main entry point for processing security artifacts
     """
+    # Initialize configuration for default model path
+    config = OLMoSecurityConfig()
+    
+    # Get default model path from configuration, with fallback
+    try:
+        default_model = str(config.get_base_model_path())
+    except FileNotFoundError:
+        default_model = None
+        print(f"⚠️  Default model not found at {config.base_models_dir}/{config.default_base_model}")
+        print("🔄 Will use fallback mode if no model specified")
+    
     parser = argparse.ArgumentParser(
         description="Process security artifacts with OLMo analysis",
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     
-    # Mode selection
-    parser.add_argument("--local-mode", action="store_true",
-                       help="Run in local mode using provided artifacts directory")
-    parser.add_argument("--artifacts-dir", type=Path, 
-                       help="Directory containing downloaded artifacts (local mode)")
-    parser.add_argument("--output-dir", type=Path, 
-                       help="Output directory for analysis results")
-    parser.add_argument("--model-name", type=str, default="/Users/vinayakmenon/olmo-security-analysis/models/OLMo-2-1B-mlx-q4",
-                       help="OLMo-2-1B model to use for analysis (defaults to local MLX-optimized model)")
+    # Directory configuration
+    parser.add_argument("--artifacts-dir", type=Path, default="data/security_artifacts",
+                       help="Directory for security artifacts (default: data/security_artifacts)")
+    parser.add_argument("--output-dir", type=Path, default="results",
+                       help="Output directory for analysis results (default: results)")
+    parser.add_argument("--model-name", type=str, default=default_model,
+                       help="OLMo-2-1B model to use for analysis (defaults to configured model)")
     parser.add_argument("--branch", type=str, default="unknown",
                        help="Git branch being analyzed")
     parser.add_argument("--commit", type=str, default="unknown", 
@@ -805,32 +814,28 @@ def main():
     
     print("=" * 60)
     print(f"🔒 WebAuthn Security Analysis with {args.model_name}")
-    print(f"Mode: {'Local' if args.local_mode else 'GitHub Actions'}")
+    print(f"Artifacts: {args.artifacts_dir}")
+    print(f"Output: {args.output_dir}")
     print("=" * 60)
 
-    if args.local_mode:
-        # Local mode: use provided artifacts directory
-        if not args.artifacts_dir:
-            print("❌ --artifacts-dir required for local mode")
-            return 1
-            
-        if not args.artifacts_dir.exists():
-            print(f"❌ Artifacts directory does not exist: {args.artifacts_dir}")
-            return 1
-            
-        print(f"📂 Using local artifacts directory: {args.artifacts_dir}")
-        downloaded_path = args.artifacts_dir
+    # Check if artifacts directory exists and has content
+    artifacts_dir = Path(args.artifacts_dir)
+    
+    if artifacts_dir.exists() and any(artifacts_dir.iterdir()):
+        # Directory exists and has content - process existing artifacts
+        print(f"📂 Using existing artifacts directory: {artifacts_dir}")
+        downloaded_path = artifacts_dir
         
     else:
-        # GitHub Actions mode: download latest artifacts
-        artifact_dir = "data/security_artifacts"
-        downloaded_path = download_latest_artifacts(artifact_dir)
+        # Directory is empty/missing - download latest artifacts there
+        print(f"📥 Downloading latest artifacts to: {artifacts_dir}")
+        downloaded_path = download_latest_artifacts(str(artifacts_dir))
 
         if not downloaded_path:
             print("\n❌ Failed to download artifacts. Exiting.")
             return 1
 
-        print(f"\n📂 Using downloaded artifact directory: {downloaded_path}")
+        print(f"✅ Downloaded artifacts to: {downloaded_path}")
 
     # Check for zip files (gh run download creates zips)
     zip_files = list(downloaded_path.glob("*.zip"))
@@ -848,10 +853,7 @@ def main():
     scan_files = find_security_files(search_dir)
 
     # Process all scans
-    if args.output_dir:
-        output_dir = str(args.output_dir)
-    else:
-        output_dir = "data/olmo_analysis_results"
+    output_dir = str(args.output_dir)
     
     # Enhanced processing with OLMo-2-1B
     results, summary = process_all_scans_enhanced(scan_files, output_dir, args)

@@ -323,6 +323,36 @@ python3 security_artifact_daemon.py --repo "other-org/other-repo" --test-mode
 
 **`config_manager.py`** - Portable configuration system
 
+### Daemon Architecture
+
+The daemon system provides continuous automated processing through a multi-component architecture:
+
+#### Component Interaction Flow
+```
+LaunchAgent (macOS) → security_artifact_daemon.py → process_artifacts.py → Analysis Results
+      ↓                        ↓                          ↓                    ↓
+ Scheduled Run         GitHub Actions Poll        MLX-Optimized AI        HuggingFace Dataset
+ (Every 5 min)         (Download Artifacts)       (Generate Narratives)   (Research Publication)
+```
+
+#### Path Resolution Strategy
+**Working Directory**: `/Users/yourname/mpo-api-authn-server` (project root)
+- LaunchAgent sets this as working directory for consistent path resolution
+- All file operations relative to project root for portability
+- Enables operation across different user environments
+
+#### Data Flow Architecture
+1. **Download**: Raw artifacts → `data/artifacts/run_*/` (GitHub Actions structure preserved)
+2. **Processing**: Artifacts processed → `data/security_artifacts/` (standardized for analysis)  
+3. **Analysis**: MLX-optimized AI processing → `results/` (final outputs and datasets)
+
+**Why Multiple Directory Levels?**
+- **`data/artifacts/run_***`**: Raw downloads with audit trail
+- **`data/security_artifacts/`**: Processed artifacts ready for AI analysis
+- **`results/`**: Publication-ready analysis outputs and training datasets
+
+This separation enables debugging, flexibility, and maintains data lineage from source to publication.
+
 ### Directory Structure
 
 ```

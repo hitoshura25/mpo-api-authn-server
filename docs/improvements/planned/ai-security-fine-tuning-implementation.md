@@ -1,39 +1,32 @@
-# AI Security Fine-Tuning Implementation Plan - V2 (Flexible Integration)
+# AI Security Fine-Tuning Implementation Plan
 
 ## Executive Summary
 
-**✅ UPDATED SEPTEMBER 2025**: This document provides a comprehensive, test-driven implementation plan to add MLX fine-tuning capabilities to the AI Security Dataset Research Initiative. The plan builds upon the existing **5-phase operational pipeline** (Analysis → Narrativization → Dataset Creation → HuggingFace Upload → **Fine-tuning**) by implementing flexible dual integration for both manual testing and automated daemon execution.
+This document provides a comprehensive implementation plan to add MLX fine-tuning capabilities to the AI Security Dataset Research Initiative. The plan extends the existing 4-phase pipeline (Analysis → Narrativization → Dataset Creation → HuggingFace Upload) by adding **Phase 5 & 6: MLX Fine-Tuning and Model Sharing** with flexible integration modes for both manual testing and automated daemon execution.
 
-**🔄 CURRENT STATUS**: AI Security Portability Implementation is **✅ COMPLETE** - shared model architecture is operational at `~/shared-olmo-models/`.
+## System Architecture Overview
 
-**🎯 IMPLEMENTATION APPROACH**: Fine-tuning enabled by default with flexible opt-out:
-- **Default Behavior**: Fine-tuning runs automatically in all modes (maximizes research value)
-- **Manual Mode**: `process_artifacts.py` (fine-tuning enabled) or `process_artifacts.py --skip-fine-tuning` (opt-out)
-- **Automated Mode**: Daemon always fine-tunes (can be disabled via configuration for emergencies)
+### Target Pipeline (6 Phases)
+- **Phase 1**: Analysis → MLX-optimized OLMo-2-1B security analysis
+- **Phase 2**: Narrativization → Rich security explanations with remediation guidance  
+- **Phase 3**: Dataset Creation → Training/validation JSONL preparation (80/20 split)
+- **Phase 4**: HuggingFace Upload → Production dataset sharing
+- **Phase 5**: MLX Fine-Tuning → Domain-specific model training
+- **Phase 6**: Model Upload → Community-standard model sharing
+
+### Integration Architecture
+**🎯 INTEGRATION APPROACH**: Fine-tuning and model upload enabled by default with flexible opt-out:
+- **Default Behavior**: Both fine-tuning and model upload run automatically (maximizes research value + community contribution)
+- **Manual Mode**: `process_artifacts.py` (full pipeline) with opt-out flags `--skip-fine-tuning`, `--skip-model-upload`
+- **Automated Mode**: Daemon executes full pipeline with emergency config overrides
 - **Standalone Mode**: Direct `mlx_finetuning.py` execution for advanced use cases
 
-## Current System Analysis (✅ FULLY OPERATIONAL as of September 2025)
-
-### ✅ Complete Working Pipeline (5 Phases)
-- **Phase 1**: Analysis → MLX-optimized OLMo-2-1B security analysis (~0.8 sec/vulnerability)
-- **Phase 2**: Narrativization → Rich security explanations with remediation guidance
-- **Phase 3**: Dataset Creation → Training/validation JSONL preparation (80/20 split)
-- **Phase 4**: HuggingFace Upload → Live production dataset at `hitoshura25/webauthn-security-vulnerabilities-olmo`
-- **Phase 5**: **❌ MLX Fine-Tuning** → **THIS IS WHAT WE'RE IMPLEMENTING**
-
-### ✅ Operational Infrastructure
-- **MLX Optimization**: 214.6 tokens/sec on Apple Silicon (20-30X improvement) ✅
-- **Portable Configuration**: Shared models at `~/shared-olmo-models/base/` and `~/shared-olmo-models/fine-tuned/` ✅
-- **Daemon Automation**: LaunchAgent polling GitHub Actions every 5 minutes ✅
-- **Manual Testing**: Full manual execution capabilities via `process_artifacts.py` ✅
-- **Production Dataset**: Continuous updates to public HuggingFace research dataset ✅
-
-### 🎯 Implementation Target: Phase 5 Fine-Tuning Integration
-**Objective**: Add MLX-optimized fine-tuning as flexible Phase 5 with dual integration:
-- **Ready Dataset**: High-quality training/validation datasets already generated
-- **Ready Models**: OLMo-2-1B variants optimized for MLX available in shared directory
-- **Ready Infrastructure**: Configuration system, daemon, and manual execution paths operational
-- **Missing Component**: MLX fine-tuning execution with flexible integration modes
+### Infrastructure Requirements
+- **MLX Optimization**: Apple Silicon with MLX framework for 20-30X performance improvement
+- **Portable Configuration**: Shared models at `~/shared-olmo-models/base/` and `~/shared-olmo-models/fine-tuned/`
+- **Daemon Automation**: LaunchAgent integration for automated execution
+- **Manual Testing**: Full manual execution capabilities
+- **Community Standards**: HuggingFace model sharing with complete artifacts
 
 ## Architectural Decision: MLX-Native Fine-Tuning
 
@@ -1184,14 +1177,12 @@ echo "✅ Fine-Tuning performance benchmarking complete"
 - **Phase 4**: 2-3 hours (documentation & dependencies)
 - **Phase 5**: 4-5 hours (comprehensive integration & performance testing)
 
-## For Future Claude Sessions (CRITICAL CONTEXT)
-
-### ✅ CURRENT STATUS (September 2025)
-- **AI Security System**: ✅ **FULLY OPERATIONAL** - Complete 5-phase pipeline working
-- **Portability Implementation**: ✅ **COMPLETE** - Shared model architecture at `~/shared-olmo-models/`
-- **Daemon Automation**: ✅ **OPERATIONAL** - LaunchAgent polling every 5 minutes
-- **Production Dataset**: ✅ **LIVE** - `hitoshura25/webauthn-security-vulnerabilities-olmo`
-- **Fine-Tuning**: ❌ **MISSING** - This is the ONLY component needing implementation
+## System Architecture Context
+- **AI Security System**: Complete 4-phase pipeline (Analysis → Narrativization → Dataset → HuggingFace Upload)
+- **Portability Implementation**: Shared model architecture at `~/shared-olmo-models/`
+- **Daemon Automation**: LaunchAgent polling integration capability
+- **Production Dataset**: HuggingFace dataset publishing at `hitoshura25/webauthn-security-vulnerabilities-olmo`
+- **Fine-Tuning**: Phase 5 & 6 implementation target
 
 ### 🎯 Implementation Target
 **What we're building**: Phase 5 MLX Fine-Tuning with flexible dual integration
@@ -1320,59 +1311,314 @@ fine_tuning:
 - **Open Science**: Aligns with OLMo's open research mission
 
 **🎯 Integration Modes All Support Upload**:
-- **Manual**: `process_artifacts.py --upload-model` (fine-tuning enabled by default)
+- **Manual**: `process_artifacts.py` (both fine-tuning and model upload enabled by default)
 - **Automated**: Daemon with fine-tuning and upload always enabled
 - **Standalone**: Direct script upload capabilities
 
 ---
 
-## 🎯 SUMMARY: Fine-Tuning as Default Behavior
+## Phase 6: Production MLX Fine-Tuning & Complete Model Sharing
 
-### **Key Change: From Opt-In to Default**
+### 🎯 Phase 6 Architecture Requirements
+**Objective**: Implement production-grade MLX fine-tuning with community-standard model sharing capabilities.
 
-**✅ BEFORE (Opt-In)**: `python3 process_artifacts.py --enable-fine-tuning`  
-**🚀 AFTER (Default)**: `python3 process_artifacts.py` (fine-tuning included automatically)
+**Core Requirements**:
+- **Real MLX Training**: Implement actual model weight fine-tuning using MLX-LM framework
+- **Complete Model Artifacts**: Generate functional weights, tokenizer, and configuration files  
+- **Community Standards**: Ensure uploaded models meet HuggingFace compatibility requirements
+- **Default Behavior**: Both fine-tuning and model upload enabled by default with opt-out capability
+- **Validation Protocol**: Follow CLAUDE.md external API validation requirements
+
+### 6.1 CLI Interface Specification
+
+**Default Behavior Requirement**: Both fine-tuning and model upload must run by default to maximize research value and community contribution.
+
+**Required CLI Pattern**:
+
+```python
+# Required CLI Interface Specification
+parser.add_argument("--skip-fine-tuning", action="store_true",
+                   help="Skip MLX fine-tuning (fine-tuning enabled by default)")
+parser.add_argument("--skip-model-upload", action="store_true",
+                   help="Skip uploading fine-tuned model to HuggingFace Hub (upload enabled by default)")
+```
+
+**Behavioral Specification**:
+- **Default**: `python3 process_artifacts.py` → Fine-tuning + Model Upload  
+- **Skip Fine-tuning**: `python3 process_artifacts.py --skip-fine-tuning` → Dataset only + Model Upload
+- **Skip Upload**: `python3 process_artifacts.py --skip-model-upload` → Fine-tuning only
+- **Minimal**: `python3 process_artifacts.py --skip-fine-tuning --skip-model-upload` → Dataset creation only
+
+### 6.2 MLX-LM Integration Requirements
+
+**Objective**: Implement production MLX fine-tuning with validated MLX-LM APIs.
+
+#### 6.2.1 MLX-LM API Validation
+**File**: `security-ai-analysis/scripts/research/mlx_api_research.py` (new)
+**Target**: Research and document actual MLX-LM APIs
+
+**Tasks**:
+- [ ] **API Documentation Research**: Use WebFetch to validate MLX-LM documentation
+  - Research `mlx_lm.tuner` module and available fine-tuning functions
+  - Document exact parameter requirements for `tuner.train()`
+  - Validate LoRA vs full fine-tuning approaches available
+  - Confirm model loading, training, and saving workflows
+
+- [ ] **Local API Testing**: Create standalone test script
+  ```python
+  # Validate MLX-LM installation and basic functionality
+  from mlx_lm import load, generate, tuner
+  
+  # Test model loading
+  model, tokenizer = load("mlx-community/OLMo-2-1B-mlx-q4")
+  
+  # Test basic generation
+  response = generate(model, tokenizer, "Test prompt", max_tokens=10)
+  
+  # Research tuner.train() parameters
+  # Document actual API signature and requirements
+  ```
+
+- [ ] **Integration Pattern Documentation**: Document validated integration approach
+  - Complete parameter mapping for security analysis fine-tuning
+  - Error handling patterns for MLX-specific failures
+  - Memory management for Apple Silicon optimization
+  - Performance benchmarking approach
+
+#### 6.2.2 Production Fine-Tuning Implementation
+**File**: `security-ai-analysis/scripts/mlx_finetuning.py` (modify)
+**Target**: Replace placeholder `_create_model_structure()` with real MLX training
+
+**Current Issue (Lines 227-242)**:
+```python
+# ❌ PLACEHOLDER: Creates fake files instead of real model weights
+placeholder_files = [
+    "config.json",
+    "tokenizer.json", 
+    "tokenizer_config.json",
+    "weights.safetensors",  # ❌ Placeholder text file, not real weights!
+    "generation_config.json"
+]
+
+for file_name in placeholder_files:
+    placeholder_file = output_path / file_name
+    if not placeholder_file.exists():
+        placeholder_file.write_text(f"# Placeholder for {file_name}\\n# Generated by MLX fine-tuning process\\n")
+```
+
+**Required Changes**:
+- [ ] **Replace Placeholder Training**: Remove Lines 227-242 placeholder file creation
+  ```python
+  # ❌ REMOVE: Placeholder implementation
+  def _create_model_structure(self, output_path: Path, training_args: Dict[str, Any]):
+      # Current placeholder logic creates fake files
+  
+  # ✅ ADD: Real MLX fine-tuning
+  def _execute_mlx_training(self, output_path: Path, training_args: Dict[str, Any]):
+      # Real tuner.train() integration with validated parameters
+      # Actual model weight fine-tuning
+      # Real tokenizer and config generation
+  ```
+
+- [ ] **MLX Training Integration**: Implement validated `tuner.train()` calls
+  - Dataset preparation in MLX-LM compatible format
+  - LoRA fine-tuning configuration for memory efficiency
+  - Training loop with proper checkpointing
+  - Model saving with complete artifact generation
+
+### 6.3 Complete Model Artifact Upload ⚠️ CRITICAL
+
+**Problem**: Current upload includes only placeholder files, violating community standards
+**Solution**: Ensure complete model artifact upload with real weights and metadata
+
+#### 6.3.1 Model Artifact Requirements Analysis
+**Reference**: HuggingFace Model Hub community standards
+**Target**: Document complete artifact requirements
+
+**Community Standard Components**:
+- [ ] **Model Weights** (`model.safetensors` or `pytorch_model.bin`)
+  - Real fine-tuned weights in SafeTensors format (preferred)
+  - Weight file integrity and format validation
+  - Proper tensor naming conventions
+
+- [ ] **Tokenizer Files** (Complete tokenizer functionality)  
+  - `tokenizer.json` - Fast tokenizer implementation
+  - `tokenizer_config.json` - Tokenizer configuration
+  - `vocab.txt` or equivalent vocabulary files
+  - Special token configurations (`special_tokens_map.json`)
+
+- [ ] **Model Configuration** (Transformer architecture details)
+  - `config.json` - Model architecture and hyperparameters
+  - `generation_config.json` - Generation-specific configurations
+  - Model metadata and compatibility information
+
+- [ ] **Model Card** (`README.md`)
+  - Current implementation has comprehensive model card ✅
+  - Training methodology and dataset description
+  - Performance benchmarks and limitations
+  - Usage examples with executable code
+
+#### 6.3.2 Artifact Validation System
+**File**: `security-ai-analysis/scripts/validate_model_artifacts.py` (new)
+**Target**: Validate uploaded models meet community standards
+
+**Validation Checks**:
+- [ ] **File Integrity**: Verify all required files exist and are non-empty
+- [ ] **SafeTensors Validation**: Confirm weight files contain actual tensors
+- [ ] **Tokenizer Functionality**: Test tokenizer encoding/decoding
+- [ ] **Model Loading**: Verify model loads correctly with `transformers` library
+- [ ] **Generation Testing**: Confirm model generates coherent output
+
+```python
+def validate_model_artifacts(model_path: Path) -> Dict[str, bool]:
+    """Validate model meets HuggingFace community standards"""
+    
+    validation_results = {
+        'weights_valid': False,
+        'tokenizer_functional': False, 
+        'config_valid': False,
+        'model_card_complete': False,
+        'generation_works': False
+    }
+    
+    # Check SafeTensors format and content
+    # Validate tokenizer functionality
+    # Test model loading and generation
+    # Verify model card completeness
+    
+    return validation_results
+```
+
+#### 6.3.3 Upload Quality Gates
+**Target**: Prevent uploading non-functional models to HuggingFace
+
+**Pre-Upload Validation**:
+- [ ] **Mandatory Artifact Check**: Fail upload if validation fails
+- [ ] **Model Functionality Test**: Require successful generation test
+- [ ] **Size Validation**: Ensure model files are reasonable size (not empty placeholders)
+- [ ] **Metadata Completeness**: Verify training metadata exists and is valid
+
+```python
+def upload_to_huggingface(self, model_path: Path, custom_repo_name: Optional[str] = None) -> Optional[str]:
+    """Upload with mandatory validation"""
+    
+    # ✅ ADD: Pre-upload validation
+    validation_results = validate_model_artifacts(model_path)
+    if not all(validation_results.values()):
+        failed_checks = [k for k, v in validation_results.items() if not v]
+        raise ValueError(f"Model validation failed: {failed_checks}")
+    
+    # Existing upload logic...
+```
+
+### 6.4 Integration Testing & Validation
+
+#### 6.4.1 End-to-End Production Testing
+**File**: `security-ai-analysis/scripts/tests/test-fine-tuning-phase6.sh` (new)
+**Target**: Validate complete real fine-tuning workflow
+
+**Test Coverage**:
+- [ ] **Real Training**: Execute actual MLX fine-tuning with small dataset
+- [ ] **Artifact Generation**: Verify real model files created (not placeholders)
+- [ ] **Upload Testing**: Test upload with validation to private repository
+- [ ] **Model Functionality**: Download and test uploaded model functionality
+- [ ] **Performance Benchmarking**: Confirm MLX optimization maintained
+
+### 6.5 Updated Command Summary
+
+```bash
+# 🎯 Default (Recommended): Complete 5-phase pipeline with fine-tuning AND model upload
+python3 process_artifacts.py
+
+# 🧪 Development: Skip fine-tuning for faster testing
+python3 process_artifacts.py --skip-fine-tuning
+
+# 📊 Dataset Only: Skip model upload (keep fine-tuning)
+python3 process_artifacts.py --skip-model-upload
+
+# 🔧 Minimal: Skip both (dataset creation only)
+python3 process_artifacts.py --skip-fine-tuning --skip-model-upload
+
+# 🚀 Standalone: Direct fine-tuning on existing datasets
+python3 scripts/mlx_finetuning.py --dataset data.jsonl --upload
+```
+
+### Phase 6 Success Criteria
+
+✅ **Default Behavior**: Both fine-tuning and model upload enabled by default with opt-out flags  
+✅ **MLX Integration**: Real MLX-LM fine-tuning replaces placeholder implementation  
+✅ **Complete Artifacts**: Model uploads include functional weights, tokenizer, and config  
+✅ **Validation System**: Pre-upload validation prevents non-functional model uploads  
+✅ **Community Standards**: Uploaded models meet HuggingFace community standards  
+
+**Result**: Production-ready AI Security Fine-Tuning system with complete model sharing workflow
+
+---
+
+## 🎯 SUMMARY: Fine-Tuning AND Model Upload as Default Behavior
+
+### **Key Change: From Mixed to Consistent Default Behavior**
+
+**✅ BEFORE (Mixed)**: 
+- Fine-tuning: `python3 process_artifacts.py` (default enabled) ✅
+- Model upload: `python3 process_artifacts.py --upload-model` (opt-in) ❌
+
+**🚀 AFTER (Consistent)**: `python3 process_artifacts.py` (both fine-tuning AND model upload enabled by default)
 
 ### **Why This Change Makes Sense**
 
-1. **🎯 Purpose Alignment**: System exists to create WebAuthn security intelligence - fine-tuning is core value
-2. **📈 Maximizes Value**: Every security scan improves the model continuously  
-3. **🔄 Automation Ready**: Daemon gets maximum value from each 5-minute cycle
+1. **🎯 Purpose Alignment**: System exists to create AND share WebAuthn security intelligence
+2. **📈 Maximizes Value**: Every security scan improves the model AND contributes to community
+3. **🔄 Automation Ready**: Daemon gets maximum research value from each 5-minute cycle
 4. **💡 Simplicity**: Default behavior does the right thing without configuration
-5. **🚀 Research Impact**: Continuous model improvement for community benefit
+5. **🚀 Research Impact**: Continuous model improvement AND sharing for community benefit
+6. **🤝 Community Standards**: Aligns with AI research best practices for model sharing
 
-### **When To Use Opt-Out**
+### **When To Use Opt-Out Flags**
 
 **`--skip-fine-tuning` is only for**:
 - 🧪 **Development/Testing**: Faster iteration during pipeline development
 - 🚨 **Emergency Mode**: If fine-tuning breaks, temporary disable via config
 - 📊 **Dataset-Only Runs**: Rare cases where only training data needed
 
-### **Command Summary**
+**`--skip-model-upload` is only for**:
+- 🔒 **Private Research**: When models contain sensitive information
+- 🚨 **Emergency Mode**: If upload breaks, temporary disable via config
+- 🧪 **Development/Testing**: Skip upload during development cycles
+
+### **Updated Command Summary**
 
 ```bash
-# 🎯 Default (Recommended): Complete 5-phase pipeline
+# 🎯 Default (Recommended): Complete 5-phase pipeline with fine-tuning AND model upload
 python3 process_artifacts.py
-
-# 🚀 Default + Upload: Complete pipeline with model sharing  
-python3 process_artifacts.py --upload-model
 
 # 🧪 Development: Skip fine-tuning for faster testing
 python3 process_artifacts.py --skip-fine-tuning
 
-# 🔧 Standalone: Direct fine-tuning on existing datasets
+# 📊 Dataset Only: Skip model upload (keep fine-tuning)
+python3 process_artifacts.py --skip-model-upload
+
+# 🔧 Minimal: Skip both (dataset creation only)
+python3 process_artifacts.py --skip-fine-tuning --skip-model-upload
+
+# 🚀 Standalone: Direct fine-tuning on existing datasets
 python3 scripts/mlx_finetuning.py --dataset data.jsonl --upload
 ```
 
 ### **Configuration Philosophy**
 
-**Default Behavior**: Always fine-tune (maximum value extraction)  
-**Emergency Override**: `skip_in_daemon: true` (emergency disable only)  
-**Result**: Every security scan contributes to model improvement unless explicitly skipped
+**Default Behavior**: Always fine-tune AND upload models (maximum research value + community contribution)  
+**Fine-tuning Override**: `--skip-fine-tuning` (emergency disable only)  
+**Upload Override**: `--skip-model-upload` (emergency disable only)  
+**Daemon Override**: `skip_in_daemon: true` (emergency disable via config)  
+**Result**: Every security scan contributes to model improvement AND community sharing unless explicitly skipped
 
 ---
 
-**📅 Created**: 2025-09-10 (Original)  
-**📝 Updated**: 2025-09-11 (Fine-tuning Default + HuggingFace Model Upload)  
-**📎 Prerequisites**: ✅ AI Security Portability Implementation (COMPLETE)  
-**🎯 Objective**: Add Phase 5 MLX Fine-Tuning as DEFAULT behavior with complete model sharing to operational 4-phase pipeline
+## Implementation Prerequisites
+
+**Required Infrastructure**: AI Security Portability Implementation (shared model architecture)  
+**Hardware Requirements**: Apple Silicon with MLX framework support  
+**Software Dependencies**: MLX-LM, HuggingFace Hub, transformers library  
+
+**Objective**: Complete 6-phase implementation enabling automated WebAuthn security analysis with community-contributory fine-tuning and model sharing

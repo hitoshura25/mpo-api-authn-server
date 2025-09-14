@@ -53,6 +53,16 @@ Thumbs.db
 *.temp
 *.log
 
+# Fine-tuning workspace (intermediate processing during MLX training)
+# Contains temporary MLX data formats, logs, and processing artifacts
+# Final models go to ~/shared-olmo-models/ for external sharing
+fine-tuning/
+
+# Development test artifacts and outputs
+# These are generated during development testing and can be regenerated
+test_results/
+*_test.log
+
 # Note: Models are stored externally at ~/shared-olmo-models/ and are not .gitignored
 # Note: Final datasets are published to HuggingFace for community sharing
 # Note: Source code (*.py, *.yaml configs) are tracked in git for full portability

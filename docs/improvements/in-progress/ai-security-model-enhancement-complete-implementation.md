@@ -992,9 +992,8 @@ Provide: 1) Fixed code, 2) Explanation of changes, 3) Validation steps""",
             "response": f"""FIXED CODE:
 ```{vulnerability['language']}
 {vulnerability['fixed_code']}
-```
 
-KEY CHANGES:
+"""KEY CHANGES:
 {vulnerability['change_explanation']}
 
 VALIDATION STEPS:
@@ -1020,6 +1019,15 @@ SECURITY IMPROVEMENTS:
 #### **4.1 Automated Fix Quality Assessment**
 
 **Goal**: Implement comprehensive validation of generated fixes using open-source tools.
+
+**🎯 Design Philosophy**: Quality assessment is **enabled by default** in the main `process_artifacts.py` pipeline to ensure the highest quality training data and analysis output without additional configuration.
+
+**✅ Integration Strategy**:
+
+- **Default Behavior**: Quality assessment runs automatically during enhanced dataset creation
+- **No Configuration Required**: Built into standard workflow, no flags or setup needed
+- **Main Pipeline Integration**: Seamlessly integrated into `process_artifacts.py` Phase 1 (Enhanced Dataset Creation)
+- **Quality Filtering**: Only high-quality fixes are included in training datasets by default
 
 ```python
 class FixQualityAssessor:
@@ -1554,27 +1562,32 @@ The implementation plan demonstrates how open models can compete effectively wit
 **Key Architectural Decision**:
 
 **Dual-Track Training Data Approach**
+
 - **Source Code Vulnerabilities**: Full code context extraction + detailed source-level fixes
 - **Infrastructure Vulnerabilities**: Vulnerability metadata + deployment/configuration guidance (no code context)
 
 **Rationale**:
+
 ```
 Traditional AI: "Fix this SQL injection in your code"
 Enhanced AI: "Fix this SQL injection AND update your postgres:15 container - it has authentication bypass vulnerabilities"
 ```
 
 **Implementation Strategy**:
+
 - **VulnerableCodeExtractor**: Enhanced to gracefully skip non-source paths (containers, build artifacts)
 - **Training Data**: Includes all 340+ vulnerabilities with context-appropriate processing
 - **Model Capabilities**: Learns both source-level and infrastructure-level security
 
 **Benefits**:
+
 - ✅ Complete security landscape training (application + infrastructure)
-- ✅ Real-world deployment security understanding  
+- ✅ Real-world deployment security understanding
 - ✅ Enhanced remediation guidance for containerized applications
 - ✅ No performance issues from failed code extraction attempts
 
 **Phase 3 Processing Logic**:
+
 - Source files (`.kt`, `.ts`, `.js`, etc.) → Full code context extraction
 - Container references (`hitoshura25/webauthn-server`) → Infrastructure vulnerability processing
 - Build artifacts (`app.jar`) → Dependency security guidance

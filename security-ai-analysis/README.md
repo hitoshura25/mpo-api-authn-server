@@ -12,8 +12,8 @@ This system automatically analyzes security vulnerabilities using advanced AI mo
 - 📊 **Research contribution** via published datasets for AI security research
 
 **Real-World Impact:**
-- Processes 440+ actual vulnerabilities from production security scans
-- Creates training datasets for improving AI security capabilities
+- Processes 340 actual vulnerabilities from production security scans
+- Creates training datasets for improving AI security capabilities  
 - Provides immediate actionable guidance for vulnerability remediation
 
 ## How The System Works
@@ -22,15 +22,16 @@ This system automatically analyzes security vulnerabilities using advanced AI mo
 GitHub Actions Security Scans → Artifact Download → AI Analysis → Rich Narratives → Training Datasets
 ```
 
-### Complete 5-Phase Workflow
+### Complete 4-Phase AI Enhancement Workflow
 
-1. **Phase 1: Security Analysis**: Professional FOSS tools (Trivy, Semgrep, etc.) scan code, then OLMo-2-1B-Instruct analyzes vulnerabilities with MLX optimization
-2. **Phase 2: Rich Narrativization**: Creates detailed explanations with remediation guidance and security context
-3. **Phase 3: Dataset Creation**: Produces training datasets in JSONL format for AI research (80/20 train/validation split)
-4. **Phase 4: HuggingFace Publication**: Results published to production dataset `hitoshura25/webauthn-security-vulnerabilities-olmo`
-5. **Phase 5: MLX Fine-Tuning**: Domain-specialized model creation and optional sharing to HuggingFace
+1. **Phase 1: Enhanced Dataset Creation**: Professional FOSS tools scan code → 5x enhanced security patterns → Rich training datasets
+2. **Phase 2: RAG-Enhanced Analysis**: Context-aware vulnerability analysis with retrieval augmentation → Detailed narratives
+3. **Phase 3: Sequential Fine-Tuning** ⭐ **NEW DEFAULT**: Progressive specialization with two models:
+   - **Stage 1**: Vulnerability Analysis Specialist (base model → analysis expert)
+   - **Stage 2**: Code Fix Generation Specialist (Stage 1 model → code fix expert)
+4. **Phase 4: Production Upload**: Specialized models and datasets published to HuggingFace Hub
 
-**Automated Monitoring**: Daemon polls GitHub Actions every 5 minutes for new security artifacts and runs complete 5-phase pipeline
+**Automated Monitoring**: Daemon polls GitHub Actions every 5 minutes for new security artifacts and runs complete 4-phase AI enhancement pipeline
 
 ### Two Usage Modes
 

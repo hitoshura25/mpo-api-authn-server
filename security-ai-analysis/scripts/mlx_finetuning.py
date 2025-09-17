@@ -432,7 +432,7 @@ This analysis follows cybersecurity standards for responsible vulnerability asse
             "output_dir": str(output_model_path),
             "learning_rate": self.config.learning_rate,
             "batch_size": self.config.batch_size,
-            "training_steps": self.config.max_epochs * 10,  # Convert epochs to steps estimate
+            "training_steps": min(5, self.config.max_epochs * 2),  # Reduced for memory efficiency on Metal GPU
             "warmup_steps": self.config.warmup_steps,
             "save_steps": self.config.save_steps,
             "eval_steps": self.config.eval_steps,

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This guide documents all integration modes and usage patterns for the AI Security Fine-Tuning system (Phase 5 of the AI Security Dataset Research Initiative). The system provides flexible execution modes for different development and production scenarios.
+This guide documents all integration modes and usage patterns for the AI Security Fine-Tuning system (Phase 3 of the AI Security Dataset Research Initiative). The system provides flexible execution modes for different development and production scenarios.
 
 📖 **Quick Links:**
 - [← Back to Main README](../../security-ai-analysis/README.md) - System overview and basic setup
@@ -15,15 +15,17 @@ This guide documents all integration modes and usage patterns for the AI Securit
 
 ## Architecture Summary
 
-### 5-Phase Pipeline
-1. **Phase 1**: Security Analysis → MLX-optimized OLMo-2-1B vulnerability analysis
-2. **Phase 2**: Narrativization → Rich security explanations with remediation
-3. **Phase 3**: Dataset Creation → Training/validation JSONL preparation (80/20 split)  
-4. **Phase 4**: HuggingFace Upload → Production dataset at `hitoshura25/webauthn-security-vulnerabilities-olmo`
-5. **Phase 5**: **MLX Fine-Tuning** → Domain-specialized model creation and sharing
+### 4-Phase AI Enhancement Pipeline
+1. **Phase 1: Enhanced Dataset Creation** → Professional FOSS tools scan code → 5x enhanced security patterns → Rich training datasets
+2. **Phase 2: RAG-Enhanced Analysis** → Context-aware vulnerability analysis with retrieval augmentation → Detailed narratives
+3. **Phase 3: Sequential Fine-Tuning** ⭐ **NEW DEFAULT** → Progressive specialization with two models:
+   - **Stage 1**: Vulnerability Analysis Specialist (base model → analysis expert)
+   - **Stage 2**: Code Fix Generation Specialist (Stage 1 model → code fix expert)
+4. **Phase 4: Production Upload** → Specialized models and datasets published to HuggingFace Hub
 
 ### Default Behavior
-- **Fine-tuning enabled by default** in all modes (maximizes research value)
+- **Sequential fine-tuning enabled by default** in all modes (creates two specialized models for maximum accuracy)
+- **Automatic fallback** to single-stage fine-tuning if sequential modules unavailable
 - **Opt-out available** for development/testing scenarios
 - **Fail-fast approach** for system errors, graceful handling for legitimate opt-outs
 
@@ -32,17 +34,20 @@ This guide documents all integration modes and usage patterns for the AI Securit
 ### 1. Manual Mode (Development & Testing)
 
 #### 1.1 Standard Execution (Default)
-Complete 5-phase pipeline including fine-tuning:
+Complete 4-phase AI enhancement pipeline with sequential fine-tuning:
 
 ```bash
 # Navigate to security analysis directory
 cd security-ai-analysis
 
-# Run complete pipeline with fine-tuning (default behavior)
+# Run complete pipeline with sequential fine-tuning (default behavior)
 python3 process_artifacts.py
 
 # Complete pipeline with model upload to HuggingFace
 python3 process_artifacts.py --upload-model
+
+# Disable sequential fine-tuning, use single-stage approach
+python3 process_artifacts.py --disable-sequential-fine-tuning
 
 # With custom model and upload
 python3 process_artifacts.py --model-name ~/shared-olmo-models/base/OLMo-2-1B-Instruct --upload-model
@@ -53,32 +58,37 @@ python3 process_artifacts.py --branch main --commit abc123def --upload-model
 
 **Expected Output**:
 ```
-🔒 WebAuthn Security Analysis with OLMo-2-1B-Instruct
+🔒 WebAuthn Security Analysis with OLMo-2-1B
 =============================================================
-Phase 1: OLMo Security Analysis ✅
-Phase 2: Creating Rich Security Narratives ✅
-Phase 3: Preparing Fine-Tuning Dataset ✅
-Phase 4: Uploading to Production HuggingFace Dataset ✅
-Phase 5: MLX Fine-Tuning (Default Behavior) ✅
-  🎯 Starting MLX fine-tuning with dataset: train_20250912_143022.jsonl
-  📊 Training examples: 156
-  📁 Output model: webauthn-security-olmo-20250912-143022
-  ⚡ Starting MLX fine-tuning process...
-  ✅ Fine-tuning completed successfully!
-  📁 Model saved to: ~/shared-olmo-models/fine-tuned/webauthn-security-olmo-20250912-143022
-  📤 Uploading fine-tuned model to HuggingFace (--upload-model)...
-  ✅ Model uploaded: https://huggingface.co/hitoshura25/webauthn-security-model-20250912-143022
+Phase 1: Enhanced Dataset Creation ✅
+Phase 2: RAG-Enhanced Analysis ✅
+Phase 3: Sequential Fine-Tuning (New Default Behavior) ✅
+  🎯 Using Phase 3: Sequential Fine-Tuning (Default)
+  📊 Processing 233 vulnerabilities for sequential training
+  📁 Stage 1: Training Vulnerability Analysis Specialist...
+  ✅ Stage 1 completed in 19.7s
+  📁 Stage 2: Training Code Fix Generation Specialist...
+  ✅ Stage 2 completed in 20.8s
+  🎉 Sequential fine-tuning completed successfully!
+  📁 Stage 1 model: ~/shared-olmo-models/fine-tuned/webauthn-security-sequential_20250917_123050_stage1_analysis
+  📁 Stage 2 model: ~/shared-olmo-models/fine-tuned/webauthn-security-sequential_20250917_123050_stage2_codefix
+Phase 4: Production Upload ✅
+  ✅ SUCCESS: Production dataset updated!
+  🔗 Dataset URL: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo
 ```
 
 #### 1.2 Development Mode (Opt-Out)
-Skip fine-tuning for faster iteration during development:
+Options for faster iteration during development:
 
 ```bash
-# Skip fine-tuning (development/testing mode)
-python3 process_artifacts.py --skip-fine-tuning
+# Disable sequential fine-tuning, use faster single-stage approach
+python3 process_artifacts.py --disable-sequential-fine-tuning
+
+# Skip fine-tuning entirely (fastest for development/testing)
+python3 process_artifacts.py --disable-sequential-fine-tuning --skip-fine-tuning
 
 # Combine with other options  
-python3 process_artifacts.py --skip-fine-tuning --branch develop
+python3 process_artifacts.py --disable-sequential-fine-tuning --branch develop
 
 # Note: --upload-model has no effect when --skip-fine-tuning is used
 ```
@@ -321,7 +331,7 @@ for model in models:
 
 #### 3. HuggingFace Uploads
 - **Dataset**: `hitoshura25/webauthn-security-vulnerabilities-olmo` (training data, Phase 4)
-- **Models**: `hitoshura25/webauthn-security-model-YYYYMMDD-HHMMSS` (fine-tuned models, Phase 5)
+- **Models**: `hitoshura25/webauthn-security-model-YYYYMMDD-HHMMSS` (fine-tuned models, Phase 3)
 - **Upload Triggers**: 
   - `--upload-model` CLI flag (overrides config)
   - `upload_enabled: true` in configuration

@@ -37,6 +37,7 @@ def parse_semgrep_json(filepath: str) -> List[Dict]:
                 'tool': 'semgrep',
                 'id': result.get('check_id', 'Unknown'),
                 'path': result.get('path', 'Unknown'),
+                'start': result.get('start', {}),  # Preserve start location for enhanced dataset creation
                 'message': extra.get('message', 'No message'),
                 'severity': extra.get('severity', 'Unknown'),
                 'cwe': metadata.get('cwe', []),

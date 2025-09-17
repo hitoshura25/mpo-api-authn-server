@@ -24,6 +24,7 @@ from dataclasses import dataclass, field
 
 from vulnerable_code_extractor import VulnerableCodeExtractor, ContextExtractionResult
 from multi_approach_fix_generator import MultiApproachFixGenerator, SecurityFix, FixApproach
+from url_to_code_mapper import URLToCodeMapper, enhance_vulnerability_with_url_mapping
 
 
 @dataclass
@@ -81,6 +82,7 @@ class EnhancedDatasetCreator:
         self.project_root = project_root
         self.extractor = VulnerableCodeExtractor(project_root=self.project_root)
         self.fix_generator = MultiApproachFixGenerator()
+        self.url_mapper = URLToCodeMapper(project_root=self.project_root)  # NEW: URL mapping component
         self.output_dir = output_dir or Path("enhanced_datasets/code-aware-training")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -108,7 +110,10 @@ class EnhancedDatasetCreator:
             
             for vuln in vulnerabilities:
                 try:
-                    # Extract code context
+                    # NEW: Try URL-to-code mapping for URL-based vulnerabilities
+                    url_mapped = enhance_vulnerability_with_url_mapping(vuln, self.url_mapper)
+                    
+                    # Extract code context (now works for URL-mapped vulnerabilities too)
                     extraction_result = self.extractor.extract_vulnerability_context(vuln)
                     
                     if not extraction_result.success:
@@ -178,17 +183,33 @@ class EnhancedDatasetCreator:
         examples = []
         code_context = extraction_result.code_context
         
-        # Create base vulnerability context
-        vulnerability_context = {
-            'id': vulnerability.get('check_id', 'unknown'),
-            'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
-            'file_path': code_context.file_path,
-            'line': code_context.vulnerability_line,
-            'language': code_context.language,
-            'function': code_context.function_name,
-            'class': code_context.class_name,
-            'message': vulnerability.get('extra', {}).get('message', '')
-        }
+        # Handle both source code and infrastructure vulnerabilities
+        if code_context:
+            # Source code vulnerability - has code context
+            vulnerability_context = {
+                'id': vulnerability.get('check_id', 'unknown'),
+                'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
+                'file_path': code_context.file_path,
+                'line': code_context.vulnerability_line,
+                'language': code_context.language,
+                'function': code_context.function_name,
+                'class': code_context.class_name,
+                'message': vulnerability.get('extra', {}).get('message', '')
+            }
+        else:
+            # Infrastructure vulnerability - no code context available
+            vulnerability_context = {
+                'id': vulnerability.get('check_id', 'unknown'),
+                'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
+                'file_path': vulnerability.get('file_path', vulnerability.get('path', 'unknown')),
+                'line': vulnerability.get('start', {}).get('line', 1),
+                'language': 'infrastructure',
+                'function': None,
+                'class': None,
+                'message': vulnerability.get('extra', {}).get('message', ''),
+                'infrastructure_type': extraction_result.extraction_metadata.get('extraction_type', 'infrastructure'),
+                'original_path': extraction_result.extraction_metadata.get('original_path', '')
+            }
         
         # Create one training example per fix approach
         for fix in fix_result.fixes:
@@ -223,12 +244,22 @@ class EnhancedDatasetCreator:
         metadata = {
             'vulnerability_id': vulnerability_context['id'],
             'fix_approach': fix.approach.value,
-            'language': code_context.language,
+            'language': vulnerability_context['language'],  # Use vulnerability_context since code_context might be None
             'complexity_level': fix.complexity_level,
             'security_impact': fix.security_impact,
             'created_at': datetime.now().isoformat(),
             'enhancement_type': 'single_approach'
         }
+        
+        # Add URL mapping metadata if available
+        if vulnerability.get('endpoint_metadata'):
+            metadata['endpoint_metadata'] = vulnerability['endpoint_metadata']
+            metadata['url_mapped'] = True
+            metadata['url'] = vulnerability.get('url')
+        
+        # Add file path and line number for code context
+        metadata['file_path'] = vulnerability_context.get('file_path')
+        metadata['line_number'] = vulnerability_context.get('line')
         
         return EnhancedTrainingExample(
             instruction=instruction,
@@ -244,7 +275,7 @@ class EnhancedDatasetCreator:
             code_examples={
                 'vulnerable_code': fix.vulnerable_code,
                 'fixed_code': fix.fixed_code,
-                'context': code_context.get_full_context(line_padding=3)
+                'context': code_context.get_full_context(line_padding=3) if code_context else 'No source code context (infrastructure vulnerability)'
             }
         )
     
@@ -255,8 +286,9 @@ class EnhancedDatasetCreator:
                                              fixes: List[SecurityFix]) -> EnhancedTrainingExample:
         """Create a comprehensive training example with multiple fix approaches."""
         
-        # Create instruction for multiple approaches
-        instruction = f"""Analyze this security vulnerability and provide multiple remediation approaches with specific code examples:
+        if code_context:
+            # Source code vulnerability instruction
+            instruction = f"""Analyze this security vulnerability and provide multiple remediation approaches with specific code examples:
 
 Vulnerability: {vulnerability_context['id']}
 File: {vulnerability_context['file_path']}
@@ -274,6 +306,16 @@ Context:
 {code_context.get_full_context(line_padding=2)}
 
 Provide multiple specific fix approaches with actual code examples."""
+        else:
+            # Infrastructure vulnerability instruction
+            instruction = f"""Analyze this infrastructure security vulnerability and provide multiple remediation approaches:
+
+Vulnerability: {vulnerability_context['id']}
+Component: {vulnerability_context['file_path']}
+Infrastructure Type: {vulnerability_context.get('infrastructure_type', 'unknown')}
+Original Path: {vulnerability_context.get('original_path', 'N/A')}
+
+Provide multiple specific remediation approaches with configuration examples and deployment guidance."""
         
         # Create comprehensive response
         response = self._create_comprehensive_response(vulnerability_context, code_context, fixes)
@@ -282,11 +324,21 @@ Provide multiple specific fix approaches with actual code examples."""
         metadata = {
             'vulnerability_id': vulnerability_context['id'],
             'fix_approaches': [fix.approach.value for fix in fixes],
-            'language': code_context.language,
+            'language': vulnerability_context['language'],  # Use vulnerability_context since code_context might be None
             'approaches_count': len(fixes),
             'created_at': datetime.now().isoformat(),
             'enhancement_type': 'multi_approach'
         }
+        
+        # Add URL mapping metadata if available
+        if vulnerability.get('endpoint_metadata'):
+            metadata['endpoint_metadata'] = vulnerability['endpoint_metadata']
+            metadata['url_mapped'] = True
+            metadata['url'] = vulnerability.get('url')
+        
+        # Add file path and line number for code context
+        metadata['file_path'] = vulnerability_context.get('file_path')
+        metadata['line_number'] = vulnerability_context.get('line')
         
         return EnhancedTrainingExample(
             instruction=instruction,
@@ -300,8 +352,8 @@ Provide multiple specific fix approaches with actual code examples."""
                 'security_impact': fix.security_impact
             } for fix in fixes],
             code_examples={
-                'vulnerable_code': code_context.vulnerable_code,
-                'context': code_context.get_full_context(line_padding=3),
+                'vulnerable_code': code_context.vulnerable_code if code_context else 'No source code (infrastructure vulnerability)',
+                'context': code_context.get_full_context(line_padding=3) if code_context else 'No source code context (infrastructure vulnerability)',
                 **{f'fix_{i+1}_{fix.approach.value}': fix.fixed_code for i, fix in enumerate(fixes)}
             }
         )
@@ -321,7 +373,9 @@ Provide multiple specific fix approaches with actual code examples."""
         
         approach_desc = approach_descriptions.get(approach, f"{approach.value.replace('_', ' ')} approach")
         
-        return f"""Analyze this {vulnerability_context['language']} security vulnerability and provide a specific fix using {approach_desc}:
+        if code_context:
+            # Source code vulnerability
+            return f"""Analyze this {vulnerability_context['language']} security vulnerability and provide a specific fix using {approach_desc}:
 
 Vulnerability: {vulnerability_context['id']}
 File: {vulnerability_context['file_path']} (line {vulnerability_context['line']})
@@ -334,12 +388,24 @@ Vulnerable Code:
 ```
 
 Provide a specific code fix with detailed explanation."""
+        else:
+            # Infrastructure vulnerability
+            return f"""Analyze this infrastructure security vulnerability and provide specific remediation guidance using {approach_desc}:
+
+Vulnerability: {vulnerability_context['id']}
+Component: {vulnerability_context['file_path']} 
+Infrastructure Type: {vulnerability_context.get('infrastructure_type', 'unknown')}
+Original Path: {vulnerability_context.get('original_path', 'N/A')}
+
+Provide specific configuration and deployment recommendations to address this vulnerability."""
     
     def _create_enhanced_response(self, vulnerability_context: Dict[str, Any], 
                                 code_context, fix: SecurityFix) -> str:
         """Create an enhanced response with specific code examples."""
         
-        return f"""# {fix.title}
+        if code_context:
+            # Source code vulnerability response
+            return f"""# {fix.title}
 
 ## Vulnerability Analysis
 **ID**: {vulnerability_context['id']}
@@ -382,12 +448,53 @@ Provide a specific code fix with detailed explanation."""
 ```{vulnerability_context['language']}
 {code_context.get_full_context(line_padding=2)}
 ```"""
+        else:
+            # Infrastructure vulnerability response
+            return f"""# {fix.title}
+
+## Infrastructure Vulnerability Analysis
+**ID**: {vulnerability_context['id']}
+**Component**: {vulnerability_context['file_path']}
+**Infrastructure Type**: {vulnerability_context.get('infrastructure_type', 'unknown')}
+**Original Path**: {vulnerability_context.get('original_path', 'N/A')}
+**Severity**: {vulnerability_context['severity']}
+
+## Problem Description
+{vulnerability_context['message']}
+
+## Current Configuration Issues
+{fix.vulnerable_code}
+
+## Recommended Configuration
+{fix.fixed_code}
+
+## Remediation Guidance
+{fix.explanation}
+
+## Security Benefits
+{chr(10).join(f'• {benefit}' for benefit in fix.benefits)}
+
+## Implementation Steps
+{chr(10).join(f'• {note}' for note in fix.implementation_notes)}
+
+## Considerations
+{chr(10).join(f'• {tradeoff}' for tradeoff in fix.trade_offs)}
+
+## Risk Reduction
+**Level**: {fix.security_impact}
+**Complexity**: {fix.complexity_level}
+
+## Infrastructure Context
+Component: {vulnerability_context.get('original_path', vulnerability_context['file_path'])}
+Type: {vulnerability_context.get('infrastructure_type', 'Infrastructure vulnerability')}"""
     
     def _create_comprehensive_response(self, vulnerability_context: Dict[str, Any],
                                      code_context, fixes: List[SecurityFix]) -> str:
         """Create a comprehensive response with multiple fix approaches."""
         
-        response = f"""# Multiple Security Fix Approaches
+        if code_context:
+            # Source code vulnerability response
+            response = f"""# Multiple Security Fix Approaches
 
 ## Vulnerability Analysis
 **ID**: {vulnerability_context['id']}
@@ -406,6 +513,26 @@ Provide a specific code fix with detailed explanation."""
 ```
 
 ## Fix Approaches
+
+"""
+        else:
+            # Infrastructure vulnerability response
+            response = f"""# Multiple Infrastructure Security Fix Approaches
+
+## Infrastructure Vulnerability Analysis
+**ID**: {vulnerability_context['id']}
+**Component**: {vulnerability_context['file_path']}
+**Infrastructure Type**: {vulnerability_context.get('infrastructure_type', 'unknown')}
+**Original Path**: {vulnerability_context.get('original_path', 'N/A')}
+**Severity**: {vulnerability_context['severity']}
+
+## Problem Description
+{vulnerability_context['message']}
+
+## Infrastructure Configuration Issues
+Current configuration has security vulnerabilities that need to be addressed through proper configuration management and security hardening.
+
+## Remediation Approaches
 
 """
         
@@ -433,15 +560,24 @@ Provide a specific code fix with detailed explanation."""
 """
         
         response += f"""## Recommendation
-Choose the approach that best fits your architecture and security requirements. For this {vulnerability_context['language']} codebase, consider:
+Choose the approach that best fits your architecture and security requirements. For this {vulnerability_context['language']} {'codebase' if code_context else 'infrastructure'}, consider:
 
 1. **Quick Fix**: {fixes[0].title} (complexity: {fixes[0].complexity_level})
 2. **Comprehensive**: {fixes[-1].title if len(fixes) > 1 else fixes[0].title}
+"""
 
+        if code_context:
+            response += f"""
 ## Code Context
 ```{vulnerability_context['language']}
 {code_context.get_full_context(line_padding=3)}
 ```"""
+        else:
+            response += f"""
+## Infrastructure Context
+Component: {vulnerability_context.get('original_path', vulnerability_context['file_path'])}
+Type: {vulnerability_context.get('infrastructure_type', 'Infrastructure component')}
+Remediation Focus: Configuration and deployment security"""
         
         return response
     

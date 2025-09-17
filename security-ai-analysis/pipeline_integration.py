@@ -84,7 +84,8 @@ def run_fine_tuning_phase(
             print(f"📁 Model saved to: {fine_tuned_model_path}")
             
             # Upload to HuggingFace if enabled (default enabled, disabled by --skip-model-upload)
-            should_upload = upload_model or ft_config.upload_enabled
+            # CLI flag upload_model takes precedence over config setting
+            should_upload = upload_model and ft_config.upload_enabled
             
             if should_upload:
                 if upload_model:

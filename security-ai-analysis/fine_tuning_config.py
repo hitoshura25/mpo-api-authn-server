@@ -101,7 +101,7 @@ class FineTuningConfig:
             base_model_name=os.getenv('OLMO_DEFAULT_BASE_MODEL', config['default_base_model']),
             output_model_name=ft_config['default_output_name'],
             learning_rate=train_config.get('learning_rate', 2e-5),
-            batch_size=train_config.get('batch_size', 4),
+            batch_size=train_config.get('batch_size', 1),  # Reduced from 4 to 1 to avoid Metal GPU memory issues
             max_epochs=train_config.get('max_epochs', 3),
             warmup_steps=train_config.get('warmup_steps', 100),
             save_steps=train_config.get('save_steps', 500),

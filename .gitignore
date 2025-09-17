@@ -73,3 +73,15 @@ security-ai-analysis/check-results.json
 
 # Local AI Analysis generated files
 local-analysis/**/__pycache__/
+
+
+# Enhanced AI Analysis generated files
+security-ai-analysis/enhanced_datasets/
+security-ai-analysis/knowledge_base/
+security-ai-analysis/quality_assessment/
+# Training artifacts and temporary files
+security-ai-analysis/fine-tuning/
+security-ai-analysis/**/*.log
+security-ai-analysis/**/training_*
+security-ai-analysis/**/validation_*
+security-ai-analysis/**/.cache/

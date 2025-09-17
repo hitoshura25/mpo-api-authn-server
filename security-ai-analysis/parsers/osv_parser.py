@@ -72,7 +72,9 @@ def parse_osv_json(filepath: str) -> List[Dict]:
                         'package_version': pkg_version,
                         'ecosystem': ecosystem,
                         'source_path': source_path,
-                        'source_type': source_type
+                        'source_type': source_type,
+                        'path': source_path,  # Map source_path to path field for enhanced dataset creation
+                        'start': {'line': 1}  # Minimal start field for enhanced dataset compatibility
                     })
         
         return vulnerabilities

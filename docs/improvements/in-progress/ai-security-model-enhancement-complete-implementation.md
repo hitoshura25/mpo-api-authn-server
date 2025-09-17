@@ -1541,6 +1541,47 @@ The implementation plan demonstrates how open models can compete effectively wit
 
 **Implementation Priority**: This URL-to-code mapping should be implemented in **Phase 1.2** as it transforms abstract security findings into concrete, fixable code vulnerabilities with full context.
 
+### **Comprehensive Vulnerability Data Strategy (September 2025)**
+
+**Background**: During September 2025 implementation, a critical architectural decision was made regarding vulnerability data filtering vs. comprehensive collection, fundamentally changing the system's approach to training data quality.
+
+**The Evolution**:
+
+1. **Initial Approach**: SARIF parser filtered out "non-source" paths (Docker containers, build artifacts, URLs) to focus on source code vulnerabilities only
+2. **Critical Insight**: All vulnerability data has training value - infrastructure vulnerabilities are essential for comprehensive security AI
+3. **Final Decision**: Remove all filtering, adopt comprehensive data collection with intelligent processing
+
+**Key Architectural Decision**:
+
+**Dual-Track Training Data Approach**
+- **Source Code Vulnerabilities**: Full code context extraction + detailed source-level fixes
+- **Infrastructure Vulnerabilities**: Vulnerability metadata + deployment/configuration guidance (no code context)
+
+**Rationale**:
+```
+Traditional AI: "Fix this SQL injection in your code"
+Enhanced AI: "Fix this SQL injection AND update your postgres:15 container - it has authentication bypass vulnerabilities"
+```
+
+**Implementation Strategy**:
+- **VulnerableCodeExtractor**: Enhanced to gracefully skip non-source paths (containers, build artifacts)
+- **Training Data**: Includes all 340+ vulnerabilities with context-appropriate processing
+- **Model Capabilities**: Learns both source-level and infrastructure-level security
+
+**Benefits**:
+- ✅ Complete security landscape training (application + infrastructure)
+- ✅ Real-world deployment security understanding  
+- ✅ Enhanced remediation guidance for containerized applications
+- ✅ No performance issues from failed code extraction attempts
+
+**Phase 3 Processing Logic**:
+- Source files (`.kt`, `.ts`, `.js`, etc.) → Full code context extraction
+- Container references (`hitoshura25/webauthn-server`) → Infrastructure vulnerability processing
+- Build artifacts (`app.jar`) → Dependency security guidance
+- All vulnerability types → Included in comprehensive training dataset
+
+This decision represents a fundamental shift from "source-code-only" to "holistic security" AI training, dramatically improving the model's real-world applicability.
+
 ### **Existing Vulnerability Data for URL Mapping Testing**
 
 **Available Test Data**: The project already contains real ZAP scan results with URL-based vulnerabilities that can be used to validate the URL-to-code mapping implementation:

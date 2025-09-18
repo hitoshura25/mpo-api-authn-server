@@ -1,0 +1,1 @@
+Refresh your knowledge of the project by reading CLAUDE.md and understanding the current project structure, development best practices, and key patterns. Please provide a brief summary of the project and any important development guidelines I should be aware of.

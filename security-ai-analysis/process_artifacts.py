@@ -389,7 +389,7 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                 # **Enhanced Training Pairs (Code-Aware)**
                 print(f"🚀 Creating enhanced code-aware training dataset...")
                 try:
-                    from enhanced_dataset_creator import EnhancedDatasetCreator
+                    from enhanced_dataset_creator import EnhancedDatasetCreator, EnumJSONEncoder
                     
                     # Create enhanced dataset
                     enhanced_creator = EnhancedDatasetCreator()
@@ -448,18 +448,33 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                 split_point = int(len(training_pairs) * 0.8)
                 train_data = training_pairs[:split_point]
                 val_data = training_pairs[split_point:]
-                
-                # Save training set  
+
+                # Determine which JSON encoder to use
+                try:
+                    # Try to use EnumJSONEncoder if available
+                    json_encoder = EnumJSONEncoder
+                except NameError:
+                    # Fallback to default encoder
+                    json_encoder = None
+                    print("⚠️ EnumJSONEncoder not available, using default JSON encoder")
+
+                # Save training set
                 train_file = output_path / f"train_{timestamp}.jsonl"
                 with open(train_file, 'w') as f:
                     for item in train_data:
-                        f.write(json.dumps(item) + '\n')
-                
+                        if json_encoder:
+                            f.write(json.dumps(item, cls=json_encoder) + '\n')
+                        else:
+                            f.write(json.dumps(item) + '\n')
+
                 # Save validation set
                 val_file = output_path / f"validation_{timestamp}.jsonl"
                 with open(val_file, 'w') as f:
                     for item in val_data:
-                        f.write(json.dumps(item) + '\n')
+                        if json_encoder:
+                            f.write(json.dumps(item, cls=json_encoder) + '\n')
+                        else:
+                            f.write(json.dumps(item) + '\n')
                 
                 # Create dataset info file
                 dataset_info = {
@@ -490,12 +505,39 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                 try:
                     from datasets import Dataset
                     from huggingface_hub import HfApi
-                    
+
                     print(f"📤 Uploading {len(training_pairs)} training pairs to production dataset...")
                     print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
-                    
-                    # Create HuggingFace Dataset from training pairs
-                    dataset = Dataset.from_list(training_pairs)
+
+                    # ✅ CRITICAL FIX: Serialize FixApproach enums before Dataset.from_list()
+                    # This prevents Apache Arrow serialization errors with enum objects
+                    serialized_training_pairs = []
+                    for pair in training_pairs:
+                        try:
+                            # Test serialization to catch enum issues
+                            serialized_pair = json.loads(json.dumps(pair, cls=EnumJSONEncoder))
+                            serialized_training_pairs.append(serialized_pair)
+                        except Exception as e:
+                            print(f"⚠️ Skipping problematic training pair: {e}")
+                            # Fallback: manually convert any remaining enum values
+                            clean_pair = {}
+                            for key, value in pair.items():
+                                if hasattr(value, 'value'):  # Enum object
+                                    clean_pair[key] = value.value
+                                elif isinstance(value, dict):
+                                    # Recursively clean nested dictionaries
+                                    clean_dict = {}
+                                    for k, v in value.items():
+                                        clean_dict[k] = v.value if hasattr(v, 'value') else v
+                                    clean_pair[key] = clean_dict
+                                else:
+                                    clean_pair[key] = value
+                            serialized_training_pairs.append(clean_pair)
+
+                    print(f"✅ Serialized {len(serialized_training_pairs)} training pairs for upload")
+
+                    # Create HuggingFace Dataset from serialized training pairs
+                    dataset = Dataset.from_list(serialized_training_pairs)
                     
                     # Upload to production dataset (PUBLIC)
                     dataset.push_to_hub(

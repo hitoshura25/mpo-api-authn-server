@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from vulnerable_code_extractor import VulnerableCodeExtractor, ContextExtractionResult
 from multi_approach_fix_generator import MultiApproachFixGenerator, SecurityFix, FixApproach
 from url_to_code_mapper import URLToCodeMapper, enhance_vulnerability_with_url_mapping
+from fix_quality_assessor import FixQualityAssessor, QualityAssessmentResult
 
 
 @dataclass
@@ -83,6 +84,7 @@ class EnhancedDatasetCreator:
         self.extractor = VulnerableCodeExtractor(project_root=self.project_root)
         self.fix_generator = MultiApproachFixGenerator()
         self.url_mapper = URLToCodeMapper(project_root=self.project_root)  # NEW: URL mapping component
+        self.quality_assessor = FixQualityAssessor()  # NEW: Phase 4 Quality Assessment (enabled by default)
         self.output_dir = output_dir or Path("enhanced_datasets/code-aware-training")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -131,9 +133,26 @@ class EnhancedDatasetCreator:
                         failed_count += 1
                         continue
                     
-                    # Create enhanced training examples (one per fix approach)
-                    vuln_examples = self._create_training_examples_for_vulnerability(
-                        vuln, extraction_result, fix_result
+                    # NEW: Phase 4 Quality Assessment - Filter high-quality fixes (enabled by default)
+                    generated_fixes = [fix.__dict__ for fix in fix_result.fixes]
+                    original_code = extraction_result.code_context.vulnerable_code if extraction_result.code_context else None
+                    
+                    high_quality_fixes = self.quality_assessor.filter_high_quality_fixes(
+                        vuln, generated_fixes, original_code
+                    )
+                    
+                    if not high_quality_fixes:
+                        self.logger.warning(f"⚠️ No high-quality fixes generated for {vuln.get('check_id', 'unknown')} "
+                                           f"(generated {len(generated_fixes)} fixes, none passed quality threshold)")
+                        failed_count += 1
+                        continue
+                    
+                    self.logger.info(f"✅ Quality assessment: {len(high_quality_fixes)}/{len(generated_fixes)} fixes "
+                                   f"passed validation for {vuln.get('check_id', 'unknown')}")
+                    
+                    # Create enhanced training examples (one per high-quality fix approach)
+                    vuln_examples = self._create_training_examples_for_vulnerability_with_quality(
+                        vuln, extraction_result, high_quality_fixes
                     )
                     
                     enhanced_examples.extend(vuln_examples)
@@ -226,6 +245,231 @@ class EnhancedDatasetCreator:
             examples.append(comprehensive_example)
         
         return examples
+    
+    def _create_training_examples_for_vulnerability_with_quality(self, 
+                                                               vulnerability: Dict[str, Any],
+                                                               extraction_result: ContextExtractionResult,
+                                                               high_quality_fixes: List[Tuple[Dict[str, Any], QualityAssessmentResult]]) -> List[EnhancedTrainingExample]:
+        """Create training examples for quality-assessed fixes (Phase 4 integration)."""
+        
+        examples = []
+        code_context = extraction_result.code_context
+        
+        # Handle both source code and infrastructure vulnerabilities
+        if code_context:
+            # Source code vulnerability - has code context
+            vulnerability_context = {
+                'id': vulnerability.get('check_id', 'unknown'),
+                'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
+                'file_path': code_context.file_path,
+                'line': code_context.vulnerability_line,
+                'type': vulnerability.get('extra', {}).get('metadata', {}).get('category', 'security'),
+                'language': code_context.language,
+                'function': code_context.function_name,
+                'class': code_context.class_name,
+                'message': vulnerability.get('extra', {}).get('message', 'Security vulnerability detected')
+            }
+        else:
+            # Infrastructure vulnerability - no code context
+            vulnerability_context = {
+                'id': vulnerability.get('check_id', 'unknown'),
+                'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
+                'file_path': vulnerability.get('path', 'unknown'),
+                'line': vulnerability.get('start', {}).get('line', 0),
+                'type': vulnerability.get('extra', {}).get('metadata', {}).get('category', 'infrastructure'),
+                'language': 'text',
+                'function': None,
+                'class': None,
+                'message': vulnerability.get('extra', {}).get('message', 'Infrastructure security issue detected')
+            }
+        
+        # Create training examples for each high-quality fix
+        for fix_data, quality_assessment in high_quality_fixes:
+            # Convert fix_data dict back to SecurityFix-like object for compatibility
+            class QualityFixWrapper:
+                def __init__(self, data, quality):
+                    self.__dict__.update(data)
+                    self.quality_assessment = quality
+            
+            quality_fix = QualityFixWrapper(fix_data, quality_assessment)
+            
+            # Create enhanced training example with quality metadata
+            example = self._create_single_training_example_with_quality(
+                vulnerability, vulnerability_context, code_context, quality_fix
+            )
+            examples.append(example)
+        
+        # Also create a comprehensive example combining all high-quality fixes
+        if len(high_quality_fixes) > 1:
+            fixes_only = [fix_data for fix_data, _ in high_quality_fixes]
+            comprehensive_example = self._create_comprehensive_training_example_with_quality(
+                vulnerability, vulnerability_context, code_context, high_quality_fixes
+            )
+            examples.append(comprehensive_example)
+        
+        return examples
+    
+    def _create_single_training_example_with_quality(self, 
+                                                   vulnerability: Dict[str, Any],
+                                                   vulnerability_context: Dict[str, Any],
+                                                   code_context,
+                                                   quality_fix) -> EnhancedTrainingExample:
+        """Create a single training example with quality assessment metadata."""
+        
+        # Create instruction with quality context
+        instruction = self._create_enhanced_instruction_with_quality(
+            vulnerability_context, code_context, quality_fix
+        )
+        
+        # Create response with quality validation details
+        response = self._create_enhanced_response_with_quality(
+            vulnerability_context, code_context, quality_fix
+        )
+        
+        # Enhanced metadata including quality assessment
+        metadata = {
+            'vulnerability_id': vulnerability_context['id'],
+            'severity': vulnerability_context['severity'],
+            'fix_approach': getattr(quality_fix, 'approach', 'unknown'),
+            'created_at': datetime.now().isoformat(),
+            'enhanced_dataset': True,
+            'phase_4_quality_assessed': True,  # NEW: Phase 4 marker
+            'quality_score': quality_fix.quality_assessment.overall_score,
+            'quality_details': {
+                'syntax_valid': quality_fix.quality_assessment.syntax_valid,
+                'security_improved': quality_fix.quality_assessment.security_improved,
+                'validation_passed': quality_fix.quality_assessment.validation_passed,
+                'code_quality_score': quality_fix.quality_assessment.code_quality_score
+            }
+        }
+        
+        # Code examples for training
+        code_examples = {}
+        if code_context:
+            code_examples['original'] = code_context.vulnerable_code
+            code_examples['fixed'] = getattr(quality_fix, 'fixed_code', '')
+        
+        return EnhancedTrainingExample(
+            instruction=instruction,
+            response=response,
+            metadata=metadata,
+            vulnerability_context=vulnerability_context,
+            fix_approaches=[quality_fix.__dict__],
+            code_examples=code_examples
+        )
+    
+    def _create_enhanced_instruction_with_quality(self, vulnerability_context: Dict[str, Any], 
+                                                code_context, quality_fix) -> str:
+        """Create an enhanced instruction highlighting quality aspects."""
+        
+        base_instruction = self._create_enhanced_instruction(vulnerability_context, code_context, 
+                                                           getattr(quality_fix, 'approach', None))
+        
+        # Add quality context to instruction
+        quality_note = f"\n\nNote: Provide a high-quality, validated security fix " \
+                      f"(target quality score: ≥{quality_fix.quality_assessment.assessment_details.get('assessment_threshold', 0.7)})."
+        
+        return base_instruction + quality_note
+    
+    def _create_enhanced_response_with_quality(self, vulnerability_context: Dict[str, Any], 
+                                             code_context, quality_fix) -> str:
+        """Create an enhanced response with quality validation details."""
+        
+        base_response = self._create_enhanced_response(vulnerability_context, code_context, quality_fix)
+        
+        # Add quality assessment details
+        quality_details = f"""
+
+## Quality Assessment ✅
+- **Overall Score**: {quality_fix.quality_assessment.overall_score:.2f}/1.0
+- **Syntax Valid**: {'✅' if quality_fix.quality_assessment.syntax_valid else '❌'}
+- **Security Improved**: {'✅' if quality_fix.quality_assessment.security_improved else '❌'}
+- **Code Quality**: {quality_fix.quality_assessment.code_quality_score:.2f}/1.0
+- **Validation Status**: {'✅ PASSED' if quality_fix.quality_assessment.validation_passed else '❌ FAILED'}
+
+**Quality Recommendations**:
+{chr(10).join(f'- {rec}' for rec in quality_fix.quality_assessment.recommendations)}
+"""
+        
+        return base_response + quality_details
+    
+    def _create_comprehensive_training_example_with_quality(self, 
+                                                          vulnerability: Dict[str, Any],
+                                                          vulnerability_context: Dict[str, Any],
+                                                          code_context,
+                                                          high_quality_fixes: List[Tuple[Dict[str, Any], QualityAssessmentResult]]) -> EnhancedTrainingExample:
+        """Create a comprehensive example combining all high-quality fixes."""
+        
+        fixes_data = [fix_data for fix_data, _ in high_quality_fixes]
+        assessments = [assessment for _, assessment in high_quality_fixes]
+        
+        # Calculate aggregate quality metrics
+        avg_quality_score = sum(a.overall_score for a in assessments) / len(assessments)
+        all_syntax_valid = all(a.syntax_valid for a in assessments)
+        any_security_improved = any(a.security_improved for a in assessments)
+        
+        instruction = f"""Analyze this security vulnerability and provide multiple high-quality fix approaches:
+
+**Vulnerability**: {vulnerability_context['id']} ({vulnerability_context['severity']})
+**File**: {vulnerability_context['file_path']}:{vulnerability_context['line']}
+**Type**: {vulnerability_context['type']}
+
+Multiple validated fix approaches are needed with quality scores ≥0.7."""
+
+        # Combine all high-quality fix responses
+        combined_response = f"""# Multiple High-Quality Security Fix Approaches
+
+## Vulnerability Analysis
+**ID**: {vulnerability_context['id']}
+**Location**: {vulnerability_context['file_path']}:{vulnerability_context['line']}
+**Severity**: {vulnerability_context['severity']}
+
+## Validated Fix Approaches ({len(high_quality_fixes)} quality-assessed solutions)
+
+"""
+        
+        for i, (fix_data, assessment) in enumerate(high_quality_fixes, 1):
+            combined_response += f"""### Approach {i}: {fix_data.get('title', 'Security Fix')}
+**Quality Score**: {assessment.overall_score:.2f}/1.0 ✅
+
+{fix_data.get('description', 'High-quality security fix')}
+
+**Implementation**:
+```{vulnerability_context.get('language', '')}
+{fix_data.get('fixed_code', '')}
+```
+
+**Validation**: {fix_data.get('validation_steps', 'Quality validated')}
+
+---
+
+"""
+        
+        # Aggregate metadata
+        metadata = {
+            'vulnerability_id': vulnerability_context['id'],
+            'severity': vulnerability_context['severity'],
+            'fix_approach': 'comprehensive_quality_assessed',
+            'created_at': datetime.now().isoformat(),
+            'enhanced_dataset': True,
+            'phase_4_quality_assessed': True,
+            'comprehensive_example': True,
+            'quality_summary': {
+                'total_fixes': len(high_quality_fixes),
+                'average_quality_score': avg_quality_score,
+                'all_syntax_valid': all_syntax_valid,
+                'security_improvements': any_security_improved
+            }
+        }
+        
+        return EnhancedTrainingExample(
+            instruction=instruction,
+            response=combined_response,
+            metadata=metadata,
+            vulnerability_context=vulnerability_context,
+            fix_approaches=fixes_data,
+            code_examples={}
+        )
     
     def _create_single_training_example(self, 
                                       vulnerability: Dict[str, Any],
@@ -580,29 +824,29 @@ Type: {vulnerability_context.get('infrastructure_type', 'Infrastructure componen
 Remediation Focus: Configuration and deployment security"""
         
         return response
-    
-    def save_enhanced_dataset(self, result: DatasetCreationResult, 
+
+    def save_enhanced_dataset(self, result: DatasetCreationResult,
                             format: str = 'jsonl') -> Optional[Path]:
         """
         Save enhanced dataset to file.
-        
+
         Args:
             result: Dataset creation result
             format: Output format ('jsonl' or 'json')
-            
+
         Returns:
             Path to saved file or None if failed
         """
         if not result.success:
             self.logger.error("Cannot save failed dataset creation result")
             return None
-        
+
         try:
             dataset_name = result.creation_metadata.get('dataset_name', 'enhanced_dataset')
-            
+
             if format == 'jsonl':
                 output_file = self.output_dir / f"{dataset_name}.jsonl"
-                
+
                 with open(output_file, 'w', encoding='utf-8') as f:
                     for example in result.enhanced_examples:
                         # Convert to simple dict for JSONL format
@@ -611,11 +855,11 @@ Remediation Focus: Configuration and deployment security"""
                             'response': example.response,
                             'metadata': example.metadata
                         }
-                        f.write(json.dumps(jsonl_example, ensure_ascii=False) + '\n')
-            
+                        f.write(json.dumps(jsonl_example, ensure_ascii=False, cls=EnumJSONEncoder) + '\n')
+
             elif format == 'json':
                 output_file = self.output_dir / f"{dataset_name}.json"
-                
+
                 dataset_dict = {
                     'metadata': result.creation_metadata,
                     'examples': [
@@ -624,114 +868,41 @@ Remediation Focus: Configuration and deployment security"""
                             'response': example.response,
                             'metadata': example.metadata,
                             'vulnerability_context': example.vulnerability_context,
-                            'fix_approaches': example.fix_approaches,
+                            'fix_approaches': serialize_fix_approaches(example.fix_approaches),
                             'code_examples': example.code_examples
                         }
                         for example in result.enhanced_examples
                     ]
                 }
-                
+
                 with open(output_file, 'w', encoding='utf-8') as f:
-                    json.dump(dataset_dict, f, ensure_ascii=False, indent=2)
-            
+                    json.dump(dataset_dict, f, ensure_ascii=False, indent=2, cls=EnumJSONEncoder)
+
             else:
                 raise ValueError(f"Unsupported format: {format}")
-            
+
             self.logger.info(f"✅ Enhanced dataset saved to: {output_file}")
             return output_file
-            
+
         except Exception as e:
-            self.logger.error(f"❌ Failed to save enhanced dataset: {e}")
+            self.logger.error(f"Failed to save enhanced dataset: {e}")
             return None
-    
-    def enhance_existing_dataset(self, existing_dataset_path: Path) -> DatasetCreationResult:
-        """
-        Enhance an existing training dataset by adding code-aware examples.
-        
-        Args:
-            existing_dataset_path: Path to existing JSONL training dataset
-            
-        Returns:
-            DatasetCreationResult with enhanced examples
-        """
-        try:
-            self.logger.info(f"🔧 Enhancing existing dataset: {existing_dataset_path}")
-            
-            # Load existing examples
-            existing_examples = []
-            with open(existing_dataset_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    example = json.loads(line.strip())
-                    existing_examples.append(example)
-            
-            self.logger.info(f"📊 Loaded {len(existing_examples)} existing examples")
-            
-            # Try to extract vulnerability information from existing examples
-            vulnerabilities = []
-            for example in existing_examples:
-                # Parse vulnerability ID from instruction
-                instruction = example.get('instruction', '')
-                if 'Vulnerability ID:' in instruction:
-                    # Extract basic vulnerability info for enhancement
-                    vuln_id = instruction.split('Vulnerability ID:')[1].split('\n')[0].strip()
-                    
-                    vulnerabilities.append({
-                        'check_id': vuln_id,
-                        'path': 'unknown',  # Will need to be inferred or provided
-                        'start': {'line': 1, 'col': 1},
-                        'extra': {
-                            'message': example.get('response', '').split('\n')[0],
-                            'severity': 'UNKNOWN'
-                        }
-                    })
-            
-            if not vulnerabilities:
-                return DatasetCreationResult(
-                    success=False,
-                    error_message="No vulnerability information found in existing dataset"
-                )
-            
-            # Create enhanced dataset
-            return self.create_enhanced_dataset(vulnerabilities, 
-                                              dataset_name=f"enhanced_{existing_dataset_path.stem}")
-            
-        except Exception as e:
-            return DatasetCreationResult(
-                success=False,
-                error_message=f"Failed to enhance existing dataset: {e}"
-            )
 
 
-# Convenience functions
-def create_enhanced_dataset_from_vulnerabilities(vulnerabilities: List[Dict[str, Any]], 
-                                               output_dir: Optional[Path] = None,
-                                               dataset_name: Optional[str] = None) -> DatasetCreationResult:
-    """
-    Convenience function to create enhanced dataset from vulnerabilities.
-    
-    Args:
-        vulnerabilities: List of vulnerability data
-        output_dir: Output directory for dataset
-        dataset_name: Name for the dataset
-        
-    Returns:
-        DatasetCreationResult
-    """
-    creator = EnhancedDatasetCreator(output_dir)
-    return creator.create_enhanced_dataset(vulnerabilities, dataset_name)
+class EnumJSONEncoder(json.JSONEncoder):
+    """Custom JSON encoder that handles Enum objects by converting them to their string values."""
+
+    def default(self, obj):
+        if isinstance(obj, FixApproach):
+            return obj.value
+        return super().default(obj)
 
 
-def enhance_existing_training_data(existing_dataset_path: Path,
-                                 output_dir: Optional[Path] = None) -> DatasetCreationResult:
-    """
-    Convenience function to enhance existing training dataset.
-    
-    Args:
-        existing_dataset_path: Path to existing training dataset
-        output_dir: Output directory for enhanced dataset
-        
-    Returns:
-        DatasetCreationResult
-    """
-    creator = EnhancedDatasetCreator(output_dir)
-    return creator.enhance_existing_dataset(existing_dataset_path)
+def serialize_fix_approaches(fix_approaches):
+    """Convert FixApproach enum objects to their string values for JSON serialization."""
+    if isinstance(fix_approaches, list):
+        return [approach.value if isinstance(approach, FixApproach) else approach
+                for approach in fix_approaches]
+    elif isinstance(fix_approaches, FixApproach):
+        return fix_approaches.value
+    return fix_approaches

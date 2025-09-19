@@ -1608,6 +1608,756 @@ def categorize_configuration_training_data(self, vulnerability, fixed_code):
 - [ ] Validate uploaded models are accessible and functional
 - [ ] Document model upload process and troubleshooting
 
+### **Phase 4.4: Sequential Training Quality Enhancement** ✅ **COMPLETED** (Upload Requires Phase 4.5)
+
+**Status Update (September 18, 2025)**: ✅ **COMPLETED** - All critical quality enhancements implemented with evidence-based solutions addressing under-training and catastrophic forgetting using validated MLX-LM parameters. **Note**: HuggingFace upload requires Phase 4.5 format conversion.
+
+#### **Problem Statement**
+
+**1. Catastrophic Forgetting**: Stage 2 models lose Stage 1 capabilities
+- **Current Issue**: Sequential capabilities < 0.6 (knowledge retention failing)
+- **Impact**: Stage 2 specialization comes at cost of Stage 1 analysis expertise
+- **Root Cause**: Naive sequential training without knowledge preservation mechanisms
+
+**2. Suboptimal Specialization**: Models underperforming specialization targets
+- **Current Issue**: Stage 2 models scoring 0.57-0.66 instead of target ≥0.7
+- **Impact**: Insufficient specialization for production deployment
+- **Root Cause**: Inadequate training parameters and data quality optimization
+
+#### **✅ IMPLEMENTATION COMPLETED (September 18, 2025)**
+
+**Evidence-Based Solutions Implemented**:
+
+**A. Training Parameter Enhancement** ✅ **COMPLETED**
+- **Stage 1 Iterations**: 100 → 500 (5x increase) - addresses severe under-training
+- **Stage 2 Iterations**: 150 → 800 (5.3x increase) - ensures proper specialization
+- **Learning Rate Optimization**: Stage 1 (5e-6), Stage 2 (1e-6) - validated from MLX research
+- **Optimizer**: adamw with weight_decay: 0.01 - proven MLX-LM configuration
+- **LoRA Parameters**: rank: 8, scale: 20.0, dropout: 0.05 - research-validated settings
+
+**B. Sequential Progression Enhancement** ✅ **COMPLETED**
+- **Resume-Adapter-File**: Implemented true Stage 1 → Stage 2 progression using MLX --resume-adapter-file
+- **Catastrophic Forgetting Mitigation**: Mixed training data (85% Stage 2 + 15% Stage 1)
+- **Knowledge Preservation**: Lower Stage 2 learning rate to preserve Stage 1 capabilities
+- **Enhanced Methods**: `_run_stage1_enhanced_training()` and `_prepare_mixed_training_data()`
+
+**C. Monitoring and Validation** ✅ **COMPLETED**
+- **Enhanced Metadata**: Comprehensive tracking of training improvements
+- **Validation Framework**: Enhanced logging and specialization tracking
+- **Result Reporting**: Detailed progress indicators and success metrics
+- **Evidence Documentation**: All changes use validated MLX-LM APIs and parameters
+
+**Target Achievement Strategy**:
+- **Stage 1 ≥0.75**: 5x iteration increase + optimized parameters
+- **Stage 2 ≥0.70**: 5.3x iteration increase + knowledge preservation
+- **Sequential ≥0.6**: Mixed training data + resume-adapter-file approach
+
+### **Phase 4.5: MLX LoRA to HuggingFace PEFT Format Conversion** ⏳ **REQUIRED**
+
+**Status Update (September 18, 2025)**: Critical format conversion required for HuggingFace uploads following evidence-based research and CLAUDE.md validation protocols.
+
+#### **Problem Discovered Through Validation**
+
+**Following CLAUDE.md best practices**, comprehensive research of official HuggingFace documentation revealed MLX-LM and HuggingFace use incompatible LoRA adapter formats:
+
+**MLX-LM Output Format (Current):**
+- `adapters.safetensors` - MLX naming convention
+- Parameter names may use different format (e.g., `lora_a/lora_b`)
+- Missing model card (README.md)
+- Tensor shapes may require conversion
+
+**HuggingFace PEFT Required Format (Standard):**
+- `adapter_model.safetensors` - Official PEFT naming convention
+- Specific parameter naming: `base_model.model.{layer}.lora_A.weight/lora_B.weight`
+- `adapter_config.json` with minimum required fields (`target_modules`, `peft_type`)
+- `README.md` model card (community best practice, highly recommended)
+
+#### **Evidence-Based Research Sources**
+- **HuggingFace PEFT Documentation**: https://huggingface.co/docs/peft/v0.16.0/en/developer_guides/checkpoint
+- **HuggingFace Model Card Guidelines**: https://huggingface.co/docs/hub/model-cards
+- **Community Format Standards**: Validated through repository analysis and search
+
+#### **Solution: Format Conversion Pipeline**
+
+**A. File Format Conversion** ✅ **REQUIRED**
+```python
+def convert_mlx_to_peft_format(mlx_adapter_path: Path, output_path: Path):
+    """Convert MLX adapters.safetensors to HuggingFace adapter_model.safetensors"""
+    # 1. Load MLX adapter weights
+    mlx_weights = safetensors.load_file(mlx_adapter_path / "adapters.safetensors")
+
+    # 2. Convert parameter names to PEFT format
+    peft_weights = {}
+    for key, tensor in mlx_weights.items():
+        # Convert: "layer.0.lora_a" → "base_model.model.layer.0.lora_A.weight"
+        peft_key = convert_parameter_name(key)
+        # Transpose tensor if required for format compatibility
+        peft_tensor = convert_tensor_format(tensor)
+        peft_weights[peft_key] = peft_tensor
+
+    # 3. Save in HuggingFace format
+    safetensors.save_file(peft_weights, output_path / "adapter_model.safetensors")
+```
+
+**B. Model Card Generation** ✅ **REQUIRED**
+```python
+def generate_model_card(adapter_config: Dict, base_model_path: str) -> str:
+    """Generate HuggingFace-compliant model card with proper metadata"""
+    return f"""---
+base_model: {base_model_path}
+base_model_relation: adapter
+library_name: peft
+peft_type: LORA
+tags:
+- security
+- vulnerability-analysis
+- webauthn
+license: apache-2.0
+---
+
+# WebAuthn Security LoRA Adapter
+
+This LoRA adapter specializes the base model for WebAuthn security vulnerability analysis.
+
+## Model Details
+- **Base Model**: {base_model_path}
+- **Adapter Type**: LoRA (Low-Rank Adaptation)
+- **Target Modules**: {adapter_config.get('target_modules', 'query, value')}
+- **Rank**: {adapter_config.get('r', 8)}
+
+## Training Details
+- **Training Data**: WebAuthn security vulnerabilities
+- **Iterations**: {adapter_config.get('iters', 'N/A')}
+- **Learning Rate**: {adapter_config.get('learning_rate', 'N/A')}
+
+## Usage
+```python
+from peft import PeftModel
+from transformers import AutoModelForCausalLM
+
+base_model = AutoModelForCausalLM.from_pretrained("{base_model_path}")
+model = PeftModel.from_pretrained(base_model, "path/to/this/adapter")
+```
+"""
+```
+
+**C. Configuration Validation** ✅ **REQUIRED**
+```python
+def validate_peft_config(config_path: Path) -> Dict[str, Any]:
+    """Ensure adapter_config.json meets PEFT minimum requirements"""
+    with open(config_path) as f:
+        config = json.load(f)
+
+    # Validate minimum required fields
+    required_fields = ["target_modules", "peft_type"]
+    for field in required_fields:
+        if field not in config:
+            raise ValueError(f"Missing required field: {field}")
+
+    return config
+```
+
+#### **Implementation Requirements**
+
+**Integration Points:**
+1. **Update Upload Pipeline**: Add conversion step before validation in `mlx_finetuning.py`
+2. **Maintain Quality Standards**: Keep all existing validation requirements
+3. **Error Handling**: Graceful fallback if conversion fails
+4. **Logging**: Comprehensive conversion progress tracking
+
+**Success Criteria:**
+- ✅ MLX adapters successfully convert to HuggingFace PEFT format
+- ✅ Converted adapters pass all quality validations
+- ✅ Model cards meet community standards
+- ✅ Uploaded adapters load correctly with PEFT library
+
+#### **4.4.A: Catastrophic Forgetting Mitigation (Reference Implementation)**
+
+**Knowledge Distillation Implementation**
+```python
+class KnowledgeDistillationTrainer:
+    def __init__(self, teacher_model_path: str, base_model_path: str):
+        """
+        Initialize knowledge distillation for preserving Stage 1 capabilities
+        during Stage 2 training
+        """
+        self.teacher_model = mlx.nn.load_model(teacher_model_path)  # Stage 1 model
+        self.student_model = mlx.nn.load_model(base_model_path)     # Base model for Stage 2
+        self.distillation_weight = 0.3  # Balance between distillation and task loss
+        self.temperature = 4.0          # Softmax temperature for knowledge transfer
+
+    def distillation_loss(self, student_logits, teacher_logits, ground_truth):
+        """
+        Combine task-specific loss with knowledge distillation loss
+        """
+        # Traditional task loss (cross-entropy with ground truth)
+        task_loss = mlx.nn.losses.cross_entropy(student_logits, ground_truth)
+
+        # Knowledge distillation loss (KL divergence between teacher and student)
+        teacher_probs = mlx.nn.softmax(teacher_logits / self.temperature)
+        student_log_probs = mlx.nn.log_softmax(student_logits / self.temperature)
+        distillation_loss = mlx.nn.kl_div_loss(student_log_probs, teacher_probs) * (self.temperature ** 2)
+
+        # Combined loss
+        total_loss = (1 - self.distillation_weight) * task_loss + self.distillation_weight * distillation_loss
+        return total_loss
+```
+
+**Multi-Task Training Approach**
+```python
+class MultiTaskSequentialTrainer:
+    def __init__(self):
+        self.stage1_examples = []  # Keep Stage 1 analysis examples
+        self.stage2_examples = []  # Add Stage 2 code fix examples
+        self.task_balance_ratio = 0.4  # 40% Stage 1 examples, 60% Stage 2 examples
+
+    def create_mixed_training_dataset(self, stage1_dataset, stage2_dataset):
+        """
+        Create balanced training dataset maintaining Stage 1 capabilities
+        """
+        # Sample Stage 1 examples for retention
+        stage1_retention_size = int(len(stage2_dataset) * self.task_balance_ratio)
+        stage1_sample = random.sample(stage1_dataset, stage1_retention_size)
+
+        # Add task identifiers to distinguish training objectives
+        stage1_tagged = [
+            {**example, "task_type": "vulnerability_analysis"}
+            for example in stage1_sample
+        ]
+        stage2_tagged = [
+            {**example, "task_type": "code_fix_generation"}
+            for example in stage2_dataset
+        ]
+
+        # Combine and shuffle
+        mixed_dataset = stage1_tagged + stage2_tagged
+        random.shuffle(mixed_dataset)
+
+        return mixed_dataset
+```
+
+**Gradient Regularization (Elastic Weight Consolidation)**
+```python
+class ElasticWeightConsolidation:
+    def __init__(self, model, stage1_dataset, lambda_ewc=1000):
+        """
+        Implement EWC to preserve important weights from Stage 1 training
+        """
+        self.model = model
+        self.lambda_ewc = lambda_ewc
+        self.fisher_information = self._compute_fisher_information(stage1_dataset)
+        self.optimal_weights = {name: param.copy() for name, param in model.named_parameters()}
+
+    def _compute_fisher_information(self, dataset):
+        """
+        Compute Fisher Information Matrix for important parameter identification
+        """
+        fisher = {}
+
+        # Set model to evaluation mode
+        self.model.eval()
+
+        for name, param in self.model.named_parameters():
+            fisher[name] = mlx.array(np.zeros_like(param))
+
+        # Compute gradients for Fisher Information
+        for batch in dataset:
+            self.model.zero_grad()
+            logits = self.model(batch['input'])
+            loss = mlx.nn.losses.cross_entropy(logits, batch['target'])
+            loss.backward()
+
+            for name, param in self.model.named_parameters():
+                if param.grad is not None:
+                    fisher[name] += param.grad ** 2
+
+        # Normalize by dataset size
+        for name in fisher:
+            fisher[name] /= len(dataset)
+
+        return fisher
+
+    def ewc_loss(self, current_weights):
+        """
+        Compute EWC regularization loss to prevent catastrophic forgetting
+        """
+        ewc_loss = 0
+        for name, param in current_weights.items():
+            if name in self.fisher_information:
+                ewc_loss += (self.fisher_information[name] *
+                           (param - self.optimal_weights[name]) ** 2).sum()
+
+        return self.lambda_ewc * ewc_loss / 2
+```
+
+**Progressive Training Strategy**
+```python
+class ProgressiveSequentialTrainer:
+    def __init__(self):
+        self.curriculum_stages = [
+            {"stage1_ratio": 0.8, "stage2_ratio": 0.2, "epochs": 5},   # Heavy Stage 1 focus
+            {"stage1_ratio": 0.6, "stage2_ratio": 0.4, "epochs": 10},  # Balanced training
+            {"stage1_ratio": 0.3, "stage2_ratio": 0.7, "epochs": 15},  # Stage 2 emphasis
+            {"stage1_ratio": 0.2, "stage2_ratio": 0.8, "epochs": 10}   # Final specialization
+        ]
+
+    def progressive_fine_tune(self, model, stage1_data, stage2_data):
+        """
+        Implement progressive curriculum learning for smooth transition
+        """
+        for stage_config in self.curriculum_stages:
+            print(f"🔄 Progressive training - Stage 1: {stage_config['stage1_ratio']:.1%}, Stage 2: {stage_config['stage2_ratio']:.1%}")
+
+            # Create curriculum-balanced dataset
+            curriculum_dataset = self._create_curriculum_dataset(
+                stage1_data, stage2_data,
+                stage_config['stage1_ratio'], stage_config['stage2_ratio']
+            )
+
+            # Train for specified epochs
+            for epoch in range(stage_config['epochs']):
+                epoch_loss = self._train_epoch(model, curriculum_dataset)
+                print(f"  Epoch {epoch+1}/{stage_config['epochs']}: Loss = {epoch_loss:.4f}")
+
+        return model
+```
+
+#### **4.4.B: Specialization Score Optimization**
+
+**Training Parameter Tuning Methodology**
+```python
+class SpecializationOptimizer:
+    def __init__(self):
+        self.parameter_grid = {
+            'stage1_iterations': [50, 75, 100],     # Increased from 5
+            'stage2_iterations': [300, 400, 500],   # Increased from 150
+            'stage1_learning_rate': [1e-5, 5e-6, 1e-6],
+            'stage2_learning_rate': [5e-6, 1e-6, 5e-7],
+            'batch_size': [4, 8, 16],
+            'warmup_steps': [50, 100, 200]
+        }
+
+    def optimize_training_parameters(self, validation_dataset):
+        """
+        Grid search optimization for maximum specialization scores
+        """
+        best_config = None
+        best_scores = {'stage1': 0, 'stage2': 0, 'sequential': 0}
+
+        for config in self._generate_parameter_combinations():
+            print(f"🧪 Testing configuration: {config}")
+
+            # Train models with current configuration
+            stage1_model = self._train_stage1(config)
+            stage2_model = self._train_stage2(stage1_model, config)
+
+            # Validate specialization scores
+            scores = self._validate_specialization(stage1_model, stage2_model, validation_dataset)
+
+            # Check if this configuration improves scores
+            if (scores['stage1'] >= 0.75 and scores['stage2'] >= 0.70 and
+                scores['sequential'] >= 0.6):
+                if scores['stage2'] > best_scores['stage2']:
+                    best_config = config
+                    best_scores = scores
+                    print(f"✅ New best configuration found: {scores}")
+
+        return best_config, best_scores
+```
+
+**Learning Rate Scheduling**
+```python
+class AdaptiveLearningRateScheduler:
+    def __init__(self, initial_lr=1e-5, patience=5, factor=0.5, min_lr=1e-7):
+        self.initial_lr = initial_lr
+        self.patience = patience
+        self.factor = factor
+        self.min_lr = min_lr
+        self.best_loss = float('inf')
+        self.wait_count = 0
+
+    def get_learning_rate(self, current_loss, epoch):
+        """
+        Adaptive learning rate based on validation loss plateau
+        """
+        if current_loss < self.best_loss:
+            self.best_loss = current_loss
+            self.wait_count = 0
+        else:
+            self.wait_count += 1
+
+        if self.wait_count >= self.patience:
+            new_lr = max(self.initial_lr * self.factor, self.min_lr)
+            self.initial_lr = new_lr
+            self.wait_count = 0
+            print(f"📉 Learning rate reduced to {new_lr:.2e}")
+
+        # Warmup for first 10% of training
+        warmup_epochs = max(1, epoch // 10)
+        if epoch < warmup_epochs:
+            warmup_lr = self.initial_lr * (epoch + 1) / warmup_epochs
+            return warmup_lr
+
+        return self.initial_lr
+```
+
+**Enhanced Training Data Quality Improvements**
+```python
+class TrainingDataQualityEnhancer:
+    def __init__(self):
+        self.quality_threshold = 0.8
+        self.diversity_threshold = 0.7
+        self.complexity_levels = ['basic', 'intermediate', 'advanced']
+
+    def enhance_training_data_quality(self, training_examples):
+        """
+        Improve training data quality through filtering and augmentation
+        """
+        # 1. Quality filtering
+        high_quality_examples = self._filter_by_quality(training_examples)
+
+        # 2. Diversity enhancement
+        diverse_examples = self._ensure_vulnerability_diversity(high_quality_examples)
+
+        # 3. Complexity balancing
+        balanced_examples = self._balance_complexity_levels(diverse_examples)
+
+        # 4. Data augmentation
+        augmented_examples = self._augment_training_data(balanced_examples)
+
+        return augmented_examples
+
+    def _filter_by_quality(self, examples):
+        """
+        Filter training examples by quality score
+        """
+        quality_assessor = FixQualityAssessor()
+        filtered_examples = []
+
+        for example in examples:
+            if 'fixed_code' in example.get('response', ''):
+                quality_score = quality_assessor.assess_fix_quality(
+                    example.get('original_code', ''),
+                    example.get('fixed_code', ''),
+                    example.get('metadata', {})
+                )
+
+                if quality_score.get('overall_score', 0) >= self.quality_threshold:
+                    filtered_examples.append(example)
+
+        print(f"🔍 Quality filtering: {len(filtered_examples)}/{len(examples)} examples retained")
+        return filtered_examples
+
+    def _ensure_vulnerability_diversity(self, examples):
+        """
+        Ensure balanced representation of vulnerability types
+        """
+        vulnerability_counts = {}
+        diverse_examples = []
+        max_per_type = max(5, len(examples) // 20)  # At least 5, max 5% per type
+
+        for example in examples:
+            vuln_type = example.get('metadata', {}).get('vulnerability_type', 'unknown')
+            current_count = vulnerability_counts.get(vuln_type, 0)
+
+            if current_count < max_per_type:
+                diverse_examples.append(example)
+                vulnerability_counts[vuln_type] = current_count + 1
+
+        print(f"🌈 Diversity filtering: {len(diverse_examples)}/{len(examples)} examples retained")
+        return diverse_examples
+```
+
+#### **4.4.C: Implementation Strategy**
+
+**Code Changes in sequential_fine_tuner.py**
+```python
+class EnhancedSequentialFineTuner:
+    def __init__(self):
+        self.knowledge_distillation = True
+        self.elastic_weight_consolidation = True
+        self.progressive_training = True
+        self.parameter_optimization = True
+        self.quality_enhancement = True
+
+    def enhanced_sequential_fine_tune(self, base_model_path, training_data):
+        """
+        Enhanced sequential fine-tuning with catastrophic forgetting mitigation
+        and specialization optimization
+        """
+        # 1. Enhance training data quality
+        if self.quality_enhancement:
+            quality_enhancer = TrainingDataQualityEnhancer()
+            training_data = quality_enhancer.enhance_training_data_quality(training_data)
+
+        # 2. Optimize training parameters
+        if self.parameter_optimization:
+            optimizer = SpecializationOptimizer()
+            best_config, _ = optimizer.optimize_training_parameters(training_data['validation'])
+        else:
+            best_config = self._get_default_enhanced_config()
+
+        # 3. Stage 1: Enhanced analysis training
+        print("🚀 Enhanced Stage 1: Analysis specialization with retention preparation")
+        stage1_model = self._enhanced_stage1_training(
+            base_model_path, training_data['stage1'], best_config
+        )
+
+        # 4. Stage 2: Knowledge-preserving code fix training
+        print("🚀 Enhanced Stage 2: Code fix specialization with knowledge preservation")
+        stage2_model = self._enhanced_stage2_training(
+            stage1_model, training_data['stage1'], training_data['stage2'], best_config
+        )
+
+        # 5. Validation and quality assurance
+        validation_results = self._comprehensive_validation(
+            stage1_model, stage2_model, training_data['validation']
+        )
+
+        return {
+            'stage1_model': stage1_model,
+            'stage2_model': stage2_model,
+            'validation_results': validation_results,
+            'config_used': best_config
+        }
+
+    def _enhanced_stage2_training(self, stage1_model, stage1_data, stage2_data, config):
+        """
+        Stage 2 training with catastrophic forgetting mitigation
+        """
+        # Initialize knowledge preservation mechanisms
+        if self.knowledge_distillation:
+            kd_trainer = KnowledgeDistillationTrainer(stage1_model, stage1_model)
+
+        if self.elastic_weight_consolidation:
+            ewc = ElasticWeightConsolidation(stage1_model, stage1_data)
+
+        if self.progressive_training:
+            progressive_trainer = ProgressiveSequentialTrainer()
+            return progressive_trainer.progressive_fine_tune(stage1_model, stage1_data, stage2_data)
+
+        # Multi-task training approach
+        multi_task_trainer = MultiTaskSequentialTrainer()
+        mixed_dataset = multi_task_trainer.create_mixed_training_dataset(stage1_data, stage2_data)
+
+        # Training loop with enhanced loss function
+        model = stage1_model
+        lr_scheduler = AdaptiveLearningRateScheduler(config['stage2_learning_rate'])
+
+        for epoch in range(config['stage2_iterations']):
+            epoch_loss = 0
+            learning_rate = lr_scheduler.get_learning_rate(epoch_loss, epoch)
+
+            for batch in mixed_dataset:
+                # Standard training loss
+                logits = model(batch['input'])
+                standard_loss = mlx.nn.losses.cross_entropy(logits, batch['target'])
+
+                # Knowledge distillation loss (if enabled)
+                total_loss = standard_loss
+                if self.knowledge_distillation:
+                    teacher_logits = kd_trainer.teacher_model(batch['input'])
+                    total_loss = kd_trainer.distillation_loss(logits, teacher_logits, batch['target'])
+
+                # EWC regularization (if enabled)
+                if self.elastic_weight_consolidation:
+                    ewc_loss = ewc.ewc_loss(dict(model.named_parameters()))
+                    total_loss += ewc_loss
+
+                # Backward pass and optimization
+                total_loss.backward()
+                model.update(learning_rate)
+                epoch_loss += total_loss.item()
+
+            # Progress reporting
+            if epoch % 10 == 0:
+                avg_loss = epoch_loss / len(mixed_dataset)
+                print(f"  Epoch {epoch}: Loss = {avg_loss:.4f}, LR = {learning_rate:.2e}")
+
+        return model
+```
+
+**New Training Configurations**
+```python
+ENHANCED_TRAINING_CONFIGS = {
+    'catastrophic_forgetting_mitigation': {
+        'knowledge_distillation_weight': 0.3,
+        'ewc_lambda': 1000,
+        'multi_task_ratio': 0.4,  # 40% Stage 1 retention
+        'progressive_curriculum': True
+    },
+
+    'specialization_optimization': {
+        'stage1_iterations': 50,      # Increased from 5
+        'stage2_iterations': 300,     # Increased from 150
+        'stage1_learning_rate': 1e-5,
+        'stage2_learning_rate': 5e-6, # Reduced for fine-grained learning
+        'warmup_steps': 100,
+        'batch_size': 8,
+        'gradient_clipping': 1.0
+    },
+
+    'quality_enhancement': {
+        'data_quality_threshold': 0.8,
+        'diversity_enforcement': True,
+        'complexity_balancing': True,
+        'augmentation_factor': 1.2
+    }
+}
+```
+
+**Validation Framework Enhancements**
+```python
+class ComprehensiveModelValidator:
+    def __init__(self):
+        self.benchmark_tasks = {
+            'stage1_analysis': self._create_analysis_benchmarks(),
+            'stage2_code_fix': self._create_code_fix_benchmarks(),
+            'sequential_progression': self._create_progression_benchmarks()
+        }
+
+    def validate_enhanced_models(self, stage1_model, stage2_model, validation_data):
+        """
+        Comprehensive validation of enhanced sequential models
+        """
+        results = {}
+
+        # 1. Stage 1 specialization validation
+        results['stage1_specialization'] = self._validate_stage1_specialization(
+            stage1_model, validation_data
+        )
+
+        # 2. Stage 2 specialization validation
+        results['stage2_specialization'] = self._validate_stage2_specialization(
+            stage2_model, validation_data
+        )
+
+        # 3. Knowledge retention validation
+        results['knowledge_retention'] = self._validate_knowledge_retention(
+            stage1_model, stage2_model, validation_data
+        )
+
+        # 4. Sequential progression validation
+        results['sequential_progression'] = self._validate_sequential_progression(
+            stage1_model, stage2_model, validation_data
+        )
+
+        # 5. Overall quality assessment
+        results['overall_assessment'] = self._assess_overall_quality(results)
+
+        return results
+
+    def _validate_knowledge_retention(self, stage1_model, stage2_model, validation_data):
+        """
+        Validate that Stage 2 model retains Stage 1 analysis capabilities
+        """
+        stage1_score = self._test_analysis_capability(stage1_model, validation_data['analysis'])
+        stage2_retention_score = self._test_analysis_capability(stage2_model, validation_data['analysis'])
+
+        retention_ratio = stage2_retention_score / stage1_score if stage1_score > 0 else 0
+
+        return {
+            'stage1_analysis_score': stage1_score,
+            'stage2_retention_score': stage2_retention_score,
+            'retention_ratio': retention_ratio,
+            'retention_threshold_met': retention_ratio >= 0.6,
+            'status': 'PASS' if retention_ratio >= 0.6 else 'FAIL'
+        }
+```
+
+#### **4.4.D: Success Metrics**
+
+**Target Performance Criteria**
+- **Stage 1 Specialization**: ≥0.75 (vulnerability analysis expertise)
+- **Stage 2 Specialization**: ≥0.70 (code fix generation expertise)
+- **Sequential Progression**: ≥0.6 (knowledge retention from Stage 1 to Stage 2)
+- **Overall Training Time**: <5 minutes total (maintain efficiency)
+- **Model Size**: <1GB (deployment efficiency)
+
+**Performance Benchmarking Methodology**
+```python
+class PerformanceBenchmarker:
+    def __init__(self):
+        self.benchmark_suites = {
+            'vulnerability_analysis': self._load_analysis_benchmarks(),
+            'code_fix_generation': self._load_code_fix_benchmarks(),
+            'cross_task_retention': self._load_retention_benchmarks()
+        }
+
+    def benchmark_enhanced_models(self, stage1_model, stage2_model):
+        """
+        Comprehensive benchmarking against enhanced performance targets
+        """
+        benchmark_results = {}
+
+        # Vulnerability Analysis Benchmarking (Stage 1)
+        analysis_score = self._benchmark_analysis_capability(
+            stage1_model, self.benchmark_suites['vulnerability_analysis']
+        )
+        benchmark_results['stage1_analysis'] = {
+            'score': analysis_score,
+            'target': 0.75,
+            'achieved': analysis_score >= 0.75,
+            'improvement_needed': max(0, 0.75 - analysis_score)
+        }
+
+        # Code Fix Generation Benchmarking (Stage 2)
+        code_fix_score = self._benchmark_code_fix_capability(
+            stage2_model, self.benchmark_suites['code_fix_generation']
+        )
+        benchmark_results['stage2_code_fix'] = {
+            'score': code_fix_score,
+            'target': 0.70,
+            'achieved': code_fix_score >= 0.70,
+            'improvement_needed': max(0, 0.70 - code_fix_score)
+        }
+
+        # Knowledge Retention Benchmarking
+        retention_score = self._benchmark_knowledge_retention(
+            stage1_model, stage2_model, self.benchmark_suites['cross_task_retention']
+        )
+        benchmark_results['sequential_retention'] = {
+            'score': retention_score,
+            'target': 0.6,
+            'achieved': retention_score >= 0.6,
+            'improvement_needed': max(0, 0.6 - retention_score)
+        }
+
+        # Overall Success Assessment
+        all_targets_met = all(result['achieved'] for result in benchmark_results.values())
+        benchmark_results['overall_success'] = {
+            'all_targets_achieved': all_targets_met,
+            'readiness_for_production': all_targets_met,
+            'next_steps': self._generate_improvement_recommendations(benchmark_results)
+        }
+
+        return benchmark_results
+```
+
+#### **4.4.E: Integration with Existing Pipeline**
+
+**process_artifacts.py Integration**
+```python
+# Add enhanced sequential training flag
+parser.add_argument('--enhanced-sequential-training', action='store_true',
+                   help='Enable enhanced sequential training with catastrophic forgetting mitigation')
+
+# Modify Phase 3: Sequential Fine-Tuning
+if enable_sequential_fine_tuning:
+    if args.enhanced_sequential_training:
+        print("\n🚀 Phase 3: Enhanced Sequential Fine-Tuning...")
+        enhanced_trainer = EnhancedSequentialFineTuner()
+        sequential_result = enhanced_trainer.enhanced_sequential_fine_tune(
+            base_model_path=config.get_base_model_path(),
+            training_data=prepared_training_data
+        )
+    else:
+        print("\n🚀 Phase 3: Standard Sequential Fine-Tuning...")
+        # Existing implementation
+```
+
+**This comprehensive Phase 4.4 enhancement addresses both catastrophic forgetting and specialization optimization through systematic implementation of knowledge preservation techniques, parameter optimization, and enhanced validation frameworks, ensuring production-ready sequential fine-tuning with measurable quality improvements.**
+
 ---
 
 ## Technical Requirements

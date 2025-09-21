@@ -84,7 +84,7 @@ class EnhancedDatasetCreator:
         self.extractor = VulnerableCodeExtractor(project_root=self.project_root)
         self.fix_generator = MultiApproachFixGenerator()
         self.url_mapper = URLToCodeMapper(project_root=self.project_root)  # NEW: URL mapping component
-        self.quality_assessor = FixQualityAssessor()  # NEW: Phase 4 Quality Assessment (enabled by default)
+        self.quality_assessor = FixQualityAssessor()  # NEW: Quality Assessment (enabled by default)
         self.output_dir = output_dir or Path("enhanced_datasets/code-aware-training")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -133,7 +133,7 @@ class EnhancedDatasetCreator:
                         failed_count += 1
                         continue
                     
-                    # NEW: Phase 4 Quality Assessment - Filter high-quality fixes (enabled by default)
+                    # NEW: Quality Assessment - Filter high-quality fixes (enabled by default)
                     generated_fixes = [fix.__dict__ for fix in fix_result.fixes]
                     original_code = extraction_result.code_context.vulnerable_code if extraction_result.code_context else None
                     
@@ -250,7 +250,7 @@ class EnhancedDatasetCreator:
                                                                vulnerability: Dict[str, Any],
                                                                extraction_result: ContextExtractionResult,
                                                                high_quality_fixes: List[Tuple[Dict[str, Any], QualityAssessmentResult]]) -> List[EnhancedTrainingExample]:
-        """Create training examples for quality-assessed fixes (Phase 4 integration)."""
+        """Create training examples for quality-assessed fixes."""
         
         examples = []
         code_context = extraction_result.code_context
@@ -333,7 +333,7 @@ class EnhancedDatasetCreator:
             'fix_approach': getattr(quality_fix, 'approach', 'unknown'),
             'created_at': datetime.now().isoformat(),
             'enhanced_dataset': True,
-            'phase_4_quality_assessed': True,  # NEW: Phase 4 marker
+            'quality_assessed': True,  # NEW: Quality assessment marker
             'quality_score': quality_fix.quality_assessment.overall_score,
             'quality_details': {
                 'syntax_valid': quality_fix.quality_assessment.syntax_valid,

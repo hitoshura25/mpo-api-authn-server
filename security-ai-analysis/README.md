@@ -22,16 +22,16 @@ This system automatically analyzes security vulnerabilities using advanced AI mo
 GitHub Actions Security Scans → Artifact Download → AI Analysis → Rich Narratives → Training Datasets
 ```
 
-### Complete 4-Phase AI Enhancement Workflow
+### Complete AI Enhancement Workflow
 
-1. **Phase 1: Enhanced Dataset Creation**: Professional FOSS tools scan code → 5x enhanced security patterns → Rich training datasets
-2. **Phase 2: RAG-Enhanced Analysis**: Context-aware vulnerability analysis with retrieval augmentation → Detailed narratives
-3. **Phase 3: Sequential Fine-Tuning** ⭐ **NEW DEFAULT**: Progressive specialization with two models:
+1. **Enhanced Dataset Creation**: Professional FOSS tools scan code → 5x enhanced security patterns → Rich training datasets
+2. **RAG-Enhanced Analysis**: Context-aware vulnerability analysis with retrieval augmentation → Detailed narratives
+3. **Sequential Fine-Tuning** ⭐ **DEFAULT**: Progressive specialization with two models:
    - **Stage 1**: Vulnerability Analysis Specialist (base model → analysis expert)
    - **Stage 2**: Code Fix Generation Specialist (Stage 1 model → code fix expert)
-4. **Phase 4: Production Upload**: Specialized models and datasets published to HuggingFace Hub
+4. **Production Upload**: Specialized models and datasets published to HuggingFace Hub
 
-**Automated Monitoring**: Daemon polls GitHub Actions every 5 minutes for new security artifacts and runs complete 4-phase AI enhancement pipeline
+**Automated Monitoring**: Daemon polls GitHub Actions every 5 minutes for new security artifacts and runs complete AI enhancement pipeline
 
 ### Two Usage Modes
 
@@ -101,14 +101,14 @@ python3 process_artifacts.py
 - Training datasets in JSONL format
 - Processing time: ~0.8 seconds per vulnerability with MLX optimization
 
-**For Fine-Tuning (Phase 5):**
+**For Advanced Fine-Tuning:**
 Optional advanced feature - see [MLX Installation Guide](../docs/development/mlx-installation-guide.md) for Apple Silicon setup.
 
 ## Advanced Documentation
 
 For comprehensive fine-tuning usage patterns and advanced configurations:
 - 📚 **[Fine-Tuning Usage Guide](../docs/development/ai-security-fine-tuning-usage.md)** - Complete integration modes, configuration options, and troubleshooting
-- 🛠️ **[MLX Installation Guide](../docs/development/mlx-installation-guide.md)** - Step-by-step Apple Silicon setup for Phase 5 fine-tuning
+- 🛠️ **[MLX Installation Guide](../docs/development/mlx-installation-guide.md)** - Step-by-step Apple Silicon setup for advanced fine-tuning
 
 ## Understanding the Daemon System
 

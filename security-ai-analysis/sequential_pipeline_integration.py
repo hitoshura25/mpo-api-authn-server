@@ -2,7 +2,7 @@
 """
 Sequential Fine-Tuning Pipeline Integration
 
-Provides integration functions for Phase 3: Sequential Fine-Tuning as part of the complete
+Provides integration functions for Sequential Fine-Tuning as part of the complete
 security analysis pipeline. This module implements the new default behavior that creates
 specialized models for vulnerability analysis and code fix generation.
 
@@ -32,7 +32,7 @@ def run_sequential_fine_tuning_phase(
     upload_model: bool = True
 ) -> Dict[str, Any]:
     """
-    Execute Phase 3: Sequential Fine-Tuning as the new default pipeline behavior
+    Execute Sequential Fine-Tuning as the default pipeline behavior
     
     Creates specialized datasets and trains two models:
     1. Stage 1: Vulnerability Analysis Specialist
@@ -51,7 +51,7 @@ def run_sequential_fine_tuning_phase(
     # Check CLI opt-out first (fallback to single-stage approach)
     if disable_sequential_fine_tuning:
         print("\n" + "="*60)
-        print("⏭️  Phase 3: Sequential Fine-Tuning (DISABLED - Falling back to single-stage)")
+        print("⏭️  Sequential Fine-Tuning (DISABLED - Falling back to single-stage)")
         print("🔧 Sequential fine-tuning disabled via --disable-sequential-fine-tuning flag")
         print("   Will use traditional single-stage fine-tuning instead")
         print("="*60)
@@ -65,7 +65,7 @@ def run_sequential_fine_tuning_phase(
         return _fallback_to_single_stage_fine_tuning(vulnerabilities, summary, upload_model)
     
     print("\n" + "="*60)
-    print("🚀 Phase 3: Sequential Fine-Tuning (New Default Behavior)")
+    print("🚀 Sequential Fine-Tuning (Default Behavior)")
     print("🎯 Creating specialized models for maximum accuracy")
     print("="*60)
     

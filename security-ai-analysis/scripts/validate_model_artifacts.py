@@ -59,16 +59,25 @@ def validate_model_artifacts(model_path: Path) -> Dict[str, Any]:
             
         validation_results['checks']['directory_exists'] = True
         logger.info("✅ Model directory exists")
-        
+
+        # Detect if this is a PEFT adapter
+        is_peft_adapter = _is_peft_adapter(model_path)
+        validation_results['details']['is_peft_adapter'] = is_peft_adapter
+
         # Check 2: Validate weights files
         weights_result = _validate_model_weights(model_path)
         validation_results['checks']['weights_valid'] = weights_result['valid']
         validation_results['details']['weights'] = weights_result
-        
-        # Check 3: Validate tokenizer files
-        tokenizer_result = _validate_tokenizer_files(model_path)
-        validation_results['checks']['tokenizer_functional'] = tokenizer_result['valid']
-        validation_results['details']['tokenizer'] = tokenizer_result
+
+        # Check 3: Validate tokenizer files (skip for PEFT adapters)
+        if is_peft_adapter:
+            logger.info("🔧 Detected PEFT adapter - skipping tokenizer validation")
+            validation_results['checks']['tokenizer_functional'] = True  # Skip for adapters
+            validation_results['details']['tokenizer'] = {'valid': True, 'skipped': 'PEFT adapter uses base model tokenizer'}
+        else:
+            tokenizer_result = _validate_tokenizer_files(model_path)
+            validation_results['checks']['tokenizer_functional'] = tokenizer_result['valid']
+            validation_results['details']['tokenizer'] = tokenizer_result
         
         # Check 4: Validate configuration files
         config_result = _validate_config_files(model_path)
@@ -91,6 +100,9 @@ def validate_model_artifacts(model_path: Path) -> Dict[str, Any]:
         
         # Collect errors and warnings
         for check_name, check_result in validation_results['details'].items():
+            # Skip non-validation result items (like is_peft_adapter boolean)
+            if not isinstance(check_result, dict):
+                continue
             if 'errors' in check_result:
                 validation_results['errors'].extend(check_result['errors'])
             if 'warnings' in check_result:
@@ -108,6 +120,44 @@ def validate_model_artifacts(model_path: Path) -> Dict[str, Any]:
         logger.error(f"❌ Model validation error: {e}")
         validation_results['errors'].append(f"Validation error: {str(e)}")
         return validation_results
+
+def _is_peft_adapter(model_path: Path) -> bool:
+    """
+    Detect if this is a PEFT adapter based on files present
+
+    Args:
+        model_path: Path to model directory
+
+    Returns:
+        True if this appears to be a PEFT adapter
+    """
+    try:
+        # Check for PEFT-specific files
+        adapter_model_file = model_path / "adapter_model.safetensors"
+        adapter_config_file = model_path / "adapter_config.json"
+
+        # Must have both adapter model and config
+        if not (adapter_model_file.exists() and adapter_config_file.exists()):
+            return False
+
+        # Check if adapter_config.json contains PEFT configuration
+        import json
+        with open(adapter_config_file, 'r') as f:
+            config = json.load(f)
+
+        # Look for PEFT-specific fields
+        peft_indicators = [
+            config.get('peft_type') in ['LORA', 'ADALORA', 'ADAPTION_PROMPT'],
+            'target_modules' in config,
+            'base_model_name_or_path' in config
+        ]
+
+        # Convert any non-boolean values to boolean before using any()
+        bool_indicators = [bool(indicator) for indicator in peft_indicators]
+        return any(bool_indicators)
+
+    except Exception:
+        return False
 
 def _validate_model_weights(model_path: Path) -> Dict[str, Any]:
     """Validate model weight files"""

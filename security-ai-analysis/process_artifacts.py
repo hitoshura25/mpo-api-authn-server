@@ -23,7 +23,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 from parsers.trivy_parser import parse_trivy_json
 from parsers.checkov_parser import parse_checkov_json
 from parsers.sarif_parser import parse_sarif_json
-from parsers.semgrep_parser import parse_semgrep_json
+from parsers.semgrep_parser import parse_semgrep_sarif
 from parsers.osv_parser import parse_osv_json
 from parsers.zap_parser import parse_zap_json
 from analysis.olmo_analyzer import OLMoSecurityAnalyzer
@@ -177,7 +177,7 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                     else:
                         vulns = parse_checkov_json(file_path)
                 elif scan_type == 'semgrep':
-                    vulns = parse_semgrep_json(file_path)
+                    vulns = parse_semgrep_sarif(file_path)
                 elif scan_type == 'osv':
                     vulns = parse_osv_json(file_path)
                 elif scan_type == 'sarif':
@@ -320,9 +320,9 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
             for tool, count in summary['by_tool'].items():
                 print(f"    {tool}: {count}")
         
-        # **Phase 2: Narrativization Integration**
+        # **Narrativization Integration**
         print("\\n" + "="*60)
-        print("🎯 Phase 2: Creating Rich Security Narratives")
+        print("🎯 Creating Rich Security Narratives")
         print("="*60)
         
         try:
@@ -360,9 +360,9 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
             print(f"✅ Narrativized dataset saved to: {narrativized_file}")
             print(f"📊 Created {len(narrativized_results)} narratives")
             
-            # **Phase 3: Fine-tuning Dataset Preparation**
+            # **Fine-tuning Dataset Preparation**
             print("\\n" + "="*60)
-            print("🚀 Phase 3: Preparing Fine-Tuning Dataset")  
+            print("🚀 Preparing Fine-Tuning Dataset")  
             print("="*60)
             
             if narrativized_results:
@@ -497,9 +497,9 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                 print(f"    - {val_file}")
                 print(f"    - {info_file}")
                 
-                # **Phase 4: Production Dataset Upload**
+                # **Production Dataset Upload**
                 print("\\n" + "="*60)
-                print("🚀 Phase 4: Uploading to Production HuggingFace Dataset")
+                print("📤 Uploading to Production HuggingFace Dataset")
                 print("="*60)
                 
                 try:
@@ -557,14 +557,14 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                     print(f"❌ Production dataset upload failed: {e}")
                     print(f"   Training data saved locally for manual upload if needed")
                 
-                # **Phase 3: Sequential Fine-Tuning Integration (New Default Behavior)**
+                # **Sequential Fine-Tuning Integration (Default Behavior)**
                 # Progressive specialization: Stage 1 (Analysis) → Stage 2 (Code Fixes)
                 disable_sequential_fine_tuning = args.disable_sequential_fine_tuning if args else False
                 upload_model = not (args.skip_model_upload if args else False)  # Default True, disabled by --skip-model-upload
                 
                 # Try sequential fine-tuning first (new default)
                 if is_sequential_fine_tuning_available() and not disable_sequential_fine_tuning:
-                    print("🎯 Using Phase 3: Sequential Fine-Tuning (Default)")
+                    print("🎯 Sequential Fine-Tuning (Default)")
                     summary = run_sequential_fine_tuning_phase(
                         vulnerabilities=narrativized_results,  # Use full vulnerability data with narratives
                         summary=summary,
@@ -572,8 +572,8 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                         upload_model=upload_model
                     )
                 else:
-                    # Fall back to Phase 5: Single-Stage Fine-Tuning (Legacy)
-                    print("🔄 Falling back to Phase 5: Single-Stage Fine-Tuning")
+                    # Fall back to Single-Stage Fine-Tuning (Legacy)
+                    print("🔄 Legacy Single-Stage Fine-Tuning")
                     skip_fine_tuning = args.skip_fine_tuning if args else False
                     summary = integrate_fine_tuning_if_available(train_file, train_data, summary, skip_fine_tuning, upload_model)
                 
@@ -582,9 +582,9 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
         
         except ImportError as e:
             print(f"⚠️ Narrativization module not available: {e}")
-            print("   Phase 2 and Phase 3 will be skipped")
+            print("   Narrativization and fine-tuning will be skipped")
         except Exception as e:
-            print(f"❌ Error in Phase 2/3: {e}")
+            print(f"❌ Error in narrativization/fine-tuning: {e}")
         
         return results, summary
     else:

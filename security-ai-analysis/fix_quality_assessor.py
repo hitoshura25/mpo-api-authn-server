@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Fix Quality Assessor - Phase 4: Quality Assurance Framework
+Fix Quality Assessor - Quality Assurance Framework
 
 Provides comprehensive validation of generated fixes using open-source tools.
 This module is designed to be enabled by default in the main process_artifacts.py 
@@ -430,14 +430,14 @@ class CodeQualityScorer:
         return score
 
 class FixQualityAssessor:
-    """Main quality assessment coordinator following Phase 4 design philosophy"""
+    """Main quality assessment coordinator for enhanced quality validation"""
     
     def __init__(self):
         self.syntax_validator = SyntaxValidator()
         self.security_validator = SecurityValidator()
         self.code_quality_scorer = CodeQualityScorer()
         
-        # Quality thresholds for filtering (Phase 4 implementation plan)
+        # Quality thresholds for filtering
         self.validation_threshold = 0.5  # Minimum score for inclusion in training data (adjusted for real-world fixes)
         self.syntax_weight = 0.4
         self.security_weight = 0.3
@@ -736,7 +736,7 @@ def assess_generated_fixes(vulnerability: Dict[str, Any], generated_fixes: List[
     Main entry point for quality assessment in enhanced dataset creation
     
     Returns only high-quality fixes that pass validation for inclusion in training datasets.
-    This function implements the Phase 4 design philosophy of default enablement.
+    This function implements quality assessment with default enablement.
     """
     
     assessor = FixQualityAssessor()
@@ -744,7 +744,7 @@ def assess_generated_fixes(vulnerability: Dict[str, Any], generated_fixes: List[
 
 if __name__ == "__main__":
     # Basic testing functionality
-    print("Fix Quality Assessor - Phase 4: Quality Assurance Framework")
+    print("Fix Quality Assessor - Quality Assurance Framework")
     print("Enabled by default for enhanced dataset creation")
     
     # Test basic functionality

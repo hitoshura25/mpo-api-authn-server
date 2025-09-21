@@ -82,9 +82,12 @@ def parse_zap_json(filepath: str) -> List[Dict]:
                     'site_host': site_host,
                     'site_port': site_port,
                     'uri': uri,
+                    'url': uri,  # NEW: Add URL field for URL-to-code mapping
                     'method': method,
                     'instance_count': instance_count,
-                    'zap_version': zap_version
+                    'zap_version': zap_version,
+                    'path': uri,  # Map URI to path field for enhanced dataset creation
+                    'start': {'line': 1}  # Minimal start field for enhanced dataset compatibility
                 })
         
         return findings

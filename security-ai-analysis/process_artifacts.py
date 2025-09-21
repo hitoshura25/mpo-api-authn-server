@@ -8,6 +8,9 @@ import os
 import sys
 from pathlib import Path
 from datetime import datetime
+
+# Fix HuggingFace tokenizers parallelism warning
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 import zipfile
 import shutil
 import subprocess
@@ -20,12 +23,13 @@ sys.path.append(str(Path(__file__).parent.parent))
 from parsers.trivy_parser import parse_trivy_json
 from parsers.checkov_parser import parse_checkov_json
 from parsers.sarif_parser import parse_sarif_json
-from parsers.semgrep_parser import parse_semgrep_json
+from parsers.semgrep_parser import parse_semgrep_sarif
 from parsers.osv_parser import parse_osv_json
 from parsers.zap_parser import parse_zap_json
 from analysis.olmo_analyzer import OLMoSecurityAnalyzer
 from config_manager import OLMoSecurityConfig
 from pipeline_integration import integrate_fine_tuning_if_available
+from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is_sequential_fine_tuning_available
 import argparse
 import logging
 
@@ -85,16 +89,30 @@ def find_security_files(directory: str):
         file_str = str(file_path).lower()
         
         # Identify file type based on name and content
-        if 'trivy' in file_str and file_path.suffix == '.json':
-            scan_files['trivy'].append(str(file_path))
+        if 'trivy' in file_str:
+            if file_path.suffix in ['.json', '.sarif']:
+                scan_files['trivy'].append(str(file_path))
         elif 'checkov' in file_str:
             if file_path.suffix in ['.json', '.sarif']:
                 scan_files['checkov'].append(str(file_path))
-        elif 'semgrep' in file_str and file_path.suffix == '.json':
-            scan_files['semgrep'].append(str(file_path))
+        elif 'semgrep' in file_str and file_path.suffix in ['.json', '.sarif']:
+            # Prefer SARIF over JSON for semgrep to avoid duplication
+            # Check if we already have a semgrep file from the same directory
+            file_dir = file_path.parent
+            existing_semgrep = [f for f in scan_files['semgrep'] if Path(f).parent == file_dir]
+            
+            if not existing_semgrep:
+                # No existing file, add this one
+                scan_files['semgrep'].append(str(file_path))
+            elif file_path.suffix == '.sarif':
+                # Replace JSON with SARIF (prefer SARIF)
+                scan_files['semgrep'] = [f for f in scan_files['semgrep'] if Path(f).parent != file_dir]
+                scan_files['semgrep'].append(str(file_path))
+            # If existing is SARIF and current is JSON, skip current (keep SARIF)
         elif 'osv' in file_str and file_path.suffix == '.json':
             scan_files['osv'].append(str(file_path))
-        elif file_path.suffix == '.sarif':
+        elif file_path.suffix == '.sarif' and 'semgrep' not in file_str:
+            # Only add SARIF files that are NOT semgrep (to avoid duplication)
             scan_files['sarif'].append(str(file_path))
         elif 'zap' in file_str and file_path.suffix == '.json':
             scan_files['zap'].append(str(file_path))
@@ -123,11 +141,12 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
     print(f"   Commit: {args.commit}")
     
     try:
-        # Enhanced analyzer configuration for OLMo-2-1B
+        # Initialize baseline analyzer first (RAG will be added post-analysis)
+        print("🤖 Initializing baseline OLMo analyzer for initial vulnerability processing...")
         analyzer = OLMoSecurityAnalyzer(
             model_name=args.model_name
         )
-        print("✅ OLMo analyzer initialized successfully", flush=True)
+        print("✅ Baseline OLMo analyzer initialized successfully", flush=True)
     except Exception as e:
         print(f"❌ Failed to initialize OLMo analyzer: {e}")
         return [], {}
@@ -148,14 +167,17 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
             try:
                 # Parse based on type
                 if scan_type == 'trivy':
-                    vulns = parse_trivy_json(file_path)
+                    if file_path.endswith('.sarif'):
+                        vulns = parse_sarif_json(file_path)
+                    else:
+                        vulns = parse_trivy_json(file_path)
                 elif scan_type == 'checkov':
                     if file_path.endswith('.sarif'):
                         vulns = parse_sarif_json(file_path)
                     else:
                         vulns = parse_checkov_json(file_path)
                 elif scan_type == 'semgrep':
-                    vulns = parse_semgrep_json(file_path)
+                    vulns = parse_semgrep_sarif(file_path)
                 elif scan_type == 'osv':
                     vulns = parse_osv_json(file_path)
                 elif scan_type == 'sarif':
@@ -232,6 +254,52 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
             json.dump(summary, f, indent=2)
         print(f"💾 Summary saved to: {summary_file}")
         
+        # Post-analysis RAG enhancement (if enabled)
+        if not args.disable_rag:
+            print("\\n🧠 Building RAG knowledge base with fresh analysis results...")
+            try:
+                from build_knowledge_base import main as build_kb_main
+                import sys
+                from io import StringIO
+                
+                # Capture build output to avoid cluttering the main process output
+                old_stdout = sys.stdout
+                sys.stdout = captured_output = StringIO()
+                
+                try:
+                    # Build knowledge base using the fresh analysis results
+                    sys.argv = ['build_knowledge_base.py', '--results-file', str(results_file), '--verbose']
+                    build_kb_main()
+                    
+                    # Restore stdout for our messages
+                    sys.stdout = old_stdout
+                    print("✅ RAG knowledge base built successfully with fresh analysis data", flush=True)
+                    
+                    # Initialize RAG-enhanced analyzer for verification
+                    from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
+                    rag_analyzer = RAGEnhancedOLMoAnalyzer(
+                        model_name=args.model_name, 
+                        enable_rag=True
+                    )
+                    rag_status = rag_analyzer.get_rag_status()
+                    
+                    if rag_status['status'] == 'active':
+                        kb_stats = rag_status['knowledge_base']
+                        print(f"📊 RAG ready: {kb_stats['total_vectors']} vulnerability patterns available for enhanced analysis", flush=True)
+                        print("💡 Future runs will use RAG-enhanced analysis by default", flush=True)
+                    else:
+                        print(f"⚠️ RAG status: {rag_status['status']} - knowledge base built but with limited functionality", flush=True)
+                    
+                except Exception as inner_e:
+                    sys.stdout = old_stdout
+                    raise inner_e
+                        
+            except Exception as rag_error:
+                print(f"⚠️ RAG knowledge base building failed: {rag_error}")
+                print("💡 This doesn't affect current analysis but RAG won't be available for next runs")
+        else:
+            print("\\n🔄 RAG disabled - knowledge base building skipped")
+        
         
         # Print enhanced summary
         print("\\n📈 Analysis Summary:")
@@ -252,9 +320,9 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
             for tool, count in summary['by_tool'].items():
                 print(f"    {tool}: {count}")
         
-        # **Phase 2: Narrativization Integration**
+        # **Narrativization Integration**
         print("\\n" + "="*60)
-        print("🎯 Phase 2: Creating Rich Security Narratives")
+        print("🎯 Creating Rich Security Narratives")
         print("="*60)
         
         try:
@@ -292,14 +360,15 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
             print(f"✅ Narrativized dataset saved to: {narrativized_file}")
             print(f"📊 Created {len(narrativized_results)} narratives")
             
-            # **Phase 3: Fine-tuning Dataset Preparation**
+            # **Fine-tuning Dataset Preparation**
             print("\\n" + "="*60)
-            print("🚀 Phase 3: Preparing Fine-Tuning Dataset")  
+            print("🚀 Preparing Fine-Tuning Dataset")  
             print("="*60)
             
             if narrativized_results:
                 print(f"📚 Preparing fine-tuning dataset from {len(narrativized_results)} narratives...")
                 
+                # **Standard Training Pairs (Original)**
                 training_pairs = []
                 
                 for item in narrativized_results:
@@ -317,24 +386,95 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                     
                     training_pairs.append(training_pair)
                 
+                # **Enhanced Training Pairs (Code-Aware)**
+                print(f"🚀 Creating enhanced code-aware training dataset...")
+                try:
+                    from enhanced_dataset_creator import EnhancedDatasetCreator, EnumJSONEncoder
+                    
+                    # Create enhanced dataset
+                    enhanced_creator = EnhancedDatasetCreator()
+                    enhanced_result = enhanced_creator.create_enhanced_dataset(
+                        all_vulnerabilities, 
+                        dataset_name=f"enhanced_security_dataset_{timestamp}"
+                    )
+                    
+                    if enhanced_result.success:
+                        print(f"✅ Enhanced dataset creation successful!")
+                        print(f"  📊 Original vulnerabilities: {enhanced_result.original_examples_count}")
+                        print(f"  📈 Enhanced examples: {enhanced_result.enhanced_examples_count}")
+                        print(f"  🎯 Enhancement ratio: {enhanced_result.creation_metadata.get('enhancement_ratio', 0):.1f}x")
+                        
+                        # Convert enhanced examples to training pairs format
+                        enhanced_training_pairs = []
+                        for example in enhanced_result.enhanced_examples:
+                            enhanced_training_pairs.append({
+                                'instruction': example.instruction,
+                                'response': example.response,
+                                'metadata': example.metadata
+                            })
+                        
+                        # Save enhanced dataset separately with custom filename
+                        enhanced_file = output_path / f"enhanced_train_{timestamp}.jsonl"
+                        # Temporarily modify the dataset name in metadata to use our desired filename
+                        original_dataset_name = enhanced_result.creation_metadata.get('dataset_name')
+                        enhanced_result.creation_metadata['dataset_name'] = f"enhanced_train_{timestamp}"
+                        enhanced_creator.save_enhanced_dataset(enhanced_result, format='jsonl')
+                        # Restore original dataset name
+                        if original_dataset_name:
+                            enhanced_result.creation_metadata['dataset_name'] = original_dataset_name
+                        print(f"💾 Enhanced dataset saved to: enhanced_datasets/code-aware-training/")
+                        
+                        # Combine with standard training pairs for comprehensive dataset
+                        combined_training_pairs = training_pairs + enhanced_training_pairs
+                        print(f"🔗 Combined dataset: {len(training_pairs)} standard + {len(enhanced_training_pairs)} enhanced = {len(combined_training_pairs)} total")
+                        
+                        # Use combined dataset for training
+                        training_pairs = combined_training_pairs
+                        
+                    else:
+                        print(f"⚠️ Enhanced dataset creation failed: {enhanced_result.error_message}")
+                        print(f"   Continuing with standard narrativized dataset only...")
+                        
+                except ImportError as e:
+                    print(f"⚠️ Enhanced dataset creator not available: {e}")
+                    print(f"   Continuing with standard narrativized dataset only...")
+                except Exception as e:
+                    print(f"⚠️ Enhanced dataset creation error: {e}")
+                    print(f"   Continuing with standard narrativized dataset only...")
+                
                 # Split into training and validation sets (80/20)
                 import random
                 random.shuffle(training_pairs)
                 split_point = int(len(training_pairs) * 0.8)
                 train_data = training_pairs[:split_point]
                 val_data = training_pairs[split_point:]
-                
-                # Save training set  
+
+                # Determine which JSON encoder to use
+                try:
+                    # Try to use EnumJSONEncoder if available
+                    json_encoder = EnumJSONEncoder
+                except NameError:
+                    # Fallback to default encoder
+                    json_encoder = None
+                    print("⚠️ EnumJSONEncoder not available, using default JSON encoder")
+
+                # Save training set
                 train_file = output_path / f"train_{timestamp}.jsonl"
                 with open(train_file, 'w') as f:
                     for item in train_data:
-                        f.write(json.dumps(item) + '\n')
-                
+                        if json_encoder:
+                            f.write(json.dumps(item, cls=json_encoder) + '\n')
+                        else:
+                            f.write(json.dumps(item) + '\n')
+
                 # Save validation set
                 val_file = output_path / f"validation_{timestamp}.jsonl"
                 with open(val_file, 'w') as f:
                     for item in val_data:
-                        f.write(json.dumps(item) + '\n')
+                        if json_encoder:
+                            f.write(json.dumps(item, cls=json_encoder) + '\n')
+                        else:
+                            f.write(json.dumps(item) + '\n')
                 
                 # Create dataset info file
                 dataset_info = {
@@ -357,20 +497,47 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                 print(f"    - {val_file}")
                 print(f"    - {info_file}")
                 
-                # **Phase 4: Production Dataset Upload**
+                # **Production Dataset Upload**
                 print("\\n" + "="*60)
-                print("🚀 Phase 4: Uploading to Production HuggingFace Dataset")
+                print("📤 Uploading to Production HuggingFace Dataset")
                 print("="*60)
                 
                 try:
                     from datasets import Dataset
                     from huggingface_hub import HfApi
-                    
+
                     print(f"📤 Uploading {len(training_pairs)} training pairs to production dataset...")
                     print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
-                    
-                    # Create HuggingFace Dataset from training pairs
-                    dataset = Dataset.from_list(training_pairs)
+
+                    # ✅ CRITICAL FIX: Serialize FixApproach enums before Dataset.from_list()
+                    # This prevents Apache Arrow serialization errors with enum objects
+                    serialized_training_pairs = []
+                    for pair in training_pairs:
+                        try:
+                            # Test serialization to catch enum issues
+                            serialized_pair = json.loads(json.dumps(pair, cls=EnumJSONEncoder))
+                            serialized_training_pairs.append(serialized_pair)
+                        except Exception as e:
+                            print(f"⚠️ Skipping problematic training pair: {e}")
+                            # Fallback: manually convert any remaining enum values
+                            clean_pair = {}
+                            for key, value in pair.items():
+                                if hasattr(value, 'value'):  # Enum object
+                                    clean_pair[key] = value.value
+                                elif isinstance(value, dict):
+                                    # Recursively clean nested dictionaries
+                                    clean_dict = {}
+                                    for k, v in value.items():
+                                        clean_dict[k] = v.value if hasattr(v, 'value') else v
+                                    clean_pair[key] = clean_dict
+                                else:
+                                    clean_pair[key] = value
+                            serialized_training_pairs.append(clean_pair)
+
+                    print(f"✅ Serialized {len(serialized_training_pairs)} training pairs for upload")
+
+                    # Create HuggingFace Dataset from serialized training pairs
+                    dataset = Dataset.from_list(serialized_training_pairs)
                     
                     # Upload to production dataset (PUBLIC)
                     dataset.push_to_hub(
@@ -390,20 +557,34 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
                     print(f"❌ Production dataset upload failed: {e}")
                     print(f"   Training data saved locally for manual upload if needed")
                 
-                # **Phase 5: MLX Fine-Tuning Integration (Default Behavior)**
-                # Both fine-tuning and model upload enabled by default
-                skip_fine_tuning = args.skip_fine_tuning if args else False
+                # **Sequential Fine-Tuning Integration (Default Behavior)**
+                # Progressive specialization: Stage 1 (Analysis) → Stage 2 (Code Fixes)
+                disable_sequential_fine_tuning = args.disable_sequential_fine_tuning if args else False
                 upload_model = not (args.skip_model_upload if args else False)  # Default True, disabled by --skip-model-upload
-                summary = integrate_fine_tuning_if_available(train_file, train_data, summary, skip_fine_tuning, upload_model)
+                
+                # Try sequential fine-tuning first (new default)
+                if is_sequential_fine_tuning_available() and not disable_sequential_fine_tuning:
+                    print("🎯 Sequential Fine-Tuning (Default)")
+                    summary = run_sequential_fine_tuning_phase(
+                        vulnerabilities=narrativized_results,  # Use full vulnerability data with narratives
+                        summary=summary,
+                        disable_sequential_fine_tuning=disable_sequential_fine_tuning,
+                        upload_model=upload_model
+                    )
+                else:
+                    # Fall back to Single-Stage Fine-Tuning (Legacy)
+                    print("🔄 Legacy Single-Stage Fine-Tuning")
+                    skip_fine_tuning = args.skip_fine_tuning if args else False
+                    summary = integrate_fine_tuning_if_available(train_file, train_data, summary, skip_fine_tuning, upload_model)
                 
             else:
                 print("⚠️ No narrativized results available for fine-tuning dataset preparation")
         
         except ImportError as e:
             print(f"⚠️ Narrativization module not available: {e}")
-            print("   Phase 2 and Phase 3 will be skipped")
+            print("   Narrativization and fine-tuning will be skipped")
         except Exception as e:
-            print(f"❌ Error in Phase 2/3: {e}")
+            print(f"❌ Error in narrativization/fine-tuning: {e}")
         
         return results, summary
     else:
@@ -534,11 +715,17 @@ def main():
     parser.add_argument("--commit", type=str, default="unknown", 
                        help="Git commit SHA being analyzed")
     
-    # Fine-tuning and model upload control (opt-out approach - both enabled by default)
+    # Fine-tuning control (opt-out approach - sequential fine-tuning enabled by default)
+    parser.add_argument("--disable-sequential-fine-tuning", action="store_true",
+                       help="Disable sequential fine-tuning and fall back to single-stage approach")
     parser.add_argument("--skip-fine-tuning", action="store_true",
-                       help="Skip MLX fine-tuning (fine-tuning enabled by default)")
+                       help="Skip MLX fine-tuning entirely (used with fallback mode)")
     parser.add_argument("--skip-model-upload", action="store_true",
                        help="Skip uploading fine-tuned model to HuggingFace Hub (upload enabled by default)")
+    
+    # RAG enhancement control (opt-out approach - RAG enabled by default)
+    parser.add_argument("--disable-rag", action="store_true",
+                       help="Disable RAG-enhanced analysis (RAG enabled by default)")
     
     args = parser.parse_args()
     

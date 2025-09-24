@@ -7,6 +7,7 @@ This plan creates a comprehensive testing system for `security-ai-analysis/proce
 ## Pipeline Overview (What We're Testing)
 
 The `process_artifacts.py` script performs these phases:
+
 1. **Security Parsing**: Parse vulnerability files from multiple security tools
 2. **AI Analysis**: Process vulnerabilities through OLMo model in batches
 3. **Dataset Creation**: Generate training datasets and narrativized content
@@ -31,6 +32,7 @@ The `process_artifacts.py` script performs these phases:
 Create minimal security artifacts with **exactly known vulnerability counts**:
 
 **Files to create:**
+
 - `semgrep.sarif`: Exactly 3 vulnerabilities with known rule IDs, file paths, line numbers
 - `trivy-results.sarif`: Exactly 2 vulnerabilities with known CVEs and severities
 - `checkov-results.sarif`: Exactly 1 vulnerability with known check ID
@@ -40,6 +42,7 @@ Create minimal security artifacts with **exactly known vulnerability counts**:
 **Total: 8 known vulnerabilities** for precise regression testing.
 
 **Requirements for test data:**
+
 - Use realistic but minimal SARIF/JSON structure
 - Include all required fields that parsers expect
 - Use predictable, testable values (e.g., file paths like "test.js", "test.py")
@@ -52,6 +55,7 @@ Create minimal security artifacts with **exactly known vulnerability counts**:
 **Purpose**: Test all parser functions directly with controlled data
 
 **Tests to implement:**
+
 ```python
 class TestSecurityParsers:
     def test_semgrep_parser_exact_count(self):
@@ -82,6 +86,7 @@ class TestSecurityParsers:
 ```
 
 **Key requirements:**
+
 - Test ALL parsers, not just semgrep
 - Use controlled test data with known exact counts
 - Verify data structure and required fields
@@ -94,6 +99,7 @@ class TestSecurityParsers:
 **Purpose**: Test the complete `process_artifacts.py` pipeline with controlled inputs
 
 **Structure:**
+
 ```python
 class TestProcessArtifactsScript:
     # Phase 1: Security Parsing
@@ -153,11 +159,13 @@ class TestProcessArtifactsScript:
 ### 4. Test Configuration and Speed Optimization
 
 **Test speed tiers:**
+
 - **Unit tests**: ~2 seconds (direct parser testing)
 - **Integration tests with --skip-fine-tuning**: ~30 seconds (full pipeline minus AI training)
 - **Full end-to-end tests**: Minutes (complete pipeline when needed)
 
 **Test arguments for speed:**
+
 ```python
 # Standard test args for integration tests
 process_artifacts_args = [
@@ -172,6 +180,7 @@ process_artifacts_args = [
 ### 5. Test Data Management
 
 **Controlled test data requirements:**
+
 - **Predictable**: Same input always produces same output
 - **Minimal**: Small files that parse quickly
 - **Realistic**: Valid SARIF/JSON structure that parsers expect
@@ -179,6 +188,7 @@ process_artifacts_args = [
 - **Documented**: Clear documentation of expected results
 
 **Example test data structure:**
+
 ```
 tests/fixtures/controlled_test_data/
 ├── semgrep.sarif          # 3 vulnerabilities
@@ -192,16 +202,19 @@ tests/fixtures/controlled_test_data/
 ### 6. Assertion Strategy
 
 **Exact assertions where possible:**
+
 - `assert summary["total_analyzed"] == 8` (not `> 0`)
 - `assert summary["by_tool"]["semgrep"] == 3` (not `> 0`)
 - `assert len(train_data) == 6` (not `> 0`)
 
 **Smart assertions for flexibility:**
+
 - File existence + non-empty size checks
 - JSON schema validation for critical files
 - Range checks where exact counts vary (e.g., model generation times)
 
 **Brittleness prevention:**
+
 - Test behavior, not implementation details
 - Allow for reasonable variance in non-critical outputs
 - Focus on regression detection for critical parsing
@@ -209,6 +222,7 @@ tests/fixtures/controlled_test_data/
 ### 7. Test Organization and Structure
 
 **Directory structure:**
+
 ```
 tests/
 ├── unit/
@@ -222,6 +236,7 @@ tests/
 ```
 
 **Test execution options:**
+
 - `./run_tests.sh quick`: Unit tests only (~2 seconds)
 - `./run_tests.sh integration`: Full pipeline with --skip-fine-tuning (~30 seconds)
 - `./run_tests.sh all`: Everything including optional slow tests
@@ -229,6 +244,7 @@ tests/
 ### 8. Success Criteria
 
 The implemented testing system should:
+
 1. **Catch regressions immediately**: Any parser returning wrong count = test failure
 2. **Provide fast feedback**: Unit tests complete in seconds
 3. **Cover all pipeline phases**: From parsing to dataset creation
@@ -238,7 +254,10 @@ The implemented testing system should:
 
 ### 9. Implementation Notes
 
+**Make sure to activate the Python virtual environment in order to use libraries**
+
 **Key imports needed:**
+
 ```python
 from process_artifacts import find_security_files
 from parsers.semgrep_parser import parse_semgrep_sarif
@@ -247,6 +266,7 @@ from parsers.trivy_parser import parse_trivy_json
 ```
 
 **Common patterns:**
+
 - Use `subprocess.run()` for integration tests
 - Use `tempfile.mkdtemp()` for test output directories
 - Use `json.load()` for validating output file contents

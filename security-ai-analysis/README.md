@@ -342,16 +342,70 @@ security-ai-analysis/
 
 ---
 
+## Testing
+
+### Comprehensive Test Suite
+
+The system includes a comprehensive testing framework with controlled test data and exact assertions for reliable regression detection.
+
+#### Quick Start
+
+```bash
+# Fast unit tests (~2 seconds)
+./run_tests.sh quick
+
+# Standard integration tests (~30 seconds)
+./run_tests.sh integration
+
+# Full test suite including slow tests (minutes)
+./run_tests.sh all
+```
+
+#### Test Structure
+
+- **Unit Tests** (`tests/unit/`): Direct parser function testing with controlled data
+- **Integration Tests** (`tests/integration/`): Complete pipeline testing with `--skip-fine-tuning` for speed
+- **Controlled Test Data** (`tests/fixtures/controlled_test_data/`): Exactly 8 known vulnerabilities across 5 security tools
+
+#### Expected Results
+
+**Total Vulnerabilities**: 8 (exactly)
+- Semgrep: 3 vulnerabilities
+- Trivy: 2 vulnerabilities
+- Checkov: 1 vulnerability
+- OSV Scanner: 1 vulnerability
+- ZAP: 1 vulnerability
+
+#### Test Features
+
+- **Exact Assertions**: `assert total_analyzed == 8` (not `> 0`)
+- **Regression Detection**: Wrong parser counts = immediate test failure
+- **Fast Feedback**: Unit tests complete in ~2 seconds
+- **Predictable Results**: Controlled input data ensures consistent outputs
+- **Comprehensive Coverage**: All pipeline phases from parsing to dataset creation
+
+#### Test Data
+
+Test data uses realistic but minimal SARIF/JSON structures with known, predictable content:
+- Test file paths like `test-config.js`, `test-database.py`
+- Known vulnerability IDs: `CVE-2024-0001`, `test.hardcoded-password`
+- Predictable line numbers, severities, and tool outputs
+
+See `tests/fixtures/controlled_test_data/README.md` for detailed expectations.
+
+---
+
 ## Getting Help
 
 - **System Issues**: Check logs in `results/daemon_*.log`
 - **Model Problems**: Verify `~/shared-olmo-models/base/OLMo-2-1B-mlx-q4/` exists
 - **GitHub Access**: Ensure `gh auth status` shows authentication
 - **Performance**: Expected processing time ~0.8 seconds per vulnerability on Apple Silicon
+- **Test Issues**: Run `./run_tests.sh quick` to verify parser functionality
 
 **Production Dataset**: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo
 
 ---
 
-**Last Updated**: 2025-09-14  
-**Version**: 2.0
+**Last Updated**: 2025-09-21
+**Version**: 2.1 (Added Comprehensive Testing)

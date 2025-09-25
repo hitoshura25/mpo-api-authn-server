@@ -617,6 +617,30 @@ def analysis_summary_phase(rag_enhanced_file: Path, output_dir: str, args) -> Tu
 
     print(f"📊 Loaded {len(results)} enhanced results for summary generation")
 
+    # **URL-to-Code Mapping Enhancement**
+    print(f"🗺️ Applying URL-to-code mapping to enhance ZAP/DAST vulnerabilities...")
+    try:
+        from url_to_code_mapper import URLToCodeMapper, enhance_vulnerability_with_url_mapping
+
+        # Initialize URL mapper with project root
+        project_root = Path.cwd().parent  # Go up one level from security-ai-analysis to project root
+        url_mapper = URLToCodeMapper(project_root=project_root)
+        enhanced_count = 0
+
+        for result in results:
+            if result.get('status') == 'success' and 'vulnerability' in result:
+                vulnerability = result['vulnerability']
+
+                # Apply URL-to-code mapping for ZAP and other URL-based vulnerabilities
+                if enhance_vulnerability_with_url_mapping(vulnerability, url_mapper):
+                    enhanced_count += 1
+
+        print(f"✅ URL-to-code mapping completed: {enhanced_count} vulnerabilities enhanced")
+
+    except Exception as e:
+        print(f"⚠️ URL-to-code mapping failed: {e}")
+        print("💡 Continuing without URL enhancement")
+
     # Generate summary report (need to recreate analyzer for summary generation)
     try:
         from analysis.olmo_analyzer import OLMoSecurityAnalyzer
@@ -742,12 +766,13 @@ def narrativization_phase(analyzed_vulnerabilities_file: Path, output_dir: str, 
     return narrativized_results, narrativized_file
 
 
-def datasets_phase(narrativized_file: Path, output_dir: str, args) -> Tuple[List, Path, Path]:
+def datasets_phase(narrativized_file: Path, vulnerabilities_file: Path, output_dir: str, args) -> Tuple[List, Path, Path]:
     """
     Phase 4: Prepare training and validation datasets with enhanced code-aware examples
 
     Args:
         narrativized_file: Path to narrativized dataset JSON file
+        vulnerabilities_file: Path to raw vulnerability data from parsing phase
         output_dir: Output directory for dataset files
         args: Command line arguments
 
@@ -786,12 +811,25 @@ def datasets_phase(narrativized_file: Path, output_dir: str, args) -> Tuple[List
     try:
         from enhanced_dataset_creator import EnhancedDatasetCreator, EnumJSONEncoder
 
+        # Load raw vulnerability data for enhanced dataset creator
+        print(f"🔄 Loading raw vulnerability data: {vulnerabilities_file}")
+        with open(vulnerabilities_file, 'r') as f:
+            raw_vulnerability_data = json.load(f)
+
+        # Extract successful vulnerability objects for enhancement
+        raw_vulnerabilities = []
+        for item in raw_vulnerability_data:
+            if item.get('status') == 'success' and 'vulnerability' in item:
+                raw_vulnerabilities.append(item['vulnerability'])
+
+        print(f"📊 Loaded {len(raw_vulnerabilities)} raw vulnerabilities for code-aware enhancement")
+
         # Get dataset name for enhanced creation
         dataset_name = f"webauthn-security-vulnerabilities-{timestamp}"
 
         creator = EnhancedDatasetCreator()
         enhanced_result = creator.create_enhanced_dataset(
-            narrativized_results,
+            raw_vulnerabilities,  # ✅ FIXED: Now using raw vulnerability data
             dataset_name=dataset_name
         )
 
@@ -1132,7 +1170,7 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
     print(f"\n" + "="*60)
     print(f"🚀 PHASE 4: DATASETS")
     print(f"="*60)
-    training_pairs, train_file, validation_file = datasets_phase(narrativized_file, output_dir, args)
+    training_pairs, train_file, validation_file = datasets_phase(narrativized_file, vulnerabilities_file, output_dir, args)
 
     if args.stop_after == "datasets":
         print(f"\n🛑 Stopping after datasets phase as requested")

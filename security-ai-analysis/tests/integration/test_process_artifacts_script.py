@@ -342,20 +342,300 @@ class TestProcessArtifactsScript:
             if custom_output_dir.exists():
                 shutil.rmtree(custom_output_dir)
 
-    @pytest.mark.slow
-    def test_fine_tuning_artifacts_creation(self):
-        """Test fine-tuning artifacts creation (slow test - only run when specifically testing fine-tuning)"""
-        # This test would run without --skip-fine-tuning to test the full pipeline
-        # Marked as slow since it involves actual model training
-        pytest.skip("Slow test - only run when specifically testing fine-tuning pipeline")
+    def test_parsing_phase_outputs(self):
+        """Test all parsing phase outputs in single execution"""
+        result = self.run_process_artifacts(["--stop-after", "parsing"])
+        assert result.returncode == 0, f"Parsing phase failed: {result.stderr}"
 
-    @pytest.mark.slow
-    def test_model_upload_artifacts(self):
-        """Test model upload artifacts creation (slow test - only run when specifically testing upload)"""
-        # This test would run without --skip-model-upload to test upload pipeline
-        # Marked as slow since it involves model conversion and upload
-        pytest.skip("Slow test - only run when specifically testing model upload pipeline")
+        # Test 1: Parsed vulnerabilities file structure
+        parsed_files = list(self.temp_output_dir.glob("parsed_vulnerabilities_*.json"))
+        assert len(parsed_files) > 0, "Should have parsed vulnerabilities file"
 
+        with open(parsed_files[0]) as f:
+            parsed_data = json.load(f)
+
+        assert len(parsed_data) > 0, "Parsed vulnerabilities should not be empty"
+
+        # Test 2: Raw vulnerability data structure (needed by enhanced dataset creator)
+        successful_results = [r for r in parsed_data if r.get('status') == 'success']
+        assert len(successful_results) > 0, "Should have successful parsing results"
+
+        sample_vuln = successful_results[0]['vulnerability']
+        assert 'tool' in sample_vuln, f"Parsed vulnerability should have 'tool' field: {list(sample_vuln.keys())}"
+        assert 'id' in sample_vuln, f"Parsed vulnerability should have 'id' field: {list(sample_vuln.keys())}"
+        assert 'narrative' not in sample_vuln, f"Raw vulnerability should not have 'narrative': {list(sample_vuln.keys())}"
+
+        # Test 3: URL-based vulnerabilities should be identifiable
+        zap_vulns = [r['vulnerability'] for r in successful_results
+                    if r['vulnerability'].get('tool') == 'zap']
+        if zap_vulns:
+            # ZAP vulnerabilities should have URL info that can be mapped later
+            for zap_vuln in zap_vulns:
+                assert 'site_host' in zap_vuln or 'url' in zap_vuln or 'path' in zap_vuln, \
+                    f"ZAP vulnerability should have URL info for mapping: {list(zap_vuln.keys())}"
+
+    def test_analysis_phase_outputs(self):
+        """Test all analysis phase outputs in single execution"""
+        result = self.run_process_artifacts(["--stop-after", "analysis"])
+        assert result.returncode == 0, f"Analysis phase failed: {result.stderr}"
+
+        # Test 1: Analysis output files exist
+        analysis_files = list(self.temp_output_dir.glob("analyzed_vulnerabilities_*.json"))
+        assert len(analysis_files) > 0, "Analysis output file should exist"
+
+        with open(analysis_files[0]) as f:
+            analysis_results = json.load(f)
+
+        # Test 2: Vulnerability data preserved through analysis
+        parsed_files = list(self.temp_output_dir.glob("parsed_vulnerabilities_*.json"))
+        with open(parsed_files[0]) as f:
+            parsed_results = json.load(f)
+
+        original_vuln_ids = {r['vulnerability']['id'] for r in parsed_results
+                            if r.get('status') == 'success' and r.get('vulnerability', {}).get('id')}
+        analysis_vuln_ids = {r['vulnerability']['id'] for r in analysis_results
+                            if r.get('status') == 'success' and r.get('vulnerability', {}).get('id')}
+
+        assert original_vuln_ids == analysis_vuln_ids, \
+            f"Vulnerability IDs should be preserved: original={len(original_vuln_ids)}, analysis={len(analysis_vuln_ids)}"
+
+        # Test 3: URL-to-Code mapping should enhance ZAP vulnerabilities
+        zap_results = [r for r in analysis_results
+                       if r.get('status') == 'success' and
+                       r.get('vulnerability', {}).get('tool') == 'zap']
+
+        if zap_results:
+            for zap_result in zap_results:
+                vuln_data = zap_result['vulnerability']
+                # SHOULD FAIL: ZAP vulnerabilities should have file_path after URL mapping
+                assert 'file_path' in vuln_data or 'mapped_file_path' in vuln_data, \
+                    f"ZAP vulnerability should have file mapping: {list(vuln_data.keys())}"
+
+                if 'file_path' in vuln_data or 'mapped_file_path' in vuln_data:
+                    assert 'line_number' in vuln_data or 'mapped_line' in vuln_data, \
+                        f"Mapped ZAP vulnerability should have line info: {list(vuln_data.keys())}"
+
+    def test_narrativization_phase_outputs(self):
+        """Test all narrativization phase outputs in single execution"""
+        result = self.run_process_artifacts(["--stop-after", "narrativization"])
+        assert result.returncode == 0, f"Narrativization phase failed: {result.stderr}"
+
+        # Test 1: Narrativized output exists
+        narrativized_files = list(self.temp_output_dir.glob("narrativized_*.json"))
+        assert len(narrativized_files) > 0, "Narrativized file should exist"
+
+        with open(narrativized_files[0]) as f:
+            narrativized_data = json.load(f)
+
+        assert len(narrativized_data) > 0, "Narrativized data should not be empty"
+
+        # Test 2: Narrativized data structure
+        sample = narrativized_data[0]
+        assert 'narrative' in sample, f"Narrativized data should have narrative: {list(sample.keys())}"
+        assert 'vulnerability_id' in sample, f"Narrativized data should have vulnerability_id: {list(sample.keys())}"
+
+        # Test 3: All required input files available for datasets phase
+        required_files = [
+            ("parsed_vulnerabilities_*.json", "original vulnerability data"),
+            ("analyzed_vulnerabilities_*.json", "analyzed vulnerability data"),
+            ("narrativized_*.json", "narrativized content")
+        ]
+
+        for file_pattern, description in required_files:
+            matching_files = list(self.temp_output_dir.glob(file_pattern))
+            assert len(matching_files) > 0, f"Should have {description}: {file_pattern}"
+
+            with open(matching_files[0]) as f:
+                data = json.load(f)
+            assert len(data) > 0, f"{description} file should not be empty"
+
+    def test_datasets_phase_outputs(self):
+        """Test all datasets phase outputs in single execution"""
+        result = self.run_process_artifacts(["--stop-after", "datasets"])
+        assert result.returncode == 0, f"Datasets phase failed: {result.stderr}"
+
+        # Test 1: Standard dataset files created
+        train_files = list(self.temp_output_dir.glob("train_*.jsonl"))
+        validation_files = list(self.temp_output_dir.glob("validation_*.jsonl"))
+
+        assert len(train_files) > 0, "Training dataset file should be created"
+        assert len(validation_files) > 0, "Validation dataset file should be created"
+
+        # Test 2: Enhanced dataset creator should receive correct input
+        # Check if enhanced dataset directory was created (indicates EnhancedDatasetCreator was called)
+        enhanced_dirs = list(Path("enhanced_datasets/code-aware-training").glob("*"))
+
+        if enhanced_dirs:
+            # Test 3: Enhanced dataset files should exist
+            enhanced_file = None
+            for dir_path in enhanced_dirs:
+                potential_file = dir_path / "enhanced_examples.jsonl"
+                if potential_file.exists():
+                    enhanced_file = potential_file
+                    break
+
+            # SHOULD FAIL: Enhanced examples file should exist if enhanced dataset creator ran successfully
+            assert enhanced_file is not None, "Enhanced examples JSONL file should be created"
+
+            # Test 4: Enhanced examples should have code context
+            with open(enhanced_file) as f:
+                enhanced_examples = [json.loads(line) for line in f]
+
+            # SHOULD FAIL: Should have enhanced examples with code context
+            assert len(enhanced_examples) > 0, "Should have enhanced examples"
+
+            code_aware_examples = 0
+            for example in enhanced_examples:
+                metadata = example.get('metadata', {})
+                if 'file_path' in metadata or 'code_context' in metadata:
+                    code_aware_examples += 1
+
+            assert code_aware_examples > 0, \
+                f"Should have code-aware examples: {code_aware_examples}/{len(enhanced_examples)}"
+
+        # Test 5: Verify datasets phase used correct input data
+        # Read parsed vulnerabilities to see what should have been passed to enhanced dataset creator
+        parsed_files = list(self.temp_output_dir.glob("parsed_vulnerabilities_*.json"))
+        with open(parsed_files[0]) as f:
+            parsed_data = json.load(f)
+
+        raw_vulns = [r['vulnerability'] for r in parsed_data if r.get('status') == 'success']
+
+        # Check if any training examples reference the original vulnerability structure
+        with open(train_files[0]) as f:
+            train_examples = [json.loads(line) for line in f]
+
+        # Enhanced examples should exist if raw vulnerabilities were properly passed
+        enhanced_train_examples = [ex for ex in train_examples
+                                  if ex.get('metadata', {}).get('enhancement_type') == 'code_aware']
+
+        if len(raw_vulns) > 0 and len(enhanced_dirs) > 0:
+            # SHOULD FAIL: If we have raw vulnerabilities and enhanced dataset creator ran,
+            # we should have some enhanced examples
+            assert len(enhanced_train_examples) > 0 or len(enhanced_examples) > 0, \
+                f"Should have enhanced examples when raw vulnerabilities available: {len(raw_vulns)} raw vulns"
+
+    def test_core_analysis_phase_outputs(self):
+        """Test all core analysis phase outputs in single execution"""
+        result = self.run_process_artifacts(["--stop-after", "core-analysis"])
+        assert result.returncode == 0, f"Core analysis phase failed: {result.stderr}"
+
+        # Test 1: Core analysis output files exist
+        core_analysis_files = list(self.temp_output_dir.glob("core_analysis_*.json"))
+        assert len(core_analysis_files) > 0, "Core analysis output file should exist"
+
+        with open(core_analysis_files[0]) as f:
+            core_results = json.load(f)
+
+        # Test 2: All vulnerabilities processed
+        assert len(core_results) > 0, "Core analysis should process vulnerabilities"
+
+        # Test 3: Core analysis structure validation
+        successful_results = [r for r in core_results if r.get('status') == 'success']
+        assert len(successful_results) > 0, "Should have successful core analysis results"
+
+        sample_result = successful_results[0]
+        assert 'vulnerability' in sample_result, "Core analysis should preserve vulnerability data"
+        assert 'analysis' in sample_result, "Core analysis should contain analysis results"
+
+        # Test 4: Analysis should have required fields
+        analysis = sample_result['analysis']
+        required_fields = ['vulnerability_id', 'severity', 'tool']
+        for field in required_fields:
+            assert field in analysis, f"Analysis should have {field}: {list(analysis.keys())}"
+
+    def test_rag_enhancement_phase_outputs(self):
+        """Test all RAG enhancement phase outputs in single execution"""
+        result = self.run_process_artifacts(["--stop-after", "rag-enhancement"])
+        assert result.returncode == 0, f"RAG enhancement phase failed: {result.stderr}"
+
+        # Test 1: RAG enhanced output files exist
+        rag_files = list(self.temp_output_dir.glob("rag_enhanced_analysis_*.json"))
+        assert len(rag_files) > 0, "RAG enhanced analysis file should exist"
+
+        with open(rag_files[0]) as f:
+            rag_results = json.load(f)
+
+        # Test 2: Data preserved through RAG enhancement
+        core_files = list(self.temp_output_dir.glob("core_analysis_*.json"))
+        with open(core_files[0]) as f:
+            core_results = json.load(f)
+
+        assert len(rag_results) == len(core_results), \
+            f"RAG enhancement should preserve result count: core={len(core_results)}, rag={len(rag_results)}"
+
+        # Test 3: RAG processing indicators
+        # RAG enhancement may add metadata or enhance existing analysis
+        successful_rag = [r for r in rag_results if r.get('status') == 'success']
+        assert len(successful_rag) > 0, "Should have successful RAG enhanced results"
+
+        # Test 4: Structure preserved from core analysis
+        sample_rag = successful_rag[0]
+        assert 'vulnerability' in sample_rag, "RAG enhanced should preserve vulnerability data"
+        assert 'analysis' in sample_rag, "RAG enhanced should preserve analysis data"
+
+    def test_training_phase_outputs(self):
+        """Test all training phase outputs in single execution"""
+        result = self.run_process_artifacts(["--stop-after", "training"])
+        assert result.returncode == 0, f"Training phase failed: {result.stderr}"
+
+        # Test 1: Training was initiated (check for training artifacts)
+        # Note: Since we use --skip-fine-tuning by default, actual training may be skipped
+        # But training phase should still produce model artifacts or indicate skipping
+
+        # Check for model artifacts directory
+        model_dirs = list(Path("models").glob("*")) if Path("models").exists() else []
+
+        # Test 2: Check if training datasets are available as input
+        train_files = list(self.temp_output_dir.glob("train_*.jsonl"))
+        validation_files = list(self.temp_output_dir.glob("validation_*.jsonl"))
+
+        assert len(train_files) > 0, "Training phase should have training dataset available"
+        assert len(validation_files) > 0, "Training phase should have validation dataset available"
+
+        # Test 3: Verify training dataset content is valid
+        with open(train_files[0]) as f:
+            train_lines = f.readlines()
+
+        assert len(train_lines) > 0, "Training dataset should not be empty"
+
+        # Validate first training example structure
+        first_example = json.loads(train_lines[0])
+        required_fields = ['instruction', 'response']
+        for field in required_fields:
+            assert field in first_example, f"Training example should have {field}: {list(first_example.keys())}"
+
+        # Test 4: Training phase completion (even if skipped)
+        # Training phase should complete without errors regardless of --skip-fine-tuning
+        print(f"✅ Training phase completed (model artifacts: {len(model_dirs)} dirs)")
+
+    def test_upload_phase_outputs(self):
+        """Test all upload phase outputs in single execution"""
+        result = self.run_process_artifacts(["--stop-after", "upload"])
+        assert result.returncode == 0, f"Upload phase failed: {result.stderr}"
+
+        # Test 1: Upload phase completion
+        # Note: Since we use --skip-model-upload by default, actual uploads are skipped
+        # But upload phase should complete and indicate what would be uploaded
+
+        # Test 2: All prerequisite files available for upload
+        train_files = list(self.temp_output_dir.glob("train_*.jsonl"))
+        validation_files = list(self.temp_output_dir.glob("validation_*.jsonl"))
+        narrativized_files = list(self.temp_output_dir.glob("narrativized_*.json"))
+
+        assert len(train_files) > 0, "Upload phase should have training dataset available"
+        assert len(validation_files) > 0, "Upload phase should have validation dataset available"
+        assert len(narrativized_files) > 0, "Upload phase should have narrativized dataset available"
+
+        # Test 3: Check for dataset metadata (would be needed for upload)
+        with open(narrativized_files[0]) as f:
+            narrativized_data = json.load(f)
+
+        assert len(narrativized_data) > 0, "Upload phase should have dataset content"
+
+        # Test 4: Upload phase completion (even if skipped)
+        # Upload phase should complete without errors regardless of --skip-model-upload
+        print(f"✅ Upload phase completed (datasets ready: train={len(train_files)}, val={len(validation_files)})")
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

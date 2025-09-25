@@ -36,7 +36,6 @@ from parsers.semgrep_parser import parse_semgrep_sarif
 from parsers.osv_parser import parse_osv_json
 from parsers.zap_parser import parse_zap_json
 from config_manager import OLMoSecurityConfig
-from pipeline_integration import integrate_fine_tuning_if_available
 from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is_sequential_fine_tuning_available
 import argparse
 import logging
@@ -354,51 +353,48 @@ def analysis_phase(vulnerabilities_file: Path, output_dir: str, args) -> Tuple[L
             json.dump(summary, f, indent=2)
         print(f"💾 Analysis summary saved to: {summary_file}")
 
-        # Post-analysis RAG enhancement (if enabled)
-        if not args.disable_rag:
-            print("\n🧠 Building RAG knowledge base with fresh analysis results...")
+        # Post-analysis RAG enhancement (always enabled)
+        print("\n🧠 Building RAG knowledge base with fresh analysis results...")
+        try:
+            from build_knowledge_base import main as build_kb_main
+            import sys
+            from io import StringIO
+
+            # Capture build output to avoid cluttering the main process output
+            old_stdout = sys.stdout
+            sys.stdout = captured_output = StringIO()
+
             try:
-                from build_knowledge_base import main as build_kb_main
-                import sys
-                from io import StringIO
+                # Build knowledge base using the fresh analysis results
+                sys.argv = ['build_knowledge_base.py', '--results-file', str(analysis_file), '--verbose']
+                build_kb_main()
 
-                # Capture build output to avoid cluttering the main process output
-                old_stdout = sys.stdout
-                sys.stdout = captured_output = StringIO()
+                # Restore stdout for our messages
+                sys.stdout = old_stdout
+                print("✅ RAG knowledge base built successfully with fresh analysis data", flush=True)
 
-                try:
-                    # Build knowledge base using the fresh analysis results
-                    sys.argv = ['build_knowledge_base.py', '--results-file', str(analysis_file), '--verbose']
-                    build_kb_main()
+                # Initialize RAG-enhanced analyzer for verification
+                from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
+                rag_analyzer = RAGEnhancedOLMoAnalyzer(
+                    model_name=args.model_name,
+                    enable_rag=True
+                )
+                rag_status = rag_analyzer.get_rag_status()
 
-                    # Restore stdout for our messages
-                    sys.stdout = old_stdout
-                    print("✅ RAG knowledge base built successfully with fresh analysis data", flush=True)
+                if rag_status['status'] == 'active':
+                    kb_stats = rag_status['knowledge_base']
+                    print(f"📊 RAG ready: {kb_stats['total_vectors']} vulnerability patterns available for enhanced analysis", flush=True)
+                    print("💡 Future runs will use RAG-enhanced analysis by default", flush=True)
+                else:
+                    print(f"⚠️ RAG status: {rag_status['status']} - knowledge base built but with limited functionality", flush=True)
 
-                    # Initialize RAG-enhanced analyzer for verification
-                    from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
-                    rag_analyzer = RAGEnhancedOLMoAnalyzer(
-                        model_name=args.model_name,
-                        enable_rag=True
-                    )
-                    rag_status = rag_analyzer.get_rag_status()
+            except Exception as inner_e:
+                sys.stdout = old_stdout
+                raise inner_e
 
-                    if rag_status['status'] == 'active':
-                        kb_stats = rag_status['knowledge_base']
-                        print(f"📊 RAG ready: {kb_stats['total_vectors']} vulnerability patterns available for enhanced analysis", flush=True)
-                        print("💡 Future runs will use RAG-enhanced analysis by default", flush=True)
-                    else:
-                        print(f"⚠️ RAG status: {rag_status['status']} - knowledge base built but with limited functionality", flush=True)
-
-                except Exception as inner_e:
-                    sys.stdout = old_stdout
-                    raise inner_e
-
-            except Exception as rag_error:
-                print(f"⚠️ RAG knowledge base building failed: {rag_error}")
-                print("💡 This doesn't affect current analysis but RAG won't be available for next runs")
-        else:
-            print("\n🔄 RAG disabled - knowledge base building skipped")
+        except Exception as rag_error:
+            print(f"⚠️ RAG knowledge base building failed: {rag_error}")
+            print("💡 This doesn't affect current analysis but RAG won't be available for next runs")
 
         # Print enhanced summary
         print("\n📈 Analysis Summary:")
@@ -516,7 +512,7 @@ def rag_enhancement_phase(core_analysis_file: Path, output_dir: str, args) -> Tu
     Input:
         - core_analysis_file: Path to core_analysis_results_*.json from Phase 2A
         - output_dir: Output directory for RAG-enhanced results
-        - args: Command line arguments (disable_rag, etc.)
+        - args: Command line arguments
 
     Output Files:
         - rag_enhanced_analysis_{timestamp}.json: RAG-enhanced analysis results
@@ -534,51 +530,48 @@ def rag_enhancement_phase(core_analysis_file: Path, output_dir: str, args) -> Tu
 
     print(f"📊 Loaded {len(results)} analysis results for RAG enhancement")
 
-    # RAG enhancement (if enabled)
-    if not args.disable_rag:
-        print("\n🧠 Building RAG knowledge base with fresh analysis results...")
+    # RAG enhancement (always enabled)
+    print("\n🧠 Building RAG knowledge base with fresh analysis results...")
+    try:
+        from build_knowledge_base import main as build_kb_main
+        import sys
+        from io import StringIO
+
+        # Capture build output to avoid cluttering the main process output
+        old_stdout = sys.stdout
+        sys.stdout = captured_output = StringIO()
+
         try:
-            from build_knowledge_base import main as build_kb_main
-            import sys
-            from io import StringIO
+            # Build knowledge base using the fresh analysis results
+            sys.argv = ['build_knowledge_base.py', '--results-file', str(core_analysis_file), '--verbose']
+            build_kb_main()
 
-            # Capture build output to avoid cluttering the main process output
-            old_stdout = sys.stdout
-            sys.stdout = captured_output = StringIO()
+            # Restore stdout for our messages
+            sys.stdout = old_stdout
+            print("✅ RAG knowledge base built successfully with fresh analysis data", flush=True)
 
-            try:
-                # Build knowledge base using the fresh analysis results
-                sys.argv = ['build_knowledge_base.py', '--results-file', str(core_analysis_file), '--verbose']
-                build_kb_main()
+            # Initialize RAG-enhanced analyzer for verification
+            from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
+            rag_analyzer = RAGEnhancedOLMoAnalyzer(
+                model_name=args.model_name,
+                enable_rag=True
+            )
+            rag_status = rag_analyzer.get_rag_status()
 
-                # Restore stdout for our messages
-                sys.stdout = old_stdout
-                print("✅ RAG knowledge base built successfully with fresh analysis data", flush=True)
+            if rag_status['status'] == 'active':
+                kb_stats = rag_status['knowledge_base']
+                print(f"📊 RAG ready: {kb_stats['total_vectors']} vulnerability patterns available", flush=True)
+                print("💡 Future runs will use RAG-enhanced analysis by default", flush=True)
+            else:
+                print(f"⚠️ RAG status: {rag_status['status']} - knowledge base built but with limited functionality", flush=True)
 
-                # Initialize RAG-enhanced analyzer for verification
-                from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
-                rag_analyzer = RAGEnhancedOLMoAnalyzer(
-                    model_name=args.model_name,
-                    enable_rag=True
-                )
-                rag_status = rag_analyzer.get_rag_status()
+        except Exception as inner_e:
+            sys.stdout = old_stdout
+            raise inner_e
 
-                if rag_status['status'] == 'active':
-                    kb_stats = rag_status['knowledge_base']
-                    print(f"📊 RAG ready: {kb_stats['total_vectors']} vulnerability patterns available", flush=True)
-                    print("💡 Future runs will use RAG-enhanced analysis by default", flush=True)
-                else:
-                    print(f"⚠️ RAG status: {rag_status['status']} - knowledge base built but with limited functionality", flush=True)
-
-            except Exception as inner_e:
-                sys.stdout = old_stdout
-                raise inner_e
-
-        except Exception as rag_error:
-            print(f"⚠️ RAG knowledge base building failed: {rag_error}")
-            print("💡 This doesn't affect current analysis but RAG won't be available for next runs")
-    else:
-        print("\n🔄 RAG disabled - knowledge base building skipped")
+    except Exception as rag_error:
+        print(f"⚠️ RAG knowledge base building failed: {rag_error}")
+        print("💡 This doesn't affect current analysis but RAG won't be available for next runs")
 
     # Save RAG-enhanced results (same content, but indicates RAG processing completed)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -980,51 +973,26 @@ def training_phase(train_file: Path, train_data: List, narrativized_results: Lis
     """
     print(f"🔄 Starting model fine-tuning phase...")
 
-    # **Sequential Fine-Tuning Integration (Default Behavior)**
+    # **Sequential Fine-Tuning (Always Enabled)**
     # Progressive specialization: Stage 1 (Analysis) → Stage 2 (Code Fixes)
-    disable_sequential_fine_tuning = getattr(args, 'disable_sequential_fine_tuning', False)
     upload_model = not getattr(args, 'skip_model_upload', False)  # Default True, disabled by --skip-model-upload
 
     model_artifacts_path = Path("model_artifacts")  # Default path for model artifacts
 
-    # Try sequential fine-tuning first (new default)
-    try:
-        from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is_sequential_fine_tuning_available
+    # Sequential fine-tuning (mandatory - fail if not available)
+    from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is_sequential_fine_tuning_available
 
-        if is_sequential_fine_tuning_available() and not disable_sequential_fine_tuning:
-            print("🎯 Sequential Fine-Tuning (Default)")
-            updated_summary = run_sequential_fine_tuning_phase(
-                vulnerabilities=narrativized_results,  # Use full vulnerability data with narratives
-                summary=summary,
-                disable_sequential_fine_tuning=disable_sequential_fine_tuning,
-                upload_model=upload_model
-            )
-            print("✅ Sequential fine-tuning completed successfully")
-            return updated_summary, model_artifacts_path
+    if not is_sequential_fine_tuning_available():
+        raise RuntimeError("Sequential fine-tuning is not available but is required. Please check your environment setup.")
 
-    except ImportError as e:
-        print(f"⚠️ Sequential fine-tuning not available: {e}")
-
-    # Fall back to Single-Stage Fine-Tuning (Legacy)
-    try:
-        from pipeline_integration import integrate_fine_tuning_if_available
-
-        print("🔄 Legacy Single-Stage Fine-Tuning")
-        skip_fine_tuning = getattr(args, 'skip_fine_tuning', False)
-        updated_summary = integrate_fine_tuning_if_available(
-            train_file,
-            train_data,
-            summary,
-            skip_fine_tuning,
-            upload_model
-        )
-        print("✅ Single-stage fine-tuning completed successfully")
-        return updated_summary, model_artifacts_path
-
-    except ImportError as e:
-        print(f"⚠️ Fine-tuning integration not available: {e}")
-        print("   Skipping fine-tuning phase")
-        return summary, model_artifacts_path
+    print("🎯 Sequential Fine-Tuning (Always Enabled)")
+    updated_summary = run_sequential_fine_tuning_phase(
+        vulnerabilities=narrativized_results,  # Use full vulnerability data with narratives
+        summary=summary,
+        upload_model=upload_model
+    )
+    print("✅ Sequential fine-tuning completed successfully")
+    return updated_summary, model_artifacts_path
 
 
 def upload_phase(model_artifacts_path: Path, summary: Dict, args) -> Dict:
@@ -1337,17 +1305,9 @@ def main():
     parser.add_argument("--commit", type=str, default="unknown",
                        help="Git commit SHA being analyzed")
 
-    # Fine-tuning control (opt-out approach - sequential fine-tuning enabled by default)
-    parser.add_argument("--disable-sequential-fine-tuning", action="store_true",
-                       help="Disable sequential fine-tuning and fall back to single-stage approach")
-    parser.add_argument("--skip-fine-tuning", action="store_true",
-                       help="Skip MLX fine-tuning entirely (used with fallback mode)")
+    # Model upload control
     parser.add_argument("--skip-model-upload", action="store_true",
                        help="Skip uploading fine-tuned model to HuggingFace Hub (upload enabled by default)")
-
-    # RAG enhancement control (opt-out approach - RAG enabled by default)
-    parser.add_argument("--disable-rag", action="store_true",
-                       help="Disable RAG-enhanced analysis (RAG enabled by default)")
 
     # Phase control - NEW FUNCTIONALITY with sub-phases
     parser.add_argument("--stop-after",

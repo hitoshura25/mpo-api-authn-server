@@ -27,8 +27,7 @@ logger = logging.getLogger(__name__)
 
 def run_sequential_fine_tuning_phase(
     vulnerabilities: List[Dict],
-    summary: Dict[str, Any],
-    upload_model: bool = True
+    summary: Dict[str, Any]
 ) -> Dict[str, Any]:
     """
     Execute Sequential Fine-Tuning (always enabled)
@@ -40,7 +39,6 @@ def run_sequential_fine_tuning_phase(
     Args:
         vulnerabilities: List of processed vulnerability data with narratives
         summary: Analysis summary dictionary to update
-        upload_model: Upload final model to HuggingFace (default True, disabled by --skip-model-upload)
 
     Returns:
         Updated summary dictionary with sequential fine-tuning results
@@ -77,8 +75,7 @@ def run_sequential_fine_tuning_phase(
         sequential_result = create_and_train_sequential_models(
             vulnerabilities=vulnerabilities,
             output_dir=output_dir,
-            model_name_prefix=model_name_prefix,
-            upload_to_hub=upload_model
+            model_name_prefix=model_name_prefix
         )
         
         if sequential_result.success:
@@ -88,10 +85,6 @@ def run_sequential_fine_tuning_phase(
             print(f"   Stage 2 (Code Fixes): {sequential_result.stage2_training_time:.1f}s")
             print(f"   Stage 1 model: {sequential_result.stage1_model_path}")
             print(f"   Stage 2 model: {sequential_result.stage2_model_path}")
-            
-            if upload_model and sequential_result.metadata.get('final_model_hub_name'):
-                print(f"   HuggingFace: {sequential_result.metadata['final_model_hub_name']}")
-            
             # Update summary with successful results
             summary['sequential_fine_tuning'] = {
                 'status': 'completed',
@@ -104,7 +97,6 @@ def run_sequential_fine_tuning_phase(
                 'vulnerabilities_processed': len(vulnerabilities),
                 'output_directory': str(output_dir),
                 'model_name_prefix': model_name_prefix,
-                'upload_requested': upload_model,
                 'metadata': sequential_result.metadata
             }
             

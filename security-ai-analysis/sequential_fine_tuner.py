@@ -73,8 +73,7 @@ class SequentialFineTuner:
         }
     
     def sequential_fine_tune(self, stage1_dataset: Path, stage2_dataset: Path,
-                           output_name_prefix: Optional[str] = None,
-                           upload_to_hub: bool = True) -> SequentialTrainingResult:
+                           output_name_prefix: Optional[str] = None) -> SequentialTrainingResult:
         """
         Perform sequential fine-tuning with Stage 1 and Stage 2 datasets.
         
@@ -82,8 +81,7 @@ class SequentialFineTuner:
             stage1_dataset: Path to Stage 1 (analysis) training dataset
             stage2_dataset: Path to Stage 2 (code fix) training dataset
             output_name_prefix: Prefix for model names
-            upload_to_hub: Whether to upload final model to HuggingFace Hub
-            
+
         Returns:
             SequentialTrainingResult with training outcomes
         """
@@ -102,8 +100,7 @@ class SequentialFineTuner:
             
             stage1_result = self._train_stage1_analysis(
                 stage1_dataset,
-                f"{output_name_prefix}_stage1_analysis",
-                upload_to_hub=upload_to_hub
+                f"{output_name_prefix}_stage1_analysis"
             )
             
             stage1_end = datetime.now()
@@ -121,8 +118,7 @@ class SequentialFineTuner:
             stage2_result = self._train_stage2_codefix(
                 stage2_dataset,
                 f"{output_name_prefix}_stage2_codefix",
-                stage1_adapter_path=stage1_result['adapter_path'],
-                upload_to_hub=upload_to_hub
+                stage1_adapter_path=stage1_result['adapter_path']
             )
             
             stage2_end = datetime.now()
@@ -153,12 +149,6 @@ class SequentialFineTuner:
                     'training_end': datetime.now().isoformat(),
                     'stage1_config': self.stage1_config,
                     'stage2_config': self.stage2_config,
-                    'uploaded_to_hub': upload_to_hub,
-                    'stage1_model_hub_name': stage1_result.get('hub_model_name'),
-                    'stage1_hub_url': stage1_result.get('hub_url'),
-                    'stage2_model_hub_name': stage2_result.get('hub_model_name'),
-                    'stage2_hub_url': stage2_result.get('hub_url'),
-                    'final_model_hub_name': stage2_result.get('hub_model_name'),
                     'sequential_approach': 'enhanced_catastrophic_forgetting_mitigation',
                     'stage1_adapter_used': stage2_result.get('stage1_adapter_used', False),
                     'catastrophic_forgetting_mitigation': stage2_result.get('catastrophic_forgetting_mitigation', False),
@@ -184,15 +174,6 @@ class SequentialFineTuner:
             self.logger.info(f"   Stage 1 model: {result.stage1_model_path}")
             self.logger.info(f"   Stage 2 model: {result.stage2_model_path}")
 
-            if upload_to_hub:
-                if result.metadata.get('stage1_hub_url'):
-                    self.logger.info(f"   Stage 1 HuggingFace: {result.metadata['stage1_hub_url']}")
-                if result.metadata.get('stage2_hub_url'):
-                    self.logger.info(f"   Stage 2 HuggingFace: {result.metadata['stage2_hub_url']}")
-
-                # Keep the legacy field for backward compatibility
-                if result.metadata.get('final_model_hub_name'):
-                    self.logger.info(f"   HuggingFace: {result.metadata['final_model_hub_name']}")
             
             return result
             
@@ -209,7 +190,7 @@ class SequentialFineTuner:
                 }
             )
     
-    def _train_stage1_analysis(self, dataset_path: Path, output_name: str, upload_to_hub: bool = True) -> Dict[str, Any]:
+    def _train_stage1_analysis(self, dataset_path: Path, output_name: str) -> Dict[str, Any]:
         """
         Train Stage 1: Vulnerability Analysis Specialist.
 
@@ -236,25 +217,6 @@ class SequentialFineTuner:
             }
 
             self.logger.info(f"✅ Stage 1 training completed: {adapter_path}")
-
-            # Step 3: Upload Stage 1 model to HuggingFace if requested
-            if upload_to_hub:
-                self.logger.info("📤 Uploading Stage 1 model to HuggingFace...")
-                hub_url = self.base_fine_tuner.upload_to_huggingface(
-                    model_path=Path(adapter_path),
-                    custom_repo_name=output_name
-                )
-
-                if hub_url:
-                    self.logger.info(f"✅ Stage 1 model uploaded successfully: {hub_url}")
-                    stage1_result['hub_url'] = hub_url
-                    stage1_result['hub_model_name'] = output_name
-                else:
-                    self.logger.warning("⚠️ Stage 1 model upload failed")
-                    stage1_result['upload_failed'] = True
-            else:
-                self.logger.info("📤 Stage 1 upload skipped (upload_to_hub=False)")
-
             return stage1_result
 
         except Exception as e:
@@ -262,7 +224,7 @@ class SequentialFineTuner:
             return {'success': False, 'error': str(e)}
     
     def _train_stage2_codefix(self, dataset_path: Path, output_name: str,
-                            stage1_adapter_path: str, upload_to_hub: bool = True) -> Dict[str, Any]:
+                            stage1_adapter_path: str) -> Dict[str, Any]:
         """
         Train Stage 2: Code Fix Generation Specialist.
 
@@ -291,38 +253,18 @@ class SequentialFineTuner:
                 output_name
             )
 
-            # Step 4: Upload Stage 2 model to HuggingFace if requested
-            hub_model_name = None
-            if upload_to_hub:
-                self.logger.info("📤 Uploading Stage 2 model to HuggingFace Hub...")
-                try:
-                    hub_model_name = self.base_fine_tuner.upload_to_huggingface(
-                        stage2_adapter_path,
-                        custom_repo_name=output_name
-                    )
-                    if hub_model_name:
-                        self.logger.info(f"✅ Stage 2 model uploaded successfully: {hub_model_name}")
-                    else:
-                        self.logger.warning("⚠️ Stage 2 model upload failed")
-                except Exception as e:
-                    self.logger.error(f"❌ Stage 2 model upload failed: {e}")
-
             stage2_result = {
                 'success': True,
                 'adapter_path': str(stage2_adapter_path),
                 'training_data_dir': str(training_data_dir),
                 'stage1_adapter_used': True,
                 'stage1_adapter_path': str(stage1_adapter_path),
-                'hub_model_name': hub_model_name,
-                'upload_requested': upload_to_hub,
                 'catastrophic_forgetting_mitigation': True,
                 'mixed_training_data': True,
                 'note': 'Successfully trained with resume-adapter-file and catastrophic forgetting mitigation'
             }
 
             self.logger.info(f"✅ Stage 2 training completed with sequential progression: {stage2_adapter_path}")
-            if hub_model_name:
-                self.logger.info(f"   HuggingFace model: {hub_model_name}")
             return stage2_result
 
         except Exception as e:
@@ -647,7 +589,7 @@ class SequentialFineTuner:
 
     
     def _train_stage2_alternative(self, dataset_path: Path, output_name: str,
-                                stage1_adapter_path: str, upload_to_hub: bool) -> Dict[str, Any]:
+                                stage1_adapter_path: str) -> Dict[str, Any]:
         """
         Alternative Stage 2 training approach when resume_adapter_file is not available.
         
@@ -664,7 +606,6 @@ class SequentialFineTuner:
             stage2_result = self.base_fine_tuner.fine_tune_model(
                 dataset_file=str(dataset_path),
                 output_name=output_name,
-                upload_to_hub=upload_to_hub,
                 **self.stage2_config
             )
             
@@ -1461,8 +1402,7 @@ def secure_function(user_input):
 
 def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
                                      output_dir: Path,
-                                     model_name_prefix: Optional[str] = None,
-                                     upload_to_hub: bool = True) -> SequentialTrainingResult:
+                                     model_name_prefix: Optional[str] = None) -> SequentialTrainingResult:
     """
     Complete pipeline: Create sequential datasets and train specialized models.
     
@@ -1476,8 +1416,7 @@ def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
         vulnerabilities: List of vulnerability data
         output_dir: Directory for datasets and model outputs
         model_name_prefix: Prefix for model names
-        upload_to_hub: Whether to upload final model to HuggingFace
-        
+
     Returns:
         SequentialTrainingResult with complete training results
     """
@@ -1509,8 +1448,7 @@ def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
         training_result = fine_tuner.sequential_fine_tune(
             stage1_dataset=dataset_paths['stage1'],
             stage2_dataset=dataset_paths['stage2'],
-            output_name_prefix=model_name_prefix,
-            upload_to_hub=upload_to_hub
+            output_name_prefix=model_name_prefix
         )
         
         if training_result.success:

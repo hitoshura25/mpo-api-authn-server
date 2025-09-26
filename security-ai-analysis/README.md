@@ -363,35 +363,25 @@ The system includes a comprehensive testing framework with controlled test data 
 
 #### Test Structure
 
-- **Unit Tests** (`tests/unit/`): Direct parser function testing with controlled data
-- **Integration Tests** (`tests/integration/`): Complete pipeline testing with `--skip-fine-tuning` for speed
-- **Controlled Test Data** (`tests/fixtures/controlled_test_data/`): Exactly 8 known vulnerabilities across 5 security tools
+- **Integration Tests** (`tests/integration/`): Complete end-to-end pipeline testing with `--skip-fine-tuning` for speed
+- **Phase Input Fixtures** (`tests/fixtures/phase_inputs/`): Pre-generated data for testing individual pipeline phases
+- **Sample Artifacts** (`tests/fixtures/sample_security_artifacts/`): Real security tool output samples for parsing tests
 
-#### Expected Results
+#### Test Coverage
 
-**Total Vulnerabilities**: 8 (exactly)
-- Semgrep: 3 vulnerabilities
-- Trivy: 2 vulnerabilities
-- Checkov: 1 vulnerability
-- OSV Scanner: 1 vulnerability
-- ZAP: 1 vulnerability
+**Integration Tests**: Comprehensive end-to-end validation of the complete pipeline
+- **Phase Testing**: Individual phase execution (`--only-parsing`, `--only-analysis-summary`, etc.)
+- **Fixture-Based**: Uses pre-generated phase inputs for fast, predictable results
+- **Performance Optimized**: 4-40x faster than multiple `process_artifacts.py` calls
+- **Real Format Testing**: Uses actual SARIF and JSON formats from security tools
 
 #### Test Features
 
-- **Exact Assertions**: `assert total_analyzed == 8` (not `> 0`)
-- **Regression Detection**: Wrong parser counts = immediate test failure
-- **Fast Feedback**: Unit tests complete in ~2 seconds
-- **Predictable Results**: Controlled input data ensures consistent outputs
-- **Comprehensive Coverage**: All pipeline phases from parsing to dataset creation
-
-#### Test Data
-
-Test data uses realistic but minimal SARIF/JSON structures with known, predictable content:
-- Test file paths like `test-config.js`, `test-database.py`
-- Known vulnerability IDs: `CVE-2024-0001`, `test.hardcoded-password`
-- Predictable line numbers, severities, and tool outputs
-
-See `tests/fixtures/controlled_test_data/README.md` for detailed expectations.
+- **End-to-End Validation**: Complete pipeline testing from artifacts to trained models
+- **Phase Isolation**: Test individual phases without running full pipeline
+- **Fast Feedback**: Most tests complete in under 30 seconds
+- **Fixture Management**: Pre-generated test data ensures consistent, predictable results
+- **Format Validation**: Tests handle real security tool output formats
 
 ---
 

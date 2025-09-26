@@ -8,9 +8,9 @@ from pathlib import Path
 
 
 @pytest.fixture(scope="session")
-def test_data_dir():
-    """Fixture providing path to controlled test data directory"""
-    return Path(__file__).parent / "fixtures" / "controlled_test_data"
+def sample_artifacts_dir():
+    """Fixture providing path to sample security artifacts directory"""
+    return Path(__file__).parent / "fixtures" / "sample_security_artifacts"
 
 
 @pytest.fixture
@@ -44,39 +44,22 @@ def pytest_collection_modifyitems(config, items):
 
 
 @pytest.fixture(autouse=True)
-def ensure_test_data_exists(test_data_dir):
-    """Ensure test data directory and files exist before running any test"""
-    assert test_data_dir.exists(), f"Test data directory not found: {test_data_dir}"
+def ensure_fixtures_exist():
+    """Ensure required fixture directories exist before running any test"""
+    fixtures_dir = Path(__file__).parent / "fixtures"
+    assert fixtures_dir.exists(), f"Fixtures directory not found: {fixtures_dir}"
 
-    required_files = [
-        "semgrep.sarif",
-        "trivy-results.sarif",
-        "checkov-results.sarif",
-        "osv-results.json",
-        "zap-report.json",
-        "README.md"
-    ]
+    # Verify sample artifacts directory exists (used by parsing phase tests)
+    sample_artifacts = fixtures_dir / "sample_security_artifacts"
+    assert sample_artifacts.exists(), f"Sample artifacts directory not found: {sample_artifacts}"
 
-    for filename in required_files:
-        file_path = test_data_dir / filename
-        assert file_path.exists(), f"Required test file missing: {file_path}"
+    # Verify phase inputs directory exists (used by phase-specific tests)
+    phase_inputs = fixtures_dir / "phase_inputs"
+    assert phase_inputs.exists(), f"Phase inputs directory not found: {phase_inputs}"
 
 
-# Expected vulnerability counts for validation
-EXPECTED_VULNERABILITY_COUNTS = {
-    "semgrep": 3,
-    "trivy": 2,
-    "checkov": 1,
-    "osv-scanner": 1,
-    "zap": 1,
-    "total": 8
-}
-
-
-@pytest.fixture
-def expected_counts():
-    """Fixture providing expected vulnerability counts for assertions"""
-    return EXPECTED_VULNERABILITY_COUNTS.copy()
+# Keep expected total count for integration tests
+EXPECTED_TOTAL_VULNERABILITIES = 8
 
 
 # Common test arguments for process_artifacts.py
@@ -94,25 +77,5 @@ def fast_test_args():
     return FAST_TEST_ARGS.copy()
 
 
-@pytest.fixture
-def parser_functions():
-    """Fixture providing all parser functions for testing"""
-    import sys
-    from pathlib import Path
-
-    # Add parent directory to path for imports
-    sys.path.insert(0, str(Path(__file__).parent.parent))
-
-    from parsers.semgrep_parser import parse_semgrep_sarif
-    from parsers.trivy_parser import parse_trivy_json
-    from parsers.checkov_parser import parse_checkov_json
-    from parsers.osv_parser import parse_osv_json
-    from parsers.zap_parser import parse_zap_json
-
-    return {
-        "semgrep": parse_semgrep_sarif,
-        "trivy": parse_trivy_json,
-        "checkov": parse_checkov_json,
-        "osv": parse_osv_json,
-        "zap": parse_zap_json
-    }
+# Integration test fixtures remain focused on end-to-end testing
+# Parser functions are tested through integration tests, not unit tests

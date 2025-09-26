@@ -937,54 +937,36 @@ def datasets_phase(narrativized_file: Path, vulnerabilities_file: Path, output_d
 
     print(f"💾 Dataset info saved to: {dataset_info_file}")
 
-    # Upload to HuggingFace production dataset
+    # Store metadata for upload phase instead of uploading directly
+    print(f"💾 Storing dataset metadata for upload phase...")
+
+    # Check if enhanced dataset creator is available for proper enum serialization
+    json_encoder_available = False
     try:
-        from datasets import Dataset
-        from huggingface_hub import HfApi
-        print(f"📤 Uploading {len(training_pairs)} training pairs to production dataset...")
-        print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
+        from enhanced_dataset_creator import EnumJSONEncoder
+        json_encoder_available = True
+        print("✅ EnumJSONEncoder available for upload phase")
+    except ImportError:
+        print("⚠️ EnumJSONEncoder not available, will use default JSON encoder")
 
-        # ✅ CRITICAL FIX: Serialize FixApproach enums before Dataset.from_list()
-        # This prevents Apache Arrow serialization errors with enum objects
-        serialized_training_pairs = []
-        for pair in training_pairs:
-            try:
-                # Test serialization to catch enum issues
-                serialized_pair = json.loads(json.dumps(pair, cls=json_encoder))
-                serialized_training_pairs.append(serialized_pair)
-            except Exception as e:
-                print(f"⚠️ Skipping problematic training pair: {e}")
-                # Fallback: manually convert any remaining enum values
-                clean_pair = {}
-                for key, value in pair.items():
-                    if hasattr(value, 'value'):  # Handle enum objects
-                        clean_pair[key] = str(value.value) if hasattr(value, 'value') else str(value)
-                    else:
-                        clean_pair[key] = value
-                serialized_training_pairs.append(clean_pair)
+    # Store upload metadata on args object for upload phase to use
+    args.dataset_upload_metadata = {
+        'training_pairs': training_pairs,
+        'json_encoder_available': json_encoder_available,
+        'dataset_name': 'hitoshura25/webauthn-security-vulnerabilities-olmo',
+        'repo_type': 'dataset',
+        'private': False,
+        'created_at': timestamp,
+        'local_files': {
+            'train_file': str(train_file),
+            'validation_file': str(validation_file)
+        }
+    }
 
-        print(f"✅ Serialized {len(serialized_training_pairs)} training pairs for upload")
-
-        # Create HuggingFace Dataset from serialized training pairs
-        dataset = Dataset.from_list(serialized_training_pairs)
-
-        # Upload to production dataset (PUBLIC)
-        dataset.push_to_hub(
-            "hitoshura25/webauthn-security-vulnerabilities-olmo",
-            token=True,  # Use default HF token
-            private=False  # Public dataset
-        )
-
-        print(f"✅ SUCCESS: Production dataset updated!")
-        print(f"🔗 Dataset URL: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo")
-        print(f"📊 Uploaded {len(training_pairs)} training examples")
-
-    except ImportError as e:
-        print(f"⚠️ HuggingFace libraries not available for upload: {e}")
-        print("   Install with: pip install datasets huggingface_hub")
-    except Exception as e:
-        print(f"❌ Production dataset upload failed: {e}")
-        print(f"   Training data saved locally for manual upload if needed")
+    print(f"✅ Dataset metadata stored for upload phase")
+    print(f"📊 {len(training_pairs)} training examples ready for upload")
+    print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
+    print(f"📁 Upload will be handled by upload phase (use --only-upload to upload separately)")
 
     return training_pairs, train_file, validation_file
 
@@ -1008,9 +990,22 @@ def training_phase(train_file: Path, train_data: List, narrativized_results: Lis
     # **Sequential Fine-Tuning (Always Enabled)**
     # Progressive specialization: Stage 1 (Analysis) → Stage 2 (Code Fixes)
     # Training phase never uploads - always save locally only
-    upload_model = False  # Training phase is now purely local - uploads happen in separate upload phase
 
-    model_artifacts_path = Path("model_artifacts")  # Default path for model artifacts
+    # Determine model artifacts path using configuration or CLI override
+    # Use --model-dir as base directory override for full pipeline (training + upload)
+    if hasattr(args, 'model_dir') and args.model_dir:
+        fine_tuned_base_path = Path(args.model_dir).expanduser()
+        print(f"🔧 Using CLI override for fine-tuned models base: {fine_tuned_base_path}")
+    else:
+        # Use configuration-based path
+        from fine_tuning_config import FineTuningConfig
+        config = FineTuningConfig.load_from_config()
+        fine_tuned_base_path = Path(config.fine_tuned_models_dir).expanduser()
+        print(f"📁 Using configured fine-tuned models directory: {fine_tuned_base_path}")
+
+    # For the training phase, we'll set model_artifacts_path to where models will be saved
+    # The actual trained model directory will be determined by the sequential fine-tuning system
+    model_artifacts_path = fine_tuned_base_path
 
     # Sequential fine-tuning (mandatory - fail if not available)
     from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is_sequential_fine_tuning_available
@@ -1022,8 +1017,7 @@ def training_phase(train_file: Path, train_data: List, narrativized_results: Lis
     print("📁 Training phase: Saving models locally only (uploads handled by separate phase)")
     updated_summary = run_sequential_fine_tuning_phase(
         vulnerabilities=narrativized_results,  # Use full vulnerability data with narratives
-        summary=summary,
-        upload_model=upload_model  # Always False - training phase never uploads
+        summary=summary
     )
     print("✅ Sequential fine-tuning completed successfully")
     return updated_summary, model_artifacts_path
@@ -1064,7 +1058,7 @@ def upload_phase(model_artifacts_path: Path, summary: Dict, args) -> Dict:
     try:
         # 1. Upload Models
         print(f"📦 Uploading models from: {model_artifacts_path}")
-        models_uploaded = _upload_models(model_artifacts_path, upload_results)
+        models_uploaded = _upload_models(model_artifacts_path, upload_results, args)
 
         # 2. Upload Datasets
         print(f"📊 Uploading datasets...")
@@ -1094,7 +1088,7 @@ def upload_phase(model_artifacts_path: Path, summary: Dict, args) -> Dict:
     return summary
 
 
-def _upload_models(model_artifacts_path: Path, upload_results: dict) -> int:
+def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> int:
     """
     Upload trained models to HuggingFace Hub
 
@@ -1104,21 +1098,86 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict) -> int:
     models_uploaded = 0
 
     try:
-        # For now, this is a placeholder for the actual model upload logic
-        # In the real implementation, this would:
-        # 1. Scan model_artifacts_path for trained models
-        # 2. Upload each model to HuggingFace Hub using huggingface_hub
-        # 3. Handle model metadata and versioning
+        print(f"📤 Uploading models to HuggingFace Hub...")
 
-        if model_artifacts_path and model_artifacts_path.exists():
-            print(f"🔍 Scanning for models in: {model_artifacts_path}")
-            # Placeholder: In real implementation, scan for .safetensors, adapters, etc.
-            print(f"📤 Model upload functionality will be implemented here")
-            models_uploaded = 1  # Placeholder count
-        else:
+        if not model_artifacts_path or not model_artifacts_path.exists():
             print(f"⚠️  Model artifacts path not found: {model_artifacts_path}")
             upload_results['errors'].append(f"Model artifacts path not found: {model_artifacts_path}")
+            return models_uploaded
 
+        print(f"🔍 Scanning for models in: {model_artifacts_path}")
+
+        # Import model uploader for upload functionality
+        from model_uploader import ModelUploader
+        from datetime import datetime
+
+        # Initialize model uploader with skip flag support
+        skip_upload = getattr(args, 'skip_model_upload', False)
+        uploader = ModelUploader(skip_upload=skip_upload)
+
+        # First check if model_artifacts_path contains fine-tuned model directories
+        # Look for webauthn-security-sequential_* pattern (created by MLX fine-tuning)
+        sequential_model_dirs = list(model_artifacts_path.glob("webauthn-security-sequential_*"))
+
+        if sequential_model_dirs:
+            # Use the most recent fine-tuned model (sorted by timestamp in name)
+            most_recent_model = sorted(sequential_model_dirs)[-1]
+            print(f"🎯 Found fine-tuned model directory: {most_recent_model}")
+            actual_model_path = most_recent_model
+        else:
+            # Fallback: treat model_artifacts_path as the actual model directory
+            print(f"📂 Using direct model path: {model_artifacts_path}")
+            actual_model_path = model_artifacts_path
+
+        if not actual_model_path.exists():
+            print(f"⚠️  Model path not found: {actual_model_path}")
+            upload_results['errors'].append(f"Model path not found: {actual_model_path}")
+            return models_uploaded
+
+        print(f"📁 Using model artifacts: {actual_model_path}")
+
+        # Upload the entire fine-tuned model directory
+        # This handles MLX adapters, safetensors files, and complete model structures
+        try:
+            print(f"📦 Uploading fine-tuned model: {actual_model_path}")
+
+            # Generate a model name based on the directory if it has a timestamp, otherwise use current timestamp
+            if actual_model_path.name.startswith('webauthn-security-sequential_'):
+                # Use the existing timestamp from the directory name
+                model_name = actual_model_path.name
+            else:
+                # Generate a new timestamp
+                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                model_name = f"webauthn-security-model_{timestamp}"
+
+            # Upload using ModelUploader
+            hub_url = uploader.upload_to_huggingface(
+                model_path=actual_model_path,
+                custom_repo_name=model_name
+            )
+
+            if hub_url:
+                print(f"✅ Model uploaded successfully: {hub_url}")
+                models_uploaded += 1
+            else:
+                error_msg = f"Model upload failed for: {actual_model_path}"
+                print(f"❌ {error_msg}")
+                upload_results['errors'].append(error_msg)
+
+        except Exception as e:
+            error_msg = f"Model upload failed for {actual_model_path}: {e}"
+            print(f"❌ {error_msg}")
+            upload_results['errors'].append(error_msg)
+
+        if models_uploaded > 0:
+            print(f"✅ Successfully uploaded {models_uploaded} models")
+        else:
+            print(f"⚠️  No models were uploaded successfully")
+
+    except ImportError as e:
+        error_msg = f"MLX fine tuner not available for model upload: {e}"
+        print(f"❌ {error_msg}")
+        upload_results['errors'].append(error_msg)
     except Exception as e:
         error_msg = f"Model upload failed: {e}"
         print(f"❌ {error_msg}")
@@ -1137,29 +1196,85 @@ def _upload_datasets(args, upload_results: dict) -> int:
     datasets_uploaded = 0
 
     try:
-        # Check for dataset files to upload
-        dataset_files = getattr(args, 'dataset_files', None)
-        if dataset_files:
-            # Parse dataset files (comma-separated)
-            files = dataset_files.split(',') if isinstance(dataset_files, str) else [dataset_files]
+        # Check for dataset metadata from datasets phase
+        dataset_metadata = getattr(args, 'dataset_upload_metadata', None)
+        if not dataset_metadata:
+            print(f"ℹ️  No dataset upload metadata found - datasets phase may not have run")
+            return datasets_uploaded
 
-            for dataset_file in files:
-                dataset_path = Path(dataset_file.strip())
-                if dataset_path.exists():
-                    print(f"📊 Found dataset: {dataset_path}")
-                    # Placeholder: In real implementation, upload to HuggingFace datasets
-                    print(f"📤 Dataset upload functionality will be implemented here")
-                    datasets_uploaded += 1
-                else:
-                    error_msg = f"Dataset file not found: {dataset_path}"
-                    print(f"⚠️  {error_msg}")
-                    upload_results['errors'].append(error_msg)
-        else:
-            print(f"ℹ️  No dataset files specified for upload")
+        print(f"📤 Uploading datasets to HuggingFace Hub...")
+        print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
 
+        # Import HuggingFace libraries
+        from datasets import Dataset
+        from huggingface_hub import HfApi
+
+        # Get training pairs and serialization info from metadata
+        training_pairs = dataset_metadata.get('training_pairs', [])
+        json_encoder_available = dataset_metadata.get('json_encoder_available', False)
+
+        if not training_pairs:
+            print(f"⚠️  No training pairs found in metadata")
+            return datasets_uploaded
+
+        print(f"📊 Processing {len(training_pairs)} training pairs for upload...")
+
+        # Determine JSON encoder (same logic as datasets phase)
+        json_encoder = None
+        if json_encoder_available:
+            try:
+                from enhanced_dataset_creator import EnumJSONEncoder
+                json_encoder = EnumJSONEncoder
+                print("✅ Using EnumJSONEncoder for proper enum serialization")
+            except ImportError:
+                print("⚠️ EnumJSONEncoder not available, using default JSON encoder")
+
+        # ✅ CRITICAL FIX: Serialize FixApproach enums before Dataset.from_list()
+        # This prevents Apache Arrow serialization errors with enum objects
+        serialized_training_pairs = []
+        for pair in training_pairs:
+            try:
+                # Test serialization to catch enum issues
+                serialized_pair = json.loads(json.dumps(pair, cls=json_encoder))
+                serialized_training_pairs.append(serialized_pair)
+            except Exception as e:
+                print(f"⚠️ Skipping problematic training pair: {e}")
+                # Fallback: manually convert any remaining enum values
+                clean_pair = {}
+                for key, value in pair.items():
+                    if hasattr(value, 'value'):  # Handle enum objects
+                        clean_pair[key] = str(value.value) if hasattr(value, 'value') else str(value)
+                    else:
+                        clean_pair[key] = value
+                serialized_training_pairs.append(clean_pair)
+
+        print(f"✅ Serialized {len(serialized_training_pairs)} training pairs for upload")
+
+        # Create HuggingFace Dataset from serialized training pairs
+        dataset = Dataset.from_list(serialized_training_pairs)
+
+        # Upload to production dataset (PUBLIC)
+        dataset.push_to_hub(
+            "hitoshura25/webauthn-security-vulnerabilities-olmo",
+            token=True,  # Use default HF token
+            private=False  # Public dataset
+        )
+
+        print(f"✅ SUCCESS: Production dataset updated!")
+        print(f"🔗 Dataset URL: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo")
+        print(f"📊 Uploaded {len(training_pairs)} training examples")
+
+        datasets_uploaded = 1
+
+    except ImportError as e:
+        error_msg = f"HuggingFace libraries not available for upload: {e}"
+        print(f"⚠️ {error_msg}")
+        print("   Install with: pip install datasets huggingface_hub")
+        upload_results['errors'].append(error_msg)
     except Exception as e:
         error_msg = f"Dataset upload failed: {e}"
         print(f"❌ {error_msg}")
+        print(f"   Training data was saved locally for manual upload if needed")
         upload_results['errors'].append(error_msg)
 
     return datasets_uploaded

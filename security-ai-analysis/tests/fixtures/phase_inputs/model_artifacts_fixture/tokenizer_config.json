@@ -1,0 +1,11 @@
+{
+  "bos_token": "<|endoftext|>",
+  "eos_token": "<|endoftext|>",
+  "pad_token": "<|endoftext|>",
+  "unk_token": "<|endoftext|>",
+  "tokenizer_class": "GPT2Tokenizer",
+  "model_max_length": 2048,
+  "clean_up_tokenization_spaces": true,
+  "do_lower_case": false,
+  "trust_remote_code": false
+}

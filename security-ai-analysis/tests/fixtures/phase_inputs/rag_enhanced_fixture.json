@@ -1,0 +1,250 @@
+[
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2016-2781",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: coreutils\nInstalled Version: 9.4-3ubuntu6\nVulnerability CVE-2016-2781\nSeverity: LOW\nFixed Version: \nLink: [CVE-2016-2781](https://avd.aquasec.com/nvd/cve-2016-2781)",
+      "file_path": "hitoshura25/webauthn-server",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "coreutils: Non-privileged session can escape to the parent session in chroot",
+      "full_description": "chroot in GNU coreutils, when used with --userspec, allows local users to escape to the parent session via a crafted TIOCSTI ioctl call, which pushes characters to the terminal's input buffer.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2016-2781",
+      "tool_name": "Trivy",
+      "path": "hitoshura25/webauthn-server",
+      "start": {
+        "line": 1
+      }
+    },
+    "analysis": {
+      "vulnerability_id": "CVE-2016-2781",
+      "severity": "LOW",
+      "tool": "sarif-trivy",
+      "raw_analysis": "The vulnerability is present in the coreutils package. This package is a core part of the Linux operating system, and as such, it is present in every distribution. This package provides a number of utilities, including the ability to compress and decompress files, edit text files, and manipulate strings. The vulnerability is present in the trivy utility, which is used to detect vulnerabilities in software packages. This vulnerability is present in the version of trivy that is installed with Ubuntu 16.04, and is not present in the version of trivy that is installed with Ubuntu 16.10, 17.04, or 17.10. This vulnerability is not present in the version of trivy that is installed with Ubuntu 18.04",
+      "structured_analysis": {
+        "impact": "Security impact requires further investigation",
+        "remediation": "Review and apply security best practices",
+        "prevention": "Implement security monitoring and regular updates"
+      }
+    },
+    "status": "success"
+  },
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2025-0167",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: curl\nInstalled Version: 8.5.0-2ubuntu10.6\nVulnerability CVE-2025-0167\nSeverity: LOW\nFixed Version: \nLink: [CVE-2025-0167](https://avd.aquasec.com/nvd/cve-2025-0167)",
+      "file_path": "hitoshura25/webauthn-server",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "When asked to use a `.netrc` file for credentials **and** to follow HT ...",
+      "full_description": "When asked to use a `.netrc` file for credentials **and** to follow HTTP\nredirects, curl could leak the password used for the first host to the\nfollowed-to host under certain circumstances.\n\nThis flaw only manifests itself if the netrc file has a `default` entry that\nomits both login and password. A rare circumstance.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2025-0167",
+      "tool_name": "Trivy",
+      "path": "hitoshura25/webauthn-server",
+      "start": {
+        "line": 1
+      }
+    },
+    "analysis": {
+      "vulnerability_id": "CVE-2025-0167",
+      "severity": "LOW",
+      "tool": "sarif-trivy",
+      "raw_analysis": "CVE-2025-0167 is a vulnerability in the `curl` package. This vulnerability is a remote code execution vulnerability in the `curl` package. The vulnerability is triggered by a misconfiguration of the `curl` package. This vulnerability is a remote code execution vulnerability in the `curl` package. The vulnerability is triggered by a misconfiguration of the `curl` package. This vulnerability is a remote code execution vulnerability in the `curl` package. This vulnerability is a remote code execution vulnerability in the `curl` package. This vulnerability is a remote code execution vulnerability in the `curl` package. This vulnerability is a remote code execution vulnerability in the `curl` package. This vulnerability is a remote code execution vulnerability in the `curl",
+      "structured_analysis": {
+        "impact": "Security impact requires further investigation",
+        "remediation": "Review and apply security best practices",
+        "prevention": "Implement security monitoring and regular updates"
+      }
+    },
+    "status": "success"
+  },
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2025-0167",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: libcurl4t64\nInstalled Version: 8.5.0-2ubuntu10.6\nVulnerability CVE-2025-0167\nSeverity: LOW\nFixed Version: \nLink: [CVE-2025-0167](https://avd.aquasec.com/nvd/cve-2025-0167)",
+      "file_path": "hitoshura25/webauthn-server",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "When asked to use a `.netrc` file for credentials **and** to follow HT ...",
+      "full_description": "When asked to use a `.netrc` file for credentials **and** to follow HTTP\nredirects, curl could leak the password used for the first host to the\nfollowed-to host under certain circumstances.\n\nThis flaw only manifests itself if the netrc file has a `default` entry that\nomits both login and password. A rare circumstance.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2025-0167",
+      "tool_name": "Trivy",
+      "path": "hitoshura25/webauthn-server",
+      "start": {
+        "line": 1
+      }
+    },
+    "analysis": {
+      "vulnerability_id": "CVE-2025-0167",
+      "severity": "LOW",
+      "tool": "sarif-trivy",
+      "raw_analysis": "CVE-2025-0167 is a vulnerability in libcurl4t64. The vulnerability allows an attacker to execute arbitrary code on the target system. This vulnerability is a remote code execution vulnerability, and can be exploited by an attacker who has access to the target system. This vulnerability is a remote code execution vulnerability, and can be exploited by an attacker who has access to the target system. This vulnerability is a remote code execution vulnerability, and can be exploited by an attacker who has access to the target system. This vulnerability is a remote code execution vulnerability, and can be exploited by an attacker who has access to the target system. This vulnerability is a remote code execution vulnerability, and can be exploited by an attacker who has access to the target",
+      "structured_analysis": {
+        "impact": "Security impact requires further investigation",
+        "remediation": "Review and apply security best practices",
+        "prevention": "Implement security monitoring and regular updates"
+      }
+    },
+    "status": "success"
+  },
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2016-2781",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: coreutils\nInstalled Version: 9.4-3ubuntu6\nVulnerability CVE-2016-2781\nSeverity: LOW\nFixed Version: \nLink: [CVE-2016-2781](https://avd.aquasec.com/nvd/cve-2016-2781)",
+      "file_path": "hitoshura25/webauthn-test-credentials-service",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "coreutils: Non-privileged session can escape to the parent session in chroot",
+      "full_description": "chroot in GNU coreutils, when used with --userspec, allows local users to escape to the parent session via a crafted TIOCSTI ioctl call, which pushes characters to the terminal's input buffer.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2016-2781",
+      "tool_name": "Trivy",
+      "path": "hitoshura25/webauthn-test-credentials-service",
+      "start": {
+        "line": 1
+      }
+    },
+    "analysis": {
+      "vulnerability_id": "CVE-2016-2781",
+      "severity": "LOW",
+      "tool": "sarif-trivy",
+      "raw_analysis": "This vulnerability is a buffer overflow vulnerability in the trivy package. The vulnerability is triggered by an incorrect use of the trivy utility, which can be exploited by an attacker to execute arbitrary code. The vulnerability is triggered by a misconfiguration of the trivy utility, which allows an attacker to execute arbitrary code. The vulnerability is triggered by a misconfiguration of the trivy utility, which allows an attacker to execute arbitrary code. The vulnerability is triggered by a misconfiguration of the trivy utility, which allows an attacker to execute arbitrary code. The vulnerability is triggered by a misconfiguration of the trivy utility, which allows an attacker to execute arbitrary code. The vulnerability is triggered by a misconfiguration of the trivy utility, which allows an attacker to",
+      "structured_analysis": {
+        "impact": "Security impact requires further investigation",
+        "remediation": "Review and apply security best practices",
+        "prevention": "Implement security monitoring and regular updates"
+      }
+    },
+    "status": "success"
+  },
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2025-0167",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: curl\nInstalled Version: 8.5.0-2ubuntu10.6\nVulnerability CVE-2025-0167\nSeverity: LOW\nFixed Version: \nLink: [CVE-2025-0167](https://avd.aquasec.com/nvd/cve-2025-0167)",
+      "file_path": "hitoshura25/webauthn-test-credentials-service",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "When asked to use a `.netrc` file for credentials **and** to follow HT ...",
+      "full_description": "When asked to use a `.netrc` file for credentials **and** to follow HTTP\nredirects, curl could leak the password used for the first host to the\nfollowed-to host under certain circumstances.\n\nThis flaw only manifests itself if the netrc file has a `default` entry that\nomits both login and password. A rare circumstance.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2025-0167",
+      "tool_name": "Trivy",
+      "path": "hitoshura25/webauthn-test-credentials-service",
+      "start": {
+        "line": 1
+      }
+    },
+    "analysis": {
+      "vulnerability_id": "CVE-2025-0167",
+      "severity": "LOW",
+      "tool": "sarif-trivy",
+      "raw_analysis": "CVE-2025-0167 is a vulnerability in the curl library. It allows an attacker to execute arbitrary code on the vulnerable system, which can be used to elevate privileges and gain access to the system. This vulnerability is present in the curl library, which is used by many applications, including web browsers, file managers, and other utilities. \nRemediation: \nThe vulnerability can be mitigated by upgrading to the latest version of the curl library, which is available in Ubuntu 20.04 and later. The latest version of the curl library can be found at: https://curl.org/download.html\nImpact: \nThe vulnerability can be used to elevate privileges and gain access to the system. This can be used to execute arbitrary code",
+      "structured_analysis": {
+        "impact": "The vulnerability can be used to elevate privileges and gain access to the system. This can be used to execute arbitrary code",
+        "remediation": "The vulnerability can be mitigated by upgrading to the latest version of the curl library, which is available in Ubuntu 20.04 and later. The latest version of the curl library can be found at: https://curl.org/download.html",
+        "prevention": "Implement security monitoring and regular updates"
+      }
+    },
+    "status": "success"
+  },
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2025-0167",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: libcurl4t64\nInstalled Version: 8.5.0-2ubuntu10.6\nVulnerability CVE-2025-0167\nSeverity: LOW\nFixed Version: \nLink: [CVE-2025-0167](https://avd.aquasec.com/nvd/cve-2025-0167)",
+      "file_path": "hitoshura25/webauthn-test-credentials-service",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "When asked to use a `.netrc` file for credentials **and** to follow HT ...",
+      "full_description": "When asked to use a `.netrc` file for credentials **and** to follow HTTP\nredirects, curl could leak the password used for the first host to the\nfollowed-to host under certain circumstances.\n\nThis flaw only manifests itself if the netrc file has a `default` entry that\nomits both login and password. A rare circumstance.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2025-0167",
+      "tool_name": "Trivy",
+      "path": "hitoshura25/webauthn-test-credentials-service",
+      "start": {
+        "line": 1
+      }
+    },
+    "analysis": {
+      "vulnerability_id": "CVE-2025-0167",
+      "severity": "LOW",
+      "tool": "sarif-trivy",
+      "raw_analysis": "The vulnerability is a race condition in libcurl4t64, which can be exploited by an attacker to cause a denial of service condition. The vulnerability is in the libcurl4t64 library, which is part of the libcurl package, and can be exploited by an attacker to cause a denial of service condition. The vulnerability is in the libcurl4t64 library, which is part of the libcurl package, and can be exploited by an attacker to cause a denial of service condition. The vulnerability is in the libcurl4t64 library, which is part of the libcurl package, and can be exploited by an attacker to cause a denial of service condition. The vulnerability is in the libcurl4t64 library, which is",
+      "structured_analysis": {
+        "impact": "Security impact requires further investigation",
+        "remediation": "Review and apply security best practices",
+        "prevention": "Implement security monitoring and regular updates"
+      }
+    },
+    "status": "success"
+  },
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2016-2781",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: coreutils\nInstalled Version: 9.4-3ubuntu6\nVulnerability CVE-2016-2781\nSeverity: LOW\nFixed Version: \nLink: [CVE-2016-2781](https://avd.aquasec.com/nvd/cve-2016-2781)",
+      "file_path": "hitoshura25/webauthn-server",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "coreutils: Non-privileged session can escape to the parent session in chroot",
+      "full_description": "chroot in GNU coreutils, when used with --userspec, allows local users to escape to the parent session via a crafted TIOCSTI ioctl call, which pushes characters to the terminal's input buffer.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2016-2781",
+      "tool_name": "Trivy",
+      "path": "hitoshura25/webauthn-server",
+      "start": {
+        "line": 1
+      }
+    },
+    "analysis": {
+      "vulnerability_id": "CVE-2016-2781",
+      "severity": "LOW",
+      "tool": "sarif-trivy",
+      "raw_analysis": "This vulnerability is due to a flaw in the way that the coreutils package handles the 'trivy' utility. This vulnerability is due to a flaw in the way that the coreutils package handles the 'trivy' utility. This vulnerability is due to a flaw in the way that the coreutils package handles the 'trivy' utility. This vulnerability is due to a flaw in the way that the coreutils package handles the 'trivy' utility. This vulnerability is due to a flaw in the way that the coreutils package handles the 'trivy' utility. This vulnerability is due to a flaw in the way that the coreutils package handles the 'trivy' utility. This vulnerability is due to a flaw in the way that the",
+      "structured_analysis": {
+        "impact": "Security impact requires further investigation",
+        "remediation": "Review and apply security best practices",
+        "prevention": "Implement security monitoring and regular updates"
+      }
+    },
+    "status": "success"
+  },
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2025-0167",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: curl\nInstalled Version: 8.5.0-2ubuntu10.6\nVulnerability CVE-2025-0167\nSeverity: LOW\nFixed Version: \nLink: [CVE-2025-0167](https://avd.aquasec.com/nvd/cve-2025-0167)",
+      "file_path": "hitoshura25/webauthn-server",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "When asked to use a `.netrc` file for credentials **and** to follow HT ...",
+      "full_description": "When asked to use a `.netrc` file for credentials **and** to follow HTTP\nredirects, curl could leak the password used for the first host to the\nfollowed-to host under certain circumstances.\n\nThis flaw only manifests itself if the netrc file has a `default` entry that\nomits both login and password. A rare circumstance.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2025-0167",
+      "tool_name": "Trivy",
+      "path": "hitoshura25/webauthn-server",
+      "start": {
+        "line": 1
+      }
+    },
+    "analysis": {
+      "vulnerability_id": "CVE-2025-0167",
+      "severity": "LOW",
+      "tool": "sarif-trivy",
+      "raw_analysis": "CVE-2025-0167 is a vulnerability in the curl package. The vulnerability is related to the way the curl package handles the `--output` option, which allows users to specify the output file. If a user specifies a file that does not exist, then curl will attempt to write the output to the file. If the file already exists, then curl will overwrite the file with the output. This can lead to a security issue, as the attacker can specify a file that does not exist, and then write the output to the file. This can lead to a denial of service attack, as the attacker can cause a large amount of output to be written to the file. \n\nRemediation: \nThe vulnerability can be mitigated",
+      "structured_analysis": {
+        "impact": "Security impact requires further investigation",
+        "remediation": "The vulnerability can be mitigated",
+        "prevention": "Implement security monitoring and regular updates"
+      }
+    },
+    "status": "success"
+  }
+]

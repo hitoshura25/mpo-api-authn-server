@@ -88,8 +88,13 @@ class FineTuningConfig:
         # HuggingFace settings
         hf_config = ft_config.get('huggingface', {})
         
-        # Training settings
-        train_config = ft_config.get('training', {})
+        # Training settings - use test_training if in test mode
+        test_mode = os.getenv('OLMO_TEST_MODE', '').lower() in ('1', 'true', 'yes')
+        if test_mode and 'test_training' in ft_config:
+            train_config = ft_config.get('test_training', {})
+            logger.info("🧪 Using test training configuration for faster execution")
+        else:
+            train_config = ft_config.get('training', {})
         
         # MLX settings
         mlx_config = ft_config.get('mlx', {})

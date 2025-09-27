@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 
 from scripts.mlx_finetuning import MLXFineTuner
 from config_manager import OLMoSecurityConfig
+from fine_tuning_config import FineTuningConfig
 from sequential_dataset_creator import SequentialDatasetCreator, SequentialDatasetResult
 
 
@@ -49,7 +50,8 @@ class SequentialFineTuner:
     for specific security tasks.
     """
     
-    def __init__(self, config: Optional[OLMoSecurityConfig] = None, base_output_dir: Optional[Path] = None):
+    def __init__(self, config: Optional[OLMoSecurityConfig] = None, base_output_dir: Optional[Path] = None,
+                 fine_tuning_config: Optional[FineTuningConfig] = None):
         """Initialize sequential fine-tuner."""
         self.config = config or OLMoSecurityConfig()
 
@@ -59,20 +61,32 @@ class SequentialFineTuner:
 
         self.base_fine_tuner = MLXFineTuner()
         self.logger = logging.getLogger(__name__)
-        
-        # Sequential training parameters - Enhanced for optimal specialization (using supported MLX-LM parameters only)
+
+        # Load fine-tuning configuration (with test mode support)
+        self.ft_config = fine_tuning_config or FineTuningConfig.load_from_config()
+
+        # Sequential training parameters - Use FineTuningConfig values with proper type conversion
+        # Convert config values to proper numeric types (YAML may load as strings)
+        learning_rate = float(self.ft_config.learning_rate)
+        batch_size = int(self.ft_config.batch_size)
+        save_steps = int(self.ft_config.save_steps)
+
+        # Calculate iterations based on save_steps for reasonable training duration
+        stage1_iters = max(save_steps * 10, 100)  # At least 10 save intervals
+        stage2_iters = max(int(stage1_iters * 1.6), 150)  # 60% more for Stage 2 specialization
+
         self.stage1_config = {
-            'iters': 500,          # 5x increase: 100→500 for proper specialization (addressing under-training)
-            'learning_rate': 5e-6,  # Optimized rate for stable training (supported parameter)
-            'batch_size': 4,        # Memory-efficient batch size
+            'iters': stage1_iters,
+            'learning_rate': learning_rate,
+            'batch_size': batch_size,
             'fine_tune_type': 'lora',
             'optimizer': 'adamw'    # Validated MLX optimizer (supported parameter)
         }
 
         self.stage2_config = {
-            'iters': 800,          # 5.3x increase: 150→800 for proper code fix specialization
-            'learning_rate': 1e-6,  # Lower rate for Stage 2 to preserve Stage 1 knowledge
-            'batch_size': 2,        # Smaller batch for complex examples
+            'iters': stage2_iters,
+            'learning_rate': learning_rate * 0.2,  # Lower rate for Stage 2 to preserve Stage 1 knowledge
+            'batch_size': max(batch_size // 2, 1),  # Smaller batch for complex examples
             'fine_tune_type': 'lora',
             'optimizer': 'adamw'    # Validated MLX optimizer (supported parameter)
         }
@@ -419,7 +433,7 @@ class SequentialFineTuner:
         self.logger.info(f"   Stage 1 adapter: {stage1_adapter_path}")
         self.logger.info(f"   Training data: {training_data_dir}")
         self.logger.info(f"   Stage 2 output: {stage2_output_dir}")
-        self.logger.info(f"   Iterations: {self.stage2_config['iters']} (5.3x enhanced from 150)")
+        self.logger.info(f"   Iterations: {self.stage2_config['iters']} (calculated from Stage 1: {self.stage1_config['iters']})")
 
         try:
             # Configure chat template for the base model
@@ -1147,7 +1161,7 @@ def secure_function(user_input):
         self.logger.info(f"🚀 Starting enhanced Stage 1 fine-tuning with optimized parameters")
         self.logger.info(f"   Training data: {training_data_dir}")
         self.logger.info(f"   Stage 1 output: {stage1_output_dir}")
-        self.logger.info(f"   Iterations: {self.stage1_config['iters']} (5x enhanced from 100)")
+        self.logger.info(f"   Iterations: {self.stage1_config['iters']} (calculated from save_steps: {self.ft_config.save_steps})")
 
         try:
             # Configure chat template
@@ -1456,7 +1470,12 @@ def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
         
         # Step 2: Sequential fine-tuning
         logger.info("🚀 Step 2: Sequential fine-tuning...")
-        fine_tuner = SequentialFineTuner(base_output_dir=base_output_dir)
+
+        # Load fine-tuning configuration with test mode support
+        from fine_tuning_config import FineTuningConfig
+        ft_config = FineTuningConfig.load_from_config()
+
+        fine_tuner = SequentialFineTuner(base_output_dir=base_output_dir, fine_tuning_config=ft_config)
         training_result = fine_tuner.sequential_fine_tune(
             stage1_dataset=dataset_paths['stage1'],
             stage2_dataset=dataset_paths['stage2'],

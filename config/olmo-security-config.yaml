@@ -1,5 +1,5 @@
 # AI Security Analysis Configuration - Minimal Required Values Only
-# 
+#
 # All other values use code defaults:
 # - HuggingFace upload: enabled by default (can be disabled via CLI)
 # - Training parameters: optimized defaults for security analysis
@@ -16,3 +16,10 @@ default_base_model: "OLMo-2-1B-mlx-q4"
 fine_tuning:
   workspace_dir: "security-ai-analysis/fine-tuning"
   default_output_name: "webauthn-security-v1"
+
+  # Test-specific training settings for fast execution
+  test_training:
+    max_epochs: 1          # Single epoch instead of default 3
+    save_steps: 10         # Save every 50 steps instead of default 500
+    eval_steps: 5         # Evaluate every 25 steps instead of default 250
+    learning_rate: 1e-4    # Slightly higher LR for faster convergence

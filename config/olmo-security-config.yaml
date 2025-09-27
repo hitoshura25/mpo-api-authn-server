@@ -17,9 +17,9 @@ fine_tuning:
   workspace_dir: "security-ai-analysis/fine-tuning"
   default_output_name: "webauthn-security-v1"
 
-  # Test-specific training settings for fast execution
+  # Test-specific training settings for ultra-fast execution (~1 minute)
   test_training:
     max_epochs: 1          # Single epoch instead of default 3
-    save_steps: 10         # Save every 50 steps instead of default 500
-    eval_steps: 5         # Evaluate every 25 steps instead of default 250
-    learning_rate: 1e-4    # Slightly higher LR for faster convergence
+    save_steps: 3          # Ultra-minimal: 3 saves for 30 iterations (3×10)
+    eval_steps: 2          # Ultra-minimal: evaluate every 2 steps
+    learning_rate: 2e-4    # Higher LR for very fast convergence

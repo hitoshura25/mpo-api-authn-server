@@ -29,17 +29,20 @@ def script_path():
     return Path(__file__).parent.parent / "process_artifacts.py"
 
 
-def pytest_configure(config):
-    """Configure pytest with custom markers"""
-    config.addinivalue_line(
-        "markers", "slow: marks tests as slow (may take minutes to run)"
-    )
-
-
 def pytest_collection_modifyitems(config, items):
-    """Automatically mark slow tests"""
+    """Automatically mark slow and specialized tests"""
     for item in items:
-        if "fine_tuning" in item.name or "model_upload" in item.name:
+        # Mark training tests
+        if ("training_phase" in item.name and "creates_complete_model" in item.name) or "fine_tuning" in item.name:
+            item.add_marker(pytest.mark.slow)
+            item.add_marker(pytest.mark.training)
+
+        # Mark upload tests
+        elif "upload" in item.name:
+            item.add_marker(pytest.mark.upload)
+
+        # Mark other potentially slow tests
+        elif "model_upload" in item.name or "integration" in item.name:
             item.add_marker(pytest.mark.slow)
 
 
@@ -79,3 +82,20 @@ def fast_test_args():
 
 # Integration test fixtures remain focused on end-to-end testing
 # Parser functions are tested through integration tests, not unit tests
+
+# Add pytest ini-style configuration programmatically
+def pytest_configure(config):
+    """Configure pytest with custom markers and settings"""
+    config.addinivalue_line(
+        "markers", "slow: marks tests as slow (may take minutes to run)"
+    )
+    config.addinivalue_line(
+        "markers", "training: marks tests that perform actual model training"
+    )
+    config.addinivalue_line(
+        "markers", "upload: marks tests that test model upload functionality"
+    )
+
+    # Set default timeout for slow tests
+    if not config.getoption("--timeout"):
+        config.option.timeout = 300  # 5 minutes default timeout

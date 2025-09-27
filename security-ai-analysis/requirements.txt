@@ -1,32 +1,95 @@
-# Core ML packages (pinned to actual working local versions)
-torch>=2.6.0           # OLMo compatibility requirement (local: 2.8.0)
-transformers>=4.39.3   # Required for mlx-lm compatibility
-accelerate>=0.24.0     # For efficient model loading
-datasets>=2.14.0       # For dataset handling
-
-# OLMo specific (required for OLMo model loading)
-git+https://github.com/allenai/OLMo.git  # AI2's official OLMo package
-
-# MLX support for Apple Silicon (automatic model download and conversion)
-mlx-lm>=0.20.0          # MLX language models with HuggingFace integration
-
-# Data processing (compatible versions)
-pyyaml>=6.0
-pandas>=2.0.0
-numpy>=1.24.0
-
-# System monitoring and debugging
-psutil>=5.9.0          # For memory monitoring (local: 7.0.0)
-
-# Utilities
-python-dotenv>=1.0.0   # For environment variables
-tqdm>=4.65.0           # For progress bars
-
-# Tokenization dependencies (compatible versions)
-sentencepiece>=0.1.99  # Some models need this
-protobuf>=4.20.0       # For some model formats
-tokenizers>=0.15.0     # Core tokenization library
-tiktoken>=0.5.0        # Required for OLMo tokenization
-
-# For Git integration (used in narrativizer)
-gitpython>=3.1.30      # For collecting git history fixes
+accelerate==1.10.1
+ai2-olmo @ git+https://github.com/allenai/OLMo.git@59a53e3f68e546330ca5a99ec626e58f9ab96494
+ai2-olmo-core==2.2.0
+aiohappyeyeballs==2.6.1
+aiohttp==3.12.15
+aiosignal==1.4.0
+antlr4-python3-runtime==4.9.3
+attrs==25.3.0
+boto3==1.40.28
+botocore==1.40.28
+cached_path==1.7.3
+cachetools==5.5.2
+certifi==2025.8.3
+charset-normalizer==3.4.3
+datasets==4.0.0
+dill==0.3.8
+execnet==2.1.1
+faiss-cpu==1.12.0
+filelock==3.19.1
+frozenlist==1.7.0
+fsspec==2025.3.0
+gitdb==4.0.12
+GitPython==3.1.45
+google-api-core==2.25.1
+google-auth==2.40.3
+google-cloud-core==2.4.3
+google-cloud-storage==2.19.0
+google-crc32c==1.7.1
+google-resumable-media==2.7.2
+googleapis-common-protos==1.70.0
+hf-xet==1.1.9
+huggingface-hub==0.34.4
+idna==3.10
+importlib_resources==6.5.2
+iniconfig==2.1.0
+Jinja2==3.1.6
+jmespath==1.0.1
+joblib==1.5.2
+markdown-it-py==4.0.0
+MarkupSafe==3.0.2
+mdurl==0.1.2
+mlx==0.29.0
+mlx-lm==0.27.1
+mlx-metal==0.29.0
+mpmath==1.3.0
+multidict==6.6.4
+multiprocess==0.70.16
+networkx==3.5
+numpy==1.26.4
+omegaconf==2.3.0
+packaging==25.0
+pandas==2.3.2
+pillow==11.3.0
+pluggy==1.6.0
+propcache==0.3.2
+proto-plus==1.26.1
+protobuf==6.32.0
+psutil==7.0.0
+pyarrow==21.0.0
+pyasn1==0.6.1
+pyasn1_modules==0.4.2
+Pygments==2.19.2
+pytest==8.4.2
+pytest-mock==3.15.1
+pytest-timeout==2.4.0
+pytest-xdist==3.8.0
+python-dateutil==2.9.0.post0
+python-dotenv==1.1.1
+pytz==2025.2
+PyYAML==6.0.2
+regex==2025.9.1
+requests==2.32.5
+rich==13.9.4
+rsa==4.9.1
+s3transfer==0.14.0
+safetensors==0.6.2
+scikit-learn==1.7.2
+scipy==1.16.2
+sentence-transformers==5.1.0
+sentencepiece==0.2.1
+setuptools==80.9.0
+six==1.17.0
+smmap==5.0.2
+sympy==1.14.0
+threadpoolctl==3.6.0
+tiktoken==0.11.0
+tokenizers==0.22.0
+torch==2.8.0
+tqdm==4.67.1
+transformers==4.56.1
+typing_extensions==4.15.0
+tzdata==2025.2
+urllib3==2.5.0
+xxhash==3.5.0
+yarl==1.20.1

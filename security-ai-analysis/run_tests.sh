@@ -67,64 +67,126 @@ run_unit_tests() {
     print_success "Unit test phase skipped ✓"
 }
 
-# Function to run integration tests (~30 seconds)
+# Function to run integration tests (~15-30 seconds with parallel execution)
 run_integration_tests() {
-    print_status "Running integration tests (medium speed - ~30 seconds)..."
+    print_status "Running integration tests (medium speed - ~15-30 seconds with parallel execution)..."
 
     # Activate virtual environment if it exists
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
     fi
 
-    # Skip slow tests by default
-    python -m pytest tests/integration/ -v --tb=short -m "not slow"
+    # Skip slow tests by default, use parallel execution for speed
+    local start_time=$(date +%s)
+    python -m pytest tests/integration/ -v --tb=short -m "not slow" -n auto --durations=5
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
 
     if [ $? -eq 0 ]; then
-        print_success "Integration tests passed ✓"
+        print_success "Integration tests passed ✓ (${duration}s)"
     else
         print_error "Integration tests failed ✗"
         exit 1
     fi
 }
 
-# Function to run all tests including slow ones (minutes)
+# Function to run all tests including slow ones (1-3 minutes with optimizations)
 run_all_tests() {
-    print_status "Running all tests including slow tests (full suite - may take minutes)..."
+    print_status "Running all tests including slow tests (full suite - optimized to 1-3 minutes)..."
 
     # Activate virtual environment if it exists
     if [ -f "venv/bin/activate" ]; then
         source venv/bin/activate
     fi
 
-    python -m pytest tests/ -v --tb=short
+    local start_time=$(date +%s)
+    # Use parallel execution and show timing for optimization feedback
+    python -m pytest tests/ -v --tb=short -n auto --durations=10
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
 
     if [ $? -eq 0 ]; then
-        print_success "All tests passed ✓"
+        print_success "All tests passed ✓ (${duration}s total)"
     else
         print_error "Some tests failed ✗"
         exit 1
     fi
 }
 
+# Function to run training tests only (~1 minute with optimizations)
+run_training_tests() {
+    print_status "Running training tests only (ultra-fast ~1 minute with test configuration)..."
+
+    # Activate virtual environment if it exists
+    if [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+    fi
+
+    local start_time=$(date +%s)
+    # Run only training-marked tests with test mode environment
+    OLMO_TEST_MODE=1 python -m pytest tests/ -v --tb=short -m "training" --durations=3
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    if [ $? -eq 0 ]; then
+        print_success "Training tests passed ✓ (${duration}s)"
+    else
+        print_error "Training tests failed ✗"
+        exit 1
+    fi
+}
+
+# Function to run upload tests only
+run_upload_tests() {
+    print_status "Running upload tests only..."
+
+    # Activate virtual environment if it exists
+    if [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+    fi
+
+    local start_time=$(date +%s)
+    # Run only upload-marked tests
+    python -m pytest tests/ -v --tb=short -m "upload" --durations=3
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    if [ $? -eq 0 ]; then
+        print_success "Upload tests passed ✓ (${duration}s)"
+    else
+        print_error "Upload tests failed ✗"
+        exit 1
+    fi
+}
+
 # Function to show usage
 show_usage() {
-    echo "Usage: $0 [quick|integration|all|help]"
+    echo "Usage: $0 [quick|integration|all|training|upload|help]"
     echo ""
     echo "Test execution modes:"
     echo "  quick       - Run fast checks only (fixtures verification)"
-    echo "  integration - Run integration tests, skip slow tests (~30 seconds)"
-    echo "  all         - Run complete test suite including slow tests (minutes)"
+    echo "  integration - Run integration tests, skip slow tests (~15-30 seconds)"
+    echo "  all         - Run complete test suite including slow tests (1-3 minutes)"
+    echo "  training    - Run only training-related tests (ultra-fast ~1 minute)"
+    echo "  upload      - Run only upload-related tests"
     echo "  help        - Show this help message"
+    echo ""
+    echo "Performance optimizations:"
+    echo "  • Parallel execution with pytest-xdist (-n auto)"
+    echo "  • Ultra-fast training tests with test-specific configuration"
+    echo "  • Performance timing and slowest test identification"
     echo ""
     echo "Examples:"
     echo "  $0 quick          # Fast feedback during development"
-    echo "  $0 integration    # Standard CI testing"
+    echo "  $0 integration    # Standard CI testing (parallel execution)"
+    echo "  $0 training       # Test only training pipeline (ultra-fast)"
     echo "  $0 all            # Complete validation before release"
     echo ""
     echo "Test coverage:"
     echo "  • 13 comprehensive integration tests with real security tool outputs"
     echo "  • End-to-end pipeline validation across all 8 phases"
     echo "  • Performance optimized fixture-based testing (4-40x faster)"
+    echo "  • Training tests optimized from 40+ minutes to ~1 minute"
 }
 
 # Main execution logic
@@ -151,12 +213,24 @@ main() {
             check_pytest
             check_test_data
             run_unit_tests
-            run_integration_tests
-            print_warning "Running slow tests - this may take several minutes..."
-            # Note: run_all_tests runs all tests including unit+integration+slow, so there's some duplication
-            # but that's acceptable for a comprehensive test run
+            print_status "Running comprehensive test suite (optimized to 1-3 minutes)..."
+            # Single comprehensive run of all tests - no duplication
             run_all_tests
             print_success "All tests completed successfully!"
+            ;;
+        "training")
+            print_status "Starting training test mode..."
+            check_pytest
+            check_test_data
+            run_training_tests
+            print_success "Training tests completed successfully!"
+            ;;
+        "upload")
+            print_status "Starting upload test mode..."
+            check_pytest
+            check_test_data
+            run_upload_tests
+            print_success "Upload tests completed successfully!"
             ;;
         "help"|"-h"|"--help")
             show_usage

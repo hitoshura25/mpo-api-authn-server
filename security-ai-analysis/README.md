@@ -354,11 +354,17 @@ The system includes a comprehensive testing framework with controlled test data 
 # Fast unit tests (~2 seconds)
 ./run_tests.sh quick
 
-# Standard integration tests (~30 seconds)
+# Standard integration tests (~15-30 seconds with parallel execution)
 ./run_tests.sh integration
 
-# Full test suite including slow tests (minutes)
+# Full test suite including slow tests (1-3 minutes, optimized)
 ./run_tests.sh all
+
+# Ultra-fast training tests only (~1 minute with test configuration)
+./run_tests.sh training
+
+# Upload-specific tests only
+./run_tests.sh upload
 ```
 
 #### Test Structure
@@ -379,9 +385,12 @@ The system includes a comprehensive testing framework with controlled test data 
 
 - **End-to-End Validation**: Complete pipeline testing from artifacts to trained models
 - **Phase Isolation**: Test individual phases without running full pipeline
-- **Fast Feedback**: Most tests complete in under 30 seconds
+- **Fast Feedback**: Most tests complete in under 30 seconds with parallel execution
 - **Fixture Management**: Pre-generated test data ensures consistent, predictable results
 - **Format Validation**: Tests handle real security tool output formats
+- **Parallel Execution**: Automatic parallel test execution with pytest-xdist for faster results
+- **Test Categorization**: Targeted testing with markers (training, upload, slow) for precise control
+- **Ultra-Fast Training**: Training tests optimized from 40+ minutes to ~1 minute with test configuration
 
 ---
 

@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
 
 def run_sequential_fine_tuning_phase(
     vulnerabilities: List[Dict],
-    summary: Dict[str, Any]
+    summary: Dict[str, Any],
+    base_output_dir: Optional[Path] = None
 ) -> Dict[str, Any]:
     """
     Execute Sequential Fine-Tuning (always enabled)
@@ -39,6 +40,7 @@ def run_sequential_fine_tuning_phase(
     Args:
         vulnerabilities: List of processed vulnerability data with narratives
         summary: Analysis summary dictionary to update
+        base_output_dir: Optional base directory for model output (respects --model-dir)
 
     Returns:
         Updated summary dictionary with sequential fine-tuning results
@@ -62,7 +64,15 @@ def run_sequential_fine_tuning_phase(
         
         # Create output directory for this run
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = Path("data/sequential_fine_tuning") / f"run_{timestamp}"
+
+        # Use provided base_output_dir or fall back to default
+        if base_output_dir:
+            output_dir = base_output_dir / f"webauthn-security-sequential_{timestamp}"
+            print(f"🔧 Using provided base directory: {base_output_dir}")
+        else:
+            output_dir = Path("data/sequential_fine_tuning") / f"run_{timestamp}"
+            print(f"📁 Using default base directory: data/sequential_fine_tuning")
+
         output_dir.mkdir(parents=True, exist_ok=True)
         
         model_name_prefix = f"webauthn-security-sequential_{timestamp}"
@@ -75,7 +85,8 @@ def run_sequential_fine_tuning_phase(
         sequential_result = create_and_train_sequential_models(
             vulnerabilities=vulnerabilities,
             output_dir=output_dir,
-            model_name_prefix=model_name_prefix
+            model_name_prefix=model_name_prefix,
+            base_output_dir=base_output_dir
         )
         
         if sequential_result.success:

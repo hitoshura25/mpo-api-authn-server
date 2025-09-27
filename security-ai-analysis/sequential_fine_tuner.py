@@ -49,9 +49,14 @@ class SequentialFineTuner:
     for specific security tasks.
     """
     
-    def __init__(self, config: Optional[OLMoSecurityConfig] = None):
+    def __init__(self, config: Optional[OLMoSecurityConfig] = None, base_output_dir: Optional[Path] = None):
         """Initialize sequential fine-tuner."""
         self.config = config or OLMoSecurityConfig()
+
+        # Override fine_tuned_models_dir if base_output_dir is provided
+        if base_output_dir:
+            self.config.fine_tuned_models_dir = base_output_dir
+
         self.base_fine_tuner = MLXFineTuner()
         self.logger = logging.getLogger(__name__)
         
@@ -603,16 +608,21 @@ class SequentialFineTuner:
             # In a full implementation, this would merge Stage 1 adapter first
             self.logger.warning("⚠️ Training Stage 2 from base model (Stage 1 adapter merging not yet implemented)")
             
-            stage2_result = self.base_fine_tuner.fine_tune_model(
-                dataset_file=str(dataset_path),
-                output_name=output_name,
-                **self.stage2_config
+            # Prepare training data and run fine-tuning
+            training_data_dir = self.base_fine_tuner.prepare_training_data(dataset_path)
+            trained_model_path = self.base_fine_tuner.run_fine_tuning(
+                training_data_dir=training_data_dir,
+                custom_output_name=output_name
             )
-            
-            # Add metadata about the limitation
-            stage2_result['stage1_adapter_used'] = False
-            stage2_result['note'] = 'Trained from base model, adapter merging not implemented'
-            
+
+            # Convert Path result to expected dict format
+            stage2_result = {
+                'success': True,
+                'adapter_path': str(trained_model_path),
+                'stage1_adapter_used': False,
+                'note': 'Trained from base model, adapter merging not implemented'
+            }
+
             return stage2_result
             
         except Exception as e:
@@ -1402,20 +1412,22 @@ def secure_function(user_input):
 
 def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
                                      output_dir: Path,
-                                     model_name_prefix: Optional[str] = None) -> SequentialTrainingResult:
+                                     model_name_prefix: Optional[str] = None,
+                                     base_output_dir: Optional[Path] = None) -> SequentialTrainingResult:
     """
     Complete pipeline: Create sequential datasets and train specialized models.
-    
+
     This convenience function:
     1. Creates Stage 1 and Stage 2 datasets from vulnerabilities
     2. Trains Stage 1 (analysis) specialist model
     3. Trains Stage 2 (code fix) specialist building on Stage 1
     4. Validates both models
-    
+
     Args:
         vulnerabilities: List of vulnerability data
         output_dir: Directory for datasets and model outputs
         model_name_prefix: Prefix for model names
+        base_output_dir: Optional base directory for model outputs (respects --model-dir)
 
     Returns:
         SequentialTrainingResult with complete training results
@@ -1444,7 +1456,7 @@ def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
         
         # Step 2: Sequential fine-tuning
         logger.info("🚀 Step 2: Sequential fine-tuning...")
-        fine_tuner = SequentialFineTuner()
+        fine_tuner = SequentialFineTuner(base_output_dir=base_output_dir)
         training_result = fine_tuner.sequential_fine_tune(
             stage1_dataset=dataset_paths['stage1'],
             stage2_dataset=dataset_paths['stage2'],

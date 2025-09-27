@@ -1017,7 +1017,8 @@ def training_phase(train_file: Path, train_data: List, narrativized_results: Lis
     print("📁 Training phase: Saving models locally only (uploads handled by separate phase)")
     updated_summary = run_sequential_fine_tuning_phase(
         vulnerabilities=narrativized_results,  # Use full vulnerability data with narratives
-        summary=summary
+        summary=summary,
+        base_output_dir=fine_tuned_base_path  # Pass the CLI override or config path
     )
     print("✅ Sequential fine-tuning completed successfully")
     return updated_summary, model_artifacts_path
@@ -1080,12 +1081,95 @@ def upload_phase(model_artifacts_path: Path, summary: Dict, args) -> Dict:
         print(f"   Models uploaded: {models_uploaded}")
         print(f"   Datasets uploaded: {datasets_uploaded}")
 
+    except ValueError as e:
+        # Re-raise validation errors to fail fast at the top level
+        if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
+            print(f"❌ FAIL FAST: Upload phase failed due to validation error: {e}")
+            summary['upload_status'] = 'failed'
+            summary['upload_error'] = str(e)
+            raise  # Re-raise to fail the entire process
+        else:
+            print(f"❌ Upload phase failed: {e}")
+            summary['upload_status'] = 'failed'
+            summary['upload_error'] = str(e)
     except Exception as e:
         print(f"❌ Upload phase failed: {e}")
         summary['upload_status'] = 'failed'
         summary['upload_error'] = str(e)
 
     return summary
+
+
+def _select_final_model(model_dirs: List[Path]) -> Path:
+    """
+    Select the final model from a list of sequential fine-tuning model directories.
+
+    Prioritizes:
+    1. Stage 2 models ending with 'stage2_codefix' (final models)
+    2. Most recent timestamp if multiple final models exist
+    3. Longest model chain (highest stage number) as fallback
+
+    Args:
+        model_dirs: List of model directory paths
+
+    Returns:
+        Path to the final model directory
+    """
+    if not model_dirs:
+        raise ValueError("No model directories provided")
+
+    if len(model_dirs) == 1:
+        return model_dirs[0]
+
+    # Priority 1: Look for Stage 2 final models (ending with 'stage2_codefix')
+    stage2_final_models = [
+        d for d in model_dirs
+        if d.name.endswith('stage2_codefix') and 'merged' not in d.name
+    ]
+
+    if stage2_final_models:
+        # If multiple Stage 2 final models, use most recent by timestamp
+        if len(stage2_final_models) > 1:
+            # Extract timestamp and sort by it
+            def extract_timestamp(path):
+                parts = path.name.split('_')
+                for i, part in enumerate(parts):
+                    if len(part) == 8 and part.isdigit():  # YYYYMMDD
+                        if i + 1 < len(parts) and len(parts[i + 1]) == 6 and parts[i + 1].isdigit():  # HHMMSS
+                            return f"{part}_{parts[i + 1]}"
+                return "00000000_000000"  # Fallback for unparseable timestamps
+
+            stage2_final_models.sort(key=extract_timestamp, reverse=True)
+
+        print(f"📋 Selected final Stage 2 model: {stage2_final_models[0].name}")
+        return stage2_final_models[0]
+
+    # Priority 2: Look for any stage2 models (including intermediate)
+    stage2_models = [d for d in model_dirs if 'stage2' in d.name]
+
+    if stage2_models:
+        # Prefer non-merged models over merged models
+        non_merged_stage2 = [d for d in stage2_models if 'merged' not in d.name]
+        if non_merged_stage2:
+            # Sort by timestamp and use most recent
+            if len(non_merged_stage2) > 1:
+                def extract_timestamp(path):
+                    parts = path.name.split('_')
+                    for i, part in enumerate(parts):
+                        if len(part) == 8 and part.isdigit():
+                            if i + 1 < len(parts) and len(parts[i + 1]) == 6 and parts[i + 1].isdigit():
+                                return f"{part}_{parts[i + 1]}"
+                    return "00000000_000000"
+
+                non_merged_stage2.sort(key=extract_timestamp, reverse=True)
+
+            print(f"📋 Selected Stage 2 model (non-merged): {non_merged_stage2[0].name}")
+            return non_merged_stage2[0]
+
+    # Priority 3: Fallback to most recent by timestamp (alphabetical sort as backup)
+    sorted_models = sorted(model_dirs, key=lambda d: d.name, reverse=True)
+    print(f"📋 Selected most recent model (fallback): {sorted_models[0].name}")
+    return sorted_models[0]
 
 
 def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> int:
@@ -1120,10 +1204,10 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> in
         sequential_model_dirs = list(model_artifacts_path.glob("webauthn-security-sequential_*"))
 
         if sequential_model_dirs:
-            # Use the most recent fine-tuned model (sorted by timestamp in name)
-            most_recent_model = sorted(sequential_model_dirs)[-1]
-            print(f"🎯 Found fine-tuned model directory: {most_recent_model}")
-            actual_model_path = most_recent_model
+            # Prioritize final models over intermediate models
+            final_model = _select_final_model(sequential_model_dirs)
+            print(f"🎯 Found fine-tuned model directory: {final_model}")
+            actual_model_path = final_model
         else:
             # Fallback: treat model_artifacts_path as the actual model directory
             print(f"📂 Using direct model path: {model_artifacts_path}")
@@ -1164,6 +1248,16 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> in
                 print(f"❌ {error_msg}")
                 upload_results['errors'].append(error_msg)
 
+        except ValueError as e:
+            # Re-raise validation errors to fail fast (don't convert to warnings)
+            if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
+                print(f"❌ FAIL FAST: {e}")
+                raise  # Re-raise to fail the entire process
+            else:
+                # Other ValueError types can be handled as errors
+                error_msg = f"Model upload failed for {actual_model_path}: {e}"
+                print(f"❌ {error_msg}")
+                upload_results['errors'].append(error_msg)
         except Exception as e:
             error_msg = f"Model upload failed for {actual_model_path}: {e}"
             print(f"❌ {error_msg}")
@@ -1178,6 +1272,15 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> in
         error_msg = f"MLX fine tuner not available for model upload: {e}"
         print(f"❌ {error_msg}")
         upload_results['errors'].append(error_msg)
+    except ValueError as e:
+        # Re-raise validation errors to fail fast at the top level
+        if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
+            print(f"❌ FAIL FAST (outer): {e}")
+            raise  # Re-raise to fail the entire process
+        else:
+            error_msg = f"Model upload failed: {e}"
+            print(f"❌ {error_msg}")
+            upload_results['errors'].append(error_msg)
     except Exception as e:
         error_msg = f"Model upload failed: {e}"
         print(f"❌ {error_msg}")
@@ -1627,9 +1730,17 @@ def execute_single_phase(phase: str, args):
         model_dir = args.model_dir
         # Create dummy summary for compatibility
         summary = {"phase": "upload", "single_phase_execution": True}
-        upload_summary = upload_phase(model_dir, summary, args)
-        print(f"✅ Upload completed.")
-        return 0, {"phase": phase, "upload_summary": upload_summary}
+        try:
+            upload_summary = upload_phase(model_dir, summary, args)
+            print(f"✅ Upload completed.")
+            return 0, {"phase": phase, "upload_summary": upload_summary}
+        except ValueError as e:
+            # Re-raise validation errors to fail fast in single-phase execution
+            if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
+                print(f"❌ FAIL FAST: Upload phase failed due to validation error: {e}")
+                return 1, {"phase": phase, "error": str(e), "upload_summary": summary}
+            else:
+                raise  # Re-raise other ValueError types
 
     else:
         raise ValueError(f"Unknown phase: {phase}")

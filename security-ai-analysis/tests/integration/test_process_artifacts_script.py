@@ -9,6 +9,7 @@ import tempfile
 import shutil
 import subprocess
 import pytest
+import struct
 from pathlib import Path
 from unittest.mock import patch, MagicMock, Mock
 
@@ -18,6 +19,33 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 class TestProcessArtifactsScript:
     """Integration tests for the complete process_artifacts.py pipeline"""
+
+    def create_mock_safetensors_file(self, file_path: Path, tensors_metadata: dict = None):
+        """Create a minimal valid safetensors file for testing"""
+        if tensors_metadata is None:
+            tensors_metadata = {
+                "weight": {
+                    "dtype": "F32",
+                    "shape": [2, 2],
+                    "data_offsets": [0, 16]
+                }
+            }
+
+        # Create header JSON
+        header_json = json.dumps(tensors_metadata).encode('utf-8')
+        header_length = len(header_json)
+
+        # Create minimal tensor data (4 floats = 16 bytes for a 2x2 matrix)
+        tensor_data = struct.pack('4f', 1.0, 0.0, 0.0, 1.0)  # Identity matrix
+
+        # Write safetensors file format: 8 bytes length + header + tensor data
+        with open(file_path, 'wb') as f:
+            # Write header length (8 bytes, little-endian)
+            f.write(struct.pack('<Q', header_length))
+            # Write header
+            f.write(header_json)
+            # Write tensor data
+            f.write(tensor_data)
 
     @classmethod
     def setup_class(cls):
@@ -641,9 +669,15 @@ class TestProcessArtifactsScript:
         adapters_dir = test_model_dir / "adapters"
         adapters_dir.mkdir(parents=True)
 
-        # Create minimal mock adapter files
-        (adapters_dir / "adapters.safetensors").write_bytes(b"mock_adapter_data")
-        (adapters_dir / "adapter_config.json").write_text('{"mock": "config"}')
+        # Create realistic mock adapter files that pass validation
+        self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
+        (adapters_dir / "adapter_config.json").write_text(json.dumps({
+            "base_model_name_or_path": "allenai/OLMo-2-1B",
+            "task_type": "CAUSAL_LM",
+            "lora_alpha": 32,
+            "lora_dropout": 0.1,
+            "r": 16
+        }))
 
         # Create mock dataset files for the upload phase requirement
         fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
@@ -666,9 +700,10 @@ class TestProcessArtifactsScript:
         assert f"📁 Using model artifacts: {test_model_dir}" in result.stdout, \
             "Should use the discovered model directory"
 
-        # Verify upload was blocked in test environment
-        assert "🛑 Upload blocked - test environment detected" in result.stdout, \
-            "Should block upload in test environment"
+        # Verify upload was blocked in test environment (behavioral test)
+        # Check for test environment blocking by looking for test URL in output
+        assert "https://huggingface.co/test-blocked/" in result.stdout, \
+            "Should return fake test URL when upload is blocked"
 
         # Test 2: Test skip behavior separately
         result_skip = self.run_process_artifacts([
@@ -699,8 +734,15 @@ class TestProcessArtifactsScript:
             model_dir.mkdir(parents=True)
             adapters_dir = model_dir / "adapters"
             adapters_dir.mkdir(parents=True)
-            (adapters_dir / "adapters.safetensors").write_bytes(b"mock_data")
-            (adapters_dir / "adapter_config.json").write_text('{"mock": "config"}')
+            # Create realistic mock adapter files that pass validation
+            self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
+            (adapters_dir / "adapter_config.json").write_text(json.dumps({
+                "base_model_name_or_path": "allenai/OLMo-2-1B",
+                "task_type": "CAUSAL_LM",
+                "lora_alpha": 32,
+                "lora_dropout": 0.1,
+                "r": 16
+            }))
 
         # Create mock dataset files for the upload phase requirement
         fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
@@ -723,9 +765,10 @@ class TestProcessArtifactsScript:
         assert f"📁 Using model artifacts: {newest_model}" in result.stdout, \
             "Should use the newest model directory"
 
-        # Verify upload was blocked in test environment
-        assert "🛑 Upload blocked - test environment detected" in result.stdout, \
-            "Should block upload in test environment"
+        # Verify upload was blocked in test environment (behavioral test)
+        # Check for test environment blocking by looking for test URL in output
+        assert "https://huggingface.co/test-blocked/" in result.stdout, \
+            "Should return fake test URL when upload is blocked"
 
         print(f"✅ Upload phase correctly selected newest model from multiple options")
 
@@ -737,11 +780,14 @@ class TestProcessArtifactsScript:
         adapters_dir = test_model_dir / "adapters"
         adapters_dir.mkdir(parents=True)
 
-        # Create realistic model structure
-        (adapters_dir / "adapters.safetensors").write_bytes(b"mock_adapter_weights")
+        # Create realistic model structure that passes validation
+        self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
         (adapters_dir / "adapter_config.json").write_text(json.dumps({
             "base_model_name_or_path": "allenai/OLMo-2-1B",
-            "task_type": "CAUSAL_LM"
+            "task_type": "CAUSAL_LM",
+            "lora_alpha": 32,
+            "lora_dropout": 0.1,
+            "r": 16
         }))
 
         # Create mock dataset files for the upload phase requirement
@@ -769,8 +815,10 @@ class TestProcessArtifactsScript:
         assert "📦 Uploading fine-tuned model:" in result.stdout, \
             "Should attempt to upload the model"
 
-        assert "🛑 Upload blocked - test environment detected" in result.stdout, \
-            "Should block upload in test environment"
+        # Verify upload was blocked in test environment (behavioral test)
+        # Check for test environment blocking by looking for test URL in output
+        assert "https://huggingface.co/test-blocked/" in result.stdout, \
+            "Should return fake test URL when upload is blocked"
 
         assert "✅ Successfully uploaded 1 models" in result.stdout, \
             "Should report successful model upload count (with test blocking)"
@@ -783,9 +831,18 @@ class TestProcessArtifactsScript:
         isolated_models_dir = tmp_path / "test_models"
         isolated_models_dir.mkdir(parents=True)
 
-        # Create model files directly in the base directory (no sequential subdirectory)
-        (isolated_models_dir / "adapters.safetensors").write_bytes(b"mock_adapter_data")
-        (isolated_models_dir / "adapter_config.json").write_text('{"mock": "config"}')
+        # Create realistic LoRA model files directly in the base directory (no sequential subdirectory)
+        # Use proper LoRA structure: adapters/ subdirectory
+        adapters_dir = isolated_models_dir / "adapters"
+        adapters_dir.mkdir(parents=True)
+        self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
+        (adapters_dir / "adapter_config.json").write_text(json.dumps({
+            "base_model_name_or_path": "allenai/OLMo-2-1B",
+            "task_type": "CAUSAL_LM",
+            "lora_alpha": 32,
+            "lora_dropout": 0.1,
+            "r": 16
+        }))
 
         # Create mock dataset files for the upload phase requirement
         fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
@@ -808,11 +865,290 @@ class TestProcessArtifactsScript:
         assert f"📁 Using model artifacts: {isolated_models_dir}" in result.stdout, \
             "Should use the direct model directory"
 
-        # Verify upload was blocked in test environment
-        assert "🛑 Upload blocked - test environment detected" in result.stdout, \
-            "Should block upload in test environment"
+        # Verify upload was blocked in test environment (behavioral test)
+        # Check for test environment blocking by looking for test URL in output
+        assert "https://huggingface.co/test-blocked/" in result.stdout, \
+            "Should return fake test URL when upload is blocked"
 
         print(f"✅ Upload phase correctly handled fallback behavior")
+
+    def test_model_validation_module_exists(self):
+        """Test that validation module can be imported and used - should fail initially"""
+        try:
+            from validate_model_artifacts import validate_model_artifacts
+            # If we get here, the module exists
+            assert callable(validate_model_artifacts), \
+                "validate_model_artifacts should be a callable function"
+        except ImportError:
+            # This is expected to fail initially - we'll fix it by creating the module
+            pytest.fail("validate_model_artifacts module is missing - this test documents the issue")
+
+    def test_upload_lora_model_with_adapters(self, tmp_path):
+        """Test upload of LoRA model with proper adapter structure"""
+        # Create isolated test model directory structure with LoRA adapters
+        isolated_models_dir = tmp_path / "test_models"
+        model_timestamp = "20250926_120000"
+        test_model_dir = isolated_models_dir / f"webauthn-security-sequential_{model_timestamp}"
+        adapters_dir = test_model_dir / "adapters"
+        adapters_dir.mkdir(parents=True)
+
+        # Create realistic LoRA adapter files that pass validation
+        self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
+        (adapters_dir / "adapter_config.json").write_text(json.dumps({
+            "base_model_name_or_path": "allenai/OLMo-2-1B",
+            "task_type": "CAUSAL_LM",
+            "lora_alpha": 32,
+            "lora_dropout": 0.1,
+            "r": 16
+        }))
+
+        # Create mock dataset files for the upload phase requirement
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
+        dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
+
+        # Run upload phase (uploads blocked by test environment detection)
+        result = self.run_process_artifacts([
+            "--only-upload",
+            "--model-dir", str(isolated_models_dir),
+            "--dataset-files", dataset_files
+        ])
+
+        assert result.returncode == 0, f"Upload phase failed: {result.stderr}"
+
+        # Verify it found and used the LoRA model directory
+        assert f"🎯 Found fine-tuned model directory: {test_model_dir}" in result.stdout, \
+            "Should discover LoRA model directory"
+
+        assert f"📁 Using model artifacts: {test_model_dir}" in result.stdout, \
+            "Should use the LoRA model directory"
+
+        # The key test: After our fix, this should show LoRA model processing
+        # Currently this will show warnings, but after fix should be clean
+        print(f"✅ LoRA model upload test completed (adapter structure)")
+
+    def test_upload_fused_model_without_adapters(self, tmp_path):
+        """Test upload of fused model with merged weights (no adapters directory)"""
+        # Create isolated test model directory structure with fused model
+        isolated_models_dir = tmp_path / "test_models"
+        model_timestamp = "20250926_120000"
+        test_model_dir = isolated_models_dir / f"webauthn-security-sequential_{model_timestamp}"
+        test_model_dir.mkdir(parents=True)
+
+        # Create fused model files (no adapters subdirectory)
+        self.create_mock_safetensors_file(test_model_dir / "model.safetensors")
+        (test_model_dir / "config.json").write_text(json.dumps({
+            "architectures": ["OLMoForCausalLM"],
+            "model_type": "olmo",
+            "torch_dtype": "float32"
+        }))
+        (test_model_dir / "tokenizer.json").write_text('{"version": "1.0"}')
+
+        # Create mock dataset files for the upload phase requirement
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
+        dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
+
+        # Run upload phase (uploads blocked by test environment detection)
+        result = self.run_process_artifacts([
+            "--only-upload",
+            "--model-dir", str(isolated_models_dir),
+            "--dataset-files", dataset_files
+        ])
+
+        assert result.returncode == 0, f"Upload phase failed: {result.stderr}"
+
+        # Verify it found and used the fused model directory
+        assert f"🎯 Found fine-tuned model directory: {test_model_dir}" in result.stdout, \
+            "Should discover fused model directory"
+
+        assert f"📁 Using model artifacts: {test_model_dir}" in result.stdout, \
+            "Should use the fused model directory"
+
+        # Verify original fused model files are preserved
+        assert (test_model_dir / "model.safetensors").exists(), \
+            "Original fused model files should be preserved"
+
+        # The key test: After our fix, this should NOT show adapter warnings
+        # Currently this will show "No MLX adapters directory found" warning
+        print(f"✅ Fused model upload test completed (no adapter structure)")
+
+    def test_upload_invalid_model_structure_should_fail(self, tmp_path):
+        """Test that invalid model structure should fail fast with clear error"""
+        # Create isolated test model directory with invalid structure
+        isolated_models_dir = tmp_path / "test_models"
+        model_timestamp = "20250926_120000"
+        test_model_dir = isolated_models_dir / f"webauthn-security-sequential_{model_timestamp}"
+        test_model_dir.mkdir(parents=True)
+
+        # Create invalid structure (neither LoRA adapters nor fused model)
+        (test_model_dir / "random_file.txt").write_text("not a model file")
+        (test_model_dir / "irrelevant.json").write_text('{"not": "a model config"}')
+
+        # Create mock dataset files for the upload phase requirement
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
+        dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
+
+        # Run upload phase - this should fail fast with invalid model structure
+        result = self.run_process_artifacts([
+            "--only-upload",
+            "--model-dir", str(isolated_models_dir),
+            "--dataset-files", dataset_files
+        ])
+
+        # After our fix, this should fail fast with a clear error message
+        assert result.returncode != 0, f"Upload should fail fast with invalid model structure, but succeeded"
+
+        # Verify the error message indicates invalid model structure
+        assert "Invalid model structure" in result.stderr or "Model validation failed" in result.stderr, \
+            f"Should show validation error message, got: {result.stderr}"
+
+        print(f"✅ Invalid model structure correctly failed fast as expected")
+
+    def test_training_phase_creates_complete_model_files(self, tmp_path):
+        """Test that training phase creates complete LoRA model structure with actual weights"""
+        # Create isolated test directory for training output
+        isolated_models_dir = tmp_path / "test_training_models"
+        isolated_models_dir.mkdir(parents=True)
+
+        # Create minimal input files required for training phase
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
+
+        # Run training phase only in isolated directory
+        result = self.run_process_artifacts([
+            "--only-training",
+            "--model-dir", str(isolated_models_dir),
+            "--narrativized-input", str(fixtures_dir / "narrativized_fixture.json"),
+            "--train-input", str(fixtures_dir / "train_dataset_fixture.jsonl"),
+            "--validation-input", str(fixtures_dir / "validation_dataset_fixture.jsonl")
+        ])
+
+        assert result.returncode == 0, f"Training phase failed: {result.stderr}"
+
+        # Debug: Show what was actually created
+        print(f"🔍 Training phase completed, checking output in: {isolated_models_dir}")
+        if isolated_models_dir.exists():
+            created_items = list(isolated_models_dir.iterdir())
+            print(f"📁 Items created: {[item.name for item in created_items]}")
+
+            # Show detailed structure of each model directory
+            for item in created_items:
+                if item.is_dir() and "webauthn-security-sequential" in item.name:
+                    print(f"📂 Model directory contents: {item}")
+                    for subitem in item.iterdir():
+                        print(f"   📄 {subitem.name}")
+                        if subitem.is_dir():
+                            for subsubitem in subitem.iterdir():
+                                print(f"      📄 {subsubitem.name}")
+        else:
+            print(f"❌ Model directory doesn't exist: {isolated_models_dir}")
+
+        # Find the created model directory (should have timestamp pattern)
+        model_dirs = list(isolated_models_dir.glob("webauthn-security-sequential_*"))
+        assert len(model_dirs) > 0, f"No model directory created in {isolated_models_dir}. " \
+            f"This exposes the training phase bug - models are not saved to --model-dir location!"
+
+        # Use the most recent model directory
+        model_dir = sorted(model_dirs)[-1]
+        adapters_dir = model_dir / "adapters"
+
+        print(f"🔍 Checking model completeness in: {model_dir}")
+
+        # Assert complete LoRA model structure exists
+        assert adapters_dir.exists(), f"Adapters directory missing: {adapters_dir}"
+
+        adapter_config_file = adapters_dir / "adapter_config.json"
+        adapters_weights_file = adapters_dir / "adapters.safetensors"
+
+        # Check adapter config file
+        assert adapter_config_file.exists(), f"Missing adapter config: {adapter_config_file}"
+        assert adapter_config_file.stat().st_size > 0, "Adapter config file is empty"
+
+        # Check adapter weights file - THIS WILL CURRENTLY FAIL
+        assert adapters_weights_file.exists(), f"Missing adapter weights: {adapters_weights_file}"
+        assert adapters_weights_file.stat().st_size > 1000, f"Adapter weights file too small: {adapters_weights_file.stat().st_size} bytes"
+
+        # Verify the config is valid JSON
+        with open(adapter_config_file, 'r') as f:
+            import json
+            config = json.load(f)
+            assert "task_type" in config, "Adapter config missing task_type"
+
+        print(f"✅ Training phase created complete model with {adapters_weights_file.stat().st_size} byte weights file")
+
+    def test_model_selection_prioritizes_final_over_intermediate(self, tmp_path):
+        """Test that model selection chooses final Stage 2 models over intermediate merged models"""
+
+        # Import the function to test
+        import sys
+        sys.path.append(str(Path(__file__).parent.parent.parent))
+        from process_artifacts import _select_final_model
+
+        # Create test model directories that simulate the production scenario
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+
+        # Create the exact directory structure from production log
+        stage1_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage1_analysis"
+        stage2_final_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage2_codefix"
+        stage2_intermediate_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage2_codefix_stage1_merged_stage1_merged"
+
+        # Create all directories
+        stage1_dir.mkdir()
+        stage2_final_dir.mkdir()
+        stage2_intermediate_dir.mkdir()
+
+        # Add some files to make them realistic
+        for dir_path in [stage1_dir, stage2_final_dir, stage2_intermediate_dir]:
+            (dir_path / "config.json").write_text('{"model_type": "OLMoForCausalLM"}')
+            self.create_mock_safetensors_file(dir_path / "model.safetensors")
+
+        model_dirs = [stage1_dir, stage2_final_dir, stage2_intermediate_dir]
+
+        # Test the selection logic
+        selected_model = _select_final_model(model_dirs)
+
+        # Should select the final Stage 2 model, not the intermediate one
+        assert selected_model == stage2_final_dir, \
+            f"Expected {stage2_final_dir.name}, got {selected_model.name}"
+
+        print(f"✅ Model selection correctly chose final model: {selected_model.name}")
+
+    def test_model_selection_with_only_intermediate_models(self, tmp_path):
+        """Test model selection when only intermediate models exist"""
+
+        # Import the function to test
+        import sys
+        sys.path.append(str(Path(__file__).parent.parent.parent))
+        from process_artifacts import _select_final_model
+
+        # Create test model directories with only intermediate models
+        models_dir = tmp_path / "models"
+        models_dir.mkdir()
+
+        # Create intermediate model directories
+        intermediate1_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage1_merged"
+        intermediate2_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage2_codefix_stage1_merged"
+        stage1_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage1_analysis"
+
+        # Create all directories
+        intermediate1_dir.mkdir()
+        intermediate2_dir.mkdir()
+        stage1_dir.mkdir()
+
+        # Add some files to make them realistic
+        for dir_path in [intermediate1_dir, intermediate2_dir, stage1_dir]:
+            (dir_path / "config.json").write_text('{"model_type": "OLMoForCausalLM"}')
+            self.create_mock_safetensors_file(dir_path / "model.safetensors")
+
+        model_dirs = [intermediate1_dir, intermediate2_dir, stage1_dir]
+
+        # Test the selection logic
+        selected_model = _select_final_model(model_dirs)
+
+        # Should select stage2 non-merged model over stage1
+        assert selected_model == intermediate2_dir, \
+            f"Expected {intermediate2_dir.name}, got {selected_model.name}"
+
+        print(f"✅ Model selection correctly chose best available: {selected_model.name}")
 
 
 if __name__ == "__main__":

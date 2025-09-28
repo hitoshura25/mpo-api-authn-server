@@ -20,7 +20,6 @@ from dataclasses import dataclass, field
 
 from scripts.mlx_finetuning import MLXFineTuner
 from config_manager import OLMoSecurityConfig
-from fine_tuning_config import FineTuningConfig
 from sequential_dataset_creator import SequentialDatasetCreator, SequentialDatasetResult
 
 
@@ -50,8 +49,7 @@ class SequentialFineTuner:
     for specific security tasks.
     """
     
-    def __init__(self, config: Optional[OLMoSecurityConfig] = None, base_output_dir: Optional[Path] = None,
-                 fine_tuning_config: Optional[FineTuningConfig] = None):
+    def __init__(self, config: Optional[OLMoSecurityConfig] = None, base_output_dir: Optional[Path] = None):
         """Initialize sequential fine-tuner."""
         self.config = config or OLMoSecurityConfig()
 
@@ -62,14 +60,11 @@ class SequentialFineTuner:
         self.base_fine_tuner = MLXFineTuner()
         self.logger = logging.getLogger(__name__)
 
-        # Load fine-tuning configuration (with test mode support)
-        self.ft_config = fine_tuning_config or FineTuningConfig.load_from_config()
-
-        # Sequential training parameters - Use FineTuningConfig values with proper type conversion
+        # Sequential training parameters - Use OLMoSecurityConfig values with proper type conversion
         # Convert config values to proper numeric types (YAML may load as strings)
-        learning_rate = float(self.ft_config.learning_rate)
-        batch_size = int(self.ft_config.batch_size)
-        save_steps = int(self.ft_config.save_steps)
+        learning_rate = float(self.config.fine_tuning.learning_rate)
+        batch_size = int(self.config.fine_tuning.batch_size)
+        save_steps = int(self.config.fine_tuning.save_steps)
 
         # Calculate iterations based on save_steps and configuration maximums
         # Configuration-driven approach: use max_stage1_iters and max_stage2_iters from config
@@ -79,8 +74,8 @@ class SequentialFineTuner:
         stage2_base = int(stage1_base * 1.6)  # 60% more for Stage 2 specialization
 
         # Apply maximums from configuration (0 means no limit)
-        max_stage1 = self.ft_config.max_stage1_iters
-        max_stage2 = self.ft_config.max_stage2_iters
+        max_stage1 = self.config.fine_tuning.max_stage1_iters
+        max_stage2 = self.config.fine_tuning.max_stage2_iters
 
         stage1_iters = stage1_base if max_stage1 == 0 else min(stage1_base, max_stage1)
         stage2_iters = stage2_base if max_stage2 == 0 else min(stage2_base, max_stage2)
@@ -1171,7 +1166,7 @@ def secure_function(user_input):
         self.logger.info(f"🚀 Starting enhanced Stage 1 fine-tuning with optimized parameters")
         self.logger.info(f"   Training data: {training_data_dir}")
         self.logger.info(f"   Stage 1 output: {stage1_output_dir}")
-        self.logger.info(f"   Iterations: {self.stage1_config['iters']} (calculated from save_steps: {self.ft_config.save_steps})")
+        self.logger.info(f"   Iterations: {self.stage1_config['iters']} (calculated from save_steps: {self.config.fine_tuning.save_steps})")
 
         try:
             # Configure chat template
@@ -1481,11 +1476,10 @@ def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
         # Step 2: Sequential fine-tuning
         logger.info("🚀 Step 2: Sequential fine-tuning...")
 
-        # Load fine-tuning configuration with test mode support
-        from fine_tuning_config import FineTuningConfig
-        ft_config = FineTuningConfig.load_from_config()
+        # Use OLMoSecurityConfig for configuration
+        config = OLMoSecurityConfig()
 
-        fine_tuner = SequentialFineTuner(base_output_dir=base_output_dir, fine_tuning_config=ft_config)
+        fine_tuner = SequentialFineTuner(config=config, base_output_dir=base_output_dir)
         training_result = fine_tuner.sequential_fine_tune(
             stage1_dataset=dataset_paths['stage1'],
             stage2_dataset=dataset_paths['stage2'],

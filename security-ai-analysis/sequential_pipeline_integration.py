@@ -173,10 +173,10 @@ def is_sequential_fine_tuning_available() -> bool:
         from sequential_fine_tuner import SequentialFineTuner, create_and_train_sequential_models
         from sequential_dataset_creator import SequentialDatasetCreator
         from scripts.mlx_finetuning import MLXFineTuner
-        from fine_tuning_config import FineTuningConfig
-        
+        from config_manager import OLMoSecurityConfig
+
         # Try basic initialization to verify dependencies
-        config = FineTuningConfig.load_from_config()
+        config = OLMoSecurityConfig()
         fine_tuner = SequentialFineTuner(config)
         
         return True
@@ -213,9 +213,9 @@ def get_sequential_fine_tuning_status() -> Dict[str, Any]:
         
         # Check MLX and configuration
         from scripts.mlx_finetuning import MLXFineTuner
-        from fine_tuning_config import FineTuningConfig
-        
-        config = FineTuningConfig.load_from_config()
+        from config_manager import OLMoSecurityConfig
+
+        config = OLMoSecurityConfig()
         status['config_loaded'] = True
         
         # Try initializing sequential fine-tuner

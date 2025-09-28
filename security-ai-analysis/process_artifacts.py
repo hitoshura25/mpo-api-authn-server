@@ -998,8 +998,7 @@ def training_phase(train_file: Path, train_data: List, narrativized_results: Lis
         print(f"🔧 Using CLI override for fine-tuned models base: {fine_tuned_base_path}")
     else:
         # Use configuration-based path
-        from fine_tuning_config import FineTuningConfig
-        config = FineTuningConfig.load_from_config()
+        config = OLMoSecurityConfig()
         fine_tuned_base_path = Path(config.fine_tuned_models_dir).expanduser()
         print(f"📁 Using configured fine-tuned models directory: {fine_tuned_base_path}")
 
@@ -1866,24 +1865,23 @@ def main():
 
     # Fine-tuning configuration
     try:
-        from fine_tuning_config import FineTuningConfig
-        ft_config = FineTuningConfig.load_from_config()
+        config = OLMoSecurityConfig()
 
-        def get_config_source(env_var, yaml_value, env_value):
-            if env_value != yaml_value:
+        def get_config_source(env_var, env_value):
+            if env_value is not None:
                 return "(env override)"
-            return "(yaml config)" if yaml_value is not None else "(default)"
+            return "(yaml config)"
 
-        print(f"  workspace_dir: {ft_config.workspace_dir} {get_config_source('OLMO_WORKSPACE_DIR', None, os.getenv('OLMO_WORKSPACE_DIR'))}")
-        print(f"  base_models_dir: {ft_config.base_models_dir} {get_config_source('OLMO_BASE_MODELS_DIR', None, os.getenv('OLMO_BASE_MODELS_DIR'))}")
-        print(f"  fine_tuned_models_dir: {ft_config.fine_tuned_models_dir} {get_config_source('OLMO_FINE_TUNED_MODELS_DIR', None, os.getenv('OLMO_FINE_TUNED_MODELS_DIR'))}")
-        print(f"  max_epochs: {ft_config.max_epochs} {get_config_source('OLMO_MAX_EPOCHS', None, os.getenv('OLMO_MAX_EPOCHS'))}")
-        print(f"  save_steps: {ft_config.save_steps} {get_config_source('OLMO_SAVE_STEPS', None, os.getenv('OLMO_SAVE_STEPS'))}")
-        print(f"  eval_steps: {ft_config.eval_steps} {get_config_source('OLMO_EVAL_STEPS', None, os.getenv('OLMO_EVAL_STEPS'))}")
-        print(f"  learning_rate: {ft_config.learning_rate} {get_config_source('OLMO_LEARNING_RATE', None, os.getenv('OLMO_LEARNING_RATE'))}")
-        print(f"  batch_size: {ft_config.batch_size} {get_config_source('OLMO_BATCH_SIZE', None, os.getenv('OLMO_BATCH_SIZE'))}")
-        print(f"  max_stage1_iters: {ft_config.max_stage1_iters} {get_config_source('OLMO_MAX_STAGE1_ITERS', None, os.getenv('OLMO_MAX_STAGE1_ITERS'))}")
-        print(f"  max_stage2_iters: {ft_config.max_stage2_iters} {get_config_source('OLMO_MAX_STAGE2_ITERS', None, os.getenv('OLMO_MAX_STAGE2_ITERS'))}")
+        print(f"  workspace_dir: {config.fine_tuning.workspace_dir} {get_config_source('OLMO_WORKSPACE_DIR', os.getenv('OLMO_WORKSPACE_DIR'))}")
+        print(f"  base_models_dir: {config.base_models_dir} {get_config_source('OLMO_BASE_MODELS_DIR', os.getenv('OLMO_BASE_MODELS_DIR'))}")
+        print(f"  fine_tuned_models_dir: {config.fine_tuned_models_dir} {get_config_source('OLMO_FINE_TUNED_MODELS_DIR', os.getenv('OLMO_FINE_TUNED_MODELS_DIR'))}")
+        print(f"  max_epochs: {config.fine_tuning.max_epochs} {get_config_source('OLMO_MAX_EPOCHS', os.getenv('OLMO_MAX_EPOCHS'))}")
+        print(f"  save_steps: {config.fine_tuning.save_steps} {get_config_source('OLMO_SAVE_STEPS', os.getenv('OLMO_SAVE_STEPS'))}")
+        print(f"  eval_steps: {config.fine_tuning.eval_steps} {get_config_source('OLMO_EVAL_STEPS', os.getenv('OLMO_EVAL_STEPS'))}")
+        print(f"  learning_rate: {config.fine_tuning.learning_rate} {get_config_source('OLMO_LEARNING_RATE', os.getenv('OLMO_LEARNING_RATE'))}")
+        print(f"  batch_size: {config.fine_tuning.batch_size} {get_config_source('OLMO_BATCH_SIZE', os.getenv('OLMO_BATCH_SIZE'))}")
+        print(f"  max_stage1_iters: {config.fine_tuning.max_stage1_iters} {get_config_source('OLMO_MAX_STAGE1_ITERS', os.getenv('OLMO_MAX_STAGE1_ITERS'))}")
+        print(f"  max_stage2_iters: {config.fine_tuning.max_stage2_iters} {get_config_source('OLMO_MAX_STAGE2_ITERS', os.getenv('OLMO_MAX_STAGE2_ITERS'))}")
 
     except Exception as e:
         print(f"  fine_tuning_config: Error loading ({e})")

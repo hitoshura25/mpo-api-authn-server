@@ -35,7 +35,7 @@ except ImportError:
 
 # Add parent directory for imports
 sys.path.append(str(Path(__file__).parent.parent))
-from fine_tuning_config import FineTuningConfig
+from config_manager import OLMoSecurityConfig
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -44,23 +44,23 @@ logger = logging.getLogger(__name__)
 class MLXFineTuner:
     """MLX-optimized fine-tuning for OLMo security models"""
     
-    def __init__(self, config: Optional[FineTuningConfig] = None):
+    def __init__(self, config: Optional[OLMoSecurityConfig] = None):
         if not MLX_AVAILABLE:
             raise RuntimeError("MLX not available. Fine-tuning requires MLX on Apple Silicon.")
             
-        self.config = config or FineTuningConfig.load_from_config()
+        self.config = config or OLMoSecurityConfig()
         self.config.setup_workspace()
         
         # Setup logging for this session
-        log_file = self.config.workspace_dir / "logs" / f"fine_tuning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+        log_file = self.config.fine_tuning.workspace_dir / "logs" / f"fine_tuning_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
         file_handler = logging.FileHandler(log_file)
         file_handler.setLevel(logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
         logger.addHandler(file_handler)
         
-        logger.info(f"MLX Fine-Tuner initialized with config: {self.config.output_model_name}")
-        logger.info(f"Workspace: {self.config.workspace_dir}")
+        logger.info(f"MLX Fine-Tuner initialized with config: {self.config.fine_tuning.default_output_name}")
+        logger.info(f"Workspace: {self.config.fine_tuning.workspace_dir}")
         
     def validate_base_model(self) -> bool:
         """Validate that base model is available and compatible"""
@@ -110,7 +110,7 @@ class MLXFineTuner:
             raise FileNotFoundError(f"Dataset file not found: {dataset_file}")
         
         # Create MLX training data directory
-        mlx_data_dir = self.config.workspace_dir / "training_data" / "mlx_data"
+        mlx_data_dir = self.config.fine_tuning.workspace_dir / "training_data" / "mlx_data"
         mlx_data_dir.mkdir(parents=True, exist_ok=True)
         
         # Read and convert all data with security-by-default enhancement
@@ -425,18 +425,18 @@ This analysis follows cybersecurity standards for responsible vulnerability asse
             "model": str(base_model_path),
             "train_file": str(training_data_dir),  # Pass data directory to MLX-LM
             "output_dir": str(output_model_path),
-            "learning_rate": self.config.learning_rate,
-            "batch_size": self.config.batch_size,
-            "training_steps": min(5, self.config.max_epochs * 2),  # Reduced for memory efficiency on Metal GPU
-            "warmup_steps": self.config.warmup_steps,
-            "save_steps": self.config.save_steps,
-            "eval_steps": self.config.eval_steps,
-            "gradient_checkpointing": self.config.gradient_checkpointing,
+            "learning_rate": self.config.fine_tuning.learning_rate,
+            "batch_size": self.config.fine_tuning.batch_size,
+            "training_steps": min(5, self.config.fine_tuning.max_epochs * 2),  # Reduced for memory efficiency on Metal GPU
+            "warmup_steps": self.config.fine_tuning.warmup_steps,
+            "save_steps": self.config.fine_tuning.save_steps,
+            "eval_steps": self.config.fine_tuning.eval_steps,
+            "gradient_checkpointing": self.config.fine_tuning.gradient_checkpointing,
         }
         
         # Add quantization if specified
-        if self.config.quantization and self.config.quantization != "none":
-            fine_tune_args["quantization"] = self.config.quantization
+        if self.config.fine_tuning.quantization and self.config.fine_tuning.quantization != "none":
+            fine_tune_args["quantization"] = self.config.fine_tuning.quantization
         
         logger.info(f"Fine-tuning parameters: {fine_tune_args}")
         
@@ -694,8 +694,8 @@ This analysis follows cybersecurity standards for responsible vulnerability asse
                 "gradient_checkpointing": training_args["gradient_checkpointing"],
             },
             "mlx_configuration": {
-                "quantization": self.config.quantization,
-                "memory_efficient": self.config.memory_efficient,
+                "quantization": self.config.fine_tuning.quantization,
+                "memory_efficient": self.config.fine_tuning.memory_efficient,
             },
             "fine_tuning_config": asdict(self.config)
         }
@@ -741,7 +741,7 @@ def main():
         # Initialize fine-tuner
         config = None
         if args.config:
-            config = FineTuningConfig.load_from_config(args.config)
+            config = OLMoSecurityConfig()
         
         fine_tuner = MLXFineTuner(config)
         

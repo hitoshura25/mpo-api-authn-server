@@ -23,7 +23,7 @@ except ImportError:
 
 # Add parent directory for imports
 sys.path.append(str(Path(__file__).parent))
-from fine_tuning_config import FineTuningConfig
+from config_manager import OLMoSecurityConfig
 
 # Setup logging
 logger = logging.getLogger(__name__)
@@ -31,15 +31,15 @@ logger = logging.getLogger(__name__)
 class ModelUploader:
     """Dedicated model uploader for HuggingFace Hub integration"""
 
-    def __init__(self, config: Optional[FineTuningConfig] = None, skip_upload: bool = False):
+    def __init__(self, config: Optional[OLMoSecurityConfig] = None, skip_upload: bool = False):
         """
         Initialize model uploader
 
         Args:
-            config: Fine-tuning configuration (optional)
+            config: Security configuration (optional)
             skip_upload: If True, all upload operations will be skipped
         """
-        self.config = config or FineTuningConfig.load_from_config()
+        self.config = config or OLMoSecurityConfig()
         self.skip_upload = skip_upload
 
         logger.info(f"ModelUploader initialized (skip_upload={skip_upload})")
@@ -95,7 +95,7 @@ class ModelUploader:
             # Return a fake success URL to maintain test flow
             return f"https://huggingface.co/test-blocked/{custom_repo_name or 'mock-model'}"
 
-        if not self.config.upload_enabled:
+        if not self.config.fine_tuning.upload_enabled:
             logger.info("HuggingFace upload disabled in configuration")
             return None
 
@@ -112,9 +112,9 @@ class ModelUploader:
                 repo_name = custom_repo_name
             else:
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                repo_name = f"{self.config.output_model_name}_{timestamp}"
+                repo_name = f"{self.config.fine_tuning.default_output_name}_{timestamp}"
 
-            full_repo_name = f"{self.config.repo_prefix}/{repo_name}"
+            full_repo_name = f"{self.config.fine_tuning.default_repo_prefix}/{repo_name}"
 
             logger.info(f"Uploading model to HuggingFace: {full_repo_name}")
 
@@ -124,7 +124,7 @@ class ModelUploader:
             # Create repository (uses saved CLI token automatically)
             repo_url = create_repo(
                 repo_id=full_repo_name,
-                private=self.config.private_repos,
+                private=self.config.fine_tuning.private_repos,
                 exist_ok=True
             )
 

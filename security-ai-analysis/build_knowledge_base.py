@@ -157,11 +157,12 @@ def main():
         print("\n✅ Knowledge base is ready for RAG-enhanced analysis!")
         
     except Exception as e:
-        logger.error(f"❌ Failed to build knowledge base: {e}")
+        logger.error(f"❌ CRITICAL: Knowledge base construction failed: {e}")
+        logger.error("🔍 Knowledge base construction failure indicates data corruption, dependency issues, or infrastructure problems requiring investigation")
         if args.verbose:
             import traceback
             traceback.print_exc()
-        exit(1)
+        raise RuntimeError(f"Knowledge base construction failed - requires investigation: {e}") from e
 
 
 if __name__ == "__main__":

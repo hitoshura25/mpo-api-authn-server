@@ -120,18 +120,9 @@ def run_sequential_fine_tuning_phase(
         else:
             # Sequential fine-tuning failed
             error_msg = sequential_result.error_message or "Unknown error"
-            print(f"❌ Sequential fine-tuning failed: {error_msg}")
-            
-            summary['sequential_fine_tuning'] = {
-                'status': 'failed',
-                'error': error_msg,
-                'approach': 'sequential_two_stage',
-                'vulnerabilities_processed': len(vulnerabilities),
-                'metadata': sequential_result.metadata
-            }
-            
-            # Consider fallback to single-stage on failure
-            print("🔄 Consider using --disable-sequential-fine-tuning for single-stage fallback")
+            logger.error(f"❌ CRITICAL: Sequential fine-tuning failure: {error_msg}")
+            logger.error("🔍 Sequential fine-tuning failure indicates training infrastructure issues or data corruption requiring investigation")
+            raise RuntimeError(f"Sequential fine-tuning failure requires investigation: {error_msg}")
             
     except ImportError as e:
         # Sequential fine-tuning modules not available - fail fast

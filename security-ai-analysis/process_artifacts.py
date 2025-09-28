@@ -99,7 +99,9 @@ def extract_artifacts(zip_dir: str, output_dir: str):
                 ])
             print(f"    ✅ Extracted to {artifact_dir}")
         except Exception as e:
-            print(f"    ❌ Failed to extract: {e}")
+            logger.error(f"❌ CRITICAL: Artifact extraction failure for {zip_file}: {e}")
+            logger.error("🔍 Artifact extraction failure indicates corrupted downloads or infrastructure issues requiring investigation")
+            raise RuntimeError(f"Artifact extraction failure for {zip_file} requires investigation: {e}") from e
 
     return extracted_files
 
@@ -227,8 +229,13 @@ def parse_vulnerabilities_phase(scan_files: dict, output_dir: str) -> Tuple[List
                 else:
                     print(f"    No vulnerabilities found")
 
+            except RuntimeError:
+                # Let RuntimeError bubble up - indicates corrupted scan data requiring investigation
+                raise
             except Exception as e:
-                print(f"    ❌ Error processing file: {e}")
+                logger.error(f"❌ CRITICAL: File processing failure for {file_path}: {e}")
+                logger.error("🔍 File processing failure indicates infrastructure issues or dependency problems requiring investigation")
+                raise RuntimeError(f"File processing failure for {file_path} requires investigation: {e}") from e
 
     # Generate summary from real parsed vulnerabilities
     summary = {
@@ -324,8 +331,9 @@ def analysis_phase(vulnerabilities_file: Path, output_dir: str, args) -> Tuple[L
         )
         print("✅ Baseline OLMo analyzer initialized successfully", flush=True)
     except Exception as e:
-        print(f"❌ Failed to initialize OLMo analyzer: {e}")
-        return [], Path(), Path()
+        logger.error(f"❌ CRITICAL: OLMo analyzer initialization failure: {e}")
+        logger.error("🔍 Analyzer initialization failure indicates model dependency issues or infrastructure problems requiring investigation")
+        raise RuntimeError(f"OLMo analyzer initialization failure requires investigation: {e}") from e
 
     # Enhanced analysis with OLMo-2-1B
     if all_vulnerabilities:
@@ -356,8 +364,9 @@ def analysis_phase(vulnerabilities_file: Path, output_dir: str, args) -> Tuple[L
                 print(f"   ✅ Batch {batch_num} completed, got {len(batch_results)} results", flush=True)
                 results.extend(batch_results)
             except Exception as e:
-                print(f"   ❌ Batch {batch_num} failed: {e}", flush=True)
-                continue
+                logger.error(f"❌ CRITICAL: Enhanced analysis batch {batch_num} failure: {e}")
+                logger.error("🔍 Enhanced analysis batch failure indicates model processing issues or data corruption requiring investigation")
+                raise RuntimeError(f"Enhanced analysis batch {batch_num} failure requires investigation: {e}") from e
 
             # Optional: Add a small delay between batches to avoid overloading
             if i + batch_size < len(all_vulnerabilities):
@@ -494,8 +503,9 @@ def core_analysis_phase(vulnerabilities_file: Path, output_dir: str, args) -> Tu
         analyzer = OLMoSecurityAnalyzer(model_name=args.model_name)
         print("✅ Core analyzer initialized successfully", flush=True)
     except Exception as e:
-        print(f"❌ Failed to initialize core analyzer: {e}")
-        return [], Path()
+        logger.error(f"❌ CRITICAL: Core analyzer initialization failure: {e}")
+        logger.error("🔍 Core analyzer initialization failure indicates model dependency issues or infrastructure problems requiring investigation")
+        raise RuntimeError(f"Core analyzer initialization failure requires investigation: {e}") from e
 
     # Core AI analysis processing
     if all_vulnerabilities:
@@ -520,8 +530,9 @@ def core_analysis_phase(vulnerabilities_file: Path, output_dir: str, args) -> Tu
                 print(f"   ✅ Batch {batch_num} completed, got {len(batch_results)} results", flush=True)
                 results.extend(batch_results)
             except Exception as e:
-                print(f"   ❌ Batch {batch_num} failed: {e}", flush=True)
-                continue
+                logger.error(f"❌ CRITICAL: Core analysis batch {batch_num} failure: {e}")
+                logger.error("🔍 Core analysis batch failure indicates model processing issues or data corruption requiring investigation")
+                raise RuntimeError(f"Core analysis batch {batch_num} failure requires investigation: {e}") from e
 
         # Save core analysis results
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -602,8 +613,9 @@ def rag_enhancement_phase(core_analysis_file: Path, output_dir: str, args) -> Tu
             raise inner_e
 
     except Exception as rag_error:
-        print(f"⚠️ RAG knowledge base building failed: {rag_error}")
-        print("💡 This doesn't affect current analysis but RAG won't be available for next runs")
+        logger.error(f"❌ CRITICAL: RAG knowledge base building failure: {rag_error}")
+        logger.error("🔍 RAG knowledge base building failure indicates data corruption or dependency issues requiring investigation")
+        raise RuntimeError(f"RAG knowledge base building failure requires investigation: {rag_error}") from rag_error
 
     # Save RAG-enhanced results (same content, but indicates RAG processing completed)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -663,8 +675,9 @@ def analysis_summary_phase(rag_enhanced_file: Path, output_dir: str, args) -> Tu
         print(f"✅ URL-to-code mapping completed: {enhanced_count} vulnerabilities enhanced")
 
     except Exception as e:
-        print(f"⚠️ URL-to-code mapping failed: {e}")
-        print("💡 Continuing without URL enhancement")
+        logger.error(f"❌ CRITICAL: URL-to-code mapping failure: {e}")
+        logger.error("🔍 URL-to-code mapping failure indicates infrastructure or dependency issues requiring investigation")
+        raise RuntimeError(f"URL-to-code mapping failure requires investigation: {e}") from e
 
     # Generate summary report (need to recreate analyzer for summary generation)
     try:
@@ -678,17 +691,9 @@ def analysis_summary_phase(rag_enhanced_file: Path, output_dir: str, args) -> Tu
         summary['analysis_timestamp'] = datetime.now().isoformat()
 
     except Exception as e:
-        print(f"⚠️ Could not generate detailed summary: {e}")
-        # Fallback basic summary
-        summary = {
-            'total_analyzed': len(results),
-            'successful': len([r for r in results if r.get('status') == 'success']),
-            'failed': len([r for r in results if r.get('status') != 'success']),
-            'model_used': args.model_name,
-            'branch': args.branch,
-            'commit': args.commit,
-            'analysis_timestamp': datetime.now().isoformat()
-        }
+        logger.error(f"❌ CRITICAL: Analysis summary generation failure: {e}")
+        logger.error("🔍 Analysis summary generation failure indicates model dependency issues or data corruption requiring investigation")
+        raise RuntimeError(f"Analysis summary generation failure requires investigation: {e}") from e
 
     # Save final results with timestamp
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -754,8 +759,9 @@ def narrativization_phase(analyzed_vulnerabilities_file: Path, output_dir: str, 
         narrativizer = SecurityNarrativizer()
         print("✅ SecurityNarrativizer initialized successfully")
     except ImportError as e:
-        print(f"❌ Failed to import SecurityNarrativizer: {e}")
-        raise
+        logger.error(f"❌ CRITICAL: SecurityNarrativizer dependency missing: {e}")
+        logger.error("🔍 SecurityNarrativizer dependency missing indicates installation or environment issues requiring investigation")
+        raise RuntimeError(f"SecurityNarrativizer dependency missing - requires investigation: {e}") from e
 
     narrativized_results = []
     print(f"📝 Creating narratives for {len(analyzed_results)} analysis results...")
@@ -778,7 +784,9 @@ def narrativization_phase(analyzed_vulnerabilities_file: Path, output_dir: str, 
                 narrativized_results.append(narrativized_item)
 
             except Exception as e:
-                print(f"  ⚠️ Failed to create narrative for {vuln_data.get('id', 'unknown')}: {e}")
+                logger.error(f"❌ CRITICAL: Narrativization failure for vulnerability {vuln_data.get('id', 'unknown')}: {e}")
+                logger.error("🔍 Narrativization failure indicates model processing issues or data corruption requiring investigation")
+                raise RuntimeError(f"Narrativization failure for vulnerability {vuln_data.get('id', 'unknown')} requires investigation: {e}") from e
 
     # Save narrativized dataset
     narrativized_file = output_path / f"narrativized_dataset_{timestamp}.json"
@@ -1092,9 +1100,9 @@ def upload_phase(model_artifacts_path: Path, summary: Dict, args) -> Dict:
             summary['upload_status'] = 'failed'
             summary['upload_error'] = str(e)
     except Exception as e:
-        print(f"❌ Upload phase failed: {e}")
-        summary['upload_status'] = 'failed'
-        summary['upload_error'] = str(e)
+        logger.error(f"❌ CRITICAL: Upload phase failure: {e}")
+        logger.error("🔍 Upload phase failure indicates dependency issues or infrastructure problems requiring investigation")
+        raise RuntimeError(f"Upload phase failure requires investigation: {e}") from e
 
     return summary
 
@@ -1233,6 +1241,12 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> in
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 model_name = f"webauthn-security-model_{timestamp}"
 
+            # 🔍 DEBUG: Check values before method call
+            print(f"🔍 DEBUG: actual_model_path type: {type(actual_model_path)}")
+            print(f"🔍 DEBUG: actual_model_path value: {repr(actual_model_path)}")
+            print(f"🔍 DEBUG: model_name type: {type(model_name)}")
+            print(f"🔍 DEBUG: model_name value: {repr(model_name)}")
+
             # Upload using ModelUploader
             hub_url = uploader.upload_to_huggingface(
                 model_path=actual_model_path,
@@ -1258,9 +1272,9 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> in
                 print(f"❌ {error_msg}")
                 upload_results['errors'].append(error_msg)
         except Exception as e:
-            error_msg = f"Model upload failed for {actual_model_path}: {e}"
-            print(f"❌ {error_msg}")
-            upload_results['errors'].append(error_msg)
+            logger.error(f"❌ CRITICAL: Model upload failure for {actual_model_path}: {e}")
+            logger.error("🔍 Model upload failure indicates dependency issues or infrastructure problems requiring investigation")
+            raise RuntimeError(f"Model upload failure for {actual_model_path} requires investigation: {e}") from e
 
         if models_uploaded > 0:
             print(f"✅ Successfully uploaded {models_uploaded} models")
@@ -1268,22 +1282,22 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> in
             print(f"⚠️  No models were uploaded successfully")
 
     except ImportError as e:
-        error_msg = f"MLX fine tuner not available for model upload: {e}"
-        print(f"❌ {error_msg}")
-        upload_results['errors'].append(error_msg)
+        logger.error(f"❌ CRITICAL: MLX fine tuner dependency missing for model upload: {e}")
+        logger.error("🔍 MLX fine tuner dependency missing - check installation and environment setup")
+        raise RuntimeError(f"MLX fine tuner dependency missing - requires investigation: {e}") from e
     except ValueError as e:
         # Re-raise validation errors to fail fast at the top level
         if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
             print(f"❌ FAIL FAST (outer): {e}")
             raise  # Re-raise to fail the entire process
         else:
-            error_msg = f"Model upload failed: {e}"
-            print(f"❌ {error_msg}")
-            upload_results['errors'].append(error_msg)
+            logger.error(f"❌ CRITICAL: Model upload failure (ValueError): {e}")
+            logger.error("🔍 Model upload ValueError indicates validation or configuration issues requiring investigation")
+            raise RuntimeError(f"Model upload failure (ValueError) requires investigation: {e}") from e
     except Exception as e:
-        error_msg = f"Model upload failed: {e}"
-        print(f"❌ {error_msg}")
-        upload_results['errors'].append(error_msg)
+        logger.error(f"❌ CRITICAL: Model upload failure (general): {e}")
+        logger.error("🔍 Model upload failure indicates dependency issues or infrastructure problems requiring investigation")
+        raise RuntimeError(f"Model upload failure requires investigation: {e}") from e
 
     return models_uploaded
 
@@ -1340,15 +1354,9 @@ def _upload_datasets(args, upload_results: dict) -> int:
                 serialized_pair = json.loads(json.dumps(pair, cls=json_encoder))
                 serialized_training_pairs.append(serialized_pair)
             except Exception as e:
-                print(f"⚠️ Skipping problematic training pair: {e}")
-                # Fallback: manually convert any remaining enum values
-                clean_pair = {}
-                for key, value in pair.items():
-                    if hasattr(value, 'value'):  # Handle enum objects
-                        clean_pair[key] = str(value.value) if hasattr(value, 'value') else str(value)
-                    else:
-                        clean_pair[key] = value
-                serialized_training_pairs.append(clean_pair)
+                logger.error(f"❌ CRITICAL: Training pair serialization failure: {e}")
+                logger.error("🔍 Training pair serialization failure indicates data corruption or enum handling issues requiring investigation")
+                raise RuntimeError(f"Training pair serialization failure requires investigation: {e}") from e
 
         print(f"✅ Serialized {len(serialized_training_pairs)} training pairs for upload")
 
@@ -1369,15 +1377,13 @@ def _upload_datasets(args, upload_results: dict) -> int:
         datasets_uploaded = 1
 
     except ImportError as e:
-        error_msg = f"HuggingFace libraries not available for upload: {e}"
-        print(f"⚠️ {error_msg}")
-        print("   Install with: pip install datasets huggingface_hub")
-        upload_results['errors'].append(error_msg)
+        logger.error(f"❌ CRITICAL: HuggingFace libraries dependency missing for dataset upload: {e}")
+        logger.error("🔍 HuggingFace libraries dependency missing - install with: pip install datasets huggingface_hub")
+        raise RuntimeError(f"HuggingFace libraries dependency missing - requires investigation: {e}") from e
     except Exception as e:
-        error_msg = f"Dataset upload failed: {e}"
-        print(f"❌ {error_msg}")
-        print(f"   Training data was saved locally for manual upload if needed")
-        upload_results['errors'].append(error_msg)
+        logger.error(f"❌ CRITICAL: Dataset upload failure: {e}")
+        logger.error("🔍 Dataset upload failure indicates dependency issues or infrastructure problems requiring investigation")
+        raise RuntimeError(f"Dataset upload failure requires investigation: {e}") from e
 
     return datasets_uploaded
 
@@ -1589,13 +1595,17 @@ def download_latest_artifacts(output_dir: str) -> Path | None:
         return output_path
 
     except subprocess.CalledProcessError as e:
-        print(f"    ❌ Error executing 'gh' command:")
+        # Fail fast on dependency issues
+        print(f"❌ CRITICAL: GitHub CLI dependency failure:")
         print(f"      Command: {' '.join(e.cmd)}")
         print(f"      Stderr: {e.stderr.strip()}")
-        return None
+        print("🔍 GitHub CLI is required for artifact download - check installation and authentication")
+        raise RuntimeError(f"GitHub CLI dependency failure - requires investigation: {e}") from e
     except Exception as e:
-        print(f"    ❌ An unexpected error occurred: {e}")
-        return None
+        # Fail fast on other infrastructure issues
+        print(f"❌ CRITICAL: Artifact download infrastructure failure: {e}")
+        print("🔍 Check system dependencies, network connectivity, and GitHub access")
+        raise RuntimeError(f"Artifact download infrastructure failure - requires investigation: {e}") from e
 
 
 def get_active_only_phase(args) -> str:
@@ -1884,7 +1894,9 @@ def main():
         print(f"  max_stage2_iters: {config.fine_tuning.max_stage2_iters} {get_config_source('OLMO_MAX_STAGE2_ITERS', os.getenv('OLMO_MAX_STAGE2_ITERS'))}")
 
     except Exception as e:
-        print(f"  fine_tuning_config: Error loading ({e})")
+        logger.error(f"❌ CRITICAL: Fine-tuning configuration loading failure: {e}")
+        logger.error("🔍 Fine-tuning configuration loading failure indicates configuration corruption or dependency issues requiring investigation")
+        raise RuntimeError(f"Fine-tuning configuration loading failure requires investigation: {e}") from e
 
     # Knowledge base configuration
     kb_dir = os.getenv('OLMO_KNOWLEDGE_BASE_DIR')
@@ -1914,8 +1926,9 @@ def main():
         downloaded_path = download_latest_artifacts(str(artifacts_dir))
 
         if not downloaded_path:
-            print("\n❌ Failed to download artifacts. Exiting.")
-            return 1
+            logger.error("❌ CRITICAL: Artifact download failed")
+            logger.error("🔍 Artifact download failure indicates GitHub CLI issues or network problems requiring investigation")
+            raise RuntimeError("Artifact download failed - requires investigation")
 
         print(f"✅ Downloaded artifacts to: {downloaded_path}")
 
@@ -1937,9 +1950,10 @@ def main():
     # Check if any files were found
     total_files = sum(len(files) for files in scan_files.values())
     if total_files == 0:
-        print(f"\n❌ No security files found in {search_dir}")
-        print("Expected file types: .sarif, .json files from trivy, checkov, semgrep, osv-scanner, zap")
-        return 1
+        logger.error(f"❌ CRITICAL: No security files found in {search_dir}")
+        logger.error("🔍 No security files found indicates missing CI pipeline output or incorrect directory - requires investigation")
+        logger.error("Expected file types: .sarif, .json files from trivy, checkov, semgrep, osv-scanner, zap")
+        raise RuntimeError(f"No security files found in {search_dir} - requires investigation")
 
     # Process all scans with new phase-based architecture
     output_dir = str(args.output_dir)

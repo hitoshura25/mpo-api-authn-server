@@ -3,13 +3,17 @@ Parse OWASP ZAP scan outputs
 ZAP JSON format documented at: https://www.zaproxy.org/docs/desktop/ui/reports/
 """
 import json
+import logging
+from pathlib import Path
 from typing import List, Dict
+
+logger = logging.getLogger(__name__)
 
 
 def parse_zap_json(filepath: str) -> List[Dict]:
     """
     Parse OWASP ZAP JSON report output
-    
+
     Expected ZAP JSON structure:
     {
         "@programName": "ZAP",
@@ -34,6 +38,13 @@ def parse_zap_json(filepath: str) -> List[Dict]:
         ]
     }
     """
+    # Graceful handling for optional tool execution
+    if not Path(filepath).exists():
+        logger.info(f"ℹ️ ZAP scan file not found: {filepath}")
+        logger.info("This is acceptable - ZAP web application scanning may not have been run")
+        return []
+
+    # Fail fast on corrupted existing files
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
@@ -92,5 +103,6 @@ def parse_zap_json(filepath: str) -> List[Dict]:
         
         return findings
     except Exception as e:
-        print(f"Error parsing ZAP JSON: {e}")
-        return []
+        logger.error(f"❌ CRITICAL: Corrupted ZAP scan data in {filepath}: {e}")
+        logger.error("🔍 File exists but is corrupted - indicates ZAP tool malfunction requiring investigation")
+        raise RuntimeError(f"Corrupted ZAP scan data requires investigation: {e}") from e

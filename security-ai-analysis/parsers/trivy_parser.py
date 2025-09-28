@@ -3,7 +3,11 @@ Parse Trivy security scan outputs
 Trivy JSON format documented at: https://aquasecurity.github.io/trivy/
 """
 import json
+import logging
+from pathlib import Path
 from typing import List, Dict
+
+logger = logging.getLogger(__name__)
 
 
 def parse_trivy_json(filepath: str) -> List[Dict]:
@@ -27,6 +31,13 @@ def parse_trivy_json(filepath: str) -> List[Dict]:
         ]
     }
     """
+    # Graceful handling for optional tool execution
+    if not Path(filepath).exists():
+        logger.info(f"ℹ️ Trivy scan file not found: {filepath}")
+        logger.info("This is acceptable - Trivy container/dependency scanning may not have been run")
+        return []
+
+    # Fail fast on corrupted existing files
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
@@ -63,5 +74,6 @@ def parse_trivy_json(filepath: str) -> List[Dict]:
         
         return vulnerabilities
     except Exception as e:
-        print(f"Error parsing Trivy JSON: {e}")
-        return []
+        logger.error(f"❌ CRITICAL: Corrupted Trivy scan data in {filepath}: {e}")
+        logger.error("🔍 File exists but is corrupted - indicates Trivy tool malfunction requiring investigation")
+        raise RuntimeError(f"Corrupted Trivy scan data requires investigation: {e}") from e

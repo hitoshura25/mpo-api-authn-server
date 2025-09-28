@@ -274,6 +274,12 @@ class OLMoSecurityConfig:
         # Check workspace can be created
         try:
             self.fine_tuning.workspace_dir.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            # Fail fast on permission issues - infrastructure problem
+            raise RuntimeError(f"Workspace directory creation failed - permission issue requires investigation: {e}") from e
+        except OSError as e:
+            # Fail fast on disk/filesystem issues - infrastructure problem
+            raise RuntimeError(f"Workspace directory creation failed - filesystem issue requires investigation: {e}") from e
         except Exception as e:
             errors.append(f"Cannot create workspace parent directory: {e}")
 

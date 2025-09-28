@@ -85,11 +85,7 @@ class SyntaxValidator:
                 
         except Exception as e:
             logger.error(f"Syntax validation failed for {language}: {e}")
-            return SyntaxValidationResult(
-                is_valid=False,
-                error_message=f"Validation error: {str(e)}",
-                error_type="validation_exception"
-            )
+            raise
     
     def _validate_python_syntax(self, code: str) -> SyntaxValidationResult:
         """Validate Python syntax using AST parsing"""
@@ -155,19 +151,9 @@ class SyntaxValidator:
                         error_type="syntax_error"
                     )
                     
-        except (subprocess.TimeoutExpired, FileNotFoundError):
-            # Fallback to basic checks if Node.js not available
-            logger.debug("Node.js not available, using basic syntax checks")
-            
-            # Basic syntax checks
-            if not self._check_balanced_braces(code):
-                return SyntaxValidationResult(
-                    is_valid=False,
-                    error_message="Unbalanced braces detected",
-                    error_type="syntax_error"
-                )
-            
-            return SyntaxValidationResult(is_valid=True)
+        except (subprocess.TimeoutExpired, FileNotFoundError) as e:
+            logger.error(f"Node.js validation failed: {e}")
+            raise
     
     def _validate_yaml_syntax(self, code: str) -> SyntaxValidationResult:
         """Validate YAML syntax"""
@@ -176,11 +162,8 @@ class SyntaxValidator:
             yaml.safe_load(code)
             return SyntaxValidationResult(is_valid=True)
         except Exception as e:
-            return SyntaxValidationResult(
-                is_valid=False,
-                error_message=str(e),
-                error_type="yaml_error"
-            )
+            logger.error(f"YAML validation failed: {e}")
+            raise
     
     def _validate_json_syntax(self, code: str) -> SyntaxValidationResult:
         """Validate JSON syntax"""
@@ -188,12 +171,8 @@ class SyntaxValidator:
             json.loads(code)
             return SyntaxValidationResult(is_valid=True)
         except json.JSONDecodeError as e:
-            return SyntaxValidationResult(
-                is_valid=False,
-                error_message=str(e),
-                line_number=e.lineno,
-                error_type="json_error"
-            )
+            logger.error(f"JSON validation failed: {e}")
+            raise
     
     def _check_balanced_braces(self, code: str) -> bool:
         """Check if braces, brackets, and parentheses are balanced"""
@@ -552,20 +531,7 @@ class FixQualityAssessor:
             
         except Exception as e:
             logger.error(f"Quality assessment failed: {e}")
-            
-            # Return failed assessment result
-            return QualityAssessmentResult(
-                overall_score=0.0,
-                syntax_valid=False,
-                security_improved=False,
-                code_quality_score=0.0,
-                best_practices_score=0.0,
-                completeness_score=0.0,
-                validation_passed=False,
-                individual_scores={},
-                recommendations=[f"Assessment failed: {str(e)}"],
-                assessment_details={'error': str(e)}
-            )
+            raise
     
     def _detect_language(self, vulnerability: Dict[str, Any], code: str) -> str:
         """

@@ -90,7 +90,7 @@ class MLXFineTuner:
             
         except Exception as e:
             logger.error(f"Base model validation failed: {e}")
-            return False
+            raise
         
     def prepare_training_data(self, dataset_file: Path) -> Path:
         """
@@ -137,8 +137,7 @@ class MLXFineTuner:
                     
                 except json.JSONDecodeError as e:
                     logger.warning(f"Skipping invalid JSON at line {line_num}: {e}")
-                    error_count += 1
-                    continue
+                    raise
         
         if not all_data:
             raise ValueError("No valid training data found after processing")
@@ -553,12 +552,9 @@ This analysis follows cybersecurity standards for responsible vulnerability asse
             logger.info(f"✅ Complete fine-tuned model created at: {output_path}")
             
         except Exception as e:
-            logger.error(f"❌ MLX training execution failed: {e}")
-            
-            # Graceful fallback: create model structure with clear documentation
-            logger.warning("🔄 Creating model structure without fine-tuning due to error")
-            self._create_fallback_model_structure(output_path, training_args, error=str(e))
-            raise
+            logger.error(f"❌ CRITICAL: MLX training execution failure: {e}")
+            logger.error("🔍 MLX training execution failure indicates dependency issues or infrastructure problems requiring investigation")
+            raise RuntimeError(f"MLX training execution failure requires investigation: {e}") from e
     
     def _merge_adapter_with_base(self, base_model: str, adapter_path: Path, output_path: Path):
         """Merge LoRA adapter with base model to create complete fine-tuned model"""
@@ -589,10 +585,7 @@ This analysis follows cybersecurity standards for responsible vulnerability asse
         except subprocess.CalledProcessError as e:
             logger.error(f"❌ Model fusion failed: {e}")
             logger.error(f"Fusion error: {e.stderr}")
-            
-            # Fallback: Copy base model files and add adapter info
-            logger.warning("🔄 Using fallback model creation")
-            self._create_adapter_based_model(base_model, adapter_path, output_path)
+            raise
         
         except subprocess.TimeoutExpired:
             logger.error("❌ Model fusion timed out")
@@ -779,13 +772,13 @@ def main():
         
     except KeyboardInterrupt:
         logger.info("Fine-tuning interrupted by user")
-        sys.exit(1)
+        raise
     except Exception as e:
         logger.error(f"Fine-tuning failed: {e}")
         if args.verbose:
             import traceback
             traceback.print_exc()
-        sys.exit(1)
+        raise
 
 if __name__ == "__main__":
     main()

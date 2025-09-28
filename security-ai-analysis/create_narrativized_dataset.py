@@ -168,6 +168,7 @@ This vulnerability teaches us about:
                             })
         except Exception as e:
             print(f"Error collecting git fixes: {e}")
+            raise
         
         return fixes
     

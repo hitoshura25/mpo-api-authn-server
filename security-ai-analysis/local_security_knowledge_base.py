@@ -168,8 +168,9 @@ class LocalSecurityKnowledgeBase:
                 successful_count += 1
                 
             except Exception as e:
-                self.logger.warning(f"⚠️ Skipped vulnerability {processed_count}: {e}")
-                continue
+                self.logger.error(f"❌ CRITICAL: Corrupted vulnerability data at index {processed_count}: {e}")
+                self.logger.error("🔍 Vulnerability data corruption indicates parsing or analysis pipeline malfunction requiring investigation")
+                raise RuntimeError(f"Knowledge base vulnerability processing failed - corrupted data requires investigation: {e}") from e
         
         if not vulnerability_texts:
             raise ValueError("No valid vulnerability data found for knowledge base creation")
@@ -301,9 +302,20 @@ class LocalSecurityKnowledgeBase:
             self.logger.info(f"✅ Loaded knowledge base with {self.vector_index.ntotal} vectors")
             return True
             
-        except Exception as e:
-            self.logger.error(f"❌ Failed to load knowledge base: {e}")
+        except FileNotFoundError:
+            # Graceful handling: No knowledge base exists yet (acceptable)
+            self.logger.info("📂 No existing knowledge base found")
             return False
+        except (json.JSONDecodeError, pickle.PickleError) as e:
+            # Fail fast: Knowledge base files exist but are corrupted
+            self.logger.error(f"❌ CRITICAL: Knowledge base corruption detected: {e}")
+            self.logger.error("🔍 Knowledge base files exist but are corrupted - indicates storage or filesystem issues requiring investigation")
+            raise RuntimeError(f"Knowledge base corruption detected - requires investigation: {e}") from e
+        except Exception as e:
+            # Fail fast: Other knowledge base loading issues (FAISS, permissions, etc.)
+            self.logger.error(f"❌ CRITICAL: Knowledge base loading failed: {e}")
+            self.logger.error("🔍 Check file permissions, FAISS library installation, and disk space")
+            raise RuntimeError(f"Knowledge base loading failed - infrastructure issue requires investigation: {e}") from e
     
     def find_similar_vulnerabilities(
         self, 
@@ -365,8 +377,9 @@ class LocalSecurityKnowledgeBase:
             return similar_vulnerabilities
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to find similar vulnerabilities: {e}")
-            return []
+            self.logger.error(f"❌ CRITICAL: RAG similarity search failed: {e}")
+            self.logger.error("🔍 This indicates vector index corruption, embedding model failure, or FAISS library issues requiring investigation")
+            raise RuntimeError(f"RAG similarity search failed - requires investigation: {e}") from e
     
     def get_knowledge_base_stats(self) -> Dict[str, Any]:
         """Get statistics about the knowledge base."""

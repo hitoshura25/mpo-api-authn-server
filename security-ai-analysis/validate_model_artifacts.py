@@ -92,8 +92,10 @@ def validate_model_artifacts(model_path: Path) -> Dict[str, Any]:
             logger.warning(f"⚠️ Model validation failed: {failed_checks}")
 
     except Exception as e:
-        result['errors'].append(f"Validation exception: {e}")
-        logger.error(f"Model validation error: {e}")
+        # Fail fast on infrastructure issues during model validation
+        logger.error(f"❌ CRITICAL: Model validation infrastructure failure: {e}")
+        logger.error("🔍 Model validation infrastructure failure - check file permissions, disk space, and model directory integrity")
+        raise RuntimeError(f"Model validation infrastructure failure - requires investigation: {e}") from e
 
     return result
 
@@ -156,8 +158,10 @@ def _validate_config_files(model_path: Path, result: Dict) -> bool:
             result['errors'].append(f"Invalid JSON in {config_file}: {e}")
             return False
         except Exception as e:
-            result['errors'].append(f"Cannot read config file {config_file}: {e}")
-            return False
+            # Fail fast on infrastructure issues reading config files
+            logger.error(f"❌ CRITICAL: Config file access failure for {config_file}: {e}")
+            logger.error("🔍 Config file access failure - check file permissions and disk integrity")
+            raise RuntimeError(f"Config file access failure - infrastructure issue requires investigation: {e}") from e
 
     return True
 

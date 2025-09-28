@@ -117,12 +117,7 @@ class SequentialDatasetCreator:
         except Exception as e:
             total_time = (datetime.now() - start_time).total_seconds()
             self.logger.error(f"❌ Sequential dataset creation failed: {e}")
-            return SequentialDatasetResult(
-                success=False,
-                processing_errors=[str(e)],
-                total_processing_time=total_time,
-                metadata={'error_time': datetime.now().isoformat()}
-            )
+            raise
     
     def _create_stage1_analysis_dataset(self, vulnerabilities: List[Dict[str, Any]]) -> List[EnhancedTrainingExample]:
         """
@@ -162,7 +157,7 @@ class SequentialDatasetCreator:
                 
             except Exception as e:
                 self.logger.warning(f"Failed to create Stage 1 example for {vuln.get('id', 'unknown')}: {e}")
-                continue
+                raise
         
         return stage1_examples
     
@@ -232,7 +227,7 @@ class SequentialDatasetCreator:
                         
             except Exception as e:
                 self.logger.warning(f"Failed to create Stage 2 example for {vuln.get('id', 'unknown')}: {e}")
-                continue
+                raise
         
         return stage2_examples
     

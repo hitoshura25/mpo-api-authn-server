@@ -163,8 +163,7 @@ class EnhancedDatasetCreator:
                 
                 except Exception as e:
                     self.logger.error(f"❌ Error processing vulnerability {vuln.get('check_id', 'unknown')}: {e}")
-                    failed_count += 1
-                    continue
+                    raise
             
             # Create dataset name if not provided
             if not dataset_name:
@@ -188,10 +187,8 @@ class EnhancedDatasetCreator:
             )
             
         except Exception as e:
-            return DatasetCreationResult(
-                success=False,
-                error_message=f"Dataset creation failed: {e}"
-            )
+            self.logger.error(f"Dataset creation failed: {e}")
+            raise
     
     def _create_training_examples_for_vulnerability(self, 
                                                   vulnerability: Dict[str, Any],
@@ -886,7 +883,7 @@ Remediation Focus: Configuration and deployment security"""
 
         except Exception as e:
             self.logger.error(f"Failed to save enhanced dataset: {e}")
-            return None
+            raise
 
 
 class EnumJSONEncoder(json.JSONEncoder):

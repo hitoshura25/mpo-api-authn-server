@@ -1100,6 +1100,23 @@ def upload_phase(model_artifacts_path: Path, summary: Dict, args) -> Dict:
     return summary
 
 
+def _extract_timestamp_from_path(path: Path) -> str:
+    """Extract timestamp from model directory name.
+
+    Looks for YYYYMMDD_HHMMSS pattern in directory name.
+    Returns formatted timestamp or fallback for sorting.
+    """
+    parts = path.name.split('_')
+    for i, part in enumerate(parts):
+        if len(part) == 8 and part.isdigit():  # YYYYMMDD
+            if i + 1 < len(parts) and len(parts[i + 1]) == 6 and parts[i + 1].isdigit():  # HHMMSS
+                return f"{part}_{parts[i + 1]}"
+    return "00000000_000000"  # Fallback for unparseable timestamps
+
+def _sort_models_by_timestamp(models: List[Path]) -> List[Path]:
+    """Sort model directories by timestamp, most recent first."""
+    return sorted(models, key=_extract_timestamp_from_path, reverse=True)
+
 def _select_final_model(model_dirs: List[Path]) -> Path:
     """
     Select the final model from a list of sequential fine-tuning model directories.
@@ -1130,16 +1147,7 @@ def _select_final_model(model_dirs: List[Path]) -> Path:
     if stage2_final_models:
         # If multiple Stage 2 final models, use most recent by timestamp
         if len(stage2_final_models) > 1:
-            # Extract timestamp and sort by it
-            def extract_timestamp(path):
-                parts = path.name.split('_')
-                for i, part in enumerate(parts):
-                    if len(part) == 8 and part.isdigit():  # YYYYMMDD
-                        if i + 1 < len(parts) and len(parts[i + 1]) == 6 and parts[i + 1].isdigit():  # HHMMSS
-                            return f"{part}_{parts[i + 1]}"
-                return "00000000_000000"  # Fallback for unparseable timestamps
-
-            stage2_final_models.sort(key=extract_timestamp, reverse=True)
+            stage2_final_models = _sort_models_by_timestamp(stage2_final_models)
 
         print(f"📋 Selected final Stage 2 model: {stage2_final_models[0].name}")
         return stage2_final_models[0]
@@ -1153,15 +1161,7 @@ def _select_final_model(model_dirs: List[Path]) -> Path:
         if non_merged_stage2:
             # Sort by timestamp and use most recent
             if len(non_merged_stage2) > 1:
-                def extract_timestamp(path):
-                    parts = path.name.split('_')
-                    for i, part in enumerate(parts):
-                        if len(part) == 8 and part.isdigit():
-                            if i + 1 < len(parts) and len(parts[i + 1]) == 6 and parts[i + 1].isdigit():
-                                return f"{part}_{parts[i + 1]}"
-                    return "00000000_000000"
-
-                non_merged_stage2.sort(key=extract_timestamp, reverse=True)
+                non_merged_stage2 = _sort_models_by_timestamp(non_merged_stage2)
 
             print(f"📋 Selected Stage 2 model (non-merged): {non_merged_stage2[0].name}")
             return non_merged_stage2[0]
@@ -1859,6 +1859,42 @@ def main():
     print(f"🔒 WebAuthn Security Analysis with {args.model_name}")
     print(f"Artifacts: {args.artifacts_dir}")
     print(f"Output: {args.output_dir}")
+    print("=" * 60)
+
+    # Log comprehensive configuration with sources
+    print("\n🔧 Configuration Summary:")
+
+    # Fine-tuning configuration
+    try:
+        from fine_tuning_config import FineTuningConfig
+        ft_config = FineTuningConfig.load_from_config()
+
+        def get_config_source(env_var, yaml_value, env_value):
+            if env_value != yaml_value:
+                return "(env override)"
+            return "(yaml config)" if yaml_value is not None else "(default)"
+
+        print(f"  workspace_dir: {ft_config.workspace_dir} {get_config_source('OLMO_WORKSPACE_DIR', None, os.getenv('OLMO_WORKSPACE_DIR'))}")
+        print(f"  base_models_dir: {ft_config.base_models_dir} {get_config_source('OLMO_BASE_MODELS_DIR', None, os.getenv('OLMO_BASE_MODELS_DIR'))}")
+        print(f"  fine_tuned_models_dir: {ft_config.fine_tuned_models_dir} {get_config_source('OLMO_FINE_TUNED_MODELS_DIR', None, os.getenv('OLMO_FINE_TUNED_MODELS_DIR'))}")
+        print(f"  max_epochs: {ft_config.max_epochs} {get_config_source('OLMO_MAX_EPOCHS', None, os.getenv('OLMO_MAX_EPOCHS'))}")
+        print(f"  save_steps: {ft_config.save_steps} {get_config_source('OLMO_SAVE_STEPS', None, os.getenv('OLMO_SAVE_STEPS'))}")
+        print(f"  eval_steps: {ft_config.eval_steps} {get_config_source('OLMO_EVAL_STEPS', None, os.getenv('OLMO_EVAL_STEPS'))}")
+        print(f"  learning_rate: {ft_config.learning_rate} {get_config_source('OLMO_LEARNING_RATE', None, os.getenv('OLMO_LEARNING_RATE'))}")
+        print(f"  batch_size: {ft_config.batch_size} {get_config_source('OLMO_BATCH_SIZE', None, os.getenv('OLMO_BATCH_SIZE'))}")
+        print(f"  max_stage1_iters: {ft_config.max_stage1_iters} {get_config_source('OLMO_MAX_STAGE1_ITERS', None, os.getenv('OLMO_MAX_STAGE1_ITERS'))}")
+        print(f"  max_stage2_iters: {ft_config.max_stage2_iters} {get_config_source('OLMO_MAX_STAGE2_ITERS', None, os.getenv('OLMO_MAX_STAGE2_ITERS'))}")
+
+    except Exception as e:
+        print(f"  fine_tuning_config: Error loading ({e})")
+
+    # Knowledge base configuration
+    kb_dir = os.getenv('OLMO_KNOWLEDGE_BASE_DIR')
+    if kb_dir:
+        print(f"  knowledge_base_dir: {kb_dir} (env override)")
+    else:
+        print(f"  knowledge_base_dir: security-ai-analysis/knowledge_base (default)")
+
     print("=" * 60)
 
     # Check if artifacts directory exists and has content

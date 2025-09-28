@@ -170,7 +170,11 @@ class TestProcessArtifactsScript:
 
             print(f"🚀 Executing command: {' '.join(base_args)}")
             print(f"🔧 Working directory: {self.script_path.parent}")
-            print(f"🧪 OLMO_TEST_MODE: {os.environ.get('OLMO_TEST_MODE', 'Not set')}")
+            print(f"🧪 Test Environment:")
+            test_vars = ['OLMO_WORKSPACE_DIR', 'OLMO_KNOWLEDGE_BASE_DIR', 'OLMO_MAX_EPOCHS', 'OLMO_SAVE_STEPS', 'OLMO_MAX_STAGE1_ITERS', 'OLMO_MAX_STAGE2_ITERS']
+            for var in test_vars:
+                value = os.environ.get(var, 'Not set')
+                print(f"     {var}: {value}")
             print("=" * 80)
             sys.stdout.flush()
 
@@ -961,95 +965,82 @@ class TestProcessArtifactsScript:
 
     def test_training_phase_creates_complete_model_files(self, tmp_path):
         """Test that training phase creates complete LoRA model structure with actual weights"""
-        # Enable test mode for faster training execution
-        import os
-        original_test_mode = os.environ.get('OLMO_TEST_MODE')
-        os.environ['OLMO_TEST_MODE'] = '1'
+        # Create isolated test directory for training output
+        isolated_models_dir = tmp_path / "test_training_models"
+        isolated_models_dir.mkdir(parents=True)
 
-        try:
-            # Create isolated test directory for training output
-            isolated_models_dir = tmp_path / "test_training_models"
-            isolated_models_dir.mkdir(parents=True)
+        # Create minimal input files required for training phase
+        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
 
-            # Create minimal input files required for training phase
-            fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
-
-            # Run training phase only in isolated directory with real-time output (using medium-sized fixtures for faster execution)
-            return_code = self.run_process_artifacts([
+        # Run training phase only in isolated directory with real-time output (using medium-sized fixtures for faster execution)
+        return_code = self.run_process_artifacts([
                 "--only-training",
                 "--model-dir", str(isolated_models_dir),
                 "--narrativized-input", str(fixtures_dir / "narrativized_fixture_medium.json"),
                 "--train-input", str(fixtures_dir / "train_dataset_fixture_medium.jsonl"),
                 "--validation-input", str(fixtures_dir / "validation_dataset_fixture_medium.jsonl")
-            ], realtime_output=True)
+        ], realtime_output=True)
 
-            assert return_code == 0, f"Training phase failed with return code: {return_code}"
+        assert return_code == 0, f"Training phase failed with return code: {return_code}"
 
-            # Debug: Show what was actually created
-            print(f"🔍 Training phase completed, checking output in: {isolated_models_dir}")
-            if isolated_models_dir.exists():
-                created_items = list(isolated_models_dir.iterdir())
-                print(f"📁 Items created: {[item.name for item in created_items]}")
+        # Debug: Show what was actually created
+        print(f"🔍 Training phase completed, checking output in: {isolated_models_dir}")
+        if isolated_models_dir.exists():
+            created_items = list(isolated_models_dir.iterdir())
+            print(f"📁 Items created: {[item.name for item in created_items]}")
 
-                # Show detailed structure of each model directory
-                for item in created_items:
-                    if item.is_dir() and "webauthn-security-sequential" in item.name:
-                        print(f"📂 Model directory contents: {item}")
-                        for subitem in item.iterdir():
-                            print(f"   📄 {subitem.name}")
-                            if subitem.is_dir():
-                                for subsubitem in subitem.iterdir():
-                                    print(f"      📄 {subsubitem.name}")
-            else:
-                print(f"❌ Model directory doesn't exist: {isolated_models_dir}")
+            # Show detailed structure of each model directory
+            for item in created_items:
+                if item.is_dir() and "webauthn-security-sequential" in item.name:
+                    print(f"📂 Model directory contents: {item}")
+                    for subitem in item.iterdir():
+                        print(f"   📄 {subitem.name}")
+                        if subitem.is_dir():
+                            for subsubitem in subitem.iterdir():
+                                print(f"      📄 {subsubitem.name}")
+        else:
+            print(f"❌ Model directory doesn't exist: {isolated_models_dir}")
 
-            # Find the created model directory (should have timestamp pattern)
-            model_dirs = list(isolated_models_dir.glob("webauthn-security-sequential_*"))
-            assert len(model_dirs) > 0, f"No model directory created in {isolated_models_dir}. " \
-                f"This exposes the training phase bug - models are not saved to --model-dir location!"
+        # Find the created model directory (should have timestamp pattern)
+        model_dirs = list(isolated_models_dir.glob("webauthn-security-sequential_*"))
+        assert len(model_dirs) > 0, f"No model directory created in {isolated_models_dir}. " \
+            f"This exposes the training phase bug - models are not saved to --model-dir location!"
 
-            # Prefer LoRA models (those with adapters directory) over fused models
-            lora_models = [d for d in model_dirs if (d / "adapters").exists()]
-            if lora_models:
-                model_dir = sorted(lora_models)[-1]  # Use newest LoRA model
-                print(f"🎯 Selected LoRA model: {model_dir}")
-            else:
-                model_dir = sorted(model_dirs)[-1]   # Fallback to any model
-                print(f"⚠️ No LoRA models found, using: {model_dir}")
-            adapters_dir = model_dir / "adapters"
+        # Prefer LoRA models (those with adapters directory) over fused models
+        lora_models = [d for d in model_dirs if (d / "adapters").exists()]
+        if lora_models:
+            model_dir = sorted(lora_models)[-1]  # Use newest LoRA model
+            print(f"🎯 Selected LoRA model: {model_dir}")
+        else:
+            model_dir = sorted(model_dirs)[-1]   # Fallback to any model
+            print(f"⚠️ No LoRA models found, using: {model_dir}")
+        adapters_dir = model_dir / "adapters"
 
-            print(f"🔍 Checking model completeness in: {model_dir}")
+        print(f"🔍 Checking model completeness in: {model_dir}")
 
-            # Assert complete LoRA model structure exists
-            assert adapters_dir.exists(), f"Adapters directory missing: {adapters_dir}"
+        # Assert complete LoRA model structure exists
+        assert adapters_dir.exists(), f"Adapters directory missing: {adapters_dir}"
 
-            adapter_config_file = adapters_dir / "adapter_config.json"
-            adapters_weights_file = adapters_dir / "adapters.safetensors"
+        adapter_config_file = adapters_dir / "adapter_config.json"
+        adapters_weights_file = adapters_dir / "adapters.safetensors"
 
-            # Check adapter config file
-            assert adapter_config_file.exists(), f"Missing adapter config: {adapter_config_file}"
-            assert adapter_config_file.stat().st_size > 0, "Adapter config file is empty"
+        # Check adapter config file
+        assert adapter_config_file.exists(), f"Missing adapter config: {adapter_config_file}"
+        assert adapter_config_file.stat().st_size > 0, "Adapter config file is empty"
 
-            # Check adapter weights file - THIS WILL CURRENTLY FAIL
-            assert adapters_weights_file.exists(), f"Missing adapter weights: {adapters_weights_file}"
-            assert adapters_weights_file.stat().st_size > 1000, f"Adapter weights file too small: {adapters_weights_file.stat().st_size} bytes"
+        # Check adapter weights file - THIS WILL CURRENTLY FAIL
+        assert adapters_weights_file.exists(), f"Missing adapter weights: {adapters_weights_file}"
+        assert adapters_weights_file.stat().st_size > 1000, f"Adapter weights file too small: {adapters_weights_file.stat().st_size} bytes"
 
-            # Verify the config is valid JSON
-            with open(adapter_config_file, 'r') as f:
-                import json
-                config = json.load(f)
-                # Check for MLX adapter config fields (more flexible than PEFT task_type)
-                mlx_fields = ['adapter_path', 'batch_size', 'data']
-                assert any(field in config for field in mlx_fields), f"Adapter config missing MLX fields, got: {list(config.keys())}"
+        # Verify the config is valid JSON
+        with open(adapter_config_file, 'r') as f:
+            import json
+            config = json.load(f)
+            # Check for MLX adapter config fields (more flexible than PEFT task_type)
+            mlx_fields = ['adapter_path', 'batch_size', 'data']
+            assert any(field in config for field in mlx_fields), f"Adapter config missing MLX fields, got: {list(config.keys())}"
 
-            print(f"✅ Training phase created complete model with {adapters_weights_file.stat().st_size} byte weights file")
-
-        finally:
-            # Restore original test mode environment variable
-            if original_test_mode is None:
-                os.environ.pop('OLMO_TEST_MODE', None)
-            else:
-                os.environ['OLMO_TEST_MODE'] = original_test_mode
+        print(f"✅ Training phase created complete model with {adapters_weights_file.stat().st_size} byte weights file")
 
     def test_model_selection_prioritizes_final_over_intermediate(self, tmp_path):
         """Test that model selection chooses final Stage 2 models over intermediate merged models"""

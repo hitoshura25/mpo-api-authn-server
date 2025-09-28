@@ -71,17 +71,19 @@ class SequentialFineTuner:
         batch_size = int(self.ft_config.batch_size)
         save_steps = int(self.ft_config.save_steps)
 
-        # Calculate iterations based on save_steps for reasonable training duration
-        # Allow ultra-minimal iterations in test mode for fast execution
-        import os
-        if os.getenv('OLMO_TEST_MODE'):
-            # Test mode: allow ultra-minimal iterations for fast testing
-            stage1_iters = save_steps * 10  # No minimum enforcement
-            stage2_iters = int(stage1_iters * 1.6)  # 60% more for Stage 2 specialization
-        else:
-            # Production mode: enforce reasonable minimums
-            stage1_iters = max(save_steps * 10, 100)  # At least 10 save intervals
-            stage2_iters = max(int(stage1_iters * 1.6), 150)  # 60% more for Stage 2 specialization
+        # Calculate iterations based on save_steps and configuration maximums
+        # Configuration-driven approach: use max_stage1_iters and max_stage2_iters from config
+
+        # Calculate base iterations from save_steps
+        stage1_base = save_steps * 10
+        stage2_base = int(stage1_base * 1.6)  # 60% more for Stage 2 specialization
+
+        # Apply maximums from configuration (0 means no limit)
+        max_stage1 = self.ft_config.max_stage1_iters
+        max_stage2 = self.ft_config.max_stage2_iters
+
+        stage1_iters = stage1_base if max_stage1 == 0 else min(stage1_base, max_stage1)
+        stage2_iters = stage2_base if max_stage2 == 0 else min(stage2_base, max_stage2)
 
         self.stage1_config = {
             'iters': stage1_iters,

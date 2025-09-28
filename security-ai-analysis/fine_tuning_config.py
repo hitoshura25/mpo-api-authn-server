@@ -42,6 +42,8 @@ class FineTuningConfig:
     warmup_steps: int
     save_steps: int
     eval_steps: int
+    max_stage1_iters: int
+    max_stage2_iters: int
     
     # MLX settings
     quantization: str
@@ -75,7 +77,9 @@ class FineTuningConfig:
         
         # Resolve paths with environment variable overrides
         project_root = Path(__file__).parent.parent
-        workspace_dir = project_root / ft_config['workspace_dir']
+        workspace_dir = Path(
+            os.getenv('OLMO_WORKSPACE_DIR', str(project_root / ft_config['workspace_dir']))
+        ).expanduser()
         
         base_models_dir = Path(
             os.getenv('OLMO_BASE_MODELS_DIR', config['base_models_dir'])
@@ -88,13 +92,8 @@ class FineTuningConfig:
         # HuggingFace settings
         hf_config = ft_config.get('huggingface', {})
         
-        # Training settings - use test_training if in test mode
-        test_mode = os.getenv('OLMO_TEST_MODE', '').lower() in ('1', 'true', 'yes')
-        if test_mode and 'test_training' in ft_config:
-            train_config = ft_config.get('test_training', {})
-            logger.info("🧪 Using test training configuration for faster execution")
-        else:
-            train_config = ft_config.get('training', {})
+        # Training settings
+        train_config = ft_config.get('training', {})
         
         # MLX settings
         mlx_config = ft_config.get('mlx', {})
@@ -105,12 +104,14 @@ class FineTuningConfig:
             fine_tuned_models_dir=fine_tuned_models_dir,
             base_model_name=os.getenv('OLMO_DEFAULT_BASE_MODEL', config['default_base_model']),
             output_model_name=ft_config['default_output_name'],
-            learning_rate=train_config.get('learning_rate', 2e-5),
-            batch_size=train_config.get('batch_size', 1),  # Reduced from 4 to 1 to avoid Metal GPU memory issues
-            max_epochs=train_config.get('max_epochs', 3),
-            warmup_steps=train_config.get('warmup_steps', 100),
-            save_steps=train_config.get('save_steps', 500),
-            eval_steps=train_config.get('eval_steps', 250),
+            learning_rate=float(os.getenv('OLMO_LEARNING_RATE', train_config.get('learning_rate', 2e-5))),
+            batch_size=int(os.getenv('OLMO_BATCH_SIZE', train_config.get('batch_size', 1))),  # Reduced from 4 to 1 to avoid Metal GPU memory issues
+            max_epochs=int(os.getenv('OLMO_MAX_EPOCHS', train_config.get('max_epochs', 3))),
+            warmup_steps=int(os.getenv('OLMO_WARMUP_STEPS', train_config.get('warmup_steps', 100))),
+            save_steps=int(os.getenv('OLMO_SAVE_STEPS', train_config.get('save_steps', 500))),
+            eval_steps=int(os.getenv('OLMO_EVAL_STEPS', train_config.get('eval_steps', 250))),
+            max_stage1_iters=int(os.getenv('OLMO_MAX_STAGE1_ITERS', train_config.get('max_stage1_iters', 100))),
+            max_stage2_iters=int(os.getenv('OLMO_MAX_STAGE2_ITERS', train_config.get('max_stage2_iters', 150))),
             quantization=mlx_config.get('quantization', 'q4'),
             memory_efficient=mlx_config.get('memory_efficient', True),
             gradient_checkpointing=mlx_config.get('gradient_checkpointing', True),

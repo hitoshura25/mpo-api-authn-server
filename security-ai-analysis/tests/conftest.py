@@ -4,7 +4,50 @@ Shared fixtures and configuration for security AI analysis tests
 import pytest
 import tempfile
 import shutil
+import os
 from pathlib import Path
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_environment():
+    """
+    Set up isolated test environment with directory overrides for all tests.
+    This ensures complete test isolation from production directories.
+    """
+    # Create session-wide temporary directory for all tests
+    session_temp_dir = Path(tempfile.mkdtemp(prefix="security_ai_test_session_"))
+
+    # Store original environment variables
+    original_env_vars = {}
+    test_env_vars = {
+        'OLMO_WORKSPACE_DIR': str(session_temp_dir / "test_workspace"),
+        'OLMO_KNOWLEDGE_BASE_DIR': str(session_temp_dir / "test_kb"),
+        'OLMO_MAX_EPOCHS': '1',
+        'OLMO_SAVE_STEPS': '3',
+        'OLMO_EVAL_STEPS': '2',
+        'OLMO_LEARNING_RATE': '2e-4',
+        'OLMO_BATCH_SIZE': '1',
+        'OLMO_MAX_STAGE1_ITERS': '0',  # No maximum = use calculated value (30)
+        'OLMO_MAX_STAGE2_ITERS': '0'   # No maximum = use calculated value (48)
+    }
+
+    # Set test environment variables and store originals
+    for key, value in test_env_vars.items():
+        original_env_vars[key] = os.environ.get(key)
+        os.environ[key] = value
+
+    yield session_temp_dir
+
+    # Cleanup: restore original environment variables
+    for key, original_value in original_env_vars.items():
+        if original_value is None:
+            os.environ.pop(key, None)
+        else:
+            os.environ[key] = original_value
+
+    # Cleanup: remove session temporary directory
+    if session_temp_dir.exists():
+        shutil.rmtree(session_temp_dir)
 
 
 @pytest.fixture(scope="session")

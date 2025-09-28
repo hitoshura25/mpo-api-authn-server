@@ -49,7 +49,9 @@ class LocalSecurityKnowledgeBase:
         self.project_root = project_root or Path(self.config.data_dir).parent.parent
         
         # Knowledge base directories
-        self.knowledge_base_dir = self.project_root / "security-ai-analysis" / "knowledge_base"
+        self.knowledge_base_dir = Path(
+            os.getenv('OLMO_KNOWLEDGE_BASE_DIR', str(self.project_root / "security-ai-analysis" / "knowledge_base"))
+        ).expanduser()
         self.embeddings_dir = self.knowledge_base_dir / "embeddings"
         self.code_examples_dir = self.knowledge_base_dir / "code_examples"
         

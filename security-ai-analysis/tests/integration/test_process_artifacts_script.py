@@ -659,12 +659,6 @@ class TestProcessArtifactsScript:
         assert 'vulnerability' in sample_rag, "RAG enhanced should preserve vulnerability data"
         assert 'analysis' in sample_rag, "RAG enhanced should preserve analysis data"
 
-    # Removed test_training_phase_outputs - redundant with test_training_phase_creates_complete_model_files
-    # The comprehensive test provides superior validation while being faster (2:53 min) due to optimization
-
-    # Removed test_upload_phase_outputs - redundant smoke test with minimal validation
-    # Other upload tests provide superior coverage of upload functionality
-
     def test_upload_phase_with_isolated_directory(self, tmp_path):
         """Test upload phase with isolated test directory to prevent production pollution"""
         # Create isolated test model directory structure

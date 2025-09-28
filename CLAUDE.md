@@ -192,9 +192,26 @@ RESULT=$(extract_value "input")  # Captures only final_result
 
 #### **Debugging Protocol for Environment-Specific Issues:**
 1. **Environment Comparison**: Document working vs failing environments, identify differences
-2. **Enhanced Diagnostics**: Add comprehensive logging, memory usage, system information  
+2. **Enhanced Diagnostics**: Add comprehensive logging, memory usage, system information
 3. **Root Cause Analysis**: Test locally first, isolate variables, memory profiling
 4. **User Approval Required**: Present findings, propose solutions, get explicit approval
+
+### 🗣️ CRITICAL: Direct and Objective Communication Guidelines
+
+**MANDATORY**: Use direct, objective language in all communications. Avoid sycophantic or excessively agreeable responses.
+
+#### **Communication Rules:**
+- **❌ NEVER say**: "You're absolutely right" - Use specific acknowledgment instead
+- **❌ AVOID**: Sycophantic language, excessive agreement, or validation-seeking responses
+- **✅ USE**: Direct, objective, and technically focused language
+- **✅ ACKNOWLEDGE**: Specific technical points when agreeing: "That approach will resolve the dependency conflict"
+- **✅ DISAGREE**: When necessary with factual corrections and alternative solutions
+
+#### **Response Pattern Examples:**
+- ❌ **Sycophantic**: "You're absolutely right! That's a brilliant insight!"
+- ✅ **Direct**: "That approach addresses the core issue by eliminating the race condition."
+- ❌ **Excessive**: "I completely agree with everything you've said!"
+- ✅ **Objective**: "The dependency pinning strategy will prevent version conflicts."
 
 ### 🤖 CRITICAL: Proactively Use Subagents for Complex Tasks
 

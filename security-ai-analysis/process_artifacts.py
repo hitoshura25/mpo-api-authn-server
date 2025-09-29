@@ -42,6 +42,8 @@ from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is
 import argparse
 import logging
 
+logger = logging.getLogger(__name__)
+
 
 # Phase constants to avoid string repetition and typos
 class Phases:
@@ -69,7 +71,7 @@ class Phases:
         NARRATIVIZATION: ['analyzed_input'],
         DATASETS: ['narrativized_input', 'parsed_input'],  # Both needed
         TRAINING: ['train_input', 'validation_input', 'narrativized_input'],
-        UPLOAD: ['model_dir', 'dataset_files']
+        UPLOAD: ['dataset_files']  # model_dir automatically resolved via TrainingRunManager
     }
 
 
@@ -999,20 +1001,10 @@ def training_phase(train_file: Path, train_data: List, narrativized_results: Lis
     # Progressive specialization: Stage 1 (Analysis) → Stage 2 (Code Fixes)
     # Training phase never uploads - always save locally only
 
-    # Determine model artifacts path using configuration or CLI override
-    # Use --model-dir as base directory override for full pipeline (training + upload)
-    if hasattr(args, 'model_dir') and args.model_dir:
-        fine_tuned_base_path = Path(args.model_dir).expanduser()
-        print(f"🔧 Using CLI override for fine-tuned models base: {fine_tuned_base_path}")
-    else:
-        # Use configuration-based path
-        config = OLMoSecurityConfig()
-        fine_tuned_base_path = Path(config.fine_tuned_models_dir).expanduser()
-        print(f"📁 Using configured fine-tuned models directory: {fine_tuned_base_path}")
-
-    # For the training phase, we'll set model_artifacts_path to where models will be saved
-    # The actual trained model directory will be determined by the sequential fine-tuning system
-    model_artifacts_path = fine_tuned_base_path
+    # Use configuration-based path management
+    config = OLMoSecurityConfig()
+    model_artifacts_path = Path(config.fine_tuned_models_dir).expanduser()
+    print(f"📁 Using configured fine-tuned models directory: {model_artifacts_path}")
 
     # Sequential fine-tuning (mandatory - fail if not available)
     from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is_sequential_fine_tuning_available
@@ -1024,8 +1016,7 @@ def training_phase(train_file: Path, train_data: List, narrativized_results: Lis
     print("📁 Training phase: Saving models locally only (uploads handled by separate phase)")
     updated_summary = run_sequential_fine_tuning_phase(
         vulnerabilities=narrativized_results,  # Use full vulnerability data with narratives
-        summary=summary,
-        base_output_dir=fine_tuned_base_path  # Pass the CLI override or config path
+        summary=summary
     )
     print("✅ Sequential fine-tuning completed successfully")
     return updated_summary, model_artifacts_path
@@ -1107,76 +1098,38 @@ def upload_phase(model_artifacts_path: Path, summary: Dict, args) -> Dict:
     return summary
 
 
-def _extract_timestamp_from_path(path: Path) -> str:
-    """Extract timestamp from model directory name.
 
-    Looks for YYYYMMDD_HHMMSS pattern in directory name.
-    Returns formatted timestamp or fallback for sorting.
+def _get_latest_structured_model() -> Path:
     """
-    parts = path.name.split('_')
-    for i, part in enumerate(parts):
-        if len(part) == 8 and part.isdigit():  # YYYYMMDD
-            if i + 1 < len(parts) and len(parts[i + 1]) == 6 and parts[i + 1].isdigit():  # HHMMSS
-                return f"{part}_{parts[i + 1]}"
-    return "00000000_000000"  # Fallback for unparseable timestamps
+    Get the latest trained model using structured TrainingRunManager.
 
-def _sort_models_by_timestamp(models: List[Path]) -> List[Path]:
-    """Sort model directories by timestamp, most recent first."""
-    return sorted(models, key=_extract_timestamp_from_path, reverse=True)
-
-def _select_final_model(model_dirs: List[Path]) -> Path:
-    """
-    Select the final model from a list of sequential fine-tuning model directories.
-
-    Prioritizes:
-    1. Stage 2 models ending with 'stage2_codefix' (final models)
-    2. Most recent timestamp if multiple final models exist
-    3. Longest model chain (highest stage number) as fallback
-
-    Args:
-        model_dirs: List of model directory paths
+    Returns the Stage 2 final model from the most recently completed training run.
 
     Returns:
         Path to the final model directory
     """
-    if not model_dirs:
-        raise ValueError("No model directories provided")
+    from config_manager import OLMoSecurityConfig
+    from training_run_manager import TrainingRunManager
 
-    if len(model_dirs) == 1:
-        return model_dirs[0]
+    try:
+        config = OLMoSecurityConfig()
+        training_run_manager = TrainingRunManager(config)
 
-    # Priority 1: Look for Stage 2 final models (ending with 'stage2_codefix')
-    stage2_final_models = [
-        d for d in model_dirs
-        if d.name.endswith('stage2_codefix') and 'merged' not in d.name
-    ]
+        # Get the latest completed training run
+        latest_run = training_run_manager.get_latest_run()
 
-    if stage2_final_models:
-        # If multiple Stage 2 final models, use most recent by timestamp
-        if len(stage2_final_models) > 1:
-            stage2_final_models = _sort_models_by_timestamp(stage2_final_models)
+        print(f"🎯 Found latest training run: {latest_run.run_id}")
 
-        print(f"📋 Selected final Stage 2 model: {stage2_final_models[0].name}")
-        return stage2_final_models[0]
+        # Get the Stage 2 final model (complete model for upload)
+        stage2_final_model = latest_run.stage2_final_model_path
 
-    # Priority 2: Look for any stage2 models (including intermediate)
-    stage2_models = [d for d in model_dirs if 'stage2' in d.name]
+        print(f"📋 Selected Stage 2 final model: {stage2_final_model}")
+        return stage2_final_model
 
-    if stage2_models:
-        # Prefer non-merged models over merged models
-        non_merged_stage2 = [d for d in stage2_models if 'merged' not in d.name]
-        if non_merged_stage2:
-            # Sort by timestamp and use most recent
-            if len(non_merged_stage2) > 1:
-                non_merged_stage2 = _sort_models_by_timestamp(non_merged_stage2)
-
-            print(f"📋 Selected Stage 2 model (non-merged): {non_merged_stage2[0].name}")
-            return non_merged_stage2[0]
-
-    # Priority 3: Fallback to most recent by timestamp (alphabetical sort as backup)
-    sorted_models = sorted(model_dirs, key=lambda d: d.name, reverse=True)
-    print(f"📋 Selected most recent model (fallback): {sorted_models[0].name}")
-    return sorted_models[0]
+    except FileNotFoundError as e:
+        raise RuntimeError(f"No completed training runs found. {e}")
+    except Exception as e:
+        raise RuntimeError(f"Failed to find latest model using structured discovery: {e}")
 
 
 def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> int:
@@ -1206,19 +1159,13 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> in
         skip_upload = getattr(args, 'skip_model_upload', False)
         uploader = ModelUploader(skip_upload=skip_upload)
 
-        # First check if model_artifacts_path contains fine-tuned model directories
-        # Look for webauthn-security-sequential_* pattern (created by MLX fine-tuning)
-        sequential_model_dirs = list(model_artifacts_path.glob("webauthn-security-sequential_*"))
-
-        if sequential_model_dirs:
-            # Prioritize final models over intermediate models
-            final_model = _select_final_model(sequential_model_dirs)
-            print(f"🎯 Found fine-tuned model directory: {final_model}")
-            actual_model_path = final_model
-        else:
-            # Fallback: treat model_artifacts_path as the actual model directory
-            print(f"📂 Using direct model path: {model_artifacts_path}")
-            actual_model_path = model_artifacts_path
+        # Use structured TrainingRunManager to find the latest model
+        try:
+            actual_model_path = _get_latest_structured_model()
+            print(f"🎯 Found structured model directory: {actual_model_path}")
+        except RuntimeError as e:
+            raise RuntimeError(f"Failed to find trained model using structured discovery: {e}. "
+                             "Legacy discovery has been removed - ensure training creates structured output.")
 
         if not actual_model_path.exists():
             print(f"⚠️  Model path not found: {actual_model_path}")
@@ -1240,12 +1187,6 @@ def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> in
                 # Generate a new timestamp
                 timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
                 model_name = f"webauthn-security-model_{timestamp}"
-
-            # 🔍 DEBUG: Check values before method call
-            print(f"🔍 DEBUG: actual_model_path type: {type(actual_model_path)}")
-            print(f"🔍 DEBUG: actual_model_path value: {repr(actual_model_path)}")
-            print(f"🔍 DEBUG: model_name type: {type(model_name)}")
-            print(f"🔍 DEBUG: model_name value: {repr(model_name)}")
 
             # Upload using ModelUploader
             hub_url = uploader.upload_to_huggingface(
@@ -1786,7 +1727,14 @@ def execute_single_phase(phase: str, args):
         return 0, {"phase": phase, "model_path": str(model_path) if model_path else 'none', "training_summary": training_summary}
 
     elif phase == Phases.UPLOAD:
-        model_dir = args.model_dir
+        # Use structured discovery to find latest trained model
+        try:
+            model_dir = _get_latest_structured_model()
+            print(f"🎯 Using structured discovery for upload: {model_dir}")
+        except RuntimeError as e:
+            print(f"❌ Structured model discovery failed: {e}")
+            return 1, {"phase": phase, "error": str(e)}
+
         # Create dummy summary for compatibility
         summary = {"phase": "upload", "single_phase_execution": True}
         try:
@@ -1876,8 +1824,6 @@ def main():
                             help="Training dataset file (for training)")
     input_group.add_argument("--validation-input", type=Path,
                             help="Validation dataset file (for training)")
-    input_group.add_argument("--model-dir", type=Path,
-                            help="Model directory (for upload)")
     input_group.add_argument("--dataset-files", type=str,
                             help="Comma-separated dataset files (for upload)")
 

@@ -22,6 +22,7 @@ from datetime import datetime
 
 from sequential_fine_tuner import SequentialFineTuner, create_and_train_sequential_models
 from sequential_dataset_creator import SequentialDatasetCreator
+from training_run_manager import TrainingRunManager, TrainingRun
 
 logger = logging.getLogger(__name__)
 
@@ -62,31 +63,36 @@ def run_sequential_fine_tuning_phase(
         
         print(f"📊 Processing {len(vulnerabilities)} vulnerabilities for sequential training")
         
-        # Create output directory for this run
+        # Create structured training run using configuration
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        # Use provided base_output_dir or fall back to default
-        if base_output_dir:
-            output_dir = base_output_dir / f"webauthn-security-sequential_{timestamp}"
-            print(f"🔧 Using provided base directory: {base_output_dir}")
-        else:
-            output_dir = Path("data/sequential_fine_tuning") / f"run_{timestamp}"
-            print(f"📁 Using default base directory: data/sequential_fine_tuning")
+        # Get configuration for training run management
+        from config_manager import OLMoSecurityConfig
+        config = OLMoSecurityConfig()
 
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
+        # Create training run manager using configuration
+        training_run_manager = TrainingRunManager(config)
+        print(f"🔧 Using configured training runs directory: {training_run_manager.training_runs_dir}")
+
+        # Note: base_output_dir parameter is ignored in favor of configuration-driven paths
+        if base_output_dir:
+            print(f"ℹ️  Note: --model-dir parameter ignored, using configured path: {training_run_manager.training_runs_dir}")
+
+        run_id = timestamp
         model_name_prefix = f"webauthn-security-sequential_{timestamp}"
-        
-        print(f"📁 Output directory: {output_dir}")
+
+        # Create new structured training run
+        training_run = training_run_manager.create_run(run_id)
+        print(f"🏗️ Created structured training run: {training_run.run_id}")
+        print(f"📁 Training run directory: {training_run.run_dir}")
         print(f"🏷️  Model prefix: {model_name_prefix}")
-        
-        # Run complete sequential fine-tuning pipeline
-        print("🔄 Starting complete sequential fine-tuning pipeline...")
+
+        # All paths will be provided by the training run - no separate output_dir needed
+        print("🔄 Starting complete sequential fine-tuning pipeline with structured output...")
         sequential_result = create_and_train_sequential_models(
             vulnerabilities=vulnerabilities,
-            output_dir=output_dir,
-            model_name_prefix=model_name_prefix,
-            base_output_dir=base_output_dir
+            training_run=training_run,
+            model_name_prefix=model_name_prefix
         )
         
         if sequential_result.success:
@@ -106,7 +112,7 @@ def run_sequential_fine_tuning_phase(
                 'stage2_training_time': sequential_result.stage2_training_time,
                 'total_training_time': sequential_result.total_training_time,
                 'vulnerabilities_processed': len(vulnerabilities),
-                'output_directory': str(output_dir),
+                'output_directory': str(training_run.run_dir),
                 'model_name_prefix': model_name_prefix,
                 'metadata': sequential_result.metadata
             }

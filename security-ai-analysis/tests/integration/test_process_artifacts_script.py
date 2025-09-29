@@ -644,172 +644,56 @@ class TestProcessArtifactsScript:
         assert 'vulnerability' in sample_rag, "RAG enhanced should preserve vulnerability data"
         assert 'analysis' in sample_rag, "RAG enhanced should preserve analysis data"
 
-    def test_upload_phase_with_isolated_directory(self, tmp_path):
-        """Test upload phase with isolated test directory to prevent production pollution"""
-        # Create isolated test model directory structure
-        isolated_models_dir = tmp_path / "test_models"
-        isolated_models_dir.mkdir(parents=True)
-
-        # Create a mock fine-tuned model directory with timestamp pattern
-        model_timestamp = "20250926_120000"
-        test_model_dir = isolated_models_dir / f"webauthn-security-sequential_{model_timestamp}"
-        test_model_dir.mkdir(parents=True)
-
-        # Create mock model files (adapters directory structure)
-        adapters_dir = test_model_dir / "adapters"
-        adapters_dir.mkdir(parents=True)
-
-        # Create realistic mock adapter files that pass validation
-        self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
-        (adapters_dir / "adapter_config.json").write_text(json.dumps({
-            "base_model_name_or_path": "allenai/OLMo-2-1B",
-            "task_type": "CAUSAL_LM",
-            "lora_alpha": 32,
-            "lora_dropout": 0.1,
-            "r": 16
-        }))
+    def test_upload_phase_with_isolated_directory(self, completed_training_run):
+        """Test upload phase with isolated test directory using structured training runs"""
+        # Use the completed training run fixture which creates proper structured training run
+        training_run = completed_training_run
 
         # Create mock dataset files for the upload phase requirement
         fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
         dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
 
-        # Test 1: Run without skip to test path resolution (uploads blocked by test environment detection)
+        # Test 1: Run without skip to test structured discovery (uploads blocked by test environment detection)
+        # Note: No --model-dir needed since upload phase uses structured discovery
         result = self.run_process_artifacts([
             "--only-upload",
-            "--model-dir", str(isolated_models_dir),  # Point to base directory
             "--dataset-files", dataset_files  # Required for upload phase
-            # Note: NO --skip-model-upload to test path resolution
-        ])
+            # Note: NO --skip-model-upload to test path resolution with structured discovery
+        ], realtime_output=True)
 
-        assert result.returncode == 0, f"Upload phase failed with return code {result.returncode}"
+        # Fix the assertion - result is an integer, not an object with .returncode
+        assert result == 0, f"Upload phase failed with return code {result}"
+
+        # Verify the structured training run was properly created
+        assert training_run.run_dir.exists(), "Training run directory should exist"
+        assert training_run.manifest_path.exists(), "Manifest file should exist"
+
+        # Verify stage 2 final model exists (what upload phase should discover)
+        stage2_final_model_path = training_run.stage2_final_model_path
+        assert stage2_final_model_path.exists(), "Stage 2 final model should exist"
+        assert (stage2_final_model_path / "model.safetensors").exists(), "Model file should exist"
+        assert (stage2_final_model_path / "config.json").exists(), "Config file should exist"
 
         # Verify upload processing occurred (behavioral check)
-        # PEFT conversion should have created a converted directory
-        expected_peft_dir = test_model_dir.parent / f"{test_model_dir.name}_peft_converted"
-        assert expected_peft_dir.exists(), "PEFT conversion should create converted directory"
-
-        # Verify test environment upload blocking (behavioral check)
-        # Upload should succeed but no actual upload should occur (blocked by test environment)
-        # PEFT conversion proves the upload pipeline ran but was blocked appropriately
+        # Since we created a fused model (complete model files), no PEFT conversion should occur
+        # The upload should process the model directly without conversion
+        # This is indicated by "Processing fused model - using original format" in logs
 
         # Test 2: Test skip behavior separately
         result_skip = self.run_process_artifacts([
             "--only-upload",
-            "--model-dir", str(isolated_models_dir),
             "--dataset-files", dataset_files,
             "--skip-model-upload"  # Test skip behavior
-        ])
-
-        assert result_skip.returncode == 0, f"Skip upload failed with return code {result_skip.returncode}"
-
-        # Verify skip behavior (behavioral check) - no additional PEFT conversion should occur
-        # Since we're using the same model directory, no new PEFT directories should be created
-        peft_dirs_after_skip = list(isolated_models_dir.glob("**/*_peft_converted"))
-        assert len(peft_dirs_after_skip) == 1, "Skip upload should not create additional PEFT conversions"
-
-        print(f"✅ Upload phase correctly discovered model in isolated directory")
-
-    def test_upload_phase_path_resolution_multiple_models(self, tmp_path):
-        """Test that upload phase selects the most recent model when multiple exist"""
-        # Create isolated test directory with multiple model versions
-        isolated_models_dir = tmp_path / "test_models"
-        isolated_models_dir.mkdir(parents=True)
-
-        # Create multiple model directories with different timestamps
-        old_model = isolated_models_dir / "webauthn-security-sequential_20250925_100000"
-        new_model = isolated_models_dir / "webauthn-security-sequential_20250926_120000"
-        newest_model = isolated_models_dir / "webauthn-security-sequential_20250926_150000"
-
-        for model_dir in [old_model, new_model, newest_model]:
-            model_dir.mkdir(parents=True)
-            adapters_dir = model_dir / "adapters"
-            adapters_dir.mkdir(parents=True)
-            # Create realistic mock adapter files that pass validation
-            self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
-            (adapters_dir / "adapter_config.json").write_text(json.dumps({
-                "base_model_name_or_path": "allenai/OLMo-2-1B",
-                "task_type": "CAUSAL_LM",
-                "lora_alpha": 32,
-                "lora_dropout": 0.1,
-                "r": 16
-            }))
-
-        # Create mock dataset files for the upload phase requirement
-        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
-        dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
-
-        # Run upload phase to test path resolution (uploads blocked by test environment detection)
-        result = self.run_process_artifacts([
-            "--only-upload",
-            "--model-dir", str(isolated_models_dir),
-            "--dataset-files", dataset_files  # Required for upload phase
-            # Note: NO --skip-model-upload to test path resolution
         ], realtime_output=True)
 
-        assert result == 0, f"Upload phase failed with return code: {result}"
+        assert result_skip == 0, f"Skip upload failed with return code {result_skip}"
 
-        # Verify it selected the newest model (behavioral check)
-        # PEFT conversion should occur only for the newest model
-        newest_peft_dir = newest_model.parent / f"{newest_model.name}_peft_converted"
-        assert newest_peft_dir.exists(), "PEFT conversion should occur for newest model"
+        # Verify skip behavior (behavioral check) - no PEFT conversion directories should exist
+        # since we're using complete fused models, not LoRA adapters requiring conversion
+        peft_dirs_after_skip = list(training_run.run_dir.glob("**/*_peft_converted"))
+        assert len(peft_dirs_after_skip) == 0, "Skip upload with fused model should not create PEFT conversions"
 
-        # Verify older models were not processed
-        old_peft_dir = old_model.parent / f"{old_model.name}_peft_converted"
-        new_peft_dir = new_model.parent / f"{new_model.name}_peft_converted"
-        assert not old_peft_dir.exists(), "Old model should not be processed"
-        assert not new_peft_dir.exists(), "Middle model should not be processed"
-
-        # Note: Can't check stdout with realtime_output=True, but we can see from console output
-        # that test environment detection should work with the boolean fix
-
-        print(f"✅ Upload phase correctly selected newest model from multiple options")
-
-    # Removed test_upload_phase_with_mocked_huggingface - consolidated with test_upload_lora_model_with_adapters
-    # The enhanced LoRA test provides equivalent coverage with better organization
-
-    def test_upload_phase_fallback_behavior(self, tmp_path):
-        """Test upload phase fallback when no webauthn-security-sequential directories found"""
-        # Create isolated directory structure without sequential model pattern
-        isolated_models_dir = tmp_path / "test_models"
-        isolated_models_dir.mkdir(parents=True)
-
-        # Create realistic LoRA model files directly in the base directory (no sequential subdirectory)
-        # Use proper LoRA structure: adapters/ subdirectory
-        adapters_dir = isolated_models_dir / "adapters"
-        adapters_dir.mkdir(parents=True)
-        self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
-        (adapters_dir / "adapter_config.json").write_text(json.dumps({
-            "base_model_name_or_path": "allenai/OLMo-2-1B",
-            "task_type": "CAUSAL_LM",
-            "lora_alpha": 32,
-            "lora_dropout": 0.1,
-            "r": 16
-        }))
-
-        # Create mock dataset files for the upload phase requirement
-        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
-        dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
-
-        # Run upload phase to test fallback behavior (uploads blocked by test environment detection)
-        result = self.run_process_artifacts([
-            "--only-upload",
-            "--model-dir", str(isolated_models_dir),
-            "--dataset-files", dataset_files  # Required for upload phase
-            # Note: NO --skip-model-upload to test fallback behavior
-        ])
-
-        assert result.returncode == 0, f"Upload phase failed with return code {result.returncode}"
-
-        # Verify fallback behavior worked (behavioral check)
-        # PEFT conversion should have occurred using the direct path
-        expected_peft_dir = isolated_models_dir.parent / f"{isolated_models_dir.name}_peft_converted"
-        assert expected_peft_dir.exists(), "PEFT conversion should occur for direct model path"
-
-        # Verify test environment upload blocking (behavioral check)
-        # Upload should succeed but no actual upload should occur (blocked by test environment)
-        # PEFT conversion proves the fallback behavior worked correctly
-
-        print(f"✅ Upload phase correctly handled fallback behavior")
+        print(f"✅ Upload phase correctly discovered structured training run: {training_run.run_id}")
 
     def test_model_validation_module_exists(self):
         """Test that validation module can be imported and used - should fail initially"""
@@ -822,93 +706,7 @@ class TestProcessArtifactsScript:
             # This is expected to fail initially - we'll fix it by creating the module
             pytest.fail("validate_model_artifacts module is missing - this test documents the issue")
 
-    def test_upload_lora_model_with_adapters(self, tmp_path):
-        """Test comprehensive LoRA model upload with adapter structure and validation"""
-        # Create isolated test model directory structure with LoRA adapters
-        isolated_models_dir = tmp_path / "test_models"
-        model_timestamp = "20250926_120000"
-        test_model_dir = isolated_models_dir / f"webauthn-security-sequential_{model_timestamp}"
-        adapters_dir = test_model_dir / "adapters"
-        adapters_dir.mkdir(parents=True)
-
-        # Create realistic LoRA adapter files that pass validation
-        self.create_mock_safetensors_file(adapters_dir / "adapters.safetensors")
-        (adapters_dir / "adapter_config.json").write_text(json.dumps({
-            "base_model_name_or_path": "allenai/OLMo-2-1B",
-            "task_type": "CAUSAL_LM",
-            "lora_alpha": 32,
-            "lora_dropout": 0.1,
-            "r": 16
-        }))
-
-        # Create mock dataset files for the upload phase requirement
-        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
-        dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
-
-        # Run upload phase (uploads blocked by test environment detection)
-        result = self.run_process_artifacts([
-            "--only-upload",
-            "--model-dir", str(isolated_models_dir),
-            "--dataset-files", dataset_files
-        ])
-
-        assert result.returncode == 0, f"Upload phase failed with return code {result.returncode}"
-
-        # Verify LoRA model processing occurred (behavioral check)
-        # PEFT conversion should have occurred for LoRA structure
-        expected_peft_dir = test_model_dir.parent / f"{test_model_dir.name}_peft_converted"
-        assert expected_peft_dir.exists(), "PEFT conversion should occur for LoRA model"
-
-        # Verify test environment upload blocking (behavioral check)
-        # Upload should succeed but no actual upload should occur (blocked by test environment)
-        # PEFT conversion proves the LoRA model was processed correctly
-
-        print(f"✅ LoRA model upload test completed with comprehensive validation")
-
-    def test_upload_fused_model_without_adapters(self, tmp_path):
-        """Test upload of fused model with merged weights (no adapters directory)"""
-        # Create isolated test model directory structure with fused model
-        isolated_models_dir = tmp_path / "test_models"
-        model_timestamp = "20250926_120000"
-        test_model_dir = isolated_models_dir / f"webauthn-security-sequential_{model_timestamp}"
-        test_model_dir.mkdir(parents=True)
-
-        # Create fused model files (no adapters subdirectory)
-        self.create_mock_safetensors_file(test_model_dir / "model.safetensors")
-        (test_model_dir / "config.json").write_text(json.dumps({
-            "architectures": ["OLMoForCausalLM"],
-            "model_type": "olmo",
-            "torch_dtype": "float32"
-        }))
-        (test_model_dir / "tokenizer.json").write_text('{"version": "1.0"}')
-
-        # Create mock dataset files for the upload phase requirement
-        fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
-        dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
-
-        # Run upload phase (uploads blocked by test environment detection)
-        result = self.run_process_artifacts([
-            "--only-upload",
-            "--model-dir", str(isolated_models_dir),
-            "--dataset-files", dataset_files
-        ])
-
-        assert result.returncode == 0, f"Upload phase failed with return code {result.returncode}"
-
-        # Verify fused model processing completed (behavioral check)
-        # For fused models, the original model should be validated directly (no PEFT conversion)
-        assert (test_model_dir / "model.safetensors").exists(), \
-            "Original fused model files should be preserved"
-        assert (test_model_dir / "config.json").exists(), \
-            "Fused model config should be preserved"
-
-        # Verify test environment upload blocking (behavioral check)
-        # Upload should succeed but no actual upload should occur (blocked by test environment)
-        # File preservation proves the fused model was processed correctly
-
-        print(f"✅ Fused model upload test completed (no adapter structure)")
-
-    def test_upload_invalid_model_structure_should_fail(self, tmp_path):
+    def test_upload_invalid_model_structure_should_fail(self, tmp_path, monkeypatch):
         """Test that invalid model structure should fail fast with clear error"""
         # Create isolated test model directory with invalid structure
         isolated_models_dir = tmp_path / "test_models"
@@ -920,14 +718,17 @@ class TestProcessArtifactsScript:
         (test_model_dir / "random_file.txt").write_text("not a model file")
         (test_model_dir / "irrelevant.json").write_text('{"not": "a model config"}')
 
+        # Override config to use isolated test models directory for this test only
+        monkeypatch.setenv("OLMO_FINE_TUNED_MODELS_DIR", str(isolated_models_dir))
+
         # Create mock dataset files for the upload phase requirement
         fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
         dataset_files = f"{fixtures_dir / 'train_dataset_fixture.jsonl'},{fixtures_dir / 'validation_dataset_fixture.jsonl'}"
 
         # Run upload phase - this should fail fast with invalid model structure
+        # Now uses config-driven discovery instead of --model-dir
         result = self.run_process_artifacts([
             "--only-upload",
-            "--model-dir", str(isolated_models_dir),
             "--dataset-files", dataset_files
         ])
 
@@ -943,19 +744,21 @@ class TestProcessArtifactsScript:
 
         print(f"✅ Invalid model structure correctly failed fast as expected")
 
-    def test_training_phase_creates_complete_model_files(self, tmp_path):
+    def test_training_phase_creates_complete_model_files(self, tmp_path, monkeypatch):
         """Test that training phase creates complete LoRA model structure with actual weights"""
         # Create isolated test directory for training output
         isolated_models_dir = tmp_path / "test_training_models"
         isolated_models_dir.mkdir(parents=True)
 
+        # Override config to use isolated test models directory for this test only
+        monkeypatch.setenv("OLMO_FINE_TUNED_MODELS_DIR", str(isolated_models_dir))
+
         # Create minimal input files required for training phase
         fixtures_dir = Path(__file__).parent.parent / "fixtures" / "phase_inputs"
 
-        # Run training phase only in isolated directory with real-time output (using medium-sized fixtures for faster execution)
+        # Run training phase only with config-driven output location (using medium-sized fixtures for faster execution)
         return_code = self.run_process_artifacts([
                 "--only-training",
-                "--model-dir", str(isolated_models_dir),
                 "--narrativized-input", str(fixtures_dir / "narrativized_fixture_medium.json"),
                 "--train-input", str(fixtures_dir / "train_dataset_fixture_medium.jsonl"),
                 "--validation-input", str(fixtures_dir / "validation_dataset_fixture_medium.jsonl")
@@ -981,123 +784,68 @@ class TestProcessArtifactsScript:
         else:
             print(f"❌ Model directory doesn't exist: {isolated_models_dir}")
 
-        # Find the created model directory (should have timestamp pattern)
-        model_dirs = list(isolated_models_dir.glob("webauthn-security-sequential_*"))
-        assert len(model_dirs) > 0, f"No model directory created in {isolated_models_dir}. " \
-            f"This exposes the training phase bug - models are not saved to --model-dir location!"
+        # Find the created model directory in structured training-runs layout
+        training_runs_dir = isolated_models_dir / "training-runs"
+        assert training_runs_dir.exists(), f"Training runs directory not created: {training_runs_dir}"
 
-        # Prefer LoRA models (those with adapters directory) over fused models
-        lora_models = [d for d in model_dirs if (d / "adapters").exists()]
-        if lora_models:
-            model_dir = sorted(lora_models)[-1]  # Use newest LoRA model
-            print(f"🎯 Selected LoRA model: {model_dir}")
-        else:
-            model_dir = sorted(model_dirs)[-1]   # Fallback to any model
-            print(f"⚠️ No LoRA models found, using: {model_dir}")
-        adapters_dir = model_dir / "adapters"
+        model_dirs = list(training_runs_dir.glob("webauthn-security-*"))
+        assert len(model_dirs) > 0, f"No structured training runs created in {training_runs_dir}. " \
+            f"This indicates the structured training runs are not being created!"
 
-        print(f"🔍 Checking model completeness in: {model_dir}")
+        # Use the newest training run (structured layout)
+        model_dir = sorted(model_dirs)[-1]
+        print(f"🎯 Using structured training run: {model_dir}")
 
-        # Assert complete LoRA model structure exists
-        assert adapters_dir.exists(), f"Adapters directory missing: {adapters_dir}"
+        print(f"🔍 Checking structured model completeness in: {model_dir}")
 
-        adapter_config_file = adapters_dir / "adapter_config.json"
-        adapters_weights_file = adapters_dir / "adapters.safetensors"
+        # Validate Stage 1 adapters (vulnerability analysis specialist)
+        stage1_adapters = model_dir / "stage1" / "adapters"
+        assert stage1_adapters.exists(), f"Stage 1 adapters directory missing: {stage1_adapters}"
 
-        # Check adapter config file
-        assert adapter_config_file.exists(), f"Missing adapter config: {adapter_config_file}"
-        assert adapter_config_file.stat().st_size > 0, "Adapter config file is empty"
+        stage1_config = stage1_adapters / "adapter_config.json"
+        stage1_weights = stage1_adapters / "adapters.safetensors"
 
-        # Check adapter weights file - THIS WILL CURRENTLY FAIL
-        assert adapters_weights_file.exists(), f"Missing adapter weights: {adapters_weights_file}"
-        assert adapters_weights_file.stat().st_size > 1000, f"Adapter weights file too small: {adapters_weights_file.stat().st_size} bytes"
+        assert stage1_config.exists(), f"Missing Stage 1 adapter config: {stage1_config}"
+        assert stage1_config.stat().st_size > 0, "Stage 1 adapter config file is empty"
+        assert stage1_weights.exists(), f"Missing Stage 1 adapter weights: {stage1_weights}"
+        assert stage1_weights.stat().st_size > 1000, f"Stage 1 weights file too small: {stage1_weights.stat().st_size} bytes"
 
-        # Verify the config is valid JSON
-        with open(adapter_config_file, 'r') as f:
+        # Validate Stage 2 adapters (code fix generation specialist)
+        stage2_adapters = model_dir / "stage2" / "adapters"
+        assert stage2_adapters.exists(), f"Stage 2 adapters directory missing: {stage2_adapters}"
+
+        stage2_config = stage2_adapters / "adapter_config.json"
+        stage2_weights = stage2_adapters / "adapters.safetensors"
+
+        assert stage2_config.exists(), f"Missing Stage 2 adapter config: {stage2_config}"
+        assert stage2_config.stat().st_size > 0, "Stage 2 adapter config file is empty"
+        assert stage2_weights.exists(), f"Missing Stage 2 adapter weights: {stage2_weights}"
+        assert stage2_weights.stat().st_size > 1000, f"Stage 2 weights file too small: {stage2_weights.stat().st_size} bytes"
+
+        # Validate Stage 2 final model (complete fused model)
+        stage2_final = model_dir / "stage2" / "final-model"
+        assert stage2_final.exists(), f"Stage 2 final model directory missing: {stage2_final}"
+
+        final_config = stage2_final / "config.json"
+        final_weights = stage2_final / "model.safetensors"
+
+        assert final_config.exists(), f"Missing Stage 2 final model config: {final_config}"
+        assert final_config.stat().st_size > 0, "Stage 2 final model config file is empty"
+        assert final_weights.exists(), f"Missing Stage 2 final model weights: {final_weights}"
+        assert final_weights.stat().st_size > 1000, f"Stage 2 final model weights file too small: {final_weights.stat().st_size} bytes"
+
+        # Verify config is valid JSON (check Stage 1 as representative)
+        with open(stage1_config, 'r') as f:
             import json
             config = json.load(f)
-            # Check for MLX adapter config fields (more flexible than PEFT task_type)
-            mlx_fields = ['adapter_path', 'batch_size', 'data']
-            assert any(field in config for field in mlx_fields), f"Adapter config missing MLX fields, got: {list(config.keys())}"
+            # MLX adapter configs should have basic structure
+            required_fields = ['model', 'data']  # Basic MLX LoRA config fields
+            assert any(field in config for field in required_fields), f"Stage 1 adapter config missing required fields, got: {list(config.keys())}"
 
-        print(f"✅ Training phase created complete model with {adapters_weights_file.stat().st_size} byte weights file")
-
-    def test_model_selection_prioritizes_final_over_intermediate(self, tmp_path):
-        """Test that model selection chooses final Stage 2 models over intermediate merged models"""
-
-        # Import the function to test
-        import sys
-        sys.path.append(str(Path(__file__).parent.parent.parent))
-        from process_artifacts import _select_final_model
-
-        # Create test model directories that simulate the production scenario
-        models_dir = tmp_path / "models"
-        models_dir.mkdir()
-
-        # Create the exact directory structure from production log
-        stage1_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage1_analysis"
-        stage2_final_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage2_codefix"
-        stage2_intermediate_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage2_codefix_stage1_merged_stage1_merged"
-
-        # Create all directories
-        stage1_dir.mkdir()
-        stage2_final_dir.mkdir()
-        stage2_intermediate_dir.mkdir()
-
-        # Add some files to make them realistic
-        for dir_path in [stage1_dir, stage2_final_dir, stage2_intermediate_dir]:
-            (dir_path / "config.json").write_text('{"model_type": "OLMoForCausalLM"}')
-            self.create_mock_safetensors_file(dir_path / "model.safetensors")
-
-        model_dirs = [stage1_dir, stage2_final_dir, stage2_intermediate_dir]
-
-        # Test the selection logic
-        selected_model = _select_final_model(model_dirs)
-
-        # Should select the final Stage 2 model, not the intermediate one
-        assert selected_model == stage2_final_dir, \
-            f"Expected {stage2_final_dir.name}, got {selected_model.name}"
-
-        print(f"✅ Model selection correctly chose final model: {selected_model.name}")
-
-    def test_model_selection_with_only_intermediate_models(self, tmp_path):
-        """Test model selection when only intermediate models exist"""
-
-        # Import the function to test
-        import sys
-        sys.path.append(str(Path(__file__).parent.parent.parent))
-        from process_artifacts import _select_final_model
-
-        # Create test model directories with only intermediate models
-        models_dir = tmp_path / "models"
-        models_dir.mkdir()
-
-        # Create intermediate model directories
-        intermediate1_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage1_merged"
-        intermediate2_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage2_codefix_stage1_merged"
-        stage1_dir = models_dir / "webauthn-security-sequential_20250926_155405_stage1_analysis"
-
-        # Create all directories
-        intermediate1_dir.mkdir()
-        intermediate2_dir.mkdir()
-        stage1_dir.mkdir()
-
-        # Add some files to make them realistic
-        for dir_path in [intermediate1_dir, intermediate2_dir, stage1_dir]:
-            (dir_path / "config.json").write_text('{"model_type": "OLMoForCausalLM"}')
-            self.create_mock_safetensors_file(dir_path / "model.safetensors")
-
-        model_dirs = [intermediate1_dir, intermediate2_dir, stage1_dir]
-
-        # Test the selection logic
-        selected_model = _select_final_model(model_dirs)
-
-        # Should select stage2 non-merged model over stage1
-        assert selected_model == intermediate2_dir, \
-            f"Expected {intermediate2_dir.name}, got {selected_model.name}"
-
-        print(f"✅ Model selection correctly chose best available: {selected_model.name}")
-
+        print(f"✅ Sequential training completed successfully:")
+        print(f"   Stage 1 adapters: {stage1_weights.stat().st_size} bytes")
+        print(f"   Stage 2 adapters: {stage2_weights.stat().st_size} bytes")
+        print(f"   Stage 2 final model: {final_weights.stat().st_size} bytes")
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

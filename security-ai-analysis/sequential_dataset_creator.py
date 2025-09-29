@@ -613,6 +613,75 @@ Provide:
             'metadata': metadata_file
         }
 
+    def save_sequential_datasets_to_structured_paths(self, result: SequentialDatasetResult,
+                                                   stage1_data_dir: Path,
+                                                   stage2_data_dir: Path) -> Dict[str, Path]:
+        """
+        Save sequential datasets directly to structured training run directories.
+
+        This method writes datasets directly to the correct structured locations,
+        eliminating the need for copying from temporary directories.
+
+        Args:
+            result: SequentialDatasetResult to save
+            stage1_data_dir: Directory for Stage 1 training data
+            stage2_data_dir: Directory for Stage 2 training data
+
+        Returns:
+            Dictionary mapping stage names to saved file paths
+        """
+        # Ensure directories exist
+        stage1_data_dir.mkdir(parents=True, exist_ok=True)
+        stage2_data_dir.mkdir(parents=True, exist_ok=True)
+
+        dataset_name = result.metadata.get('dataset_name', 'sequential_training')
+
+        # Save Stage 1 dataset using manifest-defined filename
+        stage1_file = stage1_data_dir / "analysis-dataset.jsonl"
+        stage1_data = [
+            {
+                "instruction": example.instruction,
+                "response": example.response,
+                "metadata": example.metadata
+            }
+            for example in result.stage1_examples
+        ]
+
+        with open(stage1_file, 'w') as f:
+            for item in stage1_data:
+                f.write(json.dumps(item) + '\n')
+
+        # Save Stage 2 dataset using manifest-defined filename
+        stage2_file = stage2_data_dir / "codefix-dataset.jsonl"
+        stage2_data = [
+            {
+                "instruction": example.instruction,
+                "response": example.response,
+                "metadata": example.metadata
+            }
+            for example in result.stage2_examples
+        ]
+
+        with open(stage2_file, 'w') as f:
+            for item in stage2_data:
+                f.write(json.dumps(item) + '\n')
+
+        # Save metadata to Stage 1 directory (primary metadata location)
+        metadata_file = stage1_data_dir / f"{dataset_name}_metadata.json"
+        with open(metadata_file, 'w') as f:
+            json.dump(result.metadata, f, indent=2)
+
+        self.logger.info(f"✅ Sequential datasets saved to structured paths:")
+        self.logger.info(f"   Stage 1: {stage1_file}")
+        self.logger.info(f"   Stage 2: {stage2_file}")
+        self.logger.info(f"   Metadata: {metadata_file}")
+
+        return {
+            'stage1': stage1_file,
+            'stage2': stage2_file,
+            'metadata': metadata_file
+        }
+
 
 def create_sequential_datasets_from_vulnerabilities(vulnerabilities: List[Dict[str, Any]], 
                                                    output_dir: Path,

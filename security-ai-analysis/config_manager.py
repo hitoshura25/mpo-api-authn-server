@@ -235,8 +235,12 @@ class OLMoSecurityConfig:
         """Get fine-tuning workspace directory."""
         return self.fine_tuning.workspace_dir
 
+    def get_training_runs_dir(self) -> Path:
+        """Get structured training runs directory."""
+        return self.fine_tuned_models_dir / "training-runs"
+
     def get_output_model_path(self, custom_name: Optional[str] = None) -> Path:
-        """Get path where fine-tuned model will be saved."""
+        """Get path where fine-tuned model will be saved (legacy single-model format)."""
         model_name = custom_name or self.fine_tuning.default_output_name
         return self.fine_tuned_models_dir / model_name
 

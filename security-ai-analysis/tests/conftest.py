@@ -22,6 +22,7 @@ def setup_test_environment():
     test_env_vars = {
         'OLMO_WORKSPACE_DIR': str(session_temp_dir / "test_workspace"),
         'OLMO_KNOWLEDGE_BASE_DIR': str(session_temp_dir / "test_kb"),
+        'OLMO_FINE_TUNED_MODELS_DIR': str(session_temp_dir / "test_models"),
         'OLMO_MAX_EPOCHS': '1',
         'OLMO_SAVE_STEPS': '3',
         'OLMO_EVAL_STEPS': '2',
@@ -142,3 +143,207 @@ def pytest_configure(config):
     # Set default timeout for slow tests
     if not config.getoption("--timeout"):
         config.option.timeout = 300  # 5 minutes default timeout
+
+
+@pytest.fixture
+def mock_training_run_manager():
+    """Create TrainingRunManager that uses isolated test directory instead of production paths"""
+    import sys
+    from pathlib import Path
+
+    # Add parent directory to path for imports
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+
+    from config_manager import OLMoSecurityConfig
+    from training_run_manager import TrainingRunManager
+
+    # Create config that will use test environment variables
+    config = OLMoSecurityConfig()
+
+    # Create training run manager with test-isolated paths
+    training_run_manager = TrainingRunManager(config)
+
+    # Ensure training runs directory exists in test environment
+    training_run_manager.training_runs_dir.mkdir(parents=True, exist_ok=True)
+
+    return training_run_manager
+
+
+@pytest.fixture
+def create_mock_model_files():
+    """Helper function to create realistic model files for testing"""
+    import json
+    import struct
+
+    def create_files(directory: Path):
+        """Create realistic model files in the given directory"""
+        directory.mkdir(parents=True, exist_ok=True)
+
+        # Create config.json
+        model_config = {
+            "model_type": "OLMoForCausalLM",
+            "vocab_size": 50304,
+            "hidden_size": 2048,
+            "intermediate_size": 5504,
+            "num_hidden_layers": 16,
+            "num_attention_heads": 16,
+            "max_position_embeddings": 2048,
+            "architectures": ["OLMoForCausalLM"]
+        }
+        (directory / "config.json").write_text(json.dumps(model_config, indent=2))
+
+        # Create tokenizer.json
+        tokenizer_config = {
+            "version": "1.0",
+            "tokenizer": {
+                "type": "ByteLevelBPETokenizer",
+                "vocab_size": 50304
+            },
+            "decoder": {
+                "type": "ByteLevelDecoder"
+            }
+        }
+        (directory / "tokenizer.json").write_text(json.dumps(tokenizer_config, indent=2))
+
+        # Create mock safetensors file (minimal but valid)
+        tensors_metadata = {
+            "lm_head.weight": {
+                "dtype": "F32",
+                "shape": [50304, 2048],
+                "data_offsets": [0, 411041792]
+            }
+        }
+
+        # Create header and minimal tensor data
+        header_json = json.dumps(tensors_metadata).encode('utf-8')
+        header_length = len(header_json)
+
+        # Create some dummy tensor data (smaller than real model but valid format)
+        tensor_data = b'\x00' * 1024  # 1KB of zero data
+
+        # Write safetensors format: 8 bytes length + header + tensor data
+        with open(directory / "model.safetensors", 'wb') as f:
+            f.write(struct.pack('<Q', header_length))
+            f.write(header_json)
+            f.write(tensor_data)
+
+    return create_files
+
+
+@pytest.fixture
+def create_mock_lora_files():
+    """Helper function to create realistic LoRA adapter files for testing"""
+    import json
+    import struct
+
+    def create_files(directory: Path):
+        """Create realistic LoRA adapter files in the given directory"""
+        directory.mkdir(parents=True, exist_ok=True)
+
+        # Create adapter_config.json
+        adapter_config = {
+            "base_model_name_or_path": "allenai/OLMo-2-1B",
+            "peft_type": "LORA",
+            "task_type": "CAUSAL_LM",
+            "r": 16,
+            "lora_alpha": 32,
+            "lora_dropout": 0.1,
+            "target_modules": ["q_proj", "k_proj", "v_proj", "o_proj"],
+            "adapter_name": "default"
+        }
+        (directory / "adapter_config.json").write_text(json.dumps(adapter_config, indent=2))
+
+        # Create mock adapters.safetensors
+        adapter_tensors = {
+            "base_model.model.layers.0.self_attn.q_proj.lora_A.weight": {
+                "dtype": "F32",
+                "shape": [16, 2048],
+                "data_offsets": [0, 131072]
+            },
+            "base_model.model.layers.0.self_attn.q_proj.lora_B.weight": {
+                "dtype": "F32",
+                "shape": [2048, 16],
+                "data_offsets": [131072, 262144]
+            }
+        }
+
+        header_json = json.dumps(adapter_tensors).encode('utf-8')
+        header_length = len(header_json)
+        tensor_data = b'\x00' * 512  # Small amount of adapter data
+
+        with open(directory / "adapters.safetensors", 'wb') as f:
+            f.write(struct.pack('<Q', header_length))
+            f.write(header_json)
+            f.write(tensor_data)
+
+    return create_files
+
+
+@pytest.fixture
+def completed_training_run(mock_training_run_manager, create_mock_model_files, create_mock_lora_files):
+    """Create a completed training run with proper manifest and all required artifacts"""
+    import json
+    from datetime import datetime
+
+    # Create a training run with a test timestamp
+    run_id = "20250929_120000_test"
+    training_run = mock_training_run_manager.create_run(run_id, base_model="OLMo-2-1B-mlx-q4")
+
+    # Create Stage 1 artifacts (LoRA adapters)
+    stage1_adapters_dir = training_run.run_dir / "stage1" / "adapters"
+    create_mock_lora_files(stage1_adapters_dir)
+
+    # Create Stage 1 merged model
+    stage1_merged_dir = training_run.run_dir / "stage1" / "merged-model"
+    create_mock_model_files(stage1_merged_dir)
+
+    # Create Stage 2 artifacts (final complete model)
+    stage2_final_dir = training_run.run_dir / "stage2" / "final-model"
+    create_mock_model_files(stage2_final_dir)
+
+    # Create Stage 2 adapters
+    stage2_adapters_dir = training_run.run_dir / "stage2" / "adapters"
+    create_mock_lora_files(stage2_adapters_dir)
+
+    # Create training data files
+    stage1_data_dir = training_run.run_dir / "stage1" / "training-data"
+    stage1_data_dir.mkdir(parents=True, exist_ok=True)
+    (stage1_data_dir / "analysis-dataset.jsonl").write_text('{"text": "test analysis data"}\n')
+
+    stage2_data_dir = training_run.run_dir / "stage2" / "training-data"
+    stage2_data_dir.mkdir(parents=True, exist_ok=True)
+    (stage2_data_dir / "codefix-dataset.jsonl").write_text('{"text": "test codefix data"}\n')
+    (stage2_data_dir / "mixed-dataset.jsonl").write_text('{"text": "test mixed data"}\n')
+
+    # Update manifest with proper paths (using only valid StageMetadata fields)
+    from training_run_manager import StageMetadata
+
+    stage1_metadata = StageMetadata(
+        adapters_path="./stage1/adapters",
+        merged_model_path="./stage1/merged-model",
+        training_data_path="./stage1/training-data/analysis-dataset.jsonl"
+    )
+
+    stage2_metadata = StageMetadata(
+        adapters_path="./stage2/adapters",
+        final_model_path="./stage2/final-model",
+        training_data_path="./stage2/training-data/codefix-dataset.jsonl",
+        training_data_paths={
+            "codefix_dataset": "./stage2/training-data/codefix-dataset.jsonl",
+            "mixed_dataset": "./stage2/training-data/mixed-dataset.jsonl"
+        }
+    )
+
+    # Update the manifest
+    training_run.manifest.stage1 = stage1_metadata
+    training_run.manifest.stage2 = stage2_metadata
+    training_run.manifest.run_metadata.update({
+        "status": "completed",
+        "total_duration_seconds": 300.0,
+        "training_end": datetime.now().isoformat()
+    })
+
+    # Save the updated manifest
+    training_run.save_manifest()
+
+    return training_run

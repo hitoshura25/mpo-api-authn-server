@@ -1447,13 +1447,11 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
     print(f"="*60)
     all_vulnerabilities, vulnerabilities_file, parsing_summary_file = parse_vulnerabilities_phase(scan_files, output_dir)
 
-
     # Phase 2A: Core AI Analysis
     print(f"\n" + "="*60)
     print(f"🤖 PHASE 2A: CORE AI ANALYSIS")
     print(f"="*60)
     core_analysis_results, core_analysis_file = core_analysis_phase(vulnerabilities_file, output_dir, args)
-
 
     # Phase 2B: RAG Enhancement
     print(f"\n" + "="*60)
@@ -1461,13 +1459,11 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
     print(f"="*60)
     rag_enhanced_results, rag_enhanced_file = rag_enhancement_phase(core_analysis_file, output_dir, args)
 
-
     # Phase 2C: Analysis Summary
     print(f"\n" + "="*60)
     print(f"📊 PHASE 2C: ANALYSIS SUMMARY")
     print(f"="*60)
     analyzed_vulnerabilities, analysis_file, analysis_summary_file = analysis_summary_phase(rag_enhanced_file, output_dir, args)
-
 
     # Phase 3: Narrativization
     print(f"\n" + "="*60)
@@ -1475,13 +1471,11 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
     print(f"="*60)
     narrativized_results, narrativized_file = narrativization_phase(analysis_file, output_dir, args)
 
-
     # Phase 4: Datasets
     print(f"\n" + "="*60)
     print(f"🚀 PHASE 4: DATASETS")
     print(f"="*60)
     training_pairs, train_file, validation_file = datasets_phase(narrativized_file, vulnerabilities_file, output_dir, args)
-
 
     # Phase 5: Training
     print(f"\n" + "="*60)
@@ -1502,7 +1496,6 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
         train_file, train_data, narrativized_results, analysis_summary, args
     )
 
-
     # Phase 6: Upload
     print(f"\n" + "="*60)
     print(f"📤 PHASE 6: UPLOAD")
@@ -1511,6 +1504,63 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
 
     print(f"\n✅ All 6 phases completed successfully")
     return [], final_summary
+
+
+def artifact_download_phase(artifacts_dir: Path) -> str:
+    """
+    Phase 0: Artifact Download and Preparation
+
+    Handles artifact directory validation, downloading, and extraction.
+    Returns the search directory for security file scanning.
+
+    Args:
+        artifacts_dir: Path to artifacts directory from CLI arguments
+
+    Returns:
+        search_dir: String path to directory containing security scan files
+
+    Raises:
+        RuntimeError: If artifact download or extraction fails
+    """
+    print(f"\n📦 Artifact Download and Preparation Phase")
+    print(f"="*60)
+
+    if artifacts_dir.exists() and any(artifacts_dir.iterdir()):
+        # Directory exists and has content - process existing artifacts
+        print(f"📂 Using existing artifacts directory: {artifacts_dir}")
+        downloaded_path = artifacts_dir
+
+    elif artifacts_dir.exists():
+        # Directory exists but is empty - check if it has any scan files first
+        print(f"📂 Using existing artifacts directory: {artifacts_dir}")
+        downloaded_path = artifacts_dir
+
+    else:
+        # Directory doesn't exist - download latest artifacts there
+        print(f"📥 Downloading latest artifacts to: {artifacts_dir}")
+        downloaded_path = download_latest_artifacts(str(artifacts_dir))
+
+        if not downloaded_path:
+            logger.error("❌ CRITICAL: Artifact download failed")
+            logger.error("🔍 Artifact download failure indicates GitHub CLI issues or network problems requiring investigation")
+            raise RuntimeError("Artifact download failed - requires investigation")
+
+        print(f"✅ Downloaded artifacts to: {downloaded_path}")
+
+    # Check for zip files (gh run download creates zips)
+    zip_files = list(downloaded_path.glob("*.zip"))
+    if zip_files:
+        print(f"\n📦 Found {len(zip_files)} zip file(s) to extract")
+        extract_dir = downloaded_path / "extracted"
+        extract_artifacts(str(downloaded_path), str(extract_dir))
+        search_dir = str(extract_dir)
+    else:
+        # If no zips, maybe artifacts were not zipped. Search the download dir directly.
+        print("\n⚠️ No .zip artifacts found. Searching for report files directly in download directory.")
+        search_dir = str(downloaded_path)
+
+    print(f"✅ Artifact preparation completed, search directory: {search_dir}")
+    return search_dir
 
 
 def download_latest_artifacts(output_dir: str) -> Path | None:
@@ -1833,44 +1883,14 @@ def main():
 
     args = parser.parse_args()
 
-    # Check for single-phase execution
-    single_phase = get_active_only_phase(args)
-
-    if single_phase:
-        # Validate inputs for single phase
-        validate_phase_inputs(single_phase, args)
-
-        # Setup logging
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(levelname)s - %(message)s'
-        )
-
-        print("=" * 60)
-        print(f"🎯 Single Phase Execution: {single_phase}")
-        print(f"Output: {args.output_dir}")
-        print("=" * 60)
-
-        # Execute single phase
-        result, summary = execute_single_phase(single_phase, args)
-
-        print(f"\n✅ Single phase '{single_phase}' completed successfully")
-        print(f"Summary: {summary}")
-        return result
-
-    # Setup logging for multi-phase execution
+    # ===== SHARED SETUP LOGIC =====
+    # Setup logging (shared by both single-phase and multi-phase)
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s'
     )
 
-    print("=" * 60)
-    print(f"🔒 WebAuthn Security Analysis with {args.model_name}")
-    print(f"Artifacts: {args.artifacts_dir}")
-    print(f"Output: {args.output_dir}")
-    print("=" * 60)
-
-    # Log comprehensive configuration with sources
+    # Log comprehensive configuration (shared by both execution modes)
     print("\n🔧 Configuration Summary:")
 
     # Fine-tuning configuration
@@ -1905,49 +1925,42 @@ def main():
     else:
         print(f"  knowledge_base_dir: security-ai-analysis/knowledge_base (default)")
 
+    # ===== EXECUTION MODE SELECTION =====
+    # Check for single-phase execution
+    single_phase = get_active_only_phase(args)
+
+    if single_phase:
+        # Validate inputs for single phase
+        validate_phase_inputs(single_phase, args)
+
+        print("=" * 60)
+        print(f"🎯 Single Phase Execution: {single_phase}")
+        print(f"Artifacts: {args.artifacts_dir}")
+        print(f"Output: {args.output_dir}")
+        print("=" * 60)
+
+        # Execute single phase
+        result, summary = execute_single_phase(single_phase, args)
+
+        print(f"\n✅ Single phase '{single_phase}' completed successfully")
+        print(f"Summary: {summary}")
+        return result
+
+    # Multi-phase execution
+    print("=" * 60)
+    print(f"🔒 WebAuthn Security Analysis with {args.model_name}")
+    print(f"Artifacts: {args.artifacts_dir}")
+    print(f"Output: {args.output_dir}")
     print("=" * 60)
 
-    # Check if artifacts directory exists and has content
+    # Artifact download and preparation phase
     artifacts_dir = Path(args.artifacts_dir)
-
-    if artifacts_dir.exists() and any(artifacts_dir.iterdir()):
-        # Directory exists and has content - process existing artifacts
-        print(f"📂 Using existing artifacts directory: {artifacts_dir}")
-        downloaded_path = artifacts_dir
-
-    elif artifacts_dir.exists():
-        # Directory exists but is empty - check if it has any scan files first
-        print(f"📂 Using existing artifacts directory: {artifacts_dir}")
-        downloaded_path = artifacts_dir
-
-    else:
-        # Directory doesn't exist - download latest artifacts there
-        print(f"📥 Downloading latest artifacts to: {artifacts_dir}")
-        downloaded_path = download_latest_artifacts(str(artifacts_dir))
-
-        if not downloaded_path:
-            logger.error("❌ CRITICAL: Artifact download failed")
-            logger.error("🔍 Artifact download failure indicates GitHub CLI issues or network problems requiring investigation")
-            raise RuntimeError("Artifact download failed - requires investigation")
-
-        print(f"✅ Downloaded artifacts to: {downloaded_path}")
-
-    # Check for zip files (gh run download creates zips)
-    zip_files = list(downloaded_path.glob("*.zip"))
-    if zip_files:
-        print(f"\n📦 Found {len(zip_files)} zip file(s) to extract")
-        extract_dir = downloaded_path / "extracted"
-        extract_artifacts(str(downloaded_path), str(extract_dir))
-        search_dir = str(extract_dir)
-    else:
-        # If no zips, maybe artifacts were not zipped. Search the download dir directly.
-        print("\n⚠️ No .zip artifacts found. Searching for report files directly in download directory.")
-        search_dir = str(downloaded_path)
+    search_dir = artifact_download_phase(artifacts_dir)
 
     # Find security scan files
     scan_files = find_security_files(search_dir)
 
-    # Check if any files were found
+    # Check if any files were found (fail-fast validation)
     total_files = sum(len(files) for files in scan_files.values())
     if total_files == 0:
         logger.error(f"❌ CRITICAL: No security files found in {search_dir}")
@@ -1968,7 +1981,6 @@ def main():
     print("=" * 60)
 
     return 0
-
 
 if __name__ == "__main__":
     exit(main())

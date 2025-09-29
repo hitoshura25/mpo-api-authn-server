@@ -359,7 +359,8 @@ class SequentialFineTuner:
 
             self.logger.info(f"✅ Adapters moved to structured location: {stage1_adapters_dir}")
         else:
-            self.logger.warning(f"⚠️ No adapters found at expected location: {source_adapters_dir}")
+            raise FileNotFoundError(f"Stage 1 adapters not found at expected location: {source_adapters_dir}. "
+                                  f"This indicates Stage 1 training failed to create required adapter files.")
 
         return stage1_adapters_dir
 
@@ -766,9 +767,10 @@ class SequentialFineTuner:
         self.logger.info(f"🔄 Using alternative Stage 2 training approach")
         
         try:
-            # For now, train Stage 2 from base model with notification
-            # In a full implementation, this would merge Stage 1 adapter first
-            self.logger.warning("⚠️ Training Stage 2 from base model (Stage 1 adapter merging not yet implemented)")
+            # Stage 1 adapter merging is required for proper sequential training
+            raise NotImplementedError("Stage 1 adapter merging not yet implemented. "
+                                    "Sequential training requires merging Stage 1 adapters before Stage 2 training. "
+                                    "This is a critical feature that must be implemented for proper sequential fine-tuning.")
             
             # Prepare training data and run fine-tuning
             training_data_dir = self.base_fine_tuner.prepare_training_data(dataset_path)
@@ -872,8 +874,9 @@ class SequentialFineTuner:
                 validation_results['specialization_level'] = 'medium'
                 self.logger.info(f"⚠️ Stage 1 shows medium specialization (score: {overall_score:.2f})")
             else:
-                validation_results['specialization_level'] = 'low'
-                self.logger.warning(f"❌ Stage 1 shows low specialization (score: {overall_score:.2f})")
+                raise RuntimeError(f"Stage 1 model failed quality validation with low specialization score: {overall_score:.2f}. "
+                                 f"This indicates training failure or insufficient data quality. "
+                                 f"Minimum acceptable score is 0.7.")
 
             validation_results['overall_score'] = overall_score
 
@@ -981,8 +984,9 @@ class SequentialFineTuner:
                 validation_results['specialization_level'] = 'medium'
                 self.logger.info(f"⚠️ Stage 2 shows medium specialization (score: {overall_score:.2f})")
             else:
-                validation_results['specialization_level'] = 'low'
-                self.logger.warning(f"❌ Stage 2 shows low specialization (score: {overall_score:.2f})")
+                raise RuntimeError(f"Stage 2 model failed quality validation with low specialization score: {overall_score:.2f}. "
+                                 f"This indicates training failure or insufficient data quality. "
+                                 f"Minimum acceptable score is 0.7.")
 
             validation_results['overall_score'] = overall_score
 
@@ -990,7 +994,9 @@ class SequentialFineTuner:
             if validation_results['sequential_capabilities'] >= 0.6:
                 self.logger.info("✅ Sequential progression validated - Stage 2 retains Stage 1 capabilities")
             else:
-                self.logger.warning("⚠️ Sequential progression concern - Stage 2 may have lost Stage 1 capabilities")
+                raise RuntimeError(f"Sequential progression validation failed: Stage 2 has lost Stage 1 capabilities. "
+                                 f"Sequential score: {validation_results['sequential_capabilities']:.2f}. "
+                                 f"This indicates catastrophic forgetting - the sequential training has failed.")
 
         except Exception as e:
             self.logger.error(f"❌ Stage 2 validation failed: {e}")
@@ -1072,7 +1078,8 @@ class SequentialFineTuner:
             required_keys = ['peft_type', 'r', 'lora_alpha']
             missing_keys = [k for k in required_keys if k not in adapter_config]
             if missing_keys:
-                self.logger.warning(f"LoRA config missing keys: {missing_keys}")
+                raise ValueError(f"LoRA config missing required keys: {missing_keys}. "
+                               f"Invalid adapter configuration indicates training failure.")
 
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid adapter config JSON: {e}")
@@ -1119,14 +1126,8 @@ class SequentialFineTuner:
             }
 
         except ImportError:
-            self.logger.warning("MLX-LM not available, using path validation only")
-            # Fallback to path validation if MLX not available
-            return {
-                'model_path': str(model_dir),
-                'loaded': False,
-                'type': 'full_model_path_only',
-                'files_verified': True
-            }
+            raise ImportError("MLX-LM not available but is required for full model validation. "
+                            "Please ensure MLX-LM is properly installed to validate trained models.")
 
         except Exception as e:
             self.logger.error(f"Failed to load model for validation: {e}")
@@ -1165,8 +1166,9 @@ Provide:
         try:
             # Check if we have a real MLX model or fallback
             if not model or model.get('type') != 'mlx_model':
-                self.logger.warning("🔧 Model not loaded, using fallback validation response")
-                return self._generate_fallback_response(prompt)
+                raise RuntimeError(f"Model validation failed: Model not properly loaded. "
+                                 f"Expected MLX model but got: {model.get('type') if model else 'None'}. "
+                                 f"This indicates a critical failure in model loading or training.")
 
             # Real MLX model inference
             mlx_model = model['model']
@@ -1189,66 +1191,14 @@ Provide:
                 return response
 
             except ImportError:
-                self.logger.warning("MLX-LM generate not available, using fallback")
-                return self._generate_fallback_response(prompt)
+                raise ImportError("MLX-LM generate function not available. "
+                                "This is required for model validation. "
+                                "Please ensure MLX-LM is properly installed.")
 
         except Exception as e:
             self.logger.error(f"Failed to generate model response: {e}")
             raise
 
-    def _generate_fallback_response(self, prompt: str) -> str:
-        """Generate structured fallback response for validation when MLX unavailable."""
-        self.logger.info("🔧 Generating fallback response for validation")
-
-        if 'analysis' in prompt.lower():
-            # Stage 1 analysis response
-            return """# Vulnerability Analysis Report
-
-## Classification
-**Vulnerability Type**: Security Misconfiguration
-**Severity Level**: Medium
-**Confidence**: High
-
-## Root Cause Analysis
-**Technical Root Cause**: Insecure configuration lacking proper validation
-**Impact**: Medium risk of unauthorized access
-
-## Impact Assessment
-**Technical Impact**: Could allow limited unauthorized access
-**Business Impact**: Medium risk of operational disruption
-**Exploitability**: Medium - requires specific conditions
-
-## Risk Justification
-Risk level Medium justified by exploitability and potential impact severity."""
-
-        else:
-            # Stage 2 code fix response
-            return """# Code Fix Implementation
-
-## Fixed Code
-```python
-def secure_function(user_input):
-    # Input validation
-    if not validate_input(user_input):
-        raise ValueError("Invalid input")
-
-    # Sanitize input
-    sanitized_input = sanitize(user_input)
-
-    # Process securely
-    return process_safely(sanitized_input)
-```
-
-## Security Improvements
-- Added input validation to prevent malicious input
-- Implemented proper sanitization
-- Used secure processing methods
-
-## Implementation Steps
-1. Add input validation function
-2. Implement sanitization
-3. Test with various inputs
-4. Deploy with monitoring"""
 
     def _validate_stage1_response(self, vulnerability: Dict[str, Any], response: str) -> Dict[str, Any]:
         """Validate Stage 1 analysis response quality."""
@@ -1529,15 +1479,15 @@ def secure_function(user_input):
             self.logger.info("🔍 Using manifest-based Stage 1 data discovery")
 
             if not self.training_run.manifest.stage1:
-                self.logger.warning("⚠️ No Stage 1 found in manifest")
-                return []
+                raise RuntimeError("No Stage 1 found in manifest. "
+                                 "Sequential training requires Stage 1 to be completed first.")
 
             # Get Stage 1 training data path from manifest
             stage1_data_path = self.training_run.get_stage1_training_data()
 
             if not stage1_data_path.exists():
-                self.logger.warning(f"⚠️ Stage 1 training data not found: {stage1_data_path}")
-                return []
+                raise FileNotFoundError(f"Stage 1 training data not found: {stage1_data_path}. "
+                                      f"Sequential training requires Stage 1 training data to be available.")
 
             self.logger.info(f"📂 Using manifest-defined Stage 1 data: {stage1_data_path}")
 
@@ -1598,8 +1548,9 @@ def secure_function(user_input):
                 converted_data.append(example)
             else:
                 # Unexpected format
-                self.logger.warning(f"⚠️ Unexpected Stage 1 data format: {list(example.keys())}")
-                converted_data.append(example)
+                raise ValueError(f"Unexpected Stage 1 data format: {list(example.keys())}. "
+                               f"Expected either 'text' field or 'conversations' field for ChatML format. "
+                               f"This indicates corrupted or incompatible training data.")
 
         return converted_data
 
@@ -1639,8 +1590,8 @@ def secure_function(user_input):
             default_batch_size = self.stage2_config['batch_size']
 
             if total_examples == 0:
-                self.logger.warning("⚠️ No training data found - using minimal batch size")
-                optimal_batch_size = 1
+                raise RuntimeError("No training data found for Stage 2. "
+                                 "Sequential training requires both Stage 1 and Stage 2 training data to be available.")
             elif train_count < default_batch_size:
                 # Use the number of training examples or 1, whichever is larger
                 optimal_batch_size = max(1, train_count)

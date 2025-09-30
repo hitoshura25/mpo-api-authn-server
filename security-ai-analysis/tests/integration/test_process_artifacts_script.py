@@ -473,11 +473,14 @@ class TestProcessArtifactsScript:
         if zap_results:
             for zap_result in zap_results:
                 vuln_data = zap_result['vulnerability']
+                # Extract duplicated condition
+                has_file_mapping = 'file_path' in vuln_data or 'mapped_file_path' in vuln_data
+
                 # SHOULD FAIL: ZAP vulnerabilities should have file_path after URL mapping
-                assert 'file_path' in vuln_data or 'mapped_file_path' in vuln_data, \
+                assert has_file_mapping, \
                     f"ZAP vulnerability should have file mapping: {list(vuln_data.keys())}"
 
-                if 'file_path' in vuln_data or 'mapped_file_path' in vuln_data:
+                if has_file_mapping:
                     assert 'line_number' in vuln_data or 'mapped_line' in vuln_data, \
                         f"Mapped ZAP vulnerability should have line info: {list(vuln_data.keys())}"
 

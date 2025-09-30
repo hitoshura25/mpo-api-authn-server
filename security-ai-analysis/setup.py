@@ -152,10 +152,10 @@ except Exception as e:
             
     except subprocess.TimeoutExpired:
         print(f"   ❌ Model download timed out after 30 minutes")
-        return False
+        raise
     except Exception as e:
         print(f"   ❌ Model download failed with error: {e}")
-        return False
+        raise
 
 
 class SetupManager:
@@ -180,7 +180,7 @@ class SetupManager:
             
         except Exception as e:
             print(f"   ❌ Model download setup failed: {e}")
-            return False
+            raise
 
 
 def main():
@@ -343,7 +343,7 @@ def main():
         print(f"❌ Setup failed with error: {e}")
         print("🔧 Please check the error message and try again.")
         print("💡 You may need to install Python dependencies manually.")
-        return False
+        raise
 
 
 if __name__ == "__main__":

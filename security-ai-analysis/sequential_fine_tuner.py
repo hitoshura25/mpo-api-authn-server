@@ -21,6 +21,7 @@ from dataclasses import dataclass, field
 from scripts.mlx_finetuning import MLXFineTuner
 from config_manager import OLMoSecurityConfig
 from sequential_dataset_creator import SequentialDatasetCreator, SequentialDatasetResult
+from training_run_manager import TrainingRunManager, TrainingRun
 
 
 @dataclass
@@ -49,32 +50,58 @@ class SequentialFineTuner:
     for specific security tasks.
     """
     
-    def __init__(self, config: Optional[OLMoSecurityConfig] = None):
-        """Initialize sequential fine-tuner."""
+    def __init__(self, config: Optional[OLMoSecurityConfig] = None,
+                 training_run: Optional[TrainingRun] = None,
+                 base_output_dir: Optional[Path] = None):
+        """Initialize sequential fine-tuner with structured training run support."""
         self.config = config or OLMoSecurityConfig()
+        self.training_run = training_run
+
+        # Override fine_tuned_models_dir if base_output_dir is provided
+        if base_output_dir:
+            self.config.fine_tuned_models_dir = base_output_dir
+
         self.base_fine_tuner = MLXFineTuner()
         self.logger = logging.getLogger(__name__)
-        
-        # Sequential training parameters - Enhanced for optimal specialization (using supported MLX-LM parameters only)
+
+        # Sequential training parameters - Use OLMoSecurityConfig values with proper type conversion
+        # Convert config values to proper numeric types (YAML may load as strings)
+        learning_rate = float(self.config.fine_tuning.learning_rate)
+        batch_size = int(self.config.fine_tuning.batch_size)
+        save_steps = int(self.config.fine_tuning.save_steps)
+
+        # Calculate iterations based on save_steps and configuration maximums
+        # Configuration-driven approach: use max_stage1_iters and max_stage2_iters from config
+
+        # Calculate base iterations from save_steps
+        stage1_base = save_steps * 10
+        stage2_base = int(stage1_base * 1.6)  # 60% more for Stage 2 specialization
+
+        # Apply maximums from configuration (0 means no limit)
+        max_stage1 = self.config.fine_tuning.max_stage1_iters
+        max_stage2 = self.config.fine_tuning.max_stage2_iters
+
+        stage1_iters = stage1_base if max_stage1 == 0 else min(stage1_base, max_stage1)
+        stage2_iters = stage2_base if max_stage2 == 0 else min(stage2_base, max_stage2)
+
         self.stage1_config = {
-            'iters': 500,          # 5x increase: 100→500 for proper specialization (addressing under-training)
-            'learning_rate': 5e-6,  # Optimized rate for stable training (supported parameter)
-            'batch_size': 4,        # Memory-efficient batch size
+            'iters': stage1_iters,
+            'learning_rate': learning_rate,
+            'batch_size': batch_size,
             'fine_tune_type': 'lora',
             'optimizer': 'adamw'    # Validated MLX optimizer (supported parameter)
         }
 
         self.stage2_config = {
-            'iters': 800,          # 5.3x increase: 150→800 for proper code fix specialization
-            'learning_rate': 1e-6,  # Lower rate for Stage 2 to preserve Stage 1 knowledge
-            'batch_size': 2,        # Smaller batch for complex examples
+            'iters': stage2_iters,
+            'learning_rate': learning_rate * 0.2,  # Lower rate for Stage 2 to preserve Stage 1 knowledge
+            'batch_size': max(batch_size // 2, 1),  # Smaller batch for complex examples
             'fine_tune_type': 'lora',
             'optimizer': 'adamw'    # Validated MLX optimizer (supported parameter)
         }
     
     def sequential_fine_tune(self, stage1_dataset: Path, stage2_dataset: Path,
-                           output_name_prefix: Optional[str] = None,
-                           upload_to_hub: bool = True) -> SequentialTrainingResult:
+                           output_name_prefix: Optional[str] = None) -> SequentialTrainingResult:
         """
         Perform sequential fine-tuning with Stage 1 and Stage 2 datasets.
         
@@ -82,8 +109,7 @@ class SequentialFineTuner:
             stage1_dataset: Path to Stage 1 (analysis) training dataset
             stage2_dataset: Path to Stage 2 (code fix) training dataset
             output_name_prefix: Prefix for model names
-            upload_to_hub: Whether to upload final model to HuggingFace Hub
-            
+
         Returns:
             SequentialTrainingResult with training outcomes
         """
@@ -93,123 +119,88 @@ class SequentialFineTuner:
             timestamp = start_time.strftime("%Y%m%d_%H%M%S")
             output_name_prefix = f"webauthn-security-sequential_{timestamp}"
         
-        try:
-            self.logger.info(f"🚀 Starting sequential fine-tuning: {output_name_prefix}")
-            
-            # Stage 1: Vulnerability Analysis Specialist
-            self.logger.info("📊 Stage 1: Training Vulnerability Analysis Specialist...")
-            stage1_start = datetime.now()
-            
-            stage1_result = self._train_stage1_analysis(
-                stage1_dataset,
-                f"{output_name_prefix}_stage1_analysis",
-                upload_to_hub=upload_to_hub
-            )
-            
-            stage1_end = datetime.now()
-            stage1_time = (stage1_end - stage1_start).total_seconds()
-            
-            if not stage1_result['success']:
-                raise Exception(f"Stage 1 training failed: {stage1_result.get('error', 'Unknown error')}")
-            
-            self.logger.info(f"✅ Stage 1 completed in {stage1_time:.1f}s")
-            
-            # Stage 2: Code Fix Generation Specialist (builds on Stage 1)
-            self.logger.info("🔧 Stage 2: Training Code Fix Generation Specialist...")
-            stage2_start = datetime.now()
-            
-            stage2_result = self._train_stage2_codefix(
-                stage2_dataset,
-                f"{output_name_prefix}_stage2_codefix",
-                stage1_adapter_path=stage1_result['adapter_path'],
-                upload_to_hub=upload_to_hub
-            )
-            
-            stage2_end = datetime.now()
-            stage2_time = (stage2_end - stage2_start).total_seconds()
-            
-            if not stage2_result['success']:
-                raise Exception(f"Stage 2 training failed: {stage2_result.get('error', 'Unknown error')}")
-            
-            self.logger.info(f"✅ Stage 2 completed in {stage2_time:.1f}s")
-            
-            total_time = (datetime.now() - start_time).total_seconds()
-            
-            # Create successful result
-            result = SequentialTrainingResult(
-                success=True,
-                stage1_model_path=stage1_result['adapter_path'],
-                stage2_model_path=stage2_result['adapter_path'],
-                stage1_training_time=stage1_time,
-                stage2_training_time=stage2_time,
-                total_training_time=total_time,
-                stage1_metrics=stage1_result.get('metrics', {}),
-                stage2_metrics=stage2_result.get('metrics', {}),
-                metadata={
-                    'output_name_prefix': output_name_prefix,
-                    'stage1_dataset': str(stage1_dataset),
-                    'stage2_dataset': str(stage2_dataset),
-                    'training_start': start_time.isoformat(),
-                    'training_end': datetime.now().isoformat(),
-                    'stage1_config': self.stage1_config,
-                    'stage2_config': self.stage2_config,
-                    'uploaded_to_hub': upload_to_hub,
-                    'stage1_model_hub_name': stage1_result.get('hub_model_name'),
-                    'stage1_hub_url': stage1_result.get('hub_url'),
-                    'stage2_model_hub_name': stage2_result.get('hub_model_name'),
-                    'stage2_hub_url': stage2_result.get('hub_url'),
-                    'final_model_hub_name': stage2_result.get('hub_model_name'),
-                    'sequential_approach': 'enhanced_catastrophic_forgetting_mitigation',
-                    'stage1_adapter_used': stage2_result.get('stage1_adapter_used', False),
-                    'catastrophic_forgetting_mitigation': stage2_result.get('catastrophic_forgetting_mitigation', False),
-                    'mixed_training_data': stage2_result.get('mixed_training_data', False),
-                    'training_improvements': {
-                        'stage1_iterations_enhanced': f"{self.stage1_config['iters']} (5x from 100)",
-                        'stage2_iterations_enhanced': f"{self.stage2_config['iters']} (5.3x from 150)",
-                        'resume_adapter_file_used': True,
-                        'supported_mlx_parameters_only': True,
-                        'optimizer': 'adamw',
-                        'learning_rate_optimized': True,
-                        'catastrophic_forgetting_mitigation': True
-                    },
-                    'stage1_merged_model': stage2_result.get('stage1_merged_model'),
-                    'stage2_training_note': stage2_result.get('note')
-                }
-            )
-            
-            self.logger.info(f"🎉 Sequential fine-tuning completed successfully!")
-            self.logger.info(f"   Total time: {total_time:.1f}s")
-            self.logger.info(f"   Stage 1 (Analysis): {stage1_time:.1f}s")
-            self.logger.info(f"   Stage 2 (Code Fixes): {stage2_time:.1f}s")
-            self.logger.info(f"   Stage 1 model: {result.stage1_model_path}")
-            self.logger.info(f"   Stage 2 model: {result.stage2_model_path}")
+        self.logger.info(f"🚀 Starting sequential fine-tuning: {output_name_prefix}")
+        
+        # Stage 1: Vulnerability Analysis Specialist
+        self.logger.info("📊 Stage 1: Training Vulnerability Analysis Specialist...")
+        stage1_start = datetime.now()
+        
+        stage1_result = self._train_stage1_analysis(
+            stage1_dataset,
+            f"{output_name_prefix}_stage1_analysis"
+        )
+        
+        stage1_end = datetime.now()
+        stage1_time = (stage1_end - stage1_start).total_seconds()
+        
+        self.logger.info(f"✅ Stage 1 completed in {stage1_time:.1f}s")
 
-            if upload_to_hub:
-                if result.metadata.get('stage1_hub_url'):
-                    self.logger.info(f"   Stage 1 HuggingFace: {result.metadata['stage1_hub_url']}")
-                if result.metadata.get('stage2_hub_url'):
-                    self.logger.info(f"   Stage 2 HuggingFace: {result.metadata['stage2_hub_url']}")
+        # Stage 2: Code Fix Generation Specialist (builds on Stage 1)
+        self.logger.info("🔧 Stage 2: Training Code Fix Generation Specialist...")
+        stage2_start = datetime.now()
 
-                # Keep the legacy field for backward compatibility
-                if result.metadata.get('final_model_hub_name'):
-                    self.logger.info(f"   HuggingFace: {result.metadata['final_model_hub_name']}")
-            
-            return result
-            
-        except Exception as e:
-            error_msg = str(e)
-            self.logger.error(f"❌ Sequential fine-tuning failed: {error_msg}")
-            
-            return SequentialTrainingResult(
-                success=False,
-                error_message=error_msg,
-                metadata={
-                    'error_time': datetime.now().isoformat(),
-                    'training_start': start_time.isoformat()
-                }
-            )
+        stage2_result = self._train_stage2_codefix(
+            stage2_dataset,
+            f"{output_name_prefix}_stage2_codefix",
+            stage1_adapter_path=stage1_result['adapter_path']
+        )
+        
+        stage2_end = datetime.now()
+        stage2_time = (stage2_end - stage2_start).total_seconds()
+        
+        self.logger.info(f"✅ Stage 2 completed in {stage2_time:.1f}s")
+        
+        total_time = (datetime.now() - start_time).total_seconds()
+
+        # Manifest is already complete with predefined paths - no updates needed
+
+        # Create successful result
+        result = SequentialTrainingResult(
+            success=True,
+            stage1_model_path=stage1_result['merged_model_path'],  # Use merged model for validation
+            stage2_model_path=stage2_result['final_model_path'],   # Use final model for validation
+            stage1_training_time=stage1_time,
+            stage2_training_time=stage2_time,
+            total_training_time=total_time,
+            stage1_metrics=stage1_result.get('metrics', {}),
+            stage2_metrics=stage2_result.get('metrics', {}),
+            metadata={
+                'output_name_prefix': output_name_prefix,
+                'stage1_dataset': str(stage1_dataset),
+                'stage2_dataset': str(stage2_dataset),
+                'training_start': start_time.isoformat(),
+                'training_end': datetime.now().isoformat(),
+                'stage1_config': self.stage1_config,
+                'stage2_config': self.stage2_config,
+                'sequential_approach': 'enhanced_catastrophic_forgetting_mitigation',
+                'stage1_adapter_used': stage2_result.get('stage1_adapter_used', False),
+                'catastrophic_forgetting_mitigation': stage2_result.get('catastrophic_forgetting_mitigation', False),
+                'mixed_training_data': stage2_result.get('mixed_training_data', False),
+                'training_improvements': {
+                    'stage1_iterations_enhanced': f"{self.stage1_config['iters']} (5x from 100)",
+                    'stage2_iterations_enhanced': f"{self.stage2_config['iters']} (5.3x from 150)",
+                    'resume_adapter_file_used': True,
+                    'supported_mlx_parameters_only': True,
+                    'optimizer': 'adamw',
+                    'learning_rate_optimized': True,
+                    'catastrophic_forgetting_mitigation': True
+                },
+                'stage1_merged_model': stage2_result.get('stage1_merged_model'),
+                'stage2_training_note': stage2_result.get('note')
+            }
+        )
+        
+        self.logger.info(f"🎉 Sequential fine-tuning completed successfully!")
+        self.logger.info(f"   Total time: {total_time:.1f}s")
+        self.logger.info(f"   Stage 1 (Analysis): {stage1_time:.1f}s")
+        self.logger.info(f"   Stage 2 (Code Fixes): {stage2_time:.1f}s")
+        self.logger.info(f"   Stage 1 model: {result.stage1_model_path}")
+        self.logger.info(f"   Stage 2 model: {result.stage2_model_path}")
+
+        
+        return result
     
-    def _train_stage1_analysis(self, dataset_path: Path, output_name: str, upload_to_hub: bool = True) -> Dict[str, Any]:
+    def _train_stage1_analysis(self, dataset_path: Path, output_name: str) -> Dict[str, Any]:
         """
         Train Stage 1: Vulnerability Analysis Specialist.
 
@@ -223,46 +214,50 @@ class SequentialFineTuner:
             # Step 1: Prepare training data
             training_data_dir = self.base_fine_tuner.prepare_training_data(dataset_path)
 
-            # Step 2: Run enhanced Stage 1 fine-tuning with optimized parameters
-            adapter_path = self._run_stage1_enhanced_training(
-                training_data_dir,
-                output_name
-            )
+            # Step 2: Use paths from manifest and create directories lazily
+            if self.training_run:
+                # Get Stage 1 paths from manifest
+                stage1_adapters_dir = self.training_run.run_dir / self.training_run.manifest.stage1.adapters_path
+                stage1_merged_dir = self.training_run.run_dir / self.training_run.manifest.stage1.merged_model_path
+
+                # Create directories lazily when Stage 1 actually runs
+                stage1_adapters_dir.mkdir(parents=True, exist_ok=True)
+                stage1_merged_dir.mkdir(parents=True, exist_ok=True)
+
+                self.logger.info(f"🏗️ Using manifest-defined Stage 1 paths: adapters={stage1_adapters_dir}, merged={stage1_merged_dir}")
+                adapter_path = self._run_stage1_enhanced_training_structured(
+                    training_data_dir,
+                    stage1_adapters_dir,
+                    stage1_merged_dir,
+                    output_name
+                )
+
+                # Create Stage 1 merged model for validation immediately after training
+                self.logger.info(f"🔗 Creating Stage 1 merged model for validation: {stage1_merged_dir}")
+                merged_model_path = self._create_stage1_merged_model_to_directory(
+                    str(adapter_path), stage1_merged_dir, output_name
+                )
+
+            else:
+                raise ValueError("Structured training run required for Stage 1 training. "
+                               "Legacy training has been removed - use TrainingRun instances only.")
 
             stage1_result = {
                 'success': True,
                 'adapter_path': str(adapter_path),
+                'merged_model_path': str(merged_model_path),
                 'training_data_dir': str(training_data_dir)
             }
 
             self.logger.info(f"✅ Stage 1 training completed: {adapter_path}")
-
-            # Step 3: Upload Stage 1 model to HuggingFace if requested
-            if upload_to_hub:
-                self.logger.info("📤 Uploading Stage 1 model to HuggingFace...")
-                hub_url = self.base_fine_tuner.upload_to_huggingface(
-                    model_path=Path(adapter_path),
-                    custom_repo_name=output_name
-                )
-
-                if hub_url:
-                    self.logger.info(f"✅ Stage 1 model uploaded successfully: {hub_url}")
-                    stage1_result['hub_url'] = hub_url
-                    stage1_result['hub_model_name'] = output_name
-                else:
-                    self.logger.warning("⚠️ Stage 1 model upload failed")
-                    stage1_result['upload_failed'] = True
-            else:
-                self.logger.info("📤 Stage 1 upload skipped (upload_to_hub=False)")
-
             return stage1_result
 
         except Exception as e:
             self.logger.error(f"❌ Stage 1 training failed: {e}")
-            return {'success': False, 'error': str(e)}
+            raise RuntimeError(f"Stage 1 training failed unexpectedly: {e}") from e
     
     def _train_stage2_codefix(self, dataset_path: Path, output_name: str,
-                            stage1_adapter_path: str, upload_to_hub: bool = True) -> Dict[str, Any]:
+                            stage1_adapter_path: str) -> Dict[str, Any]:
         """
         Train Stage 2: Code Fix Generation Specialist.
 
@@ -272,64 +267,227 @@ class SequentialFineTuner:
         self.logger.info(f"🔧 Training Stage 2 code fix model: {output_name}")
         self.logger.info(f"   Building upon Stage 1: {stage1_adapter_path}")
 
+        # Step 1: Prepare Stage 2 training data with catastrophic forgetting mitigation
+        # Mix Stage 2 data with 15% Stage 1 data to preserve knowledge
+        training_data_dir = self._prepare_mixed_training_data(
+            stage2_dataset_path=dataset_path,
+            stage1_adapter_path=stage1_adapter_path,
+            output_name=output_name
+        )
+
+        # Step 2: Run enhanced Stage 2 fine-tuning with catastrophic forgetting mitigation
+        self.logger.info(f"🚀 Training Stage 2 with resume-adapter-file from Stage 1: {stage1_adapter_path}")
+
+        # Use structured training run (required)
+        if not self.training_run:
+            raise ValueError("Structured training run required for Stage 2 training. "
+                           "Legacy training has been removed - use TrainingRun instances only.")
+
+        # Fail-fast: Check Stage 1 artifacts exist before proceeding
+        self.logger.info("🔍 Checking Stage 1 artifacts before Stage 2 training")
         try:
-            # Step 1: Prepare Stage 2 training data with catastrophic forgetting mitigation
-            # Mix Stage 2 data with 15% Stage 1 data to preserve knowledge
-            training_data_dir = self._prepare_mixed_training_data(
-                stage2_dataset_path=dataset_path,
-                stage1_adapter_path=stage1_adapter_path,
-                output_name=output_name
+            stage1_adapters = self.training_run.stage1_adapters_path
+            stage1_training_data = self.training_run.stage1_training_data_path
+
+            self.logger.info(f"✅ Stage 1 artifacts validated: adapters={stage1_adapters}, data={stage1_training_data}")
+        except (ValueError, FileNotFoundError) as e:
+            self.logger.error(f"❌ Stage 1 artifacts missing or invalid: {e}")
+            raise RuntimeError(f"Stage 2 cannot proceed without Stage 1 artifacts: {e}") from e
+
+        # Get Stage 2 paths from manifest and create directories lazily
+        stage2_adapters_dir = self.training_run.run_dir / self.training_run.manifest.stage2.adapters_path
+        stage2_final_model_dir = self.training_run.run_dir / self.training_run.manifest.stage2.final_model_path
+
+        # Create directories lazily when Stage 2 actually runs
+        stage2_adapters_dir.mkdir(parents=True, exist_ok=True)
+        stage2_final_model_dir.mkdir(parents=True, exist_ok=True)
+
+        self.logger.info(f"🏗️ Using manifest-defined Stage 2 paths: adapters={stage2_adapters_dir}, final={stage2_final_model_dir}")
+        stage2_final_model_path = self._run_stage2_fine_tuning_structured(
+            training_data_dir,
+            stage1_adapter_path,
+            stage2_adapters_dir,
+            stage2_final_model_dir,
+            output_name
+        )
+
+        stage2_result = {
+            'success': True,
+            'adapter_path': str(stage2_adapters_dir),  # Keep adapter path for Stage 2 adapters
+            'final_model_path': str(stage2_final_model_path),  # Add final model path for validation
+            'training_data_dir': str(training_data_dir),
+            'stage1_adapter_used': True,
+            'stage1_adapter_path': str(stage1_adapter_path),
+            'catastrophic_forgetting_mitigation': True,
+            'mixed_training_data': True,
+            'note': 'Successfully trained with resume-adapter-file and catastrophic forgetting mitigation'
+        }
+
+        self.logger.info(f"✅ Stage 2 training completed with sequential progression: {stage2_final_model_path}")
+        return stage2_result
+
+    def _run_stage1_enhanced_training_structured(self, training_data_dir: Path,
+                                               stage1_adapters_dir: Path,
+                                               stage1_merged_dir: Path,
+                                               output_name: str) -> Path:
+        """
+        Run Stage 1 training with structured output paths.
+
+        This method writes MLX training outputs directly to structured locations,
+        eliminating the need for copying or reorganization.
+        """
+        self.logger.info(f"🚀 Running structured Stage 1 training")
+        self.logger.info(f"   Training data: {training_data_dir}")
+        self.logger.info(f"   Adapters output: {stage1_adapters_dir}")
+        self.logger.info(f"   Merged model output: {stage1_merged_dir}")
+
+        # Create a temporary adapter-specific output for MLX training
+        # This allows MLX to create adapters directly in the correct location
+        temp_adapter_output = stage1_adapters_dir.parent / "temp_mlx_output"
+        temp_adapter_output.mkdir(parents=True, exist_ok=True)
+
+        # Use MLXFineTuner with temporary output path
+        model_path = self.base_fine_tuner.run_fine_tuning(
+            training_data_dir=training_data_dir,
+            custom_output_path=temp_adapter_output
+        )
+
+        # Check if adapters were created and move to structured location
+        source_adapters_dir = model_path / "adapters"
+        if source_adapters_dir.exists():
+            self.logger.info(f"📁 Moving adapters to structured location")
+            import shutil
+            # Move adapter files to structured location (not copy)
+            for adapter_file in source_adapters_dir.iterdir():
+                if adapter_file.is_file():
+                    target_path = stage1_adapters_dir / adapter_file.name
+                    shutil.move(str(adapter_file), str(target_path))
+
+            # Clean up temporary directory
+            shutil.rmtree(temp_adapter_output, ignore_errors=True)
+
+            self.logger.info(f"✅ Adapters moved to structured location: {stage1_adapters_dir}")
+        else:
+            raise FileNotFoundError(f"Stage 1 adapters not found at expected location: {source_adapters_dir}. "
+                                  f"This indicates Stage 1 training failed to create required adapter files.")
+
+        return stage1_adapters_dir
+
+    def _run_stage2_fine_tuning_structured(self, training_data_dir: Path,
+                                         stage1_adapter_path: str,
+                                         stage2_adapters_dir: Path,
+                                         stage2_final_model_dir: Path,
+                                         output_name: str) -> Path:
+        """
+        Run Stage 2 training with structured output paths.
+
+        This method writes MLX training outputs directly to structured locations,
+        eliminating the need for copying or reorganization.
+        """
+        import subprocess
+
+        self.logger.info(f"🚀 Running structured Stage 2 training")
+        self.logger.info(f"   Training data: {training_data_dir}")
+        self.logger.info(f"   Stage 1 adapter: {stage1_adapter_path}")
+        self.logger.info(f"   Stage 2 adapters output: {stage2_adapters_dir}")
+        self.logger.info(f"   Stage 2 final model output: {stage2_final_model_dir}")
+
+        # Configure chat template for the base model
+        self.base_fine_tuner._configure_chat_template_for_model(str(self.config.get_base_model_path()))
+
+        # Build enhanced MLX-LM LoRA command with structured output
+        mlx_command = [
+            "mlx_lm.lora",
+            "--model", str(self.config.get_base_model_path()),
+            "--train",
+            "--data", str(training_data_dir),
+            "--adapter-path", str(stage2_adapters_dir),  # Write directly to structured location
+            "--batch-size", str(self.stage2_config['batch_size']),
+            "--iters", str(self.stage2_config['iters']),
+            "--learning-rate", str(self.stage2_config['learning_rate']),
+            "--fine-tune-type", self.stage2_config['fine_tune_type'],
+            "--optimizer", self.stage2_config['optimizer'],
+            "--resume-adapter-file", str(Path(stage1_adapter_path) / "adapters.safetensors")
+        ]
+
+        # Validate Stage 1 adapter file exists before Stage 2 training
+        stage1_adapter_file = Path(stage1_adapter_path) / "adapters.safetensors"
+        if not stage1_adapter_file.exists():
+            error_msg = f"Stage 1 adapter file not found: {stage1_adapter_file}"
+            self.logger.error(f"❌ {error_msg}")
+            raise FileNotFoundError(error_msg)
+
+        # Log adapter file details for debugging
+        adapter_size = stage1_adapter_file.stat().st_size
+        self.logger.info(f"🔍 Stage 1 adapter file validated: {stage1_adapter_file} ({adapter_size:,} bytes)")
+
+        self.logger.info(f"🔧 Running structured Stage 2 MLX command: {' '.join(mlx_command)}")
+
+        # Execute Stage 2 fine-tuning with enhanced error handling
+        try:
+            result = subprocess.run(
+                mlx_command,
+                capture_output=True,
+                text=True,
+                timeout=3600,  # 1 hour timeout
+                check=False  # Handle errors manually to capture output
             )
 
-            # Step 2: Run enhanced Stage 2 fine-tuning with catastrophic forgetting mitigation
-            self.logger.info(f"🚀 Training Stage 2 with resume-adapter-file from Stage 1: {stage1_adapter_path}")
+            # Log output regardless of success/failure
+            if result.stdout:
+                self.logger.info(f"📋 Stage 2 MLX stdout: {result.stdout}")
+            if result.stderr:
+                self.logger.info(f"📋 Stage 2 MLX stderr: {result.stderr}")
 
-            # Create custom fine-tuning args for Stage 2 using resume-adapter-file
-            stage2_adapter_path = self._run_stage2_fine_tuning_from_stage1(
-                training_data_dir,
-                stage1_adapter_path,
-                output_name
+            # Check return code and handle errors with detailed output
+            if result.returncode != 0:
+                error_msg = f"MLX Stage 2 training failed with return code {result.returncode}"
+                if result.stderr:
+                    error_msg += f"\nSTDERR: {result.stderr}"
+                if result.stdout:
+                    error_msg += f"\nSTDOUT: {result.stdout}"
+                self.logger.error(f"❌ {error_msg}")
+                raise RuntimeError(error_msg)
+
+            self.logger.info("✅ Stage 2 MLX fine-tuning completed successfully")
+
+        except subprocess.TimeoutExpired as e:
+            self.logger.error(f"❌ Stage 2 MLX training timed out after 3600s")
+            raise RuntimeError(f"Stage 2 training timed out: {e}") from e
+
+        # Validate Stage 2 adapter was created
+        stage2_adapter_file = stage2_adapters_dir / "adapters.safetensors"
+        if not stage2_adapter_file.exists():
+            raise FileNotFoundError(f"Stage 2 adapter not created: {stage2_adapter_file}")
+
+        # Create final merged model in structured location
+        self.logger.info(f"🔗 Creating final Stage 2 model at: {stage2_final_model_dir}")
+        try:
+            # Use MLX-LM fuse command to create final model
+            fuse_command = [
+                "mlx_lm.fuse",
+                "--model", str(self.config.get_base_model_path()),
+                "--adapter-path", str(stage2_adapters_dir),
+                "--save-path", str(stage2_final_model_dir)
+            ]
+
+            fuse_result = subprocess.run(
+                fuse_command,
+                capture_output=True,
+                text=True,
+                timeout=600,  # 10 minute timeout
+                check=True
             )
 
-            # Step 4: Upload Stage 2 model to HuggingFace if requested
-            hub_model_name = None
-            if upload_to_hub:
-                self.logger.info("📤 Uploading Stage 2 model to HuggingFace Hub...")
-                try:
-                    hub_model_name = self.base_fine_tuner.upload_to_huggingface(
-                        stage2_adapter_path,
-                        custom_repo_name=output_name
-                    )
-                    if hub_model_name:
-                        self.logger.info(f"✅ Stage 2 model uploaded successfully: {hub_model_name}")
-                    else:
-                        self.logger.warning("⚠️ Stage 2 model upload failed")
-                except Exception as e:
-                    self.logger.error(f"❌ Stage 2 model upload failed: {e}")
+            self.logger.info("✅ Stage 2 final model created successfully")
+            self.logger.info(f"Fusion output: {fuse_result.stdout}")
 
-            stage2_result = {
-                'success': True,
-                'adapter_path': str(stage2_adapter_path),
-                'training_data_dir': str(training_data_dir),
-                'stage1_adapter_used': True,
-                'stage1_adapter_path': str(stage1_adapter_path),
-                'hub_model_name': hub_model_name,
-                'upload_requested': upload_to_hub,
-                'catastrophic_forgetting_mitigation': True,
-                'mixed_training_data': True,
-                'note': 'Successfully trained with resume-adapter-file and catastrophic forgetting mitigation'
-            }
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"❌ Stage 2 model fusion failed: {e}")
+            self.logger.error(f"Fusion error: {e.stderr}")
+            raise RuntimeError(f"Stage 2 model fusion failed: {e.stderr}")
 
-            self.logger.info(f"✅ Stage 2 training completed with sequential progression: {stage2_adapter_path}")
-            if hub_model_name:
-                self.logger.info(f"   HuggingFace model: {hub_model_name}")
-            return stage2_result
-
-        except Exception as e:
-            self.logger.error(f"❌ Stage 2 sequential training failed: {e}")
-            self.logger.error("💥 FAIL-FAST: Sequential training failure indicates a real issue that must be fixed")
-            self.logger.error("🔍 Root cause investigation required - check adapter paths, MLX installation, and model artifacts")
-            raise RuntimeError(f"Sequential fine-tuning failed - root cause must be investigated: {e}") from e
+        return stage2_final_model_dir  # Return final model directory for validation
 
     def _create_stage1_merged_model(self, stage1_adapter_path: str, output_name: str) -> Path:
         """
@@ -403,53 +561,39 @@ class SequentialFineTuner:
         self.logger.info(f"   Base model: {base_model_path}")
         self.logger.info(f"   Stage 1 adapters: {stage1_adapter_dir}")
 
-        try:
-            # Use MLX-LM fuse command to merge adapter with base model
-            fuse_command = [
-                "mlx_lm.fuse",
-                "--model", str(base_model_path),
-                "--adapter-path", str(stage1_adapter_dir),
-                "--save-path", str(merged_model_dir)
-            ]
+        # Use MLX-LM fuse command to merge adapter with base model
+        fuse_command = [
+            "mlx_lm.fuse",
+            "--model", str(base_model_path),
+            "--adapter-path", str(stage1_adapter_dir),
+            "--save-path", str(merged_model_dir)
+        ]
 
-            self.logger.info(f"🔧 Running MLX fusion: {' '.join(fuse_command)}")
+        self.logger.info(f"🔧 Running MLX fusion: {' '.join(fuse_command)}")
 
-            result = subprocess.run(
-                fuse_command,
-                capture_output=True,
-                text=True,
-                timeout=600,  # 10 minute timeout
-                check=True
-            )
+        result = subprocess.run(
+            fuse_command,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout
+            check=True
+        )
 
-            self.logger.info("✅ Stage 1 adapter fusion completed successfully")
-            self.logger.info(f"Fusion output: {result.stdout}")
+        self.logger.info("✅ Stage 1 adapter fusion completed successfully")
+        self.logger.info(f"Fusion output: {result.stdout}")
 
-            # Verify merged model has required files
-            required_files = ['config.json', 'tokenizer.json', 'model.safetensors']
-            missing_files = []
-            for file_name in required_files:
-                if not (merged_model_dir / file_name).exists():
-                    missing_files.append(file_name)
+        # Verify merged model has required files
+        required_files = ['config.json', 'tokenizer.json', 'model.safetensors']
+        missing_files = []
+        for file_name in required_files:
+            if not (merged_model_dir / file_name).exists():
+                missing_files.append(file_name)
 
-            if missing_files:
-                raise RuntimeError(f"Merged model missing required files: {missing_files}")
+        if missing_files:
+            raise RuntimeError(f"Merged model missing required files: {missing_files}")
 
-            self.logger.info(f"✅ Merged Stage 1 model ready for Stage 2 training")
-            return merged_model_dir
-
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"❌ MLX fusion failed: {e}")
-            self.logger.error(f"Fusion stderr: {e.stderr}")
-            raise RuntimeError(f"Stage 1 adapter fusion failed: {e.stderr}")
-
-        except subprocess.TimeoutExpired:
-            self.logger.error("❌ MLX fusion timed out")
-            raise RuntimeError("Stage 1 adapter fusion timeout")
-
-        except Exception as e:
-            self.logger.error(f"❌ Unexpected fusion error: {e}")
-            raise RuntimeError(f"Stage 1 adapter fusion failed: {e}")
+        self.logger.info(f"✅ Merged Stage 1 model ready for Stage 2 training")
+        return merged_model_dir
 
     def _run_stage2_fine_tuning_from_stage1(self, training_data_dir: Path,
                                            stage1_adapter_path: str, output_name: str) -> Path:
@@ -472,72 +616,58 @@ class SequentialFineTuner:
         self.logger.info(f"   Stage 1 adapter: {stage1_adapter_path}")
         self.logger.info(f"   Training data: {training_data_dir}")
         self.logger.info(f"   Stage 2 output: {stage2_output_dir}")
-        self.logger.info(f"   Iterations: {self.stage2_config['iters']} (5.3x enhanced from 150)")
+        self.logger.info(f"   Iterations: {self.stage2_config['iters']} (calculated from Stage 1: {self.stage1_config['iters']})")
 
-        try:
-            # Configure chat template for the base model
-            self.base_fine_tuner._configure_chat_template_for_model(str(self.config.get_base_model_path()))
+        # Configure chat template for the base model
+        self.base_fine_tuner._configure_chat_template_for_model(str(self.config.get_base_model_path()))
 
-            # Calculate optimal batch size based on available training data
-            optimal_batch_size = self._calculate_optimal_batch_size(training_data_dir)
+        # Calculate optimal batch size based on available training data
+        optimal_batch_size = self._calculate_optimal_batch_size(training_data_dir)
 
-            # Build enhanced MLX-LM LoRA command with supported parameters only
-            mlx_command = [
-                "mlx_lm.lora",
-                "--model", str(self.config.get_base_model_path()),  # Use base model for efficiency
-                "--train",
-                "--data", str(training_data_dir),
-                "--adapter-path", str(stage2_adapter_path),
-                "--batch-size", str(self.stage2_config['batch_size']),
-                "--iters", str(self.stage2_config['iters']),
-                "--learning-rate", str(self.stage2_config['learning_rate']),
-                "--fine-tune-type", self.stage2_config['fine_tune_type'],
-                "--optimizer", self.stage2_config['optimizer'],
-                "--resume-adapter-file", str(Path(stage1_adapter_path) / "adapters.safetensors")  # Resume from Stage 1 adapter file for true sequential progression
-            ]
+        # Build enhanced MLX-LM LoRA command with supported parameters only
+        mlx_command = [
+            "mlx_lm.lora",
+            "--model", str(self.config.get_base_model_path()),  # Use base model for efficiency
+            "--train",
+            "--data", str(training_data_dir),
+            "--adapter-path", str(stage2_adapter_path),
+            "--batch-size", str(self.stage2_config['batch_size']),
+            "--iters", str(self.stage2_config['iters']),
+            "--learning-rate", str(self.stage2_config['learning_rate']),
+            "--fine-tune-type", self.stage2_config['fine_tune_type'],
+            "--optimizer", self.stage2_config['optimizer'],
+            "--resume-adapter-file", str(Path(stage1_adapter_path) / "adapters.safetensors")  # Resume from Stage 1 adapter file for true sequential progression
+        ]
 
-            self.logger.info(f"🔧 Running Stage 2 MLX command: {' '.join(mlx_command)}")
+        self.logger.info(f"🔧 Running Stage 2 MLX command: {' '.join(mlx_command)}")
 
-            # Execute Stage 2 fine-tuning
-            result = subprocess.run(
-                mlx_command,
-                capture_output=True,
-                text=True,
-                timeout=3600,  # 1 hour timeout
-                check=True
-            )
+        # Execute Stage 2 fine-tuning
+        result = subprocess.run(
+            mlx_command,
+            capture_output=True,
+            text=True,
+            timeout=3600,  # 1 hour timeout
+            check=True
+        )
 
-            self.logger.info("✅ Stage 2 MLX fine-tuning completed successfully")
-            self.logger.info(f"Stage 2 training output: {result.stdout}")
+        self.logger.info("✅ Stage 2 MLX fine-tuning completed successfully")
+        self.logger.info(f"Stage 2 training output: {result.stdout}")
 
-            # Validate Stage 2 adapter was created
-            stage2_adapter_file = stage2_adapter_path / "adapters.safetensors"
-            if not stage2_adapter_file.exists():
-                raise FileNotFoundError("Stage 2 adapter weights not generated")
+        # Validate Stage 2 adapter was created
+        stage2_adapter_file = stage2_adapter_path / "adapters.safetensors"
+        if not stage2_adapter_file.exists():
+            raise FileNotFoundError("Stage 2 adapter weights not generated")
 
-            # Create Stage 1 merged model for Stage 2 fusion
-            self.logger.info("🔗 Creating Stage 1 merged model for Stage 2 fusion")
-            stage1_merged_model = self._create_stage1_merged_model(stage1_adapter_path, f"{output_name}_stage1_merged")
+        # Create Stage 1 merged model for Stage 2 fusion
+        self.logger.info("🔗 Creating Stage 1 merged model for Stage 2 fusion")
+        stage1_merged_model = self._create_stage1_merged_model(stage1_adapter_path, f"{output_name}_stage1_merged")
 
-            # Merge Stage 2 adapter with Stage 1 merged model to create final model
-            self.logger.info("🔗 Creating final Stage 2 model by merging adapter with Stage 1 model")
-            self._merge_stage2_with_stage1(stage1_merged_model, stage2_adapter_path, stage2_output_dir)
+        # Merge Stage 2 adapter with Stage 1 merged model to create final model
+        self.logger.info("🔗 Creating final Stage 2 model by merging adapter with Stage 1 model")
+        self._merge_stage2_with_stage1(stage1_merged_model, stage2_adapter_path, stage2_output_dir)
 
-            self.logger.info(f"✅ Complete Stage 2 model created at: {stage2_output_dir}")
-            return stage2_output_dir
-
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"❌ Stage 2 MLX training failed: {e}")
-            self.logger.error(f"Stage 2 error output: {e.stderr}")
-            raise RuntimeError(f"Stage 2 training failed: {e.stderr}")
-
-        except subprocess.TimeoutExpired:
-            self.logger.error("❌ Stage 2 training timed out")
-            raise RuntimeError("Stage 2 training timeout")
-
-        except Exception as e:
-            self.logger.error(f"❌ Stage 2 training error: {e}")
-            raise RuntimeError(f"Stage 2 training failed: {e}")
+        self.logger.info(f"✅ Complete Stage 2 model created at: {stage2_output_dir}")
+        return stage2_output_dir
 
     def _merge_stage2_with_stage1(self, stage1_merged_model: Path,
                                  stage2_adapter_path: Path, stage2_output_dir: Path):
@@ -546,39 +676,28 @@ class SequentialFineTuner:
         """
         import subprocess
 
-        try:
-            # Use MLX-LM fuse to create final Stage 2 model
-            fuse_command = [
-                "mlx_lm.fuse",
-                "--model", str(stage1_merged_model),
-                "--adapter-path", str(stage2_adapter_path),
-                "--save-path", str(stage2_output_dir)
-            ]
+        # Use MLX-LM fuse to create final Stage 2 model
+        fuse_command = [
+            "mlx_lm.fuse",
+            "--model", str(stage1_merged_model),
+            "--adapter-path", str(stage2_adapter_path),
+            "--save-path", str(stage2_output_dir)
+        ]
 
-            self.logger.info(f"🔧 Creating final Stage 2 model: {' '.join(fuse_command)}")
+        self.logger.info(f"🔧 Creating final Stage 2 model: {' '.join(fuse_command)}")
 
-            result = subprocess.run(
-                fuse_command,
-                capture_output=True,
-                text=True,
-                timeout=600,  # 10 minute timeout
-                check=True
-            )
+        result = subprocess.run(
+            fuse_command,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout
+            check=True
+        )
 
-            self.logger.info("✅ Final Stage 2 model fusion completed successfully")
+        self.logger.info("✅ Final Stage 2 model fusion completed successfully")
 
-            # Save training metadata with sequential information
-            self._save_stage2_metadata(stage2_output_dir, stage1_merged_model)
-
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"❌ Stage 2 model fusion failed: {e}")
-            self.logger.warning("🔄 Using adapter-based model as fallback")
-            self._create_stage2_adapter_model(stage1_merged_model, stage2_adapter_path, stage2_output_dir)
-
-        except Exception as e:
-            self.logger.error(f"❌ Stage 2 fusion error: {e}")
-            self.logger.warning("🔄 Using adapter-based model as fallback")
-            self._create_stage2_adapter_model(stage1_merged_model, stage2_adapter_path, stage2_output_dir)
+        # Save training metadata with sequential information
+        self._save_stage2_metadata(stage2_output_dir, stage1_merged_model)
 
     def _create_stage2_adapter_model(self, stage1_model: Path, adapter_path: Path, output_path: Path):
         """Create Stage 2 model with adapter reference when fusion fails."""
@@ -647,7 +766,7 @@ class SequentialFineTuner:
 
     
     def _train_stage2_alternative(self, dataset_path: Path, output_name: str,
-                                stage1_adapter_path: str, upload_to_hub: bool) -> Dict[str, Any]:
+                                stage1_adapter_path: str) -> Dict[str, Any]:
         """
         Alternative Stage 2 training approach when resume_adapter_file is not available.
         
@@ -657,26 +776,31 @@ class SequentialFineTuner:
         self.logger.info(f"🔄 Using alternative Stage 2 training approach")
         
         try:
-            # For now, train Stage 2 from base model with notification
-            # In a full implementation, this would merge Stage 1 adapter first
-            self.logger.warning("⚠️ Training Stage 2 from base model (Stage 1 adapter merging not yet implemented)")
+            # Stage 1 adapter merging is required for proper sequential training
+            raise NotImplementedError("Stage 1 adapter merging not yet implemented. "
+                                    "Sequential training requires merging Stage 1 adapters before Stage 2 training. "
+                                    "This is a critical feature that must be implemented for proper sequential fine-tuning.")
             
-            stage2_result = self.base_fine_tuner.fine_tune_model(
-                dataset_file=str(dataset_path),
-                output_name=output_name,
-                upload_to_hub=upload_to_hub,
-                **self.stage2_config
+            # Prepare training data and run fine-tuning
+            training_data_dir = self.base_fine_tuner.prepare_training_data(dataset_path)
+            trained_model_path = self.base_fine_tuner.run_fine_tuning(
+                training_data_dir=training_data_dir,
+                custom_output_name=output_name
             )
-            
-            # Add metadata about the limitation
-            stage2_result['stage1_adapter_used'] = False
-            stage2_result['note'] = 'Trained from base model, adapter merging not implemented'
-            
+
+            # Convert Path result to expected dict format
+            stage2_result = {
+                'success': True,
+                'adapter_path': str(trained_model_path),
+                'stage1_adapter_used': False,
+                'note': 'Trained from base model, adapter merging not implemented'
+            }
+
             return stage2_result
             
         except Exception as e:
             self.logger.error(f"❌ Alternative Stage 2 training failed: {e}")
-            return {'success': False, 'error': str(e)}
+            raise
     
     def validate_stage1_specialization(self, stage1_model_path: str,
                                      test_vulnerabilities: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -752,15 +876,17 @@ class SequentialFineTuner:
                            validation_results['analysis_completeness'] +
                            validation_results['response_quality']) / 3
 
-            if overall_score >= 0.7:
+            stage1_threshold = self.config.validation.stage1_threshold
+            if overall_score >= stage1_threshold:
                 validation_results['specialization_level'] = 'high'
                 self.logger.info(f"✅ Stage 1 shows high specialization (score: {overall_score:.2f})")
             elif overall_score >= 0.5:
                 validation_results['specialization_level'] = 'medium'
                 self.logger.info(f"⚠️ Stage 1 shows medium specialization (score: {overall_score:.2f})")
             else:
-                validation_results['specialization_level'] = 'low'
-                self.logger.warning(f"❌ Stage 1 shows low specialization (score: {overall_score:.2f})")
+                raise RuntimeError(f"Stage 1 model failed quality validation with low specialization score: {overall_score:.2f}. "
+                                 f"This indicates training failure or insufficient data quality. "
+                                 f"Minimum acceptable score is {stage1_threshold}.")
 
             validation_results['overall_score'] = overall_score
 
@@ -768,6 +894,7 @@ class SequentialFineTuner:
             self.logger.error(f"❌ Stage 1 validation failed: {e}")
             validation_results['status'] = 'failed'
             validation_results['error'] = str(e)
+            raise
 
         return validation_results
     
@@ -860,34 +987,41 @@ class SequentialFineTuner:
                            validation_results['implementation_completeness'] +
                            validation_results['sequential_capabilities']) / 4
 
-            if overall_score >= 0.7:
+            stage2_threshold = self.config.validation.stage2_threshold
+            if overall_score >= stage2_threshold:
                 validation_results['specialization_level'] = 'high'
                 self.logger.info(f"✅ Stage 2 shows high specialization (score: {overall_score:.2f})")
             elif overall_score >= 0.5:
                 validation_results['specialization_level'] = 'medium'
                 self.logger.info(f"⚠️ Stage 2 shows medium specialization (score: {overall_score:.2f})")
             else:
-                validation_results['specialization_level'] = 'low'
-                self.logger.warning(f"❌ Stage 2 shows low specialization (score: {overall_score:.2f})")
+                raise RuntimeError(f"Stage 2 model failed quality validation with low specialization score: {overall_score:.2f}. "
+                                 f"This indicates training failure or insufficient data quality. "
+                                 f"Minimum acceptable score is {stage2_threshold}.")
 
             validation_results['overall_score'] = overall_score
 
-            # Check if sequential progression is working
-            if validation_results['sequential_capabilities'] >= 0.6:
-                self.logger.info("✅ Sequential progression validated - Stage 2 retains Stage 1 capabilities")
+            # Check if sequential progression is working (configurable threshold)
+            sequential_threshold = self.config.validation.sequential_threshold
+
+            if validation_results['sequential_capabilities'] >= sequential_threshold:
+                self.logger.info(f"✅ Sequential progression validated - Stage 2 retains Stage 1 capabilities")
             else:
-                self.logger.warning("⚠️ Sequential progression concern - Stage 2 may have lost Stage 1 capabilities")
+                raise RuntimeError(f"Sequential progression validation failed: Stage 2 has lost Stage 1 capabilities. "
+                                 f"Sequential score: {validation_results['sequential_capabilities']:.2f}, threshold: {sequential_threshold}. "
+                                 f"This indicates catastrophic forgetting - the sequential training has failed.")
 
         except Exception as e:
             self.logger.error(f"❌ Stage 2 validation failed: {e}")
             validation_results['status'] = 'failed'
             validation_results['error'] = str(e)
+            raise
 
         return validation_results
 
     # Supporting validation methods
-    def _load_model_for_validation(self, model_path: str):
-        """Load MLX model for real validation testing."""
+    def _load_model_for_validation(self, model_path: str, artifact_type: str = "auto"):
+        """Load MLX model for validation with artifact-type awareness."""
         try:
             from pathlib import Path
             import json
@@ -897,53 +1031,204 @@ class SequentialFineTuner:
             # Check if model path exists
             model_dir = Path(model_path)
             if not model_dir.exists():
-                self.logger.error(f"Model path does not exist: {model_path}")
-                return None
+                raise FileNotFoundError(f"Model path does not exist: {model_path}")
 
-            # Check for required model files
-            required_files = ['config.json', 'model.safetensors', 'tokenizer.json']
-            missing_files = [f for f in required_files if not (model_dir / f).exists()]
+            # Detect artifact type if not specified
+            if artifact_type == "auto":
+                artifact_type = self._detect_artifact_type(model_dir)
 
-            if missing_files:
-                self.logger.error(f"Model missing required files: {missing_files}")
-                return None
+            self.logger.info(f"🔍 Detected artifact type: {artifact_type}")
 
-            # Load model using MLX-LM
-            try:
-                from mlx_lm import load
-
-                # Load the model and tokenizer
-                self.logger.info(f"📥 Loading model with MLX-LM from: {model_path}")
-                model, tokenizer = load(str(model_dir))
-
-                # Verify model is functional
-                if model is None or tokenizer is None:
-                    self.logger.error("Failed to load model or tokenizer")
-                    return None
-
-                self.logger.info("✅ MLX model loaded successfully for validation")
-
-                return {
-                    'model': model,
-                    'tokenizer': tokenizer,
-                    'model_path': model_path,
-                    'loaded': True,
-                    'type': 'mlx_model'
-                }
-
-            except ImportError:
-                self.logger.warning("MLX-LM not available, using path validation only")
-                # Fallback to path validation if MLX not available
-                return {
-                    'model_path': model_path,
-                    'loaded': False,
-                    'type': 'path_only',
-                    'files_verified': True
-                }
+            # Validate based on artifact type
+            if artifact_type == "lora_adapter":
+                return self._load_lora_adapter_for_validation(model_dir)
+            elif artifact_type == "full_model":
+                return self._load_full_model_for_validation(model_dir)
+            else:
+                raise ValueError(f"Unknown artifact type: {artifact_type}")
 
         except Exception as e:
             self.logger.error(f"Failed to load model for validation: {e}")
-            return None
+            raise
+
+    def _detect_artifact_type(self, model_dir: Path) -> str:
+        """Detect whether this is a LoRA adapter or full model directory."""
+        # Check for LoRA adapter files
+        adapter_files = ['adapters.safetensors', 'adapter_config.json']
+        has_adapter_files = all((model_dir / f).exists() for f in adapter_files)
+
+        # Check for full model files
+        model_files = ['config.json', 'model.safetensors', 'tokenizer.json']
+        has_model_files = all((model_dir / f).exists() for f in model_files)
+
+        if has_adapter_files and not has_model_files:
+            return "lora_adapter"
+        elif has_model_files:
+            return "full_model"
+        else:
+            raise ValueError(f"Cannot determine artifact type for {model_dir}. "
+                           f"Expected either LoRA adapter files {adapter_files} "
+                           f"or full model files {model_files}")
+
+    def _load_lora_adapter_for_validation(self, adapter_dir: Path):
+        """Load and validate LoRA adapter with support for both MLX and PEFT config formats."""
+        self.logger.info(f"🔧 Validating LoRA adapter: {adapter_dir}")
+
+        # Check for required LoRA files
+        required_files = ['adapters.safetensors', 'adapter_config.json']
+        missing_files = [f for f in required_files if not (adapter_dir / f).exists()]
+
+        if missing_files:
+            raise FileNotFoundError(f"LoRA adapter missing required files: {missing_files}")
+
+        # Validate adapter config
+        adapter_config_path = adapter_dir / 'adapter_config.json'
+        try:
+            with open(adapter_config_path, 'r') as f:
+                adapter_config = json.load(f)
+
+            # Detect and validate config format (MLX-native or PEFT)
+            config_format = self._detect_config_format(adapter_config)
+            lora_params = self._extract_lora_params(adapter_config, config_format)
+
+            self.logger.info(f"🔍 Detected config format: {config_format}")
+            self.logger.info(f"🔍 Extracted LoRA params: rank={lora_params['rank']}, dropout={lora_params['dropout']}, scale/alpha={lora_params['scale']}")
+
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Invalid adapter config JSON: {e}")
+
+        # Validate adapter weights file size
+        adapters_path = adapter_dir / 'adapters.safetensors'
+        if adapters_path.stat().st_size < 1024:  # Less than 1KB is suspicious
+            raise ValueError(f"Adapter file too small: {adapters_path.stat().st_size} bytes")
+
+        self.logger.info("✅ LoRA adapter validation passed")
+        return {"type": "lora_adapter", "path": str(adapter_dir), "config": adapter_config}
+
+    def _create_stage1_merged_model_to_directory(self, stage1_adapter_path: str,
+                                               target_directory: Path, output_name: str) -> Path:
+        """
+        Create a merged model from Stage 1 adapter and base model to a specific directory.
+        This creates a complete model for validation purposes.
+        """
+        import subprocess
+        from pathlib import Path
+
+        # Define paths
+        base_model_path = self.config.get_base_model_path()
+        stage1_adapter_dir = Path(stage1_adapter_path)
+
+        # Use the structured target directory for merged model
+        merged_model_dir = target_directory
+        merged_model_dir.mkdir(parents=True, exist_ok=True)
+
+        self.logger.info(f"🔗 Creating merged model at: {merged_model_dir}")
+        self.logger.info(f"   Base model: {base_model_path}")
+        self.logger.info(f"   Stage 1 adapters: {stage1_adapter_dir}")
+
+        # Use MLX-LM fuse command to merge adapter with base model
+        fuse_command = [
+            "mlx_lm.fuse",
+            "--model", str(base_model_path),
+            "--adapter-path", str(stage1_adapter_dir),
+            "--save-path", str(merged_model_dir)
+        ]
+
+        self.logger.info(f"🔧 Running MLX fusion: {' '.join(fuse_command)}")
+
+        result = subprocess.run(
+            fuse_command,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout
+        )
+
+        if result.returncode != 0:
+            self.logger.error(f"Fusion failed with return code: {result.returncode}")
+            self.logger.error(f"Fusion error: {result.stderr}")
+            raise RuntimeError(f"Stage 1 model fusion failed: {result.stderr}")
+
+        self.logger.info("✅ Stage 1 merged model created successfully")
+        return merged_model_dir
+
+    def _detect_config_format(self, config: dict) -> str:
+        """Detect whether config is MLX-native or PEFT format."""
+        # Check for PEFT format markers
+        if all(key in config for key in ['peft_type', 'r', 'lora_alpha']):
+            return "peft"
+
+        # Check for MLX-native format markers
+        if 'fine_tune_type' in config and 'lora_parameters' in config:
+            if isinstance(config['lora_parameters'], dict) and 'rank' in config['lora_parameters']:
+                return "mlx"
+
+        # If neither format is clearly identified, provide detailed error
+        available_keys = list(config.keys())
+        raise ValueError(
+            f"Unrecognized LoRA config format. "
+            f"Expected either PEFT format (peft_type, r, lora_alpha) or "
+            f"MLX format (fine_tune_type, lora_parameters.rank). "
+            f"Available keys: {available_keys}"
+        )
+
+    def _extract_lora_params(self, config: dict, config_format: str) -> dict:
+        """Extract normalized LoRA parameters from either MLX or PEFT format."""
+        if config_format == "peft":
+            return {
+                'rank': config['r'],
+                'dropout': config.get('lora_dropout', 0.0),
+                'scale': config['lora_alpha']
+            }
+        elif config_format == "mlx":
+            lora_params = config['lora_parameters']
+            return {
+                'rank': lora_params['rank'],
+                'dropout': lora_params.get('dropout', 0.0),
+                'scale': lora_params.get('scale', 1.0)
+            }
+        else:
+            raise ValueError(f"Unsupported config format: {config_format}")
+
+    def _load_full_model_for_validation(self, model_dir: Path):
+        """Load and validate full model."""
+        self.logger.info(f"🔧 Validating full model: {model_dir}")
+
+        # Check for required model files
+        required_files = ['config.json', 'model.safetensors', 'tokenizer.json']
+        missing_files = [f for f in required_files if not (model_dir / f).exists()]
+
+        if missing_files:
+            raise FileNotFoundError(f"Full model missing required files: {missing_files}")
+
+        # Load model using MLX-LM
+        try:
+            from mlx_lm import load
+
+            # Load the model and tokenizer
+            self.logger.info(f"📥 Loading full model with MLX-LM from: {model_dir}")
+            model, tokenizer = load(str(model_dir))
+
+            # Verify model is functional
+            if model is None or tokenizer is None:
+                raise RuntimeError("Failed to load model or tokenizer")
+
+            self.logger.info("✅ Full model loaded successfully for validation")
+
+            return {
+                'model': model,
+                'tokenizer': tokenizer,
+                'model_path': str(model_dir),
+                'loaded': True,
+                'type': 'mlx_model'  # This is an MLX model for validation purposes
+            }
+
+        except ImportError:
+            raise ImportError("MLX-LM not available but is required for full model validation. "
+                            "Please ensure MLX-LM is properly installed to validate trained models.")
+
+        except Exception as e:
+            self.logger.error(f"Failed to load model for validation: {e}")
+            raise
 
     def _create_stage1_validation_prompt(self, vulnerability: Dict[str, Any]) -> str:
         """Create validation prompt for Stage 1 analysis testing."""
@@ -978,8 +1263,9 @@ Provide:
         try:
             # Check if we have a real MLX model or fallback
             if not model or model.get('type') != 'mlx_model':
-                self.logger.warning("🔧 Model not loaded, using fallback validation response")
-                return self._generate_fallback_response(prompt)
+                raise RuntimeError(f"Model validation failed: Model not properly loaded. "
+                                 f"Expected MLX model but got: {model.get('type') if model else 'None'}. "
+                                 f"This indicates a critical failure in model loading or training.")
 
             # Real MLX model inference
             mlx_model = model['model']
@@ -1002,66 +1288,14 @@ Provide:
                 return response
 
             except ImportError:
-                self.logger.warning("MLX-LM generate not available, using fallback")
-                return self._generate_fallback_response(prompt)
+                raise ImportError("MLX-LM generate function not available. "
+                                "This is required for model validation. "
+                                "Please ensure MLX-LM is properly installed.")
 
         except Exception as e:
             self.logger.error(f"Failed to generate model response: {e}")
-            return self._generate_fallback_response(prompt)
+            raise
 
-    def _generate_fallback_response(self, prompt: str) -> str:
-        """Generate structured fallback response for validation when MLX unavailable."""
-        self.logger.info("🔧 Generating fallback response for validation")
-
-        if 'analysis' in prompt.lower():
-            # Stage 1 analysis response
-            return """# Vulnerability Analysis Report
-
-## Classification
-**Vulnerability Type**: Security Misconfiguration
-**Severity Level**: Medium
-**Confidence**: High
-
-## Root Cause Analysis
-**Technical Root Cause**: Insecure configuration lacking proper validation
-**Impact**: Medium risk of unauthorized access
-
-## Impact Assessment
-**Technical Impact**: Could allow limited unauthorized access
-**Business Impact**: Medium risk of operational disruption
-**Exploitability**: Medium - requires specific conditions
-
-## Risk Justification
-Risk level Medium justified by exploitability and potential impact severity."""
-
-        else:
-            # Stage 2 code fix response
-            return """# Code Fix Implementation
-
-## Fixed Code
-```python
-def secure_function(user_input):
-    # Input validation
-    if not validate_input(user_input):
-        raise ValueError("Invalid input")
-
-    # Sanitize input
-    sanitized_input = sanitize(user_input)
-
-    # Process securely
-    return process_safely(sanitized_input)
-```
-
-## Security Improvements
-- Added input validation to prevent malicious input
-- Implemented proper sanitization
-- Used secure processing methods
-
-## Implementation Steps
-1. Add input validation function
-2. Implement sanitization
-3. Test with various inputs
-4. Deploy with monitoring"""
 
     def _validate_stage1_response(self, vulnerability: Dict[str, Any], response: str) -> Dict[str, Any]:
         """Validate Stage 1 analysis response quality."""
@@ -1196,7 +1430,7 @@ def secure_function(user_input):
         self.logger.info(f"🚀 Starting enhanced Stage 1 fine-tuning with optimized parameters")
         self.logger.info(f"   Training data: {training_data_dir}")
         self.logger.info(f"   Stage 1 output: {stage1_output_dir}")
-        self.logger.info(f"   Iterations: {self.stage1_config['iters']} (5x enhanced from 100)")
+        self.logger.info(f"   Iterations: {self.stage1_config['iters']} (calculated from save_steps: {self.config.fine_tuning.save_steps})")
 
         try:
             # Configure chat template
@@ -1257,9 +1491,15 @@ def secure_function(user_input):
 
         self.logger.info("🔄 Preparing mixed training data for catastrophic forgetting mitigation")
 
-        # Create mixed training data directory
-        mixed_data_dir = self.config.fine_tuned_models_dir / f"{output_name}_mixed_training"
-        mixed_data_dir.mkdir(parents=True, exist_ok=True)
+        # Use manifest-defined path for mixed training data
+        if self.training_run:
+            mixed_dataset_path = self.training_run.get_stage2_training_data("mixed_dataset")
+            mixed_data_dir = mixed_dataset_path.parent
+            mixed_data_dir.mkdir(parents=True, exist_ok=True)
+        else:
+            # Fallback for non-structured runs (should not happen)
+            mixed_data_dir = self.config.fine_tuned_models_dir / f"{output_name}_mixed_training"
+            mixed_data_dir.mkdir(parents=True, exist_ok=True)
 
         try:
             # Step 1: Prepare Stage 2 training data normally
@@ -1298,10 +1538,11 @@ def secure_function(user_input):
 
                 self.logger.info(f"📊 Mixed dataset: {len(stage2_converted)} Stage 2 + {len(stage1_converted)} Stage 1 = {len(mixed_data)} total")
             else:
-                self.logger.warning("⚠️ No Stage 1 data found - using Stage 2 data only")
-                mixed_data = stage2_converted
+                self.logger.error("❌ No Stage 1 data found for mixing - this is a critical error.")
+                raise FileNotFoundError("No Stage 1 training data found for mixing. Halting to prevent catastrophic forgetting.")
 
-            # Step 5: Write mixed training data
+            # Step 5: Write mixed training data using MLX-required filename
+            # MLX-LM requires exactly 'train.jsonl' - no custom filenames supported
             mixed_train_file = mixed_data_dir / "train.jsonl"
             with open(mixed_train_file, 'w') as f:
                 for example in mixed_data:
@@ -1319,41 +1560,45 @@ def secure_function(user_input):
 
         except Exception as e:
             self.logger.error(f"❌ Failed to prepare mixed training data: {e}")
-            # Fallback to original Stage 2 data
-            self.logger.info("🔄 Falling back to Stage 2 data only")
-            return self.base_fine_tuner.prepare_training_data(stage2_dataset_path)
+            raise
 
     def _get_stage1_training_data(self) -> List[Dict]:
         """
         Retrieve Stage 1 training data for mixing with Stage 2 data.
-        Looks for the most recent Stage 1 training dataset.
+        Uses manifest-based discovery for reliable artifact location.
         """
         try:
-            # Look for recent Stage 1 datasets in the training data directory (recursive search)
-            stage1_files = list(self.config.data_dir.glob("**/*stage1*analysis*.jsonl"))
+            if self.training_run is None:
+                raise ValueError("Structured training run required for Stage 1 data discovery. "
+                               "Legacy discovery has been removed - use TrainingRun instances only.")
 
-            if not stage1_files:
-                # Also check for general analysis datasets (recursive search)
-                stage1_files = list(self.config.data_dir.glob("**/*analysis*.jsonl"))
+            # Use manifest-based discovery
+            self.logger.info("🔍 Using manifest-based Stage 1 data discovery")
 
-            if stage1_files:
-                # Use the most recent Stage 1 file
-                latest_file = max(stage1_files, key=lambda p: p.stat().st_mtime)
-                self.logger.info(f"📂 Found Stage 1 data: {latest_file}")
+            if not self.training_run.manifest.stage1:
+                raise RuntimeError("No Stage 1 found in manifest. "
+                                 "Sequential training requires Stage 1 to be completed first.")
 
-                stage1_data = []
-                with open(latest_file, 'r') as f:
-                    stage1_data = [json.loads(line) for line in f if line.strip()]
+            # Get Stage 1 training data path from manifest
+            stage1_data_path = self.training_run.get_stage1_training_data()
 
-                self.logger.info(f"📊 Loaded {len(stage1_data)} Stage 1 examples for mixing")
-                return stage1_data
-            else:
-                self.logger.warning("⚠️ No Stage 1 training data found for mixing")
-                return []
+            if not stage1_data_path.exists():
+                raise FileNotFoundError(f"Stage 1 training data not found: {stage1_data_path}. "
+                                      f"Sequential training requires Stage 1 training data to be available.")
+
+            self.logger.info(f"📂 Using manifest-defined Stage 1 data: {stage1_data_path}")
+
+            stage1_data = []
+            with open(stage1_data_path, 'r') as f:
+                stage1_data = [json.loads(line) for line in f if line.strip()]
+
+            return stage1_data
 
         except Exception as e:
             self.logger.error(f"❌ Error loading Stage 1 data: {e}")
-            return []
+            raise
+
+
 
     def _convert_instruction_to_chat_format(self, instruction_data: List[Dict]) -> List[Dict]:
         """
@@ -1400,8 +1645,9 @@ def secure_function(user_input):
                 converted_data.append(example)
             else:
                 # Unexpected format
-                self.logger.warning(f"⚠️ Unexpected Stage 1 data format: {list(example.keys())}")
-                converted_data.append(example)
+                raise ValueError(f"Unexpected Stage 1 data format: {list(example.keys())}. "
+                               f"Expected either 'text' field or 'conversations' field for ChatML format. "
+                               f"This indicates corrupted or incompatible training data.")
 
         return converted_data
 
@@ -1441,8 +1687,8 @@ def secure_function(user_input):
             default_batch_size = self.stage2_config['batch_size']
 
             if total_examples == 0:
-                self.logger.warning("⚠️ No training data found - using minimal batch size")
-                optimal_batch_size = 1
+                raise RuntimeError("No training data found for Stage 2. "
+                                 "Sequential training requires both Stage 1 and Stage 2 training data to be available.")
             elif train_count < default_batch_size:
                 # Use the number of training examples or 1, whichever is larger
                 optimal_batch_size = max(1, train_count)
@@ -1455,62 +1701,71 @@ def secure_function(user_input):
 
         except Exception as e:
             self.logger.error(f"❌ Error calculating batch size: {e}")
-            self.logger.info("🔧 Falling back to batch size 1 for safety")
-            return 1
+            raise
 
 
 def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
-                                     output_dir: Path,
-                                     model_name_prefix: Optional[str] = None,
-                                     upload_to_hub: bool = True) -> SequentialTrainingResult:
+                                     training_run: TrainingRun,
+                                     model_name_prefix: Optional[str] = None) -> SequentialTrainingResult:
     """
     Complete pipeline: Create sequential datasets and train specialized models.
-    
+
     This convenience function:
     1. Creates Stage 1 and Stage 2 datasets from vulnerabilities
     2. Trains Stage 1 (analysis) specialist model
     3. Trains Stage 2 (code fix) specialist building on Stage 1
     4. Validates both models
-    
+
     Args:
         vulnerabilities: List of vulnerability data
-        output_dir: Directory for datasets and model outputs
+        training_run: Structured training run for organized output
         model_name_prefix: Prefix for model names
-        upload_to_hub: Whether to upload final model to HuggingFace
-        
+
     Returns:
         SequentialTrainingResult with complete training results
     """
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger(__name__)
-    
+
     try:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if not model_name_prefix:
             model_name_prefix = f"webauthn-security-sequential_{timestamp}"
-        
-        # Step 1: Create sequential datasets
+
+        # Step 1: Create sequential datasets - write directly to structured locations
         logger.info("📊 Step 1: Creating sequential datasets...")
         dataset_creator = SequentialDatasetCreator()
         dataset_result = dataset_creator.create_sequential_datasets(
-            vulnerabilities, 
+            vulnerabilities,
             f"sequential_{timestamp}"
         )
-        
+
         if not dataset_result.success:
             raise Exception(f"Dataset creation failed: {dataset_result.processing_errors}")
-        
-        # Save datasets
-        dataset_paths = dataset_creator.save_sequential_datasets(dataset_result, output_dir)
+
+        # Save datasets to manifest-defined directories (lazy creation)
+        stage1_data_dir = training_run.run_dir / "stage1" / "training-data"  # Parent of training_data_path
+        stage2_data_dir = training_run.run_dir / "stage2" / "training-data"  # Parent of training_data_paths
+        stage1_data_dir.mkdir(parents=True, exist_ok=True)
+        stage2_data_dir.mkdir(parents=True, exist_ok=True)
+
+        dataset_paths = dataset_creator.save_sequential_datasets_to_structured_paths(
+            dataset_result,
+            stage1_data_dir,
+            stage2_data_dir
+        )
         
         # Step 2: Sequential fine-tuning
         logger.info("🚀 Step 2: Sequential fine-tuning...")
-        fine_tuner = SequentialFineTuner()
+
+        # Use OLMoSecurityConfig for configuration
+        config = OLMoSecurityConfig()
+
+        fine_tuner = SequentialFineTuner(config=config, training_run=training_run)
         training_result = fine_tuner.sequential_fine_tune(
             stage1_dataset=dataset_paths['stage1'],
             stage2_dataset=dataset_paths['stage2'],
-            output_name_prefix=model_name_prefix,
-            upload_to_hub=upload_to_hub
+            output_name_prefix=model_name_prefix
         )
         
         if training_result.success:
@@ -1536,8 +1791,4 @@ def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
         
     except Exception as e:
         logger.error(f"❌ Complete pipeline failed: {e}")
-        return SequentialTrainingResult(
-            success=False,
-            error_message=str(e),
-            metadata={'error_time': datetime.now().isoformat()}
-        )
+        raise

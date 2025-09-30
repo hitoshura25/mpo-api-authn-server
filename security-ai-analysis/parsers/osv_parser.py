@@ -3,13 +3,17 @@ Parse OSV Scanner dependency scan outputs
 OSV Scanner format documented at: https://github.com/google/osv-scanner
 """
 import json
+import logging
+from pathlib import Path
 from typing import List, Dict
+
+logger = logging.getLogger(__name__)
 
 
 def parse_osv_json(filepath: str) -> List[Dict]:
     """
     Parse OSV Scanner JSON output
-    
+
     Expected structure from OSV Scanner:
     {
         "results": [
@@ -38,6 +42,13 @@ def parse_osv_json(filepath: str) -> List[Dict]:
         ]
     }
     """
+    # Graceful handling for optional tool execution
+    if not Path(filepath).exists():
+        logger.info(f"ℹ️ OSV Scanner file not found: {filepath}")
+        logger.info("This is acceptable - OSV dependency scanning may not have been run")
+        return []
+
+    # Fail fast on corrupted existing files
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
@@ -79,5 +90,6 @@ def parse_osv_json(filepath: str) -> List[Dict]:
         
         return vulnerabilities
     except Exception as e:
-        print(f"Error parsing OSV Scanner JSON: {e}")
-        return []
+        logger.error(f"❌ CRITICAL: Corrupted OSV Scanner data in {filepath}: {e}")
+        logger.error("🔍 File exists but is corrupted - indicates OSV Scanner tool malfunction requiring investigation")
+        raise RuntimeError(f"Corrupted OSV Scanner data requires investigation: {e}") from e

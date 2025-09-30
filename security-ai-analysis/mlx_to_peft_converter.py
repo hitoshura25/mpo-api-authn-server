@@ -119,12 +119,7 @@ def convert_mlx_to_peft_format(mlx_adapter_path: Path, output_path: Path,
 
     except Exception as e:
         logger.error(f"❌ MLX to PEFT conversion failed: {e}")
-        return {
-            'success': False,
-            'error': str(e),
-            'mlx_input_path': str(mlx_adapter_path),
-            'peft_output_path': str(output_path)
-        }
+        raise
 
 
 def convert_parameter_name(mlx_param_name: str) -> str:
@@ -404,7 +399,7 @@ def validate_peft_adapter(peft_path: Path) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"❌ PEFT validation error: {e}")
         validation_results['errors'].append(str(e))
-        return validation_results
+        raise
 
 
 if __name__ == "__main__":

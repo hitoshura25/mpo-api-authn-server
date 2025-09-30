@@ -58,7 +58,7 @@ class RAGEnhancedOLMoAnalyzer(OLMoSecurityAnalyzer):
                 self._initialize_rag_system()
             except Exception as e:
                 self.logger.warning(f"⚠️ RAG initialization failed, falling back to baseline: {e}")
-                self.rag_enabled = False
+                raise
         
         self.logger.info(f"✅ RAG-Enhanced analyzer initialized (RAG enabled: {self.rag_enabled})")
 
@@ -139,7 +139,7 @@ class RAGEnhancedOLMoAnalyzer(OLMoSecurityAnalyzer):
         except Exception as e:
             self.logger.error(f"❌ RAG analysis failed: {e}")
             self.logger.info("🔄 Falling back to baseline analysis")
-            return super().analyze_vulnerability(vulnerability)
+            raise
     
     def _create_rag_enhanced_prompt(
         self, 
@@ -270,8 +270,9 @@ Prevention: {structured.get('prevention', 'N/A')}"""
             else:
                 return text[start_pos:].strip()
                 
-        except Exception:
-            return ""
+        except Exception as e:
+            self.logger.error(f"Failed to extract section: {e}")
+            raise
     
     def _merge_analyses(
         self,
@@ -390,6 +391,7 @@ def test_rag_enhanced_analyzer():
         print(f"❌ RAG-enhanced analyzer test failed: {e}")
         import traceback
         traceback.print_exc()
+        raise
 
 
 if __name__ == "__main__":

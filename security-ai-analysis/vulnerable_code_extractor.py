@@ -275,11 +275,8 @@ class VulnerableCodeExtractor:
             )
             
         except Exception as e:
-            return ContextExtractionResult(
-                success=False,
-                code_context=None,
-                error_message=f"Extraction failed: {e}"
-            )
+            self.logger.error(f"Extraction failed: {e}")
+            raise
     
     def _find_actual_file(self, scan_file_path: str) -> Path:
         """
@@ -421,8 +418,9 @@ class VulnerableCodeExtractor:
                     best_match = self._find_best_path_match(matches, relative_path)
                     if best_match:
                         return best_match
-            except Exception:
-                continue  # Skip if glob fails
+            except Exception as e:
+                self.logger.error(f"Error during glob search: {e}")
+                raise
         
         return None
     

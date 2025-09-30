@@ -4,7 +4,11 @@ SARIF format documented at: https://sarifweb.azurewebsites.net/
 Supports multiple tools: Trivy, Checkov, GitLeaks, Semgrep, etc.
 """
 import json
+import logging
+from pathlib import Path
 from typing import List, Dict
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_file_path(raw_path: str, tool_name: str = "Unknown") -> str:
@@ -59,7 +63,7 @@ def _normalize_file_path(raw_path: str, tool_name: str = "Unknown") -> str:
 def parse_sarif_json(filepath: str) -> List[Dict]:
     """
     Parse SARIF JSON output from various security tools
-    
+
     SARIF v2.1.0 structure:
     {
         "runs": [
@@ -82,6 +86,13 @@ def parse_sarif_json(filepath: str) -> List[Dict]:
         ]
     }
     """
+    # Graceful handling for optional tool execution
+    if not Path(filepath).exists():
+        logger.info(f"ℹ️ SARIF scan file not found: {filepath}")
+        logger.info("This is acceptable - SARIF-based security tools (Trivy, Checkov, etc.) may not have been run")
+        return []
+
+    # Fail fast on corrupted existing files
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
@@ -146,5 +157,6 @@ def parse_sarif_json(filepath: str) -> List[Dict]:
         
         return findings
     except Exception as e:
-        print(f"Error parsing SARIF JSON: {e}")
-        return []
+        logger.error(f"❌ CRITICAL: Corrupted SARIF scan data in {filepath}: {e}")
+        logger.error("🔍 File exists but is corrupted - indicates SARIF tool malfunction requiring investigation")
+        raise RuntimeError(f"Corrupted SARIF scan data requires investigation: {e}") from e

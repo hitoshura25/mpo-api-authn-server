@@ -184,11 +184,8 @@ class MultiApproachFixGenerator:
             )
             
         except Exception as e:
-            return FixGenerationResult(
-                success=False,
-                fixes=[],
-                error_message=f"Fix generation failed: {e}"
-            )
+            self.logger.error(f"Fix generation failed: {e}")
+            raise
     
     def _classify_vulnerability(self, vulnerability: Dict[str, Any]) -> str:
         """Classify vulnerability type from vulnerability data."""

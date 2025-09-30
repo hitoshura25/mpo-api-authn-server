@@ -22,48 +22,30 @@ from datetime import datetime
 
 from sequential_fine_tuner import SequentialFineTuner, create_and_train_sequential_models
 from sequential_dataset_creator import SequentialDatasetCreator
+from training_run_manager import TrainingRunManager, TrainingRun
 
 logger = logging.getLogger(__name__)
 
 def run_sequential_fine_tuning_phase(
-    vulnerabilities: List[Dict], 
+    vulnerabilities: List[Dict],
     summary: Dict[str, Any],
-    disable_sequential_fine_tuning: bool = False,
-    upload_model: bool = True
+    base_output_dir: Optional[Path] = None
 ) -> Dict[str, Any]:
     """
-    Execute Sequential Fine-Tuning as the default pipeline behavior
-    
+    Execute Sequential Fine-Tuning (always enabled)
+
     Creates specialized datasets and trains two models:
     1. Stage 1: Vulnerability Analysis Specialist
     2. Stage 2: Code Fix Generation Specialist (builds on Stage 1)
-    
+
     Args:
         vulnerabilities: List of processed vulnerability data with narratives
         summary: Analysis summary dictionary to update
-        disable_sequential_fine_tuning: CLI flag to fall back to single-stage (opt-out, default False)
-        upload_model: Upload final model to HuggingFace (default True, disabled by --skip-model-upload)
-    
+        base_output_dir: Optional base directory for model output (respects --model-dir)
+
     Returns:
         Updated summary dictionary with sequential fine-tuning results
     """
-    
-    # Check CLI opt-out first (fallback to single-stage approach)
-    if disable_sequential_fine_tuning:
-        print("\n" + "="*60)
-        print("⏭️  Sequential Fine-Tuning (DISABLED - Falling back to single-stage)")
-        print("🔧 Sequential fine-tuning disabled via --disable-sequential-fine-tuning flag")
-        print("   Will use traditional single-stage fine-tuning instead")
-        print("="*60)
-        summary['sequential_fine_tuning'] = {
-            'status': 'disabled', 
-            'reason': 'disabled via CLI --disable-sequential-fine-tuning flag',
-            'fallback': 'single-stage fine-tuning'
-        }
-        
-        # Fall back to single-stage fine-tuning
-        return _fallback_to_single_stage_fine_tuning(vulnerabilities, summary, upload_model)
-    
     print("\n" + "="*60)
     print("🚀 Sequential Fine-Tuning (Default Behavior)")
     print("🎯 Creating specialized models for maximum accuracy")
@@ -81,23 +63,36 @@ def run_sequential_fine_tuning_phase(
         
         print(f"📊 Processing {len(vulnerabilities)} vulnerabilities for sequential training")
         
-        # Create output directory for this run
+        # Create structured training run using configuration
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        output_dir = Path("data/sequential_fine_tuning") / f"run_{timestamp}"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        # Get configuration for training run management
+        from config_manager import OLMoSecurityConfig
+        config = OLMoSecurityConfig()
+
+        # Create training run manager using configuration
+        training_run_manager = TrainingRunManager(config)
+        print(f"🔧 Using configured training runs directory: {training_run_manager.training_runs_dir}")
+
+        # Note: base_output_dir parameter is ignored in favor of configuration-driven paths
+        if base_output_dir:
+            print(f"ℹ️  Note: --model-dir parameter ignored, using configured path: {training_run_manager.training_runs_dir}")
+
+        run_id = timestamp
         model_name_prefix = f"webauthn-security-sequential_{timestamp}"
-        
-        print(f"📁 Output directory: {output_dir}")
+
+        # Create new structured training run
+        training_run = training_run_manager.create_run(run_id)
+        print(f"🏗️ Created structured training run: {training_run.run_id}")
+        print(f"📁 Training run directory: {training_run.run_dir}")
         print(f"🏷️  Model prefix: {model_name_prefix}")
-        
-        # Run complete sequential fine-tuning pipeline
-        print("🔄 Starting complete sequential fine-tuning pipeline...")
+
+        # All paths will be provided by the training run - no separate output_dir needed
+        print("🔄 Starting complete sequential fine-tuning pipeline with structured output...")
         sequential_result = create_and_train_sequential_models(
             vulnerabilities=vulnerabilities,
-            output_dir=output_dir,
-            model_name_prefix=model_name_prefix,
-            upload_to_hub=upload_model
+            training_run=training_run,
+            model_name_prefix=model_name_prefix
         )
         
         if sequential_result.success:
@@ -107,10 +102,6 @@ def run_sequential_fine_tuning_phase(
             print(f"   Stage 2 (Code Fixes): {sequential_result.stage2_training_time:.1f}s")
             print(f"   Stage 1 model: {sequential_result.stage1_model_path}")
             print(f"   Stage 2 model: {sequential_result.stage2_model_path}")
-            
-            if upload_model and sequential_result.metadata.get('final_model_hub_name'):
-                print(f"   HuggingFace: {sequential_result.metadata['final_model_hub_name']}")
-            
             # Update summary with successful results
             summary['sequential_fine_tuning'] = {
                 'status': 'completed',
@@ -121,9 +112,8 @@ def run_sequential_fine_tuning_phase(
                 'stage2_training_time': sequential_result.stage2_training_time,
                 'total_training_time': sequential_result.total_training_time,
                 'vulnerabilities_processed': len(vulnerabilities),
-                'output_directory': str(output_dir),
+                'output_directory': str(training_run.run_dir),
                 'model_name_prefix': model_name_prefix,
-                'upload_requested': upload_model,
                 'metadata': sequential_result.metadata
             }
             
@@ -136,31 +126,20 @@ def run_sequential_fine_tuning_phase(
         else:
             # Sequential fine-tuning failed
             error_msg = sequential_result.error_message or "Unknown error"
-            print(f"❌ Sequential fine-tuning failed: {error_msg}")
-            
-            summary['sequential_fine_tuning'] = {
-                'status': 'failed',
-                'error': error_msg,
-                'approach': 'sequential_two_stage',
-                'vulnerabilities_processed': len(vulnerabilities),
-                'metadata': sequential_result.metadata
-            }
-            
-            # Consider fallback to single-stage on failure
-            print("🔄 Consider using --disable-sequential-fine-tuning for single-stage fallback")
+            logger.error(f"❌ CRITICAL: Sequential fine-tuning failure: {error_msg}")
+            logger.error("🔍 Sequential fine-tuning failure indicates training infrastructure issues or data corruption requiring investigation")
+            raise RuntimeError(f"Sequential fine-tuning failure requires investigation: {error_msg}")
             
     except ImportError as e:
-        # Sequential fine-tuning modules not available
-        print(f"⚠️  Sequential fine-tuning modules not available: {e}")
-        print("   Falling back to single-stage fine-tuning")
+        # Sequential fine-tuning modules not available - fail fast
+        print(f"❌ CRITICAL: Sequential fine-tuning modules not available: {e}")
+        print("   Sequential fine-tuning is required but modules are missing")
         summary['sequential_fine_tuning'] = {
-            'status': 'unavailable',
+            'status': 'critical_failure',
             'reason': f'Sequential modules not available: {e}',
-            'fallback': 'single-stage fine-tuning'
+            'error': 'Missing required sequential fine-tuning modules'
         }
-        
-        # Fall back to single-stage fine-tuning
-        return _fallback_to_single_stage_fine_tuning(vulnerabilities, summary, upload_model)
+        raise RuntimeError(f"Sequential fine-tuning is required but modules are not available: {e}")
         
     except Exception as e:
         # Fail fast on serious errors
@@ -178,106 +157,6 @@ def run_sequential_fine_tuning_phase(
     
     return summary
 
-def _fallback_to_single_stage_fine_tuning(
-    vulnerabilities: List[Dict], 
-    summary: Dict[str, Any], 
-    upload_model: bool
-) -> Dict[str, Any]:
-    """
-    Fallback to traditional single-stage fine-tuning when sequential is disabled/unavailable
-    
-    This maintains backward compatibility and provides an opt-out mechanism for users
-    who prefer the original single-stage approach.
-    """
-    print("\n" + "="*60)
-    print("🔄 Fallback: Single-Stage Fine-Tuning")
-    print("📋 Using traditional combined training approach")
-    print("="*60)
-    
-    try:
-        # Import single-stage fine-tuning integration
-        from pipeline_integration import integrate_fine_tuning_if_available
-        
-        # Convert vulnerabilities back to training data format for single-stage
-        # This requires creating a dataset file compatible with the original pipeline
-        train_data = []
-        for vuln in vulnerabilities:
-            # Extract the narrative and fix information for single-stage training
-            if 'narrative' in vuln and 'fixes' in vuln:
-                for fix in vuln['fixes']:
-                    train_example = {
-                        'vulnerability': vuln['narrative'].get('analysis', ''),
-                        'fix': fix.get('implementation', ''),
-                        'vulnerability_type': vuln.get('vulnerability_type', 'Unknown'),
-                        'severity': vuln.get('severity', 'Unknown')
-                    }
-                    train_data.append(train_example)
-        
-        if not train_data:
-            print("⚠️  No training data available for single-stage fallback")
-            summary['fallback_fine_tuning'] = {
-                'status': 'skipped',
-                'reason': 'No training data available'
-            }
-            return summary
-        
-        # Create temporary training file for single-stage pipeline
-        import tempfile
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
-            for example in train_data:
-                f.write(json.dumps(example) + '\n')
-            train_file = Path(f.name)
-        
-        print(f"📊 Created fallback training dataset: {len(train_data)} examples")
-        
-        # Use existing single-stage fine-tuning integration
-        summary = integrate_fine_tuning_if_available(
-            train_file=train_file, 
-            train_data=train_data,
-            summary=summary,
-            skip_fine_tuning=False,  # We want fine-tuning, just single-stage
-            upload_model=upload_model
-        )
-        
-        # Clean up temporary file
-        train_file.unlink(missing_ok=True)
-        
-        # Mark this as fallback behavior
-        if 'fine_tuning' in summary:
-            summary['fine_tuning']['approach'] = 'single_stage_fallback'
-            summary['fine_tuning']['note'] = 'Fallback from sequential fine-tuning'
-        
-        summary['fallback_fine_tuning'] = {
-            'status': 'completed',
-            'approach': 'single_stage',
-            'reason': 'Fallback from sequential fine-tuning',
-            'training_examples': len(train_data)
-        }
-        
-    except Exception as e:
-        print(f"❌ Single-stage fallback also failed: {e}")
-        logger.error(f"Single-stage fallback error: {e}", exc_info=True)
-        
-        summary['fallback_fine_tuning'] = {
-            'status': 'failed',
-            'error': str(e),
-            'approach': 'single_stage_fallback'
-        }
-    
-    return summary
-
-def add_sequential_fine_tuning_cli_args(parser):
-    """
-    Add sequential fine-tuning related CLI arguments to argument parser
-    
-    Args:
-        parser: argparse.ArgumentParser instance to extend
-    """
-    parser.add_argument(
-        "--disable-sequential-fine-tuning", 
-        action="store_true", 
-        help="Disable sequential fine-tuning and fall back to single-stage approach"
-    )
 
 def is_sequential_fine_tuning_available() -> bool:
     """
@@ -291,10 +170,10 @@ def is_sequential_fine_tuning_available() -> bool:
         from sequential_fine_tuner import SequentialFineTuner, create_and_train_sequential_models
         from sequential_dataset_creator import SequentialDatasetCreator
         from scripts.mlx_finetuning import MLXFineTuner
-        from fine_tuning_config import FineTuningConfig
-        
+        from config_manager import OLMoSecurityConfig
+
         # Try basic initialization to verify dependencies
-        config = FineTuningConfig.load_from_config()
+        config = OLMoSecurityConfig()
         fine_tuner = SequentialFineTuner(config)
         
         return True
@@ -331,9 +210,9 @@ def get_sequential_fine_tuning_status() -> Dict[str, Any]:
         
         # Check MLX and configuration
         from scripts.mlx_finetuning import MLXFineTuner
-        from fine_tuning_config import FineTuningConfig
-        
-        config = FineTuningConfig.load_from_config()
+        from config_manager import OLMoSecurityConfig
+
+        config = OLMoSecurityConfig()
         status['config_loaded'] = True
         
         # Try initializing sequential fine-tuner

@@ -1,5 +1,5 @@
 # AI Security Analysis Configuration - Minimal Required Values Only
-# 
+#
 # All other values use code defaults:
 # - HuggingFace upload: enabled by default (can be disabled via CLI)
 # - Training parameters: optimized defaults for security analysis
@@ -12,7 +12,38 @@ fine_tuned_models_dir: "~/shared-olmo-models/fine-tuned"
 # Default model optimized for Apple Silicon with MLX
 default_base_model: "OLMo-2-1B-mlx-q4"
 
-# Fine-tuning configuration - only required values
+# Fine-tuning configuration
 fine_tuning:
   workspace_dir: "security-ai-analysis/fine-tuning"
   default_output_name: "webauthn-security-v1"
+
+  # Training parameters - defaults optimized for security analysis
+  training:
+    learning_rate: 2e-5
+    batch_size: 1          # Reduced for Metal GPU memory efficiency
+    max_epochs: 3
+    warmup_steps: 100
+    save_steps: 500
+    eval_steps: 250
+    max_stage1_iters: 100
+    max_stage2_iters: 150
+
+  # MLX optimization settings - optimized for Apple Silicon
+  mlx:
+    quantization: "q4"
+    memory_efficient: true
+    gradient_checkpointing: true
+
+  # HuggingFace upload settings
+  huggingface:
+    upload_enabled: true
+    default_repo_prefix: "hitoshura25"
+    private_repos: false
+    skip_in_daemon: false
+
+# Knowledge base configuration
+knowledge_base:
+  base_dir: "security-ai-analysis/knowledge_base"
+  embeddings_model: "sentence-transformers/all-MiniLM-L6-v2"
+  vector_store_type: "faiss"
+

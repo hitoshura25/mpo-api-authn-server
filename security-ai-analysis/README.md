@@ -342,16 +342,69 @@ security-ai-analysis/
 
 ---
 
+## Testing
+
+### Comprehensive Test Suite
+
+The system includes a comprehensive testing framework with controlled test data and exact assertions for reliable regression detection.
+
+#### Quick Start
+
+```bash
+# Fast unit tests (~2 seconds)
+./run_tests.sh quick
+
+# Standard integration tests (~15-30 seconds with parallel execution)
+./run_tests.sh integration
+
+# Full test suite including slow tests (1-3 minutes, optimized)
+./run_tests.sh all
+
+# Ultra-fast training tests only (~1 minute with test configuration)
+./run_tests.sh training
+
+# Upload-specific tests only
+./run_tests.sh upload
+```
+
+#### Test Structure
+
+- **Integration Tests** (`tests/integration/`): Complete end-to-end pipeline testing with `--skip-fine-tuning` for speed
+- **Phase Input Fixtures** (`tests/fixtures/phase_inputs/`): Pre-generated data for testing individual pipeline phases
+- **Sample Artifacts** (`tests/fixtures/sample_security_artifacts/`): Real security tool output samples for parsing tests
+
+#### Test Coverage
+
+**Integration Tests**: Comprehensive end-to-end validation of the complete pipeline
+- **Phase Testing**: Individual phase execution (`--only-parsing`, `--only-analysis-summary`, etc.)
+- **Fixture-Based**: Uses pre-generated phase inputs for fast, predictable results
+- **Performance Optimized**: 4-40x faster than multiple `process_artifacts.py` calls
+- **Real Format Testing**: Uses actual SARIF and JSON formats from security tools
+
+#### Test Features
+
+- **End-to-End Validation**: Complete pipeline testing from artifacts to trained models
+- **Phase Isolation**: Test individual phases without running full pipeline
+- **Fast Feedback**: Most tests complete in under 30 seconds with parallel execution
+- **Fixture Management**: Pre-generated test data ensures consistent, predictable results
+- **Format Validation**: Tests handle real security tool output formats
+- **Parallel Execution**: Automatic parallel test execution with pytest-xdist for faster results
+- **Test Categorization**: Targeted testing with markers (training, upload, slow) for precise control
+- **Ultra-Fast Training**: Training tests optimized from 40+ minutes to ~1 minute with test configuration
+
+---
+
 ## Getting Help
 
 - **System Issues**: Check logs in `results/daemon_*.log`
 - **Model Problems**: Verify `~/shared-olmo-models/base/OLMo-2-1B-mlx-q4/` exists
 - **GitHub Access**: Ensure `gh auth status` shows authentication
 - **Performance**: Expected processing time ~0.8 seconds per vulnerability on Apple Silicon
+- **Test Issues**: Run `./run_tests.sh quick` to verify parser functionality
 
 **Production Dataset**: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo
 
 ---
 
-**Last Updated**: 2025-09-14  
-**Version**: 2.0
+**Last Updated**: 2025-09-21
+**Version**: 2.1 (Added Comprehensive Testing)

@@ -3,7 +3,11 @@ Parse Semgrep SAST scan outputs
 Semgrep SARIF format documented at: https://sarifweb.azurewebsites.net/
 """
 import json
+import logging
+from pathlib import Path
 from typing import List, Dict
+
+logger = logging.getLogger(__name__)
 
 
 def _normalize_file_path(raw_path: str, tool_name: str = "semgrep") -> str:
@@ -81,6 +85,13 @@ def parse_semgrep_sarif(filepath: str) -> List[Dict]:
         ]
     }
     """
+    # Graceful handling for optional tool execution
+    if not Path(filepath).exists():
+        logger.info(f"ℹ️ Semgrep scan file not found: {filepath}")
+        logger.info("This is acceptable - Semgrep SAST scanning may not have been run")
+        return []
+
+    # Fail fast on corrupted existing files
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
@@ -155,5 +166,6 @@ def parse_semgrep_sarif(filepath: str) -> List[Dict]:
 
         return findings
     except Exception as e:
-        print(f"Error parsing Semgrep SARIF: {e}")
-        return []
+        logger.error(f"❌ CRITICAL: Corrupted Semgrep scan data in {filepath}: {e}")
+        logger.error("🔍 File exists but is corrupted - indicates Semgrep tool malfunction requiring investigation")
+        raise RuntimeError(f"Corrupted Semgrep scan data requires investigation: {e}") from e

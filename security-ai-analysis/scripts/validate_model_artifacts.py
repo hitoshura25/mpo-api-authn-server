@@ -119,7 +119,7 @@ def validate_model_artifacts(model_path: Path) -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"❌ Model validation error: {e}")
         validation_results['errors'].append(f"Validation error: {str(e)}")
-        return validation_results
+        raise
 
 def _is_peft_adapter(model_path: Path) -> bool:
     """
@@ -156,8 +156,9 @@ def _is_peft_adapter(model_path: Path) -> bool:
         bool_indicators = [bool(indicator) for indicator in peft_indicators]
         return any(bool_indicators)
 
-    except Exception:
-        return False
+    except Exception as e:
+        logger.error(f"Error checking for PEFT adapter: {e}")
+        raise
 
 def _validate_model_weights(model_path: Path) -> Dict[str, Any]:
     """Validate model weight files"""
@@ -193,6 +194,7 @@ def _validate_model_weights(model_path: Path) -> Dict[str, Any]:
                     
             except Exception as e:
                 result['errors'].append(f"Could not check weight file {weight_file}: {e}")
+                raise
     
     if found_weights:
         result['valid'] = True
@@ -237,6 +239,7 @@ def _validate_tokenizer_files(model_path: Path) -> Dict[str, Any]:
                     
             except Exception as e:
                 result['errors'].append(f"Could not check tokenizer file {tokenizer_file}: {e}")
+                raise
     
     if found_tokenizer_files:
         result['valid'] = True
@@ -285,6 +288,7 @@ def _validate_config_files(model_path: Path) -> Dict[str, Any]:
                 result['warnings'].append(f"Config file not valid JSON: {config_file}")
             except Exception as e:
                 result['errors'].append(f"Could not validate config file {config_file}: {e}")
+                raise
     
     if found_config_files:
         result['valid'] = True
@@ -340,6 +344,7 @@ def _validate_model_card(model_path: Path) -> Dict[str, Any]:
     except Exception as e:
         result['errors'].append(f"Could not read model card: {e}")
         logger.error(f"❌ Could not validate model card: {e}")
+        raise
     
     return result
 
@@ -397,12 +402,13 @@ def _check_placeholder_files(model_path: Path) -> Dict[str, Any]:
                                     result['placeholder_files'].append(str(file_path.relative_to(model_path)))
                                     break
                                 
-                except Exception:
-                    # Skip files that can't be read as text
-                    continue
+                except Exception as e:
+                    logger.error(f"Could not read file {file_path}: {e}")
+                    raise
     
     except Exception as e:
         result['errors'].append(f"Error checking for placeholder files: {e}")
+        raise
     
     if result['placeholder_files']:
         result['valid'] = False

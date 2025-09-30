@@ -79,9 +79,9 @@ def validate_file_system_paths() -> bool:
         # Validate shared models directory
         shared_models = config.base_models_dir
         if not shared_models.exists():
-            print(f"❌ Shared models directory not found: {shared_models}")
-            print("💡 Run setup.py to create shared models directory")
-            return False
+            print(f"❌ CRITICAL: Shared models directory not found: {shared_models}")
+            print("🔍 Shared models directory missing indicates incomplete setup or infrastructure issues requiring investigation")
+            raise RuntimeError(f"Shared models directory missing - setup incomplete, requires investigation: {shared_models}")
         
         # Validate fine-tuned models directory  
         fine_tuned_dir = shared_models.parent / "fine-tuned"
@@ -93,13 +93,13 @@ def validate_file_system_paths() -> bool:
         try:
             base_model_path = config.get_base_model_path()
             if not Path(base_model_path).exists():
-                print(f"⚠️ Base model not found: {base_model_path}")
-                print("💡 Run setup.py to download and convert the base model")
-                return False
-        except FileNotFoundError:
-            print("⚠️ Base model path could not be determined")
-            print("💡 Run setup.py to configure and download base model")
-            return False
+                print(f"❌ CRITICAL: Base model not found: {base_model_path}")
+                print("🔍 Base model missing indicates incomplete setup or infrastructure issues requiring investigation")
+                raise RuntimeError(f"Base model missing - setup incomplete, requires investigation: {base_model_path}")
+        except FileNotFoundError as e:
+            print("❌ CRITICAL: Base model path could not be determined")
+            print("🔍 Base model path determination failure indicates configuration corruption or setup issues requiring investigation")
+            raise RuntimeError(f"Base model path determination failed - configuration issue requires investigation: {e}") from e
         
         # Ensure enhanced directories exist
         ensure_enhanced_directories()
@@ -108,8 +108,10 @@ def validate_file_system_paths() -> bool:
         return True
         
     except Exception as e:
-        print(f"❌ File system validation failed: {e}")
-        return False
+        # Fail fast on configuration corruption or infrastructure issues
+        print(f"❌ CRITICAL: File system validation failed: {e}")
+        print("🔍 Configuration corruption or infrastructure issue - check file permissions, disk space, and configuration integrity")
+        raise RuntimeError(f"File system validation failed - infrastructure issue requires investigation: {e}") from e
 
 
 def validate_all_implementation_paths() -> Tuple[Dict, bool]:
@@ -200,30 +202,29 @@ def validate_all_implementation_paths() -> Tuple[Dict, bool]:
         print("=" * 50)
         
         if failed_validations:
-            print(f"⚠️ {len(failed_validations)} validation(s) failed:")
+            print(f"❌ CRITICAL: {len(failed_validations)} validation(s) failed:")
             for failed in failed_validations:
-                print(f"   💡 {failed}")
-            print("\n🔧 Recommendations:")
-            
-            if not validation_results.get('base_model'):
-                print("   • Run setup.py to download and convert base model")
-            
-            if validation_results.get('fine_tuned_models_count', 0) == 0:
-                print("   • Run process_artifacts.py to create first fine-tuned model")
-                
+                print(f"   • {failed}")
+            print("🔍 Validation failures indicate incomplete setup or dependency issues requiring investigation")
+
             missing_packages = [k.replace('package_', '') for k in failed_validations if k.startswith('package_')]
+            error_details = f"{len(failed_validations)} validation failures: {', '.join(failed_validations[:5])}"
             if missing_packages:
-                print(f"   • Install missing packages: pip install {' '.join(missing_packages)}")
+                error_details += f" (missing packages: {', '.join(missing_packages)})"
+
+            raise RuntimeError(f"System validation failed - setup incomplete, requires investigation: {error_details}")
         else:
             print("🎉 All validations passed! System ready for enhancement implementation.")
-        
-        return validation_results, len(failed_validations) == 0
+
+        return validation_results, True  # Only reached if validations pass
         
     except Exception as e:
-        print(f"❌ Validation failed with error: {e}")
+        # Fail fast on configuration corruption or infrastructure issues
+        print(f"❌ CRITICAL: Implementation path validation failed: {e}")
+        print("🔍 Configuration corruption or infrastructure issue - check file permissions, disk space, and system configuration")
         import traceback
         traceback.print_exc()
-        return {}, False
+        raise RuntimeError(f"Implementation path validation failed - infrastructure issue requires investigation: {e}") from e
 
 
 def update_gitignore_patterns() -> bool:
@@ -239,8 +240,9 @@ def update_gitignore_patterns() -> bool:
         gitignore_path = project_root / ".gitignore"
         
         if not gitignore_path.exists():
-            print(f"❌ .gitignore not found at: {gitignore_path}")
-            return False
+            print(f"❌ CRITICAL: .gitignore not found at: {gitignore_path}")
+            print("🔍 .gitignore missing indicates repository structure issues or incomplete project setup requiring investigation")
+            raise RuntimeError(f".gitignore missing - repository structure issue requires investigation: {gitignore_path}")
         
         # Read current .gitignore content
         with open(gitignore_path, 'r') as f:
@@ -284,8 +286,10 @@ def update_gitignore_patterns() -> bool:
         return True
         
     except Exception as e:
-        print(f"❌ Failed to update .gitignore: {e}")
-        return False
+        # Fail fast on file system issues
+        print(f"❌ CRITICAL: Failed to update .gitignore: {e}")
+        print("🔍 File system issue - check file permissions, disk space, and repository access")
+        raise RuntimeError(f"Gitignore update failed - infrastructure issue requires investigation: {e}") from e
 
 
 def main():
@@ -298,22 +302,19 @@ def main():
     # Run comprehensive validation
     validation_results, success = validate_all_implementation_paths()
     
-    if success:
-        print("\n🎯 Running .gitignore update...")
-        gitignore_success = update_gitignore_patterns()
-        
-        if gitignore_success:
-            print("\n🎉 File system setup completed successfully!")
-            print("💡 System ready for AI security enhancement implementation")
-        else:
-            print("\n⚠️ File system validation passed but .gitignore update failed")
-    else:
-        print(f"\n❌ File system validation failed")
-        print("🔧 Please address the issues above before proceeding with implementation")
-    
-    return success
+    print("\n🎯 Running .gitignore update...")
+    update_gitignore_patterns()
+
+    print("\n🎉 File system setup completed successfully!")
+    print("💡 System ready for AI security enhancement implementation")
+
+    return True
 
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    try:
+        main()
+        sys.exit(0)
+    except RuntimeError as e:
+        print(f"\n❌ CRITICAL: File system setup failed: {e}")
+        sys.exit(1)

@@ -12,18 +12,67 @@ import os
 import yaml
 from pathlib import Path
 from typing import Optional, Dict, Any
+from dataclasses import dataclass
+
+
+@dataclass
+class FineTuningSection:
+    """Fine-tuning specific configuration"""
+    # Directories
+    workspace_dir: Path
+    default_output_name: str
+
+    # Training parameters
+    learning_rate: float
+    batch_size: int
+    max_epochs: int
+    warmup_steps: int
+    save_steps: int
+    eval_steps: int
+    max_stage1_iters: int
+    max_stage2_iters: int
+
+    # MLX settings
+    quantization: str
+    memory_efficient: bool
+    gradient_checkpointing: bool
+
+    # HuggingFace settings
+    upload_enabled: bool
+    default_repo_prefix: str
+    private_repos: bool
+    skip_in_daemon: bool
+
+
+@dataclass
+class KnowledgeBaseSection:
+    """Knowledge base specific configuration"""
+    base_dir: Path
+    embeddings_model: str
+    vector_store_type: str
+
+
+@dataclass
+class ValidationSection:
+    """Model validation specific configuration"""
+    stage1_threshold: float
+    stage2_threshold: float
+    sequential_threshold: float
 
 
 class OLMoSecurityConfig:
     """
-    Centralized configuration manager for AI Security Analysis system.
-    
-    Manages paths for:
+    Unified configuration manager for AI Security Analysis system.
+
+    Manages all configuration aspects:
     - External shared model directories (base and fine-tuned models)
     - Internal project directories (data, results, venv)
-    - Model configuration settings
-    
-    Supports environment variable overrides for testing and CI environments.
+    - Fine-tuning parameters and workspace management
+    - Knowledge base configuration
+    - MLX optimization settings
+    - HuggingFace upload configuration
+
+    Supports comprehensive environment variable overrides (OLMO_* prefix) for all settings.
     """
     
     def __init__(self, config_file: Optional[Path] = None):
@@ -59,8 +108,13 @@ class OLMoSecurityConfig:
         self.results_dir = project_root / "security-ai-analysis" / "results"
         
         # Model configuration with environment variable override
-        self.default_base_model = os.getenv('OLMO_DEFAULT_BASE_MODEL', 
+        self.default_base_model = os.getenv('OLMO_DEFAULT_BASE_MODEL',
                                           config.get('default_base_model', 'OLMo-2-1B-mlx-q4'))
+
+        # Load nested configuration sections
+        self.fine_tuning = self._load_fine_tuning_section(config, project_root)
+        self.knowledge_base = self._load_knowledge_base_section(config, project_root)
+        self.validation = self._load_validation_section(config)
         
     def get_base_model_path(self, model_name: Optional[str] = None) -> Path:
         """
@@ -127,6 +181,136 @@ class OLMoSecurityConfig:
                 'OLMO_DEFAULT_BASE_MODEL': os.getenv('OLMO_DEFAULT_BASE_MODEL'),
             }
         }
+
+    def _load_fine_tuning_section(self, config: Dict[str, Any], project_root: Path) -> FineTuningSection:
+        """Load fine-tuning configuration section with environment variable overrides."""
+        ft_config = config.get('fine_tuning', {})
+        if not ft_config:
+            raise ValueError("Fine-tuning configuration section not found in config file")
+
+        # Resolve workspace directory with environment variable override
+        workspace_dir = Path(
+            os.getenv('OLMO_WORKSPACE_DIR', str(project_root / ft_config['workspace_dir']))
+        ).expanduser()
+
+        # Training parameters with environment variable overrides
+        train_config = ft_config.get('training', {})
+
+        # MLX settings
+        mlx_config = ft_config.get('mlx', {})
+
+        # HuggingFace settings
+        hf_config = ft_config.get('huggingface', {})
+
+        return FineTuningSection(
+            workspace_dir=workspace_dir,
+            default_output_name=ft_config['default_output_name'],
+            # Training parameters with environment overrides
+            learning_rate=float(os.getenv('OLMO_LEARNING_RATE', train_config.get('learning_rate', 2e-5))),
+            batch_size=int(os.getenv('OLMO_BATCH_SIZE', train_config.get('batch_size', 1))),
+            max_epochs=int(os.getenv('OLMO_MAX_EPOCHS', train_config.get('max_epochs', 3))),
+            warmup_steps=int(os.getenv('OLMO_WARMUP_STEPS', train_config.get('warmup_steps', 100))),
+            save_steps=int(os.getenv('OLMO_SAVE_STEPS', train_config.get('save_steps', 500))),
+            eval_steps=int(os.getenv('OLMO_EVAL_STEPS', train_config.get('eval_steps', 250))),
+            max_stage1_iters=int(os.getenv('OLMO_MAX_STAGE1_ITERS', train_config.get('max_stage1_iters', 100))),
+            max_stage2_iters=int(os.getenv('OLMO_MAX_STAGE2_ITERS', train_config.get('max_stage2_iters', 150))),
+            # MLX settings
+            quantization=mlx_config.get('quantization', 'q4'),
+            memory_efficient=mlx_config.get('memory_efficient', True),
+            gradient_checkpointing=mlx_config.get('gradient_checkpointing', True),
+            # HuggingFace settings
+            upload_enabled=hf_config.get('upload_enabled', True),
+            default_repo_prefix=hf_config.get('default_repo_prefix', 'hitoshura25'),
+            private_repos=hf_config.get('private_repos', False),
+            skip_in_daemon=ft_config.get('skip_in_daemon', False)
+        )
+
+    def _load_knowledge_base_section(self, config: Dict[str, Any], project_root: Path) -> KnowledgeBaseSection:
+        """Load knowledge base configuration section with environment variable overrides."""
+        kb_config = config.get('knowledge_base', {})
+
+        # Resolve knowledge base directory with environment variable override
+        base_dir = Path(
+            os.getenv('OLMO_KNOWLEDGE_BASE_DIR', str(project_root / kb_config.get('base_dir', 'security-ai-analysis/knowledge_base')))
+        ).expanduser()
+
+        return KnowledgeBaseSection(
+            base_dir=base_dir,
+            embeddings_model=kb_config.get('embeddings_model', 'sentence-transformers/all-MiniLM-L6-v2'),
+            vector_store_type=kb_config.get('vector_store_type', 'faiss')
+        )
+
+    def _load_validation_section(self, config: Dict[str, Any]) -> ValidationSection:
+        """Load validation configuration section with environment variable overrides."""
+        val_config = config.get('validation', {})
+
+        return ValidationSection(
+            stage1_threshold=float(os.getenv('OLMO_STAGE1_VALIDATION_THRESHOLD', val_config.get('stage1_threshold', 0.7))),
+            stage2_threshold=float(os.getenv('OLMO_STAGE2_VALIDATION_THRESHOLD', val_config.get('stage2_threshold', 0.7))),
+            sequential_threshold=float(os.getenv('OLMO_SEQUENTIAL_VALIDATION_THRESHOLD', val_config.get('sequential_threshold', 0.6)))
+        )
+
+    def get_workspace_path(self) -> Path:
+        """Get fine-tuning workspace directory."""
+        return self.fine_tuning.workspace_dir
+
+    def get_training_runs_dir(self) -> Path:
+        """Get structured training runs directory."""
+        return self.fine_tuned_models_dir / "training-runs"
+
+    def get_output_model_path(self, custom_name: Optional[str] = None) -> Path:
+        """Get path where fine-tuned model will be saved (legacy single-model format)."""
+        model_name = custom_name or self.fine_tuning.default_output_name
+        return self.fine_tuned_models_dir / model_name
+
+    def setup_workspace(self):
+        """Create fine-tuning workspace directories."""
+        subdirs = ['training_data', 'checkpoints', 'logs', 'temp']
+
+        for subdir in subdirs:
+            dir_path = self.fine_tuning.workspace_dir / subdir
+            dir_path.mkdir(parents=True, exist_ok=True)
+
+        # Create shared model directories if they don't exist
+        self.fine_tuned_models_dir.mkdir(parents=True, exist_ok=True)
+
+    def validate_fine_tuning_configuration(self) -> bool:
+        """Validate fine-tuning configuration and required dependencies."""
+        errors = []
+
+        # Check base model availability
+        try:
+            base_model_path = self.get_base_model_path()
+        except FileNotFoundError as e:
+            errors.append(str(e))
+
+        # Validate training parameters
+        if self.fine_tuning.learning_rate <= 0:
+            errors.append(f"Invalid learning rate: {self.fine_tuning.learning_rate}")
+
+        if self.fine_tuning.batch_size <= 0:
+            errors.append(f"Invalid batch size: {self.fine_tuning.batch_size}")
+
+        if self.fine_tuning.max_epochs <= 0:
+            errors.append(f"Invalid max epochs: {self.fine_tuning.max_epochs}")
+
+        # Check workspace can be created
+        try:
+            self.fine_tuning.workspace_dir.parent.mkdir(parents=True, exist_ok=True)
+        except PermissionError as e:
+            # Fail fast on permission issues - infrastructure problem
+            raise RuntimeError(f"Workspace directory creation failed - permission issue requires investigation: {e}") from e
+        except OSError as e:
+            # Fail fast on disk/filesystem issues - infrastructure problem
+            raise RuntimeError(f"Workspace directory creation failed - filesystem issue requires investigation: {e}") from e
+        except Exception as e:
+            errors.append(f"Cannot create workspace parent directory: {e}")
+
+        if errors:
+            error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {e}" for e in errors)
+            return False
+
+        return True
 
 
 # For convenience, provide a default instance

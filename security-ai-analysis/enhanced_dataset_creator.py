@@ -26,6 +26,7 @@ from vulnerable_code_extractor import VulnerableCodeExtractor, ContextExtraction
 from multi_approach_fix_generator import MultiApproachFixGenerator, SecurityFix, FixApproach
 from url_to_code_mapper import URLToCodeMapper, enhance_vulnerability_with_url_mapping
 from fix_quality_assessor import FixQualityAssessor, QualityAssessmentResult
+from advanced_data_augmentation import SecurityDataAugmentor, AugmentationConfig
 
 
 @dataclass
@@ -85,21 +86,24 @@ class EnhancedDatasetCreator:
         self.fix_generator = MultiApproachFixGenerator()
         self.url_mapper = URLToCodeMapper(project_root=self.project_root)  # NEW: URL mapping component
         self.quality_assessor = FixQualityAssessor()  # NEW: Quality Assessment (enabled by default)
+        self.data_augmentor = SecurityDataAugmentor()  # NEW: Advanced data augmentation (Phase 2)
         self.output_dir = output_dir or Path("enhanced_datasets/code-aware-training")
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
     
-    def create_enhanced_dataset(self, vulnerabilities: List[Dict[str, Any]], 
-                              dataset_name: Optional[str] = None) -> DatasetCreationResult:
+    def create_enhanced_dataset(self, vulnerabilities: List[Dict[str, Any]],
+                              dataset_name: Optional[str] = None,
+                              enable_augmentation: bool = True) -> DatasetCreationResult:
         """
         Create enhanced dataset from vulnerability data.
-        
+
         Args:
             vulnerabilities: List of vulnerability data from security tools
             dataset_name: Name for the dataset (auto-generated if None)
-            
+            enable_augmentation: Whether to apply Phase 2 advanced data augmentation (default: True)
+
         Returns:
             DatasetCreationResult with enhanced training examples
         """
@@ -121,7 +125,7 @@ class EnhancedDatasetCreator:
                     if not extraction_result.success:
                         # Only log warnings for unexpected failures, not dependency/infrastructure scanners
                         if "Dependency/infrastructure scanner" not in extraction_result.error_message:
-                            self.logger.warning(f"⚠️ Failed to extract context for {vuln.get('check_id', 'unknown')}: {extraction_result.error_message}")
+                            self.logger.warning(f"⚠️ Failed to extract context for {vuln.get('id', 'unknown')}: {extraction_result.error_message}")
                         failed_count += 1
                         continue
                     
@@ -129,7 +133,7 @@ class EnhancedDatasetCreator:
                     fix_result = self.fix_generator.generate_fixes(vuln, extraction_result.code_context)
                     
                     if not fix_result.success:
-                        self.logger.warning(f"⚠️ Failed to generate fixes for {vuln.get('check_id', 'unknown')}: {fix_result.error_message}")
+                        self.logger.warning(f"⚠️ Failed to generate fixes for {vuln.get('id', 'unknown')}: {fix_result.error_message}")
                         failed_count += 1
                         continue
                     
@@ -142,13 +146,13 @@ class EnhancedDatasetCreator:
                     )
                     
                     if not high_quality_fixes:
-                        self.logger.warning(f"⚠️ No high-quality fixes generated for {vuln.get('check_id', 'unknown')} "
+                        self.logger.warning(f"⚠️ No high-quality fixes generated for {vuln.get('id', 'unknown')} "
                                            f"(generated {len(generated_fixes)} fixes, none passed quality threshold)")
                         failed_count += 1
                         continue
                     
                     self.logger.info(f"✅ Quality assessment: {len(high_quality_fixes)}/{len(generated_fixes)} fixes "
-                                   f"passed validation for {vuln.get('check_id', 'unknown')}")
+                                   f"passed validation for {vuln.get('id', vuln.get('vulnerability_id', 'unknown'))}")
                     
                     # Create enhanced training examples (one per high-quality fix approach)
                     vuln_examples = self._create_training_examples_for_vulnerability_with_quality(
@@ -162,7 +166,7 @@ class EnhancedDatasetCreator:
                         self.logger.info(f"📊 Processed {processed_count} vulnerabilities, generated {len(enhanced_examples)} enhanced examples")
                 
                 except Exception as e:
-                    self.logger.error(f"❌ Error processing vulnerability {vuln.get('check_id', 'unknown')}: {e}")
+                    self.logger.error(f"❌ Error processing vulnerability {vuln.get('id', 'unknown')}: {e}")
                     raise
             
             # Create dataset name if not provided
@@ -170,19 +174,90 @@ class EnhancedDatasetCreator:
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 dataset_name = f"enhanced_security_dataset_{timestamp}"
             
-            self.logger.info(f"✅ Enhanced dataset creation completed: {len(enhanced_examples)} examples from {processed_count} vulnerabilities")
-            
+            # Apply Phase 2 advanced data augmentation if enabled
+            final_examples = enhanced_examples
+            augmentation_metadata = {}
+
+            if enable_augmentation and enhanced_examples:
+                self.logger.info(f"🚀 Phase 2: Applying advanced data augmentation to {len(enhanced_examples)} examples...")
+
+                # Convert EnhancedTrainingExample to ChatML format for augmentation
+                chatml_examples = []
+                for example in enhanced_examples:
+                    chatml_example = {
+                        'messages': [
+                            {'role': 'user', 'content': example.instruction},
+                            {'role': 'assistant', 'content': example.response}
+                        ],
+                        'metadata': {
+                            'vulnerability_id': example.metadata.get('vulnerability_id', 'unknown'),
+                            'original_example': True
+                        }
+                    }
+                    chatml_examples.append(chatml_example)
+
+                # Apply advanced data augmentation
+                augmented_chatml = self.data_augmentor.augment_training_data(chatml_examples)
+
+                # Convert back to EnhancedTrainingExample format
+                final_examples = []
+                original_count = 0
+                augmented_count = 0
+
+                for aug_example in augmented_chatml:
+                    # Extract messages
+                    messages = aug_example.get('messages', [])
+                    user_msg = next((m for m in messages if m.get('role') == 'user'), {})
+                    assistant_msg = next((m for m in messages if m.get('role') == 'assistant'), {})
+
+                    instruction = user_msg.get('content', '')
+                    response = assistant_msg.get('content', '')
+
+                    # Create EnhancedTrainingExample
+                    metadata = aug_example.get('metadata', {})
+                    is_original = metadata.get('original_example', False)
+
+                    enhanced_example = EnhancedTrainingExample(
+                        instruction=instruction,
+                        response=response,
+                        metadata=metadata
+                    )
+
+                    final_examples.append(enhanced_example)
+
+                    if is_original:
+                        original_count += 1
+                    else:
+                        augmented_count += 1
+
+                augmentation_ratio = len(final_examples) / len(enhanced_examples)
+                augmentation_metadata = {
+                    'augmentation_enabled': True,
+                    'original_examples': original_count,
+                    'augmented_examples': augmented_count,
+                    'total_examples': len(final_examples),
+                    'augmentation_ratio': augmentation_ratio
+                }
+
+                self.logger.info(f"✅ Phase 2 augmentation complete: {len(enhanced_examples)} → {len(final_examples)} ({augmentation_ratio:.1f}x)")
+            else:
+                augmentation_metadata = {'augmentation_enabled': False}
+                self.logger.info(f"⏭️ Phase 2 augmentation skipped (disabled)")
+
+            self.logger.info(f"✅ Enhanced dataset creation completed: {len(final_examples)} examples from {processed_count} vulnerabilities")
+
             return DatasetCreationResult(
                 success=True,
-                enhanced_examples=enhanced_examples,
+                enhanced_examples=final_examples,
                 original_examples_count=len(vulnerabilities),
-                enhanced_examples_count=len(enhanced_examples),
+                enhanced_examples_count=len(final_examples),
                 creation_metadata={
                     'dataset_name': dataset_name,
                     'vulnerabilities_processed': processed_count,
                     'vulnerabilities_failed': failed_count,
-                    'enhancement_ratio': len(enhanced_examples) / len(vulnerabilities) if vulnerabilities else 0,
-                    'created_at': datetime.now().isoformat()
+                    'enhancement_ratio': len(final_examples) / len(vulnerabilities) if vulnerabilities else 0,
+                    'created_at': datetime.now().isoformat(),
+                    'phase2_augmentation': augmentation_metadata
                 }
             )
             
@@ -203,7 +278,7 @@ class EnhancedDatasetCreator:
         if code_context:
             # Source code vulnerability - has code context
             vulnerability_context = {
-                'id': vulnerability.get('check_id', 'unknown'),
+                'id': vulnerability.get('id', 'unknown'),
                 'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
                 'file_path': code_context.file_path,
                 'line': code_context.vulnerability_line,
@@ -215,7 +290,7 @@ class EnhancedDatasetCreator:
         else:
             # Infrastructure vulnerability - no code context available
             vulnerability_context = {
-                'id': vulnerability.get('check_id', 'unknown'),
+                'id': vulnerability.get('id', 'unknown'),
                 'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
                 'file_path': vulnerability.get('file_path', vulnerability.get('path', 'unknown')),
                 'line': vulnerability.get('start', {}).get('line', 1),
@@ -256,7 +331,7 @@ class EnhancedDatasetCreator:
         if code_context:
             # Source code vulnerability - has code context
             vulnerability_context = {
-                'id': vulnerability.get('check_id', 'unknown'),
+                'id': vulnerability.get('id', 'unknown'),
                 'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
                 'file_path': code_context.file_path,
                 'line': code_context.vulnerability_line,
@@ -269,7 +344,7 @@ class EnhancedDatasetCreator:
         else:
             # Infrastructure vulnerability - no code context
             vulnerability_context = {
-                'id': vulnerability.get('check_id', 'unknown'),
+                'id': vulnerability.get('id', 'unknown'),
                 'severity': vulnerability.get('extra', {}).get('severity', 'unknown'),
                 'file_path': vulnerability.get('path', 'unknown'),
                 'line': vulnerability.get('start', {}).get('line', 0),

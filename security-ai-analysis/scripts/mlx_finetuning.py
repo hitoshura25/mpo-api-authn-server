@@ -436,7 +436,7 @@ This analysis follows cybersecurity standards for responsible vulnerability asse
             "output_dir": str(output_model_path),
             "learning_rate": self.config.fine_tuning.learning_rate,
             "batch_size": self.config.fine_tuning.batch_size,
-            "training_steps": min(5, self.config.fine_tuning.max_epochs * 2),  # Reduced for memory efficiency on Metal GPU
+            "training_steps": self.config.fine_tuning.max_epochs * 2,
             "warmup_steps": self.config.fine_tuning.warmup_steps,
             "save_steps": self.config.fine_tuning.save_steps,
             "eval_steps": self.config.fine_tuning.eval_steps,
@@ -476,6 +476,254 @@ This analysis follows cybersecurity standards for responsible vulnerability asse
             logger.error(f"Fine-tuning failed: {e}")
             raise
 
+    def _build_mlx_lora_command(self, training_config: Dict[str, Any]) -> List[str]:
+        """Build standardized MLX LoRA command with complete parameter set.
+
+        This method centralizes all MLX command construction to ensure consistent
+        parameters across all training modes (basic, stage1, stage2).
+
+        Args:
+            training_config: Dictionary containing all training parameters
+
+        Returns:
+            List of command arguments for mlx_lm.lora
+        """
+        # Build base command with all essential parameters
+        base_command = [
+            "mlx_lm.lora",
+            "--model", str(training_config["model"]),
+            "--train",
+            "--data", str(training_config["data_path"]),
+            "--adapter-path", str(training_config["adapter_path"]),
+            "--batch-size", str(training_config["batch_size"]),
+            "--iters", str(training_config["iters"]),
+            "--learning-rate", str(training_config["learning_rate"]),  # ✅ Always include
+            "--fine-tune-type", training_config.get("fine_tune_type", "lora"),
+            "--optimizer", training_config.get("optimizer", "adamw")      # ✅ Always include
+        ]
+
+        # Optional parameters
+        if "resume_adapter_file" in training_config and training_config["resume_adapter_file"]:
+            base_command.extend(["--resume-adapter-file", str(training_config["resume_adapter_file"])])
+
+        return base_command
+
+    def run_stage1_training(self, training_data_dir: Path, adapter_output_dir: Path,
+                           stage1_config: Dict[str, Any]) -> Path:
+        """
+        Run Stage 1 training with MLX optimization.
+
+        Args:
+            training_data_dir: Directory containing train.jsonl and valid.jsonl
+            adapter_output_dir: Directory where Stage 1 adapters will be saved
+            stage1_config: Configuration dict with training parameters
+
+        Returns:
+            Path to created Stage 1 adapter directory
+        """
+        import subprocess
+
+        logger.info("🚀 Starting Stage 1 training with MLX optimization")
+        logger.info(f"   Training data: {training_data_dir}")
+        logger.info(f"   Adapter output: {adapter_output_dir}")
+
+        # Ensure output directory exists
+        adapter_output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Configure chat template for base model
+        self._configure_chat_template_for_model(str(stage1_config["model_path"]))
+
+        # Build MLX command for Stage 1
+        training_config = {
+            "model": stage1_config["model_path"],
+            "data_path": training_data_dir,
+            "adapter_path": adapter_output_dir,
+            "batch_size": stage1_config["batch_size"],
+            "iters": stage1_config["iters"],
+            "learning_rate": stage1_config["learning_rate"],
+            "fine_tune_type": stage1_config.get("fine_tune_type", "lora"),
+            "optimizer": stage1_config.get("optimizer", "adamw")
+        }
+
+        mlx_command = self._build_mlx_lora_command(training_config)
+        logger.info(f"🔧 Running Stage 1 MLX command: {' '.join(mlx_command)}")
+
+        # Execute Stage 1 training
+        try:
+            result = subprocess.run(
+                mlx_command,
+                capture_output=True,
+                text=True,
+                timeout=3600,  # 1 hour timeout
+                check=True
+            )
+
+            logger.info("✅ Stage 1 MLX training completed successfully")
+            logger.info(f"Stage 1 stdout: {result.stdout}")
+
+            # Validate adapter was created
+            adapter_file = adapter_output_dir / "adapters.safetensors"
+            if not adapter_file.exists():
+                raise FileNotFoundError(f"Stage 1 adapter not created: {adapter_file}")
+
+            return adapter_output_dir
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ Stage 1 MLX training failed: {e}")
+            logger.error(f"Stage 1 error output: {e.stderr}")
+            raise RuntimeError(f"Stage 1 training failed: {e.stderr}")
+        except subprocess.TimeoutExpired:
+            logger.error("❌ Stage 1 training timed out")
+            raise RuntimeError("Stage 1 training timeout")
+
+    def run_stage2_training(self, training_data_dir: Path, adapter_output_dir: Path,
+                           stage2_config: Dict[str, Any], stage1_adapter_path: Path) -> Path:
+        """
+        Run Stage 2 training with resume-adapter-file support.
+
+        Args:
+            training_data_dir: Directory containing Stage 2 training data
+            adapter_output_dir: Directory where Stage 2 adapters will be saved
+            stage2_config: Configuration dict with Stage 2 training parameters
+            stage1_adapter_path: Path to Stage 1 adapter directory
+
+        Returns:
+            Path to created Stage 2 adapter directory
+        """
+        import subprocess
+
+        logger.info("🚀 Starting Stage 2 training with sequential progression")
+        logger.info(f"   Training data: {training_data_dir}")
+        logger.info(f"   Stage 1 adapter: {stage1_adapter_path}")
+        logger.info(f"   Adapter output: {adapter_output_dir}")
+
+        # Ensure output directory exists
+        adapter_output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Configure chat template for base model
+        self._configure_chat_template_for_model(str(stage2_config["model_path"]))
+
+        # Validate Stage 1 adapter exists
+        stage1_adapter_file = stage1_adapter_path / "adapters.safetensors"
+        if not stage1_adapter_file.exists():
+            raise FileNotFoundError(f"Stage 1 adapter file not found: {stage1_adapter_file}")
+
+        # Build MLX command for Stage 2 with resume-adapter-file
+        training_config = {
+            "model": stage2_config["model_path"],
+            "data_path": training_data_dir,
+            "adapter_path": adapter_output_dir,
+            "batch_size": stage2_config["batch_size"],
+            "iters": stage2_config["iters"],
+            "learning_rate": stage2_config["learning_rate"],
+            "fine_tune_type": stage2_config.get("fine_tune_type", "lora"),
+            "optimizer": stage2_config.get("optimizer", "adamw"),
+            "resume_adapter_file": stage1_adapter_file  # Key for sequential training
+        }
+
+        mlx_command = self._build_mlx_lora_command(training_config)
+        logger.info(f"🔧 Running Stage 2 MLX command: {' '.join(mlx_command)}")
+
+        # Execute Stage 2 training
+        try:
+            result = subprocess.run(
+                mlx_command,
+                capture_output=True,
+                text=True,
+                timeout=3600,  # 1 hour timeout
+                check=False  # Handle errors manually to capture output
+            )
+
+            # Log output regardless of success/failure
+            if result.stdout:
+                logger.info(f"📋 Stage 2 MLX stdout: {result.stdout}")
+            if result.stderr:
+                logger.info(f"📋 Stage 2 MLX stderr: {result.stderr}")
+
+            # Check return code and handle errors with detailed output
+            if result.returncode != 0:
+                error_msg = f"MLX Stage 2 training failed with return code {result.returncode}"
+                if result.stderr:
+                    error_msg += f"\nSTDERR: {result.stderr}"
+                if result.stdout:
+                    error_msg += f"\nSTDOUT: {result.stdout}"
+                logger.error(f"❌ {error_msg}")
+                raise RuntimeError(error_msg)
+
+            logger.info("✅ Stage 2 MLX training completed successfully")
+
+            # Validate Stage 2 adapter was created
+            adapter_file = adapter_output_dir / "adapters.safetensors"
+            if not adapter_file.exists():
+                raise FileNotFoundError(f"Stage 2 adapter not created: {adapter_file}")
+
+            return adapter_output_dir
+
+        except subprocess.TimeoutExpired as e:
+            logger.error(f"❌ Stage 2 MLX training timed out after 3600s")
+            raise RuntimeError(f"Stage 2 training timed out: {e}") from e
+
+    def fuse_adapter_with_model(self, base_model_path: Path, adapter_path: Path,
+                               output_path: Path) -> Path:
+        """
+        Create fused model from base model and adapter using MLX-LM fuse.
+
+        Args:
+            base_model_path: Path to base model directory
+            adapter_path: Path to adapter directory (containing adapters.safetensors)
+            output_path: Path where fused model will be saved
+
+        Returns:
+            Path to created fused model directory
+        """
+        import subprocess
+
+        logger.info(f"🔗 Creating fused model at: {output_path}")
+        logger.info(f"   Base model: {base_model_path}")
+        logger.info(f"   Adapter: {adapter_path}")
+
+        # Ensure output directory exists
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        # Build MLX fuse command
+        fuse_command = [
+            "mlx_lm.fuse",
+            "--model", str(base_model_path),
+            "--adapter-path", str(adapter_path),
+            "--save-path", str(output_path)
+        ]
+
+        logger.info(f"🔧 Running MLX fusion: {' '.join(fuse_command)}")
+
+        try:
+            result = subprocess.run(
+                fuse_command,
+                capture_output=True,
+                text=True,
+                timeout=600,  # 10 minute timeout
+                check=True
+            )
+
+            logger.info("✅ Model fusion completed successfully")
+            logger.info(f"Fusion output: {result.stdout}")
+
+            # Verify fused model has required files
+            required_files = ['config.json', 'tokenizer.json', 'model.safetensors']
+            missing_files = []
+            for file_name in required_files:
+                if not (output_path / file_name).exists():
+                    missing_files.append(file_name)
+
+            if missing_files:
+                raise RuntimeError(f"Fused model missing required files: {missing_files}")
+
+            return output_path
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ Model fusion failed: {e}")
+            logger.error(f"Fusion error: {e.stderr}")
+            raise RuntimeError(f"Model fusion failed: {e.stderr}")
+
     def _execute_mlx_training(self, output_path: Path, training_args: Dict[str, Any]):
         """Execute real MLX fine-tuning using validated MLX-LM APIs"""
 
@@ -507,17 +755,18 @@ This analysis follows cybersecurity standards for responsible vulnerability asse
             adapter_path = output_path / "adapters"
             adapter_path.mkdir(parents=True, exist_ok=True)
 
-            # Build MLX-LM LoRA command with directory path
-            mlx_command = [
-                "mlx_lm.lora",
-                "--model", training_args["model"],
-                "--train",
-                "--data", str(training_data_dir),  # Pass directory, not single file
-                "--adapter-path", str(adapter_path),
-                "--batch-size", str(training_args["batch_size"]),
-                "--iters", str(training_args.get("training_steps", 100)),
-                "--fine-tune-type", "lora"
-            ]
+            # Build MLX-LM LoRA command using standardized method
+            training_config = {
+                "model": training_args["model"],
+                "data_path": training_data_dir,
+                "adapter_path": adapter_path,
+                "batch_size": training_args["batch_size"],
+                "iters": training_args.get("training_steps", 100),
+                "learning_rate": training_args["learning_rate"],  # ✅ Now included
+                "fine_tune_type": "lora",
+                "optimizer": "adamw"  # ✅ Now included
+            }
+            mlx_command = self._build_mlx_lora_command(training_config)
 
             logger.info(f"🔧 Running MLX-LM command: {' '.join(mlx_command)}")
 

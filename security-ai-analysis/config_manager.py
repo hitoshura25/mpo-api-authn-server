@@ -11,8 +11,17 @@ portable paths that work across different development environments.
 import os
 import yaml
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
+
+
+@dataclass
+class LoRASection:
+    """LoRA-specific configuration for parameter-efficient fine-tuning"""
+    rank: int
+    alpha: int
+    dropout: float
+    target_modules: List[str]
 
 
 @dataclass
@@ -31,6 +40,9 @@ class FineTuningSection:
     eval_steps: int
     max_stage1_iters: int
     max_stage2_iters: int
+
+    # LoRA settings
+    lora: LoRASection
 
     # MLX settings
     quantization: str
@@ -199,6 +211,9 @@ class OLMoSecurityConfig:
         # MLX settings
         mlx_config = ft_config.get('mlx', {})
 
+        # LoRA settings
+        lora_config = ft_config.get('lora', {})
+
         # HuggingFace settings
         hf_config = ft_config.get('huggingface', {})
 
@@ -214,6 +229,13 @@ class OLMoSecurityConfig:
             eval_steps=int(os.getenv('OLMO_EVAL_STEPS', train_config.get('eval_steps', 250))),
             max_stage1_iters=int(os.getenv('OLMO_MAX_STAGE1_ITERS', train_config.get('max_stage1_iters', 100))),
             max_stage2_iters=int(os.getenv('OLMO_MAX_STAGE2_ITERS', train_config.get('max_stage2_iters', 150))),
+            # LoRA settings
+            lora=LoRASection(
+                rank=int(os.getenv('OLMO_LORA_RANK', lora_config.get('rank', 8))),
+                alpha=int(os.getenv('OLMO_LORA_ALPHA', lora_config.get('alpha', 16))),
+                dropout=float(os.getenv('OLMO_LORA_DROPOUT', lora_config.get('dropout', 0.05))),
+                target_modules=lora_config.get('target_modules', ["q_proj", "v_proj"])
+            ),
             # MLX settings
             quantization=mlx_config.get('quantization', 'q4'),
             memory_efficient=mlx_config.get('memory_efficient', True),

@@ -17,16 +17,26 @@ fine_tuning:
   workspace_dir: "security-ai-analysis/fine-tuning"
   default_output_name: "webauthn-security-v1"
 
-  # Training parameters - defaults optimized for security analysis
+  # Training parameters - research-backed optimization for model quality (2024-2025)
+  # Sources: Databricks LoRA Guide, Sebastian Raschka's Practical Tips, MLPerf LoRA Study
   training:
-    learning_rate: 2e-5
-    batch_size: 1          # Reduced for Metal GPU memory efficiency
-    max_epochs: 3
-    warmup_steps: 100
-    save_steps: 500
-    eval_steps: 250
-    max_stage1_iters: 100
-    max_stage2_iters: 150
+    learning_rate: 5e-6    # 2e-5→5e-6: Conservative for CF prevention (Raschka 2024)
+    batch_size: 1          # KEEP: Optimal for Metal GPU memory efficiency
+    max_epochs: 5          # 3→5: More passes over limited dataset
+    warmup_steps: 150      # 100→150: Longer warmup for stability
+    save_steps: 200        # 500→200: Frequent checkpoints for early CF detection
+    eval_steps: 100        # 250→100: Continuous validation monitoring
+    max_stage1_iters: 800  # 100→800: 8x increase for deep specialization (Databricks)
+    max_stage2_iters: 1200 # 150→1200: 8x increase for complex code generation
+
+  # Advanced LoRA configuration - 2024-2025 research optimizations
+  # Sources: LoRA original paper, Databricks LoRA Guide, Sebastian Raschka's Practical Tips
+  lora:
+    rank: 16                   # 8→16: Higher rank for better information capture
+    alpha: 32                  # 16→32: Balanced alpha for optimal adaptation
+    dropout: 0.1               # 0.05→0.1: Higher dropout for regularization
+    # Comprehensive target modules for transformer architecture optimization
+    target_modules: [ "q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj" ]
 
   # MLX optimization settings - optimized for Apple Silicon
   mlx:
@@ -47,3 +57,10 @@ knowledge_base:
   embeddings_model: "sentence-transformers/all-MiniLM-L6-v2"
   vector_store_type: "faiss"
 
+# Model validation configuration - realistic thresholds based on 2024-2025 research
+# Sources: Yurts.ai CF Research, ACL 2024 Findings
+validation:
+  # Production thresholds (stretch goals with enhanced training)
+  stage1_threshold: 0.7         # Target production threshold for Stage 1 specialization
+  stage2_threshold: 0.7         # Target production threshold for Stage 2 specialization
+  sequential_threshold: 0.6     # Target production threshold for CF prevention

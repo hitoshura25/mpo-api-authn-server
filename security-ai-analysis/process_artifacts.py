@@ -1780,10 +1780,23 @@ def main():
                        help="Output directory for analysis results (default: results)")
     parser.add_argument("--model-name", type=str, default=default_model,
                        help="OLMo-2-1B model to use for analysis (defaults to configured model)")
-    parser.add_argument("--branch", type=str, default="unknown",
-                       help="Git branch being analyzed")
-    parser.add_argument("--commit", type=str, default="unknown",
-                       help="Git commit SHA being analyzed")
+    # Auto-detect git information
+    try:
+        import subprocess
+        git_branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+                                           cwd=Path(__file__).parent.parent,
+                                           stderr=subprocess.DEVNULL).decode().strip()
+        git_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'],
+                                           cwd=Path(__file__).parent.parent,
+                                           stderr=subprocess.DEVNULL).decode().strip()
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        git_branch = "unknown"
+        git_commit = "unknown"
+
+    parser.add_argument("--branch", type=str, default=git_branch,
+                       help=f"Git branch being analyzed (auto-detected: {git_branch})")
+    parser.add_argument("--commit", type=str, default=git_commit,
+                       help=f"Git commit SHA being analyzed (auto-detected: {git_commit[:8]}...)")
 
     # Upload control
     parser.add_argument("--skip-model-upload", action="store_true",

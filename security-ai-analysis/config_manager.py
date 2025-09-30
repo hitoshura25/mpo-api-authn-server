@@ -52,6 +52,14 @@ class KnowledgeBaseSection:
     vector_store_type: str
 
 
+@dataclass
+class ValidationSection:
+    """Model validation specific configuration"""
+    stage1_threshold: float
+    stage2_threshold: float
+    sequential_threshold: float
+
+
 class OLMoSecurityConfig:
     """
     Unified configuration manager for AI Security Analysis system.
@@ -106,6 +114,7 @@ class OLMoSecurityConfig:
         # Load nested configuration sections
         self.fine_tuning = self._load_fine_tuning_section(config, project_root)
         self.knowledge_base = self._load_knowledge_base_section(config, project_root)
+        self.validation = self._load_validation_section(config)
         
     def get_base_model_path(self, model_name: Optional[str] = None) -> Path:
         """
@@ -229,6 +238,16 @@ class OLMoSecurityConfig:
             base_dir=base_dir,
             embeddings_model=kb_config.get('embeddings_model', 'sentence-transformers/all-MiniLM-L6-v2'),
             vector_store_type=kb_config.get('vector_store_type', 'faiss')
+        )
+
+    def _load_validation_section(self, config: Dict[str, Any]) -> ValidationSection:
+        """Load validation configuration section with environment variable overrides."""
+        val_config = config.get('validation', {})
+
+        return ValidationSection(
+            stage1_threshold=float(os.getenv('OLMO_STAGE1_VALIDATION_THRESHOLD', val_config.get('stage1_threshold', 0.7))),
+            stage2_threshold=float(os.getenv('OLMO_STAGE2_VALIDATION_THRESHOLD', val_config.get('stage2_threshold', 0.7))),
+            sequential_threshold=float(os.getenv('OLMO_SEQUENTIAL_VALIDATION_THRESHOLD', val_config.get('sequential_threshold', 0.6)))
         )
 
     def get_workspace_path(self) -> Path:

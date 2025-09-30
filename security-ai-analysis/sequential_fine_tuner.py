@@ -157,8 +157,8 @@ class SequentialFineTuner:
         # Create successful result
         result = SequentialTrainingResult(
             success=True,
-            stage1_model_path=stage1_result['adapter_path'],
-            stage2_model_path=stage2_result['adapter_path'],
+            stage1_model_path=stage1_result['merged_model_path'],  # Use merged model for validation
+            stage2_model_path=stage2_result['final_model_path'],   # Use final model for validation
             stage1_training_time=stage1_time,
             stage2_training_time=stage2_time,
             total_training_time=total_time,
@@ -231,6 +231,13 @@ class SequentialFineTuner:
                     stage1_merged_dir,
                     output_name
                 )
+
+                # Create Stage 1 merged model for validation immediately after training
+                self.logger.info(f"🔗 Creating Stage 1 merged model for validation: {stage1_merged_dir}")
+                merged_model_path = self._create_stage1_merged_model_to_directory(
+                    str(adapter_path), stage1_merged_dir, output_name
+                )
+
             else:
                 raise ValueError("Structured training run required for Stage 1 training. "
                                "Legacy training has been removed - use TrainingRun instances only.")
@@ -238,6 +245,7 @@ class SequentialFineTuner:
             stage1_result = {
                 'success': True,
                 'adapter_path': str(adapter_path),
+                'merged_model_path': str(merged_model_path),
                 'training_data_dir': str(training_data_dir)
             }
 
@@ -295,7 +303,7 @@ class SequentialFineTuner:
         stage2_final_model_dir.mkdir(parents=True, exist_ok=True)
 
         self.logger.info(f"🏗️ Using manifest-defined Stage 2 paths: adapters={stage2_adapters_dir}, final={stage2_final_model_dir}")
-        stage2_adapter_path = self._run_stage2_fine_tuning_structured(
+        stage2_final_model_path = self._run_stage2_fine_tuning_structured(
             training_data_dir,
             stage1_adapter_path,
             stage2_adapters_dir,
@@ -305,7 +313,8 @@ class SequentialFineTuner:
 
         stage2_result = {
             'success': True,
-            'adapter_path': str(stage2_adapter_path),
+            'adapter_path': str(stage2_adapters_dir),  # Keep adapter path for Stage 2 adapters
+            'final_model_path': str(stage2_final_model_path),  # Add final model path for validation
             'training_data_dir': str(training_data_dir),
             'stage1_adapter_used': True,
             'stage1_adapter_path': str(stage1_adapter_path),
@@ -314,7 +323,7 @@ class SequentialFineTuner:
             'note': 'Successfully trained with resume-adapter-file and catastrophic forgetting mitigation'
         }
 
-        self.logger.info(f"✅ Stage 2 training completed with sequential progression: {stage2_adapter_path}")
+        self.logger.info(f"✅ Stage 2 training completed with sequential progression: {stage2_final_model_path}")
         return stage2_result
 
     def _run_stage1_enhanced_training_structured(self, training_data_dir: Path,
@@ -478,7 +487,7 @@ class SequentialFineTuner:
             self.logger.error(f"Fusion error: {e.stderr}")
             raise RuntimeError(f"Stage 2 model fusion failed: {e.stderr}")
 
-        return stage2_adapters_dir
+        return stage2_final_model_dir  # Return final model directory for validation
 
     def _create_stage1_merged_model(self, stage1_adapter_path: str, output_name: str) -> Path:
         """
@@ -867,7 +876,8 @@ class SequentialFineTuner:
                            validation_results['analysis_completeness'] +
                            validation_results['response_quality']) / 3
 
-            if overall_score >= 0.7:
+            stage1_threshold = self.config.validation.stage1_threshold
+            if overall_score >= stage1_threshold:
                 validation_results['specialization_level'] = 'high'
                 self.logger.info(f"✅ Stage 1 shows high specialization (score: {overall_score:.2f})")
             elif overall_score >= 0.5:
@@ -876,7 +886,7 @@ class SequentialFineTuner:
             else:
                 raise RuntimeError(f"Stage 1 model failed quality validation with low specialization score: {overall_score:.2f}. "
                                  f"This indicates training failure or insufficient data quality. "
-                                 f"Minimum acceptable score is 0.7.")
+                                 f"Minimum acceptable score is {stage1_threshold}.")
 
             validation_results['overall_score'] = overall_score
 
@@ -977,7 +987,8 @@ class SequentialFineTuner:
                            validation_results['implementation_completeness'] +
                            validation_results['sequential_capabilities']) / 4
 
-            if overall_score >= 0.7:
+            stage2_threshold = self.config.validation.stage2_threshold
+            if overall_score >= stage2_threshold:
                 validation_results['specialization_level'] = 'high'
                 self.logger.info(f"✅ Stage 2 shows high specialization (score: {overall_score:.2f})")
             elif overall_score >= 0.5:
@@ -986,16 +997,18 @@ class SequentialFineTuner:
             else:
                 raise RuntimeError(f"Stage 2 model failed quality validation with low specialization score: {overall_score:.2f}. "
                                  f"This indicates training failure or insufficient data quality. "
-                                 f"Minimum acceptable score is 0.7.")
+                                 f"Minimum acceptable score is {stage2_threshold}.")
 
             validation_results['overall_score'] = overall_score
 
-            # Check if sequential progression is working
-            if validation_results['sequential_capabilities'] >= 0.6:
-                self.logger.info("✅ Sequential progression validated - Stage 2 retains Stage 1 capabilities")
+            # Check if sequential progression is working (configurable threshold)
+            sequential_threshold = self.config.validation.sequential_threshold
+
+            if validation_results['sequential_capabilities'] >= sequential_threshold:
+                self.logger.info(f"✅ Sequential progression validated - Stage 2 retains Stage 1 capabilities")
             else:
                 raise RuntimeError(f"Sequential progression validation failed: Stage 2 has lost Stage 1 capabilities. "
-                                 f"Sequential score: {validation_results['sequential_capabilities']:.2f}. "
+                                 f"Sequential score: {validation_results['sequential_capabilities']:.2f}, threshold: {sequential_threshold}. "
                                  f"This indicates catastrophic forgetting - the sequential training has failed.")
 
         except Exception as e:
@@ -1058,7 +1071,7 @@ class SequentialFineTuner:
                            f"or full model files {model_files}")
 
     def _load_lora_adapter_for_validation(self, adapter_dir: Path):
-        """Load and validate LoRA adapter."""
+        """Load and validate LoRA adapter with support for both MLX and PEFT config formats."""
         self.logger.info(f"🔧 Validating LoRA adapter: {adapter_dir}")
 
         # Check for required LoRA files
@@ -1074,12 +1087,12 @@ class SequentialFineTuner:
             with open(adapter_config_path, 'r') as f:
                 adapter_config = json.load(f)
 
-            # Basic validation of adapter configuration
-            required_keys = ['peft_type', 'r', 'lora_alpha']
-            missing_keys = [k for k in required_keys if k not in adapter_config]
-            if missing_keys:
-                raise ValueError(f"LoRA config missing required keys: {missing_keys}. "
-                               f"Invalid adapter configuration indicates training failure.")
+            # Detect and validate config format (MLX-native or PEFT)
+            config_format = self._detect_config_format(adapter_config)
+            lora_params = self._extract_lora_params(adapter_config, config_format)
+
+            self.logger.info(f"🔍 Detected config format: {config_format}")
+            self.logger.info(f"🔍 Extracted LoRA params: rank={lora_params['rank']}, dropout={lora_params['dropout']}, scale/alpha={lora_params['scale']}")
 
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid adapter config JSON: {e}")
@@ -1091,6 +1104,90 @@ class SequentialFineTuner:
 
         self.logger.info("✅ LoRA adapter validation passed")
         return {"type": "lora_adapter", "path": str(adapter_dir), "config": adapter_config}
+
+    def _create_stage1_merged_model_to_directory(self, stage1_adapter_path: str,
+                                               target_directory: Path, output_name: str) -> Path:
+        """
+        Create a merged model from Stage 1 adapter and base model to a specific directory.
+        This creates a complete model for validation purposes.
+        """
+        import subprocess
+        from pathlib import Path
+
+        # Define paths
+        base_model_path = self.config.get_base_model_path()
+        stage1_adapter_dir = Path(stage1_adapter_path)
+
+        # Use the structured target directory for merged model
+        merged_model_dir = target_directory
+        merged_model_dir.mkdir(parents=True, exist_ok=True)
+
+        self.logger.info(f"🔗 Creating merged model at: {merged_model_dir}")
+        self.logger.info(f"   Base model: {base_model_path}")
+        self.logger.info(f"   Stage 1 adapters: {stage1_adapter_dir}")
+
+        # Use MLX-LM fuse command to merge adapter with base model
+        fuse_command = [
+            "mlx_lm.fuse",
+            "--model", str(base_model_path),
+            "--adapter-path", str(stage1_adapter_dir),
+            "--save-path", str(merged_model_dir)
+        ]
+
+        self.logger.info(f"🔧 Running MLX fusion: {' '.join(fuse_command)}")
+
+        result = subprocess.run(
+            fuse_command,
+            capture_output=True,
+            text=True,
+            timeout=600,  # 10 minute timeout
+        )
+
+        if result.returncode != 0:
+            self.logger.error(f"Fusion failed with return code: {result.returncode}")
+            self.logger.error(f"Fusion error: {result.stderr}")
+            raise RuntimeError(f"Stage 1 model fusion failed: {result.stderr}")
+
+        self.logger.info("✅ Stage 1 merged model created successfully")
+        return merged_model_dir
+
+    def _detect_config_format(self, config: dict) -> str:
+        """Detect whether config is MLX-native or PEFT format."""
+        # Check for PEFT format markers
+        if all(key in config for key in ['peft_type', 'r', 'lora_alpha']):
+            return "peft"
+
+        # Check for MLX-native format markers
+        if 'fine_tune_type' in config and 'lora_parameters' in config:
+            if isinstance(config['lora_parameters'], dict) and 'rank' in config['lora_parameters']:
+                return "mlx"
+
+        # If neither format is clearly identified, provide detailed error
+        available_keys = list(config.keys())
+        raise ValueError(
+            f"Unrecognized LoRA config format. "
+            f"Expected either PEFT format (peft_type, r, lora_alpha) or "
+            f"MLX format (fine_tune_type, lora_parameters.rank). "
+            f"Available keys: {available_keys}"
+        )
+
+    def _extract_lora_params(self, config: dict, config_format: str) -> dict:
+        """Extract normalized LoRA parameters from either MLX or PEFT format."""
+        if config_format == "peft":
+            return {
+                'rank': config['r'],
+                'dropout': config.get('lora_dropout', 0.0),
+                'scale': config['lora_alpha']
+            }
+        elif config_format == "mlx":
+            lora_params = config['lora_parameters']
+            return {
+                'rank': lora_params['rank'],
+                'dropout': lora_params.get('dropout', 0.0),
+                'scale': lora_params.get('scale', 1.0)
+            }
+        else:
+            raise ValueError(f"Unsupported config format: {config_format}")
 
     def _load_full_model_for_validation(self, model_dir: Path):
         """Load and validate full model."""
@@ -1122,7 +1219,7 @@ class SequentialFineTuner:
                 'tokenizer': tokenizer,
                 'model_path': str(model_dir),
                 'loaded': True,
-                'type': 'full_model'
+                'type': 'mlx_model'  # This is an MLX model for validation purposes
             }
 
         except ImportError:

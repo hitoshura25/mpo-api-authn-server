@@ -29,7 +29,11 @@ def setup_test_environment():
         'OLMO_LEARNING_RATE': '2e-4',
         'OLMO_BATCH_SIZE': '1',
         'OLMO_MAX_STAGE1_ITERS': '0',  # No maximum = use calculated value (30)
-        'OLMO_MAX_STAGE2_ITERS': '0'   # No maximum = use calculated value (48)
+        'OLMO_MAX_STAGE2_ITERS': '0',   # No maximum = use calculated value (48)
+        # Test-friendly validation thresholds (fixture data regression testing)
+        'OLMO_STAGE1_VALIDATION_THRESHOLD': '0.2',
+        'OLMO_STAGE2_VALIDATION_THRESHOLD': '0.2',
+        'OLMO_SEQUENTIAL_VALIDATION_THRESHOLD': '0.15'
     }
 
     # Set test environment variables and store originals

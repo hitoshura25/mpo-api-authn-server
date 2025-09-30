@@ -150,6 +150,13 @@ class TestProcessArtifactsScript:
 
         return base_args
 
+    def _cleanup_non_prerequisite_files(self, prerequisites: dict):
+        """Remove all files from temp_output_dir except prerequisite files"""
+        prerequisite_files = list(prerequisites.values())
+        for file in self.temp_output_dir.glob("*"):
+            if file not in prerequisite_files and file.is_file():
+                file.unlink()
+
     def run_process_artifacts(self, additional_args=None, realtime_output=False):
         """
         Helper method to run process_artifacts.py with controlled test data
@@ -189,17 +196,59 @@ class TestProcessArtifactsScript:
                 cwd=self.script_path.parent
             )
 
-            # Stream output in real-time
-            while True:
-                output = process.stdout.readline()
-                if output == '' and process.poll() is not None:
-                    break
-                if output:
-                    print(output.strip())
-                    sys.stdout.flush()
+            # Stream output in real-time with timeout protection
+            import select
+            import time
 
-            # Wait for process to complete and get return code
-            return_code = process.poll()
+            timeout = 600  # 10 minutes timeout for long-running ML processes
+            start_time = time.time()
+
+            try:
+                while True:
+                    # Check if process has finished
+                    if process.poll() is not None:
+                        # Read any remaining output
+                        remaining_output = process.stdout.read()
+                        if remaining_output:
+                            print(remaining_output.strip())
+                        break
+
+                    # Check for timeout
+                    if time.time() - start_time > timeout:
+                        print(f"⚠️ Process timeout after {timeout} seconds")
+                        process.terminate()
+                        try:
+                            process.wait(timeout=5)
+                        except subprocess.TimeoutExpired:
+                            process.kill()
+                        return -1
+
+                    # Try to read output with select (Unix) or polling (cross-platform)
+                    try:
+                        if hasattr(select, 'select'):  # Unix systems
+                            ready, _, _ = select.select([process.stdout], [], [], 1.0)
+                            if ready:
+                                output = process.stdout.readline()
+                                if output:
+                                    print(output.strip())
+                                    sys.stdout.flush()
+                        else:  # Windows fallback - use shorter readline timeout
+                            output = process.stdout.readline()
+                            if output:
+                                print(output.strip())
+                                sys.stdout.flush()
+                            else:
+                                time.sleep(0.1)  # Small delay to prevent CPU spinning
+                    except Exception as e:
+                        print(f"⚠️ Error reading process output: {e}")
+                        break
+
+                # Get final return code
+                return_code = process.poll()
+            except KeyboardInterrupt:
+                print("🛑 Process interrupted by user")
+                process.terminate()
+                return -1
             print("=" * 80)
             print(f"🏁 Process completed with return code: {return_code}")
             return return_code
@@ -223,10 +272,7 @@ class TestProcessArtifactsScript:
         prerequisites = self.create_prerequisite_files_up_to("analysis-summary")
 
         # Clear output except for prerequisites
-        prerequisite_files = list(prerequisites.values())
-        for file in self.temp_output_dir.glob("*"):
-            if file not in prerequisite_files and file.is_file():
-                file.unlink()
+        self._cleanup_non_prerequisite_files(prerequisites)
 
         result = self.run_process_artifacts([
             "--only-analysis-summary",
@@ -300,10 +346,7 @@ class TestProcessArtifactsScript:
         prerequisites = self.create_prerequisite_files_up_to("datasets")
 
         # Clear output except for prerequisites
-        prerequisite_files = list(prerequisites.values())
-        for file in self.temp_output_dir.glob("*"):
-            if file not in prerequisite_files and file.is_file():
-                file.unlink()
+        self._cleanup_non_prerequisite_files(prerequisites)
 
         result = self.run_process_artifacts([
             "--only-datasets",
@@ -391,10 +434,7 @@ class TestProcessArtifactsScript:
         prerequisites = self.create_prerequisite_files_up_to("analysis-summary")
 
         # Clear output except for prerequisites
-        prerequisite_files = list(prerequisites.values())
-        for file in self.temp_output_dir.glob("*"):
-            if file not in prerequisite_files and file.is_file():
-                file.unlink()
+        self._cleanup_non_prerequisite_files(prerequisites)
 
         # Run only analysis summary phase
         result = self.run_process_artifacts([
@@ -447,10 +487,7 @@ class TestProcessArtifactsScript:
         prerequisites = self.create_prerequisite_files_up_to("narrativization")
 
         # Clear output except for prerequisites
-        prerequisite_files = list(prerequisites.values())
-        for file in self.temp_output_dir.glob("*"):
-            if file not in prerequisite_files and file.is_file():
-                file.unlink()
+        self._cleanup_non_prerequisite_files(prerequisites)
 
         # Run only narrativization phase
         result = self.run_process_artifacts([
@@ -495,10 +532,7 @@ class TestProcessArtifactsScript:
         prerequisites = self.create_prerequisite_files_up_to("datasets")
 
         # Clear output except for prerequisites
-        prerequisite_files = list(prerequisites.values())
-        for file in self.temp_output_dir.glob("*"):
-            if file not in prerequisite_files and file.is_file():
-                file.unlink()
+        self._cleanup_non_prerequisite_files(prerequisites)
 
         # Run only datasets phase
         result = self.run_process_artifacts([

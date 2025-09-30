@@ -195,7 +195,11 @@ def _check_no_placeholders(model_path: Path, result: Dict) -> bool:
                    ['placeholder', 'todo', 'fixme', 'mock', 'test data']):
                 result['warnings'].append(f"Possible placeholder content in {text_file.name}")
                 return False
-        except:
+        except (IOError, UnicodeDecodeError, PermissionError) as e:
+            logger.warning(f"Could not read {text_file.name} for placeholder check: {e}")
+            continue
+        except Exception as e:
+            logger.warning(f"Unexpected error checking {text_file.name}: {e}")
             continue
 
     return True

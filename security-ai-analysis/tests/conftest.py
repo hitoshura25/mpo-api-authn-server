@@ -231,6 +231,41 @@ def create_mock_model_files():
             f.write(header_json)
             f.write(tensor_data)
 
+        # Create README.md (required for model validation)
+        readme_content = """---
+language: en
+tags:
+- fine-tuned
+- security-analysis
+- test-model
+library_name: transformers
+pipeline_tag: text-generation
+---
+
+# Test Model
+
+This is a test model created for validation testing.
+
+## Model Details
+
+- **Base Model**: OLMo-2-1B
+- **Purpose**: Testing security analysis pipeline
+- **Training**: Mock training for test validation
+
+## Usage
+
+This model is for testing purposes only.
+
+## Performance
+
+Test model with minimal functionality for validation testing.
+
+## Training Data
+
+Mock training data for testing validation pipeline.
+"""
+        (directory / "README.md").write_text(readme_content)
+
     return create_files
 
 

@@ -735,7 +735,7 @@ class TestProcessArtifactsScript:
     def test_model_validation_module_exists(self):
         """Test that validation module can be imported and used - should fail initially"""
         try:
-            from validate_model_artifacts import validate_model_artifacts
+            from scripts.validate_model_artifacts import validate_model_artifacts
             # If we get here, the module exists
             assert callable(validate_model_artifacts), \
                 "validate_model_artifacts should be a callable function"

@@ -1753,6 +1753,58 @@ def execute_single_phase(phase: str, args):
         raise ValueError(f"Unknown phase: {phase}")
 
 
+def _display_completion_summary(results: List, summary: Dict):
+    """
+    Display contextually appropriate completion summary based on execution mode and results.
+
+    Args:
+        results: List of analysis results (empty for completed full pipeline)
+        summary: Summary dictionary with execution context and results
+    """
+    if not isinstance(summary, dict):
+        print(f"📋 Process Summary: Operations completed")
+        return
+
+    # Detect execution context from summary structure
+    is_full_pipeline = (summary.get('upload_status') and
+                       summary.get('sequential_fine_tuning') and
+                       summary.get('total_analyzed'))
+
+    is_single_upload = (summary.get('upload_status') and
+                       summary.get('single_phase_execution'))
+
+    has_analysis_results = isinstance(results, list) and len(results) > 0
+
+    if is_full_pipeline:
+        # Complete 6-phase pipeline results
+        upload_results = summary.get('upload_results', {})
+        models_uploaded = upload_results.get('models_uploaded', 0)
+        datasets_uploaded = upload_results.get('datasets_uploaded', 0)
+        vulnerabilities_analyzed = summary.get('total_analyzed', 0)
+        sequential_training = summary.get('sequential_fine_tuning', {})
+
+        print(f"🎯 Complete Pipeline Results:")
+        print(f"   📊 Vulnerabilities Analyzed: {vulnerabilities_analyzed}")
+        print(f"   🤖 Sequential Training: {sequential_training.get('stage1_score', 'N/A')}/{sequential_training.get('stage2_score', 'N/A')} scores")
+        print(f"   📦 Uploads: {models_uploaded} models, {datasets_uploaded} datasets")
+
+    elif is_single_upload:
+        # Single upload phase results
+        upload_results = summary.get('upload_results', {})
+        models_uploaded = upload_results.get('models_uploaded', 0)
+        datasets_uploaded = upload_results.get('datasets_uploaded', 0)
+        print(f"📦 Upload Results: {models_uploaded} models, {datasets_uploaded} datasets uploaded")
+
+    elif has_analysis_results:
+        # Analysis-focused phases
+        print(f"📊 Analysis Results: {len(results)} vulnerability analyses completed")
+
+    else:
+        # Generic completion for other phases
+        phase_info = summary.get('phase', 'operations')
+        print(f"📋 Process Summary: {phase_info.title()} completed successfully")
+
+
 def main():
     """
     Main entry point for processing security artifacts
@@ -1935,7 +1987,10 @@ def main():
 
     print("\n" + "=" * 60)
     print("✅ Processing complete!")
-    print(f"📊 Final Results: {len(results) if isinstance(results, list) else 'N/A'} items")
+
+    # Display contextually appropriate completion summary
+    _display_completion_summary(results, summary)
+
     print(f"📈 Summary Keys: {list(summary.keys()) if isinstance(summary, dict) else 'N/A'}")
     print("=" * 60)
 

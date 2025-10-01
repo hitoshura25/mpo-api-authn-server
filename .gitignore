@@ -82,6 +82,4 @@ security-ai-analysis/quality_assessment/
 # Training artifacts and temporary files
 security-ai-analysis/fine-tuning/
 security-ai-analysis/**/*.log
-security-ai-analysis/**/training_*
-security-ai-analysis/**/validation_*
 security-ai-analysis/**/.cache/

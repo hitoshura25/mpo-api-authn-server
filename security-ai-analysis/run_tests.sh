@@ -61,10 +61,27 @@ check_test_data() {
     print_success "Integration test fixtures verified"
 }
 
-# Function to run unit tests (no unit tests currently - using integration tests only)
+# Function to run unit tests (fast <5 seconds)
 run_unit_tests() {
-    print_status "No unit tests configured - using comprehensive integration tests instead"
-    print_success "Unit test phase skipped ✓"
+    print_status "Running unit tests (fast - <5 seconds)..."
+
+    # Activate virtual environment if it exists
+    if [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+    fi
+
+    # Run unit tests from tests/unit/ directory
+    local start_time=$(date +%s)
+    python -m pytest tests/unit/ -v --tb=short --durations=3
+    local end_time=$(date +%s)
+    local duration=$((end_time - start_time))
+
+    if [ $? -eq 0 ]; then
+        print_success "Unit tests passed ✓ (${duration}s)"
+    else
+        print_error "Unit tests failed ✗"
+        exit 1
+    fi
 }
 
 # Function to run integration tests (~15-30 seconds with parallel execution)
@@ -164,7 +181,7 @@ show_usage() {
     echo "Usage: $0 [quick|integration|all|training|upload|help]"
     echo ""
     echo "Test execution modes:"
-    echo "  quick       - Run fast checks only (fixtures verification)"
+    echo "  quick       - Run unit tests and fast checks (<10 seconds)"
     echo "  integration - Run integration tests, skip slow tests (~15-30 seconds)"
     echo "  all         - Run complete test suite including slow tests (1-3 minutes)"
     echo "  training    - Run only training-related tests (ultra-fast ~1 minute)"
@@ -177,12 +194,13 @@ show_usage() {
     echo "  • Performance timing and slowest test identification"
     echo ""
     echo "Examples:"
-    echo "  $0 quick          # Fast feedback during development"
+    echo "  $0 quick          # Fast feedback during development (unit tests + fixtures)"
     echo "  $0 integration    # Standard CI testing (parallel execution)"
     echo "  $0 training       # Test only training pipeline (ultra-fast)"
     echo "  $0 all            # Complete validation before release"
     echo ""
     echo "Test coverage:"
+    echo "  • Unit tests for multi-domain security specialization"
     echo "  • 13 comprehensive integration tests with real security tool outputs"
     echo "  • End-to-end pipeline validation across all 8 phases"
     echo "  • Performance optimized fixture-based testing (4-40x faster)"

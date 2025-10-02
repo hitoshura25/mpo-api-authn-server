@@ -72,6 +72,23 @@ class ValidationSection:
     sequential_threshold: float
 
 
+@dataclass
+class MultiDomainValidationSection:
+    """Multi-domain validation thresholds"""
+    overall_threshold: float
+    category_minimum: float
+    high_specialization: float
+    medium_specialization: float
+
+
+@dataclass
+class MultiDomainSection:
+    """Multi-domain security specialization configuration (always enabled)"""
+    target_categories: List[str]
+    category_weights: Dict[str, float]
+    validation: MultiDomainValidationSection
+
+
 class OLMoSecurityConfig:
     """
     Unified configuration manager for AI Security Analysis system.
@@ -127,6 +144,7 @@ class OLMoSecurityConfig:
         self.fine_tuning = self._load_fine_tuning_section(config, project_root)
         self.knowledge_base = self._load_knowledge_base_section(config, project_root)
         self.validation = self._load_validation_section(config)
+        self.multi_domain = self._load_multi_domain_section(config)
         
     def get_base_model_path(self, model_name: Optional[str] = None) -> Path:
         """
@@ -270,6 +288,60 @@ class OLMoSecurityConfig:
             stage1_threshold=float(os.getenv('OLMO_STAGE1_VALIDATION_THRESHOLD', val_config.get('stage1_threshold', 0.7))),
             stage2_threshold=float(os.getenv('OLMO_STAGE2_VALIDATION_THRESHOLD', val_config.get('stage2_threshold', 0.7))),
             sequential_threshold=float(os.getenv('OLMO_SEQUENTIAL_VALIDATION_THRESHOLD', val_config.get('sequential_threshold', 0.6)))
+        )
+
+    def _load_multi_domain_section(self, config: Dict[str, Any]) -> MultiDomainSection:
+        """Load multi-domain security specialization configuration with environment variable overrides."""
+        md_config = config.get('multi_domain', {})
+
+        # Default categories and weights if not specified
+        default_categories = [
+            'webauthn_security', 'web_security', 'code_vulnerabilities',
+            'container_security', 'dependency_vulnerabilities',
+            'mobile_security', 'infrastructure_security'
+        ]
+
+        default_weights = {
+            'webauthn_security': 1.5,
+            'web_security': 1.2,
+            'code_vulnerabilities': 1.0,
+            'container_security': 0.9,
+            'dependency_vulnerabilities': 0.8,
+            'mobile_security': 0.7,
+            'infrastructure_security': 0.6
+        }
+
+        # Load validation section with defaults
+        val_config = md_config.get('validation', {})
+        validation_section = MultiDomainValidationSection(
+            overall_threshold=float(os.getenv('OLMO_MULTI_DOMAIN_OVERALL_THRESHOLD', val_config.get('overall_threshold', 0.75))),
+            category_minimum=float(os.getenv('OLMO_MULTI_DOMAIN_CATEGORY_MIN', val_config.get('category_minimum', 0.40))),
+            high_specialization=float(os.getenv('OLMO_MULTI_DOMAIN_HIGH_THRESHOLD', val_config.get('high_specialization', 0.75))),
+            medium_specialization=float(os.getenv('OLMO_MULTI_DOMAIN_MEDIUM_THRESHOLD', val_config.get('medium_specialization', 0.60)))
+        )
+
+        # Load target categories with environment variable override
+        target_categories_env = os.getenv('OLMO_MULTI_DOMAIN_TARGET_CATEGORIES')
+        if target_categories_env:
+            target_categories = [cat.strip() for cat in target_categories_env.split(',')]
+        else:
+            target_categories = md_config.get('target_categories', default_categories)
+
+        # Load category weights with environment variable override
+        category_weights_env = os.getenv('OLMO_MULTI_DOMAIN_CATEGORY_WEIGHTS')
+        if category_weights_env:
+            try:
+                import json
+                category_weights = json.loads(category_weights_env)
+            except json.JSONDecodeError as e:
+                raise ValueError(f"Invalid JSON in OLMO_MULTI_DOMAIN_CATEGORY_WEIGHTS environment variable: {category_weights_env}. Error: {e}") from e
+        else:
+            category_weights = md_config.get('category_weights', default_weights)
+
+        return MultiDomainSection(
+            target_categories=target_categories,
+            category_weights=category_weights,
+            validation=validation_section
         )
 
     def get_workspace_path(self) -> Path:

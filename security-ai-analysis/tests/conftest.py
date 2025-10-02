@@ -33,7 +33,12 @@ def setup_test_environment():
         # Test-friendly validation thresholds (fixture data regression testing)
         'OLMO_STAGE1_VALIDATION_THRESHOLD': '0.2',
         'OLMO_STAGE2_VALIDATION_THRESHOLD': '0.2',
-        'OLMO_SEQUENTIAL_VALIDATION_THRESHOLD': '0.15'
+        'OLMO_SEQUENTIAL_VALIDATION_THRESHOLD': '0.15',
+        # Multi-domain configuration for testing (always enabled)
+        'OLMO_MULTI_DOMAIN_OVERALL_THRESHOLD': '0.75',
+        'OLMO_MULTI_DOMAIN_CATEGORY_MIN': '0.40',
+        'OLMO_MULTI_DOMAIN_HIGH_THRESHOLD': '0.75',
+        'OLMO_MULTI_DOMAIN_MEDIUM_THRESHOLD': '0.60'
     }
 
     # Set test environment variables and store originals

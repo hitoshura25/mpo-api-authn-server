@@ -26,7 +26,7 @@ import zipfile
 import shutil
 import subprocess
 import random
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Any
 
 # Add parent directory to path for imports
 sys.path.append(str(Path(__file__).parent.parent))
@@ -69,7 +69,7 @@ class Phases:
         RAG_ENHANCEMENT: ['vulnerability_analysis_input'],
         ANALYSIS_SUMMARY: ['rag_enhanced_input'],
         NARRATIVIZATION: ['analyzed_input'],
-        DATASETS: ['narrativized_input', 'parsed_input'],  # Both needed
+        DATASETS: ['narrativized_input', 'analyzed_input'],  # Needs narrativized data + analysis results with categorized vulnerabilities
         TRAINING: ['train_input', 'validation_input', 'narrativized_input'],
         UPLOAD: ['dataset_files']  # model_dir automatically resolved via TrainingRunManager
     }
@@ -681,6 +681,48 @@ def analysis_summary_phase(rag_enhanced_file: Path, output_dir: str, args) -> Tu
         logger.error("🔍 URL-to-code mapping failure indicates infrastructure or dependency issues requiring investigation")
         raise RuntimeError(f"URL-to-code mapping failure requires investigation: {e}") from e
 
+    # **Vulnerability Categorization**
+    print(f"🏷️ Applying security domain categorization to vulnerabilities...")
+    try:
+        from vulnerability_categorizer import VulnerabilityCategorizor
+
+        categorizer = VulnerabilityCategorizor()
+        categorized_count = 0
+        category_distribution = {}
+
+        for result in results:
+            if result.get('status') == 'success' and 'vulnerability' in result:
+                vulnerability = result['vulnerability']
+
+                # ✅ FAIL-FAST: Categorize vulnerability by security domain
+                category, confidence = categorizer.categorize_vulnerability(vulnerability)
+
+                # Add categorization metadata to vulnerability
+                vulnerability['security_category'] = category
+                vulnerability['category_confidence'] = confidence
+
+                categorized_count += 1
+                category_distribution[category] = category_distribution.get(category, 0) + 1
+
+        print(f"✅ Vulnerability categorization completed: {categorized_count} vulnerabilities categorized")
+        print(f"📊 Security domain distribution: {category_distribution}")
+
+        # ✅ FAIL-FAST: Validate expected security domains are present
+        expected_categories = {
+            'container_security', 'infrastructure_security', 'web_security',
+            'dependency_vulnerabilities', 'code_vulnerabilities', 'webauthn_security', 'mobile_security'
+        }
+        found_categories = set(category_distribution.keys())
+
+        if len(found_categories) < 3:  # Expect at least 3 domains in real projects
+            logger.warning(f"⚠️ Only {len(found_categories)} security domains found: {found_categories}")
+            logger.warning("🔍 Low domain diversity may indicate missing security tools or categorization issues")
+
+    except Exception as e:
+        logger.error(f"❌ CRITICAL: Vulnerability categorization failure: {e}")
+        logger.error("🔍 Categorization failure indicates tool mapping issues or missing vulnerability data requiring investigation")
+        raise RuntimeError(f"Vulnerability categorization failure requires investigation: {e}") from e
+
     # Generate summary report (need to recreate analyzer for summary generation)
     try:
         from analysis.olmo_analyzer import OLMoSecurityAnalyzer
@@ -734,6 +776,53 @@ def analysis_summary_phase(rag_enhanced_file: Path, output_dir: str, args) -> Tu
     return results, analysis_file, summary_file
 
 
+def _validate_narrativization_output(narrativized_results: List[Dict[str, Any]]) -> None:
+    """
+    Validate narrativization phase output structure - FAIL-FAST on missing required fields.
+
+    Args:
+        narrativized_results: Output from narrativization phase
+
+    Raises:
+        ValueError: If required fields are missing from narrativized output
+    """
+    required_fields = ['vulnerability_id', 'vulnerability', 'narrative', 'created_at']
+    required_vuln_fields = ['security_category', 'category_confidence']
+
+    missing_items = []
+    missing_vuln_fields = []
+    missing_categorization = []
+
+    for i, item in enumerate(narrativized_results):
+        item_id = item.get('vulnerability_id', f'item_{i}')
+
+        # Check top-level required fields
+        for field in required_fields:
+            if field not in item:
+                missing_items.append((item_id, field))
+
+        # Check vulnerability object has required categorization fields
+        if 'vulnerability' in item:
+            vuln_data = item['vulnerability']
+            for field in required_vuln_fields:
+                if field not in vuln_data:
+                    missing_vuln_fields.append((item_id, field))
+
+            # Check for unknown categorization
+            if vuln_data.get('security_category') == 'unknown':
+                missing_categorization.append(item_id)
+
+    # ✅ FAIL-FAST: Report all validation issues
+    if missing_items:
+        raise ValueError(f"❌ FAIL-FAST: Narrativization output missing required fields: {missing_items[:5]}")
+
+    if missing_vuln_fields:
+        raise ValueError(f"❌ FAIL-FAST: Narrativized vulnerabilities missing categorization fields: {missing_vuln_fields[:5]}")
+
+    if missing_categorization:
+        raise ValueError(f"❌ FAIL-FAST: {len(missing_categorization)} narrativized vulnerabilities have 'unknown' categorization: {missing_categorization[:5]}")
+
+
 def narrativization_phase(analyzed_vulnerabilities_file: Path, output_dir: str, args) -> Tuple[List, Path]:
     """
     Phase 3: Create rich security narratives from analyzed vulnerabilities
@@ -772,12 +861,24 @@ def narrativization_phase(analyzed_vulnerabilities_file: Path, output_dir: str, 
         if item.get('status') == 'success':
             vuln_data = item.get('vulnerability', {})
 
+            # ✅ FAIL-FAST: Validate categorization is present before narrativization
+            vuln_id = vuln_data.get('id', 'unknown')
+            if 'security_category' not in vuln_data:
+                raise ValueError(f"❌ FAIL-FAST: Vulnerability {vuln_id} missing 'security_category' field from Phase 2C. "
+                               f"Cannot proceed with narrativization until categorization is fixed.")
+
+            if vuln_data.get('security_category') == 'unknown':
+                raise ValueError(f"❌ FAIL-FAST: Vulnerability {vuln_id} has 'unknown' security_category from Phase 2C. "
+                               f"Cannot proceed with narrativization until categorization is fixed.")
+
             # Create narrativized version
             try:
                 narrative = narrativizer.narrativize_vulnerability(vuln_data)
 
+                # ✅ PRESERVE: Complete vulnerability data with categorization for downstream phases
                 narrativized_item = {
-                    'vulnerability_id': vuln_data.get('id', 'unknown'),
+                    'vulnerability_id': vuln_id,
+                    'vulnerability': vuln_data,  # ✅ PRESERVE: Complete vulnerability with categorization
                     'original_analysis': item.get('analysis', ''),
                     'narrative': narrative,
                     'created_at': timestamp
@@ -798,16 +899,20 @@ def narrativization_phase(analyzed_vulnerabilities_file: Path, output_dir: str, 
     print(f"💾 Narrativized dataset saved to: {narrativized_file}")
     print(f"📊 Created {len(narrativized_results)} narratives")
 
+    # ✅ PHASE BOUNDARY VALIDATION: Ensure narrativized output has required structure
+    _validate_narrativization_output(narrativized_results)
+    print(f"✅ Narrativization phase output validation passed")
+
     return narrativized_results, narrativized_file
 
 
-def datasets_phase(narrativized_file: Path, vulnerabilities_file: Path, output_dir: str, args) -> Tuple[List, Path, Path]:
+def datasets_phase(narrativized_file: Path, analysis_file: Path, output_dir: str, args) -> Tuple[List, Path, Path]:
     """
     Phase 4: Prepare training and validation datasets with enhanced code-aware examples
 
     Args:
         narrativized_file: Path to narrativized dataset JSON file
-        vulnerabilities_file: Path to raw vulnerability data from parsing phase
+        analysis_file: Path to analysis results containing categorized vulnerabilities + analysis data
         output_dir: Output directory for dataset files
         args: Command line arguments
 
@@ -846,25 +951,33 @@ def datasets_phase(narrativized_file: Path, vulnerabilities_file: Path, output_d
     try:
         from enhanced_dataset_creator import EnhancedDatasetCreator, EnumJSONEncoder
 
-        # Load raw vulnerability data for enhanced dataset creator
-        print(f"🔄 Loading raw vulnerability data: {vulnerabilities_file}")
-        with open(vulnerabilities_file, 'r') as f:
-            raw_vulnerability_data = json.load(f)
+        # Load analysis results (contains both categorized vulnerability data + analysis results)
+        print(f"🔄 Loading analysis results with categorized vulnerabilities: {analysis_file}")
+        with open(analysis_file, 'r') as f:
+            analysis_results_with_categorized_vulns = json.load(f)
 
-        # Extract successful vulnerability objects for enhancement
-        raw_vulnerabilities = []
-        for item in raw_vulnerability_data:
-            if item.get('status') == 'success' and 'vulnerability' in item:
-                raw_vulnerabilities.append(item['vulnerability'])
+        # Extract categorized vulnerabilities from analysis results
+        categorized_vulnerabilities = []
+        for analysis_result in analysis_results_with_categorized_vulns:
+            if analysis_result.get('status') == 'success' and 'vulnerability' in analysis_result:
+                categorized_vulnerability = analysis_result['vulnerability']
+                categorized_vulnerabilities.append(categorized_vulnerability)
 
-        print(f"📊 Loaded {len(raw_vulnerabilities)} raw vulnerabilities for code-aware enhancement")
+        print(f"📊 Extracted {len(categorized_vulnerabilities)} categorized vulnerabilities from analysis results")
+
+        # Validate that vulnerabilities are properly categorized
+        missing_categories = [v.get('id', 'unknown') for v in categorized_vulnerabilities if 'security_category' not in v]
+        if missing_categories:
+            raise ValueError(f"❌ Found {len(missing_categories)} vulnerabilities missing categorization in analysis results: {missing_categories[:5]}...")
+
+        print(f"✅ All {len(categorized_vulnerabilities)} vulnerabilities have security categorization from Phase 2C")
 
         # Get dataset name for enhanced creation
         dataset_name = f"webauthn-security-vulnerabilities-{timestamp}"
 
         creator = EnhancedDatasetCreator()
         enhanced_result = creator.create_enhanced_dataset(
-            raw_vulnerabilities,  # ✅ FIXED: Now using raw vulnerability data
+            categorized_vulnerabilities,  # ✅ FIXED: Now using categorized vulnerability data from Phase 2C
             dataset_name=dataset_name
         )
 
@@ -873,6 +986,12 @@ def datasets_phase(narrativized_file: Path, vulnerabilities_file: Path, output_d
             print(f"  📊 Original examples: {enhanced_result.creation_metadata.get('original_count', 0)}")
             print(f"  🚀 Enhanced examples: {enhanced_result.creation_metadata.get('enhanced_count', 0)}")
             print(f"  🎯 Enhancement ratio: {enhanced_result.creation_metadata.get('enhancement_ratio', 0):.1f}x")
+
+            # Multi-domain categorization results
+            if hasattr(enhanced_result, 'category_distribution') and enhanced_result.category_distribution:
+                print(f"  🎯 Multi-domain categorization: {enhanced_result.category_distribution}")
+                total_categorized = sum(enhanced_result.category_distribution.values())
+                print(f"  📈 Categories identified: {len(enhanced_result.category_distribution)} domains, {total_categorized} vulnerabilities")
 
             # Convert enhanced examples to training pairs format
             enhanced_training_pairs = []
@@ -1412,11 +1531,11 @@ def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple
     print(f"="*60)
     narrativized_results, narrativized_file = narrativization_phase(analysis_file, output_dir, args)
 
-    # Phase 4: Datasets
+    # Phase 4: Datasets - Use analysis results (contains categorized vulnerabilities + analysis data)
     print(f"\n" + "="*60)
     print(f"🚀 PHASE 4: DATASETS")
     print(f"="*60)
-    training_pairs, train_file, validation_file = datasets_phase(narrativized_file, vulnerabilities_file, output_dir, args)
+    training_pairs, train_file, validation_file = datasets_phase(narrativized_file, analysis_file, output_dir, args)
 
     # Phase 5: Training
     print(f"\n" + "="*60)
@@ -1706,8 +1825,8 @@ def execute_single_phase(phase: str, args):
 
     elif phase == Phases.DATASETS:
         narrativized_file = args.narrativized_input
-        parsed_file = args.parsed_input
-        dataset_results, train_file, validation_file = datasets_phase(narrativized_file, parsed_file, output_dir, args)
+        analysis_file = args.analyzed_input  # Contains categorized vulnerabilities + analysis data
+        dataset_results, train_file, validation_file = datasets_phase(narrativized_file, analysis_file, output_dir, args)
         print(f"✅ Datasets phase completed. Output files:")
         print(f"   Training dataset: {train_file}")
         print(f"   Validation dataset: {validation_file}")
@@ -1923,6 +2042,14 @@ def main():
         print(f"  batch_size: {config.fine_tuning.batch_size} {get_config_source('OLMO_BATCH_SIZE', os.getenv('OLMO_BATCH_SIZE'))}")
         print(f"  max_stage1_iters: {config.fine_tuning.max_stage1_iters} {get_config_source('OLMO_MAX_STAGE1_ITERS', os.getenv('OLMO_MAX_STAGE1_ITERS'))}")
         print(f"  max_stage2_iters: {config.fine_tuning.max_stage2_iters} {get_config_source('OLMO_MAX_STAGE2_ITERS', os.getenv('OLMO_MAX_STAGE2_ITERS'))}")
+
+        # Multi-domain configuration display (always enabled)
+        print("\n🎯 Multi-Domain Security Specialization (Always Enabled):")
+        print(f"  target_categories: {config.multi_domain.target_categories}")
+        print(f"  category_weights: {dict(list(config.multi_domain.category_weights.items())[:3])}...")
+        print(f"  overall_threshold: {config.multi_domain.validation.overall_threshold}")
+        print(f"  high_specialization: {config.multi_domain.validation.high_specialization}")
+        print(f"  medium_specialization: {config.multi_domain.validation.medium_specialization}")
 
     except Exception as e:
         logger.error(f"❌ CRITICAL: Fine-tuning configuration loading failure: {e}")

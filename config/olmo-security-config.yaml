@@ -64,3 +64,32 @@ validation:
   stage1_threshold: 0.7         # Target production threshold for Stage 1 specialization
   stage2_threshold: 0.7         # Target production threshold for Stage 2 specialization
   sequential_threshold: 0.6     # Target production threshold for CF prevention
+
+# Multi-domain security specialization configuration (always enabled)
+multi_domain:
+  # Target security categories for specialization
+  target_categories:
+    - "webauthn_security"
+    - "web_security"
+    - "code_vulnerabilities"
+    - "container_security"
+    - "dependency_vulnerabilities"
+    - "mobile_security"
+    - "infrastructure_security"
+
+  # Category weights for validation scoring (higher weight = more important)
+  category_weights:
+    webauthn_security: 1.5      # Primary specialization area
+    web_security: 1.2           # Related to WebAuthn
+    code_vulnerabilities: 1.0   # Standard baseline
+    container_security: 0.9
+    dependency_vulnerabilities: 0.8
+    mobile_security: 0.7
+    infrastructure_security: 0.6
+
+  # Validation thresholds for multi-domain specialization
+  validation:
+    overall_threshold: 0.75     # Target overall multi-domain score (high specialization)
+    category_minimum: 0.40      # Minimum score required for any category
+    high_specialization: 0.75   # Score threshold for "high specialization"
+    medium_specialization: 0.60 # Score threshold for "medium specialization"

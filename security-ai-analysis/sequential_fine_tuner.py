@@ -72,7 +72,25 @@ class SequentialFineTuner:
         if self.enable_cf_prevention:
             self.cf_prevention = CatastrophicForgettingPrevention(self.config)
             self.logger.info("🛡️ Phase 3: Catastrophic forgetting prevention enabled")
-        else:
+
+        # Multi-domain security specialization support (always enabled)
+        self.target_categories = self.config.multi_domain.target_categories
+        self.category_weights = self.config.multi_domain.category_weights
+        self.logger.info(f"🎯 Multi-domain specialization enabled for categories: {self.target_categories}")
+
+        # Category-specific validation criteria (static)
+        self.category_validation_criteria = {
+            'container_security': ['dockerfile', 'user privilege', 'base image', 'container'],
+            'dependency_vulnerabilities': ['version', 'package', 'dependency', 'cve'],
+            'web_security': ['cors', 'csp', 'xss', 'csrf', 'headers'],
+            'webauthn_security': ['webauthn', 'fido', 'credential', 'challenge'],
+            'mobile_security': ['android', 'permission', 'manifest', 'component'],
+            'infrastructure_security': ['secret', 'iam', 'access control', 'configuration'],
+            'code_vulnerabilities': ['injection', 'validation', 'sanitization', 'buffer']
+        }
+
+        # Handle case when CF prevention is disabled
+        if not self.enable_cf_prevention:
             self.cf_prevention = None
             self.logger.info("⏭️ Phase 3: Catastrophic forgetting prevention disabled")
 
@@ -854,14 +872,33 @@ class SequentialFineTuner:
             validation_results['sequential_capabilities'] = total_sequential / num_samples
             validation_results['validation_samples'] = validation_samples
 
+            # Debug aggregated scores
+            self.logger.info(f"🔍 Stage 2 Aggregated Scores Debug:")
+            self.logger.info(f"   syntax_correctness: {validation_results['syntax_correctness']:.3f}")
+            self.logger.info(f"   security_pattern_application: {validation_results['security_pattern_application']:.3f}")
+            self.logger.info(f"   implementation_completeness: {validation_results['implementation_completeness']:.3f}")
+            self.logger.info(f"   code_quality: {validation_results['code_quality']:.3f}")
+            self.logger.info(f"   sequential_capabilities: {validation_results['sequential_capabilities']:.3f}")
+
             # Analyze specialization evidence
             validation_results['specialization_evidence'] = self._analyze_stage2_specialization(validation_samples)
 
-            # Overall assessment including sequential progression
-            overall_score = (validation_results['syntax_correctness'] +
-                           validation_results['security_pattern_application'] +
-                           validation_results['implementation_completeness'] +
-                           validation_results['sequential_capabilities']) / 4
+            # Multi-domain validation (always enabled)
+            self.logger.info("🎯 Running multi-domain specialization validation...")
+            multi_domain_results = self.validate_multi_domain_specialization(stage2_model_path, test_vulnerabilities)
+            validation_results['multi_domain'] = multi_domain_results
+
+            # Use multi-domain score as overall score if available
+            if 'overall_multi_domain_score' in multi_domain_results:
+                overall_score = multi_domain_results['overall_multi_domain_score']
+                self.logger.info(f"🎯 Using multi-domain score as overall: {overall_score:.3f}")
+            else:
+                # Fallback to standard scoring
+                overall_score = (validation_results['syntax_correctness'] +
+                               validation_results['security_pattern_application'] +
+                               validation_results['implementation_completeness'] +
+                               validation_results['sequential_capabilities']) / 4
+                self.logger.info(f"🎯 Using fallback standard score as overall: {overall_score:.3f}")
 
             stage2_threshold = self.config.validation.stage2_threshold
             if overall_score >= stage2_threshold:
@@ -1251,6 +1288,24 @@ Provide:
         implementation_completeness = (has_code_block + has_implementation + has_testing) / 3
         code_quality = min(len(response) / 400, 1.0) * 0.6 + (implementation_completeness * 0.4)
 
+        # Debug logging to understand scoring
+        vuln_id = vulnerability.get('vulnerability_id', vulnerability.get('id', 'unknown'))
+        self.logger.info(f"🔍 Stage 2 Validation Debug for {vuln_id}:")
+        self.logger.info(f"   Response length: {len(response)} chars")
+        self.logger.info(f"   Has code block: {has_code_block} (checks: '```', 'def ', 'function')")
+        self.logger.info(f"   Has security terms: {has_security_improvements} (checks: security, validation, sanitize)")
+        self.logger.info(f"   Has implementation: {has_implementation} (checks: implementation, steps, deploy)")
+        self.logger.info(f"   Has testing: {has_testing} (checks: test, verify, validate)")
+        self.logger.info(f"   Calculated scores:")
+        self.logger.info(f"     - syntax_correctness: {syntax_correctness}")
+        self.logger.info(f"     - security_pattern_application: {security_pattern_application}")
+        self.logger.info(f"     - implementation_completeness: {implementation_completeness}")
+        self.logger.info(f"     - code_quality: {code_quality}")
+        if len(response) < 200:
+            self.logger.info(f"   Response preview: {response[:200]}...")
+        else:
+            self.logger.info(f"   Response preview: {response[:200]}...")
+
         return {
             'vulnerability_id': vulnerability.get('vulnerability_id', vulnerability.get('id', 'unknown')),
             'syntax_correctness': syntax_correctness,
@@ -1591,6 +1646,291 @@ Provide:
             self.logger.error(f"❌ Error calculating batch size: {e}")
             raise
 
+    def _calculate_category_specialization_scores(self, validation_samples: List[Dict[str, Any]]) -> Dict[str, float]:
+        """
+        Calculate category-specific specialization scores for multi-domain validation.
+
+        Args:
+            validation_samples: List of validation results with category information
+
+        Returns:
+            Dictionary mapping category names to specialization scores
+        """
+
+        category_scores = {}
+        category_samples = {}
+
+        # Group samples by category
+        for sample in validation_samples:
+            category = sample.get('security_category', 'unknown')
+            if category not in category_samples:
+                category_samples[category] = []
+            category_samples[category].append(sample)
+
+        # Calculate weighted scores for each category
+        self.logger.info("🎯 Category Specialization Score Calculation:")
+        for category, samples in category_samples.items():
+            if category in self.target_categories:
+                category_weight = self.category_weights.get(category, 1.0)
+                category_criteria = self.category_validation_criteria.get(category, [])
+
+                # Calculate base score (syntax correctness, security improvements)
+                base_scores = []
+                for sample in samples:
+                    base_score = (
+                        sample.get('syntax_correctness', 0) * 0.4 +
+                        sample.get('security_pattern_application', 0) * 0.4 +
+                        sample.get('implementation_guidance', 0) * 0.2
+                    )
+                    base_scores.append(base_score)
+
+                avg_base_score = sum(base_scores) / len(base_scores) if base_scores else 0
+
+                # Apply category-specific validation
+                category_specific_score = self._validate_category_specific_criteria(samples, category_criteria)
+
+                # Weighted final score
+                final_score = (avg_base_score * 0.7 + category_specific_score * 0.3) * category_weight
+
+                category_scores[category] = final_score
+
+                # Debug logging
+                self.logger.info(f"   {category}: {len(samples)} samples, weight={category_weight}")
+                self.logger.info(f"      avg_base_score={avg_base_score:.3f}, category_specific={category_specific_score:.3f}")
+                self.logger.info(f"      final_score=({avg_base_score:.3f}*0.7 + {category_specific_score:.3f}*0.3)*{category_weight} = {final_score:.3f}")
+            else:
+                # ✅ FAIL-FAST: Don't silently skip unknown categories - this indicates pipeline failure
+                if category == 'unknown':
+                    raise ValueError(f"❌ FAIL-FAST: Found {len(samples)} vulnerabilities with 'unknown' security_category during multi-domain validation. "
+                                   f"This indicates categorization pipeline failure in Phase 2C. "
+                                   f"Cannot proceed with validation until categorization is fixed.")
+                else:
+                    self.logger.info(f"   {category}: {len(samples)} samples (not in target categories, skipped)")
+
+        return category_scores
+
+    def _validate_category_specific_criteria(self, samples: List[Dict[str, Any]], criteria: List[str]) -> float:
+        """
+        Validate category-specific criteria in model responses.
+
+        Args:
+            samples: List of validation samples for this category
+            criteria: List of category-specific keywords to check for
+
+        Returns:
+            Score between 0 and 1 based on category-specific criteria
+        """
+        if not criteria or not samples:
+            return 0.0
+
+        total_score = 0
+        for sample in samples:
+            response_text = sample.get('response', '').lower()
+            criteria_matches = sum(1 for criterion in criteria if criterion.lower() in response_text)
+            criteria_score = min(1.0, criteria_matches / len(criteria))
+            total_score += criteria_score
+
+        return total_score / len(samples)
+
+    def validate_multi_domain_specialization(self, model_path: str,
+                                           test_vulnerabilities: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        Validate multi-domain specialization capabilities.
+
+        Args:
+            model_path: Path to the trained model
+            test_vulnerabilities: Test vulnerabilities with category information
+
+        Returns:
+            Multi-domain validation results
+        """
+
+        self.logger.info(f"🎯 Validating multi-domain specialization: {model_path}")
+
+        try:
+            # Load model for validation
+            model = self._load_model_for_validation(model_path)
+
+            validation_samples = []
+            category_distribution = {}
+
+            # Process test vulnerabilities by category
+            for vuln in test_vulnerabilities:
+                category = vuln.get('security_category', 'unknown')
+                category_distribution[category] = category_distribution.get(category, 0) + 1
+
+                # Create category-specific validation prompt
+                prompt = self._create_multi_domain_validation_prompt(vuln, category)
+
+                # Get model response
+                response = self._generate_model_response(model, prompt)
+
+                # Validate response for category-specific criteria
+                sample_validation = self._validate_multi_domain_response(vuln, response, category)
+                sample_validation['security_category'] = category
+
+                validation_samples.append(sample_validation)
+
+            # Calculate category-specific scores
+            category_scores = self._calculate_category_specialization_scores(validation_samples)
+
+            # Calculate overall multi-domain score
+            overall_score = self._calculate_overall_multi_domain_score(category_scores)
+
+            validation_result = {
+                'overall_multi_domain_score': overall_score,
+                'category_scores': category_scores,
+                'category_distribution': category_distribution,
+                'target_categories': self.target_categories,
+                'category_weights': self.category_weights,
+                'validation_samples': len(validation_samples),
+                'specialization_level': self._determine_specialization_level(overall_score)
+            }
+
+            self.logger.info(f"🎯 Multi-domain validation completed: {overall_score:.3f} overall score")
+            return validation_result
+
+        except Exception as e:
+            self.logger.error(f"❌ Multi-domain validation failed: {e}")
+            raise RuntimeError(f"Multi-domain validation failed - this indicates a critical training pipeline issue: {e}") from e
+
+    def _create_multi_domain_validation_prompt(self, vulnerability: Dict[str, Any], category: str) -> str:
+        """Create category-specific validation prompt."""
+        base_prompt = f"""As a {category.replace('_', ' ')} specialist, analyze and fix this vulnerability:
+
+**Vulnerability ID**: {vulnerability.get('vulnerability_id', vulnerability.get('id', 'unknown'))}
+**Category**: {category}
+**Description**: {vulnerability.get('description', vulnerability.get('message', 'No description'))}
+**Severity**: {vulnerability.get('severity', 'unknown')}
+
+Provide:
+1. Category-specific vulnerability analysis
+2. Domain-appropriate security fix
+3. Category-specific validation steps
+4. Security impact assessment
+"""
+        return base_prompt
+
+    def _validate_multi_domain_response(self, vulnerability: Dict[str, Any], response: str, category: str) -> Dict[str, Any]:
+        """Validate response for multi-domain criteria."""
+        response_lower = response.lower()
+
+        # Base validation criteria
+        has_code_fix = '```' in response or any(lang in response_lower for lang in ['def ', 'function', 'class ', '{'])
+        has_security_analysis = any(term in response_lower for term in ['security', 'vulnerability', 'risk'])
+        has_validation_steps = any(term in response_lower for term in ['test', 'verify', 'validate', 'check'])
+
+        # Category-specific criteria
+        category_criteria = self.category_validation_criteria.get(category, [])
+        category_matches = sum(1 for criterion in category_criteria if criterion.lower() in response_lower)
+        category_coverage = category_matches / len(category_criteria) if category_criteria else 0
+
+        # Calculate scores
+        syntax_score = 1.0 if has_code_fix else 0.3
+        security_score = 1.0 if has_security_analysis else 0.2
+        implementation_score = 1.0 if has_validation_steps else 0.2
+
+        # Debug logging for multi-domain validation
+        vuln_id = vulnerability.get('vulnerability_id', vulnerability.get('id', 'unknown'))
+        self.logger.info(f"🎯 Multi-domain Validation Debug for {vuln_id} ({category}):")
+        self.logger.info(f"   Response length: {len(response)} chars")
+        self.logger.info(f"   Has code fix: {has_code_fix} (checks: '```', 'def ', 'function', 'class ', '{{') -> score: {syntax_score}")
+        self.logger.info(f"   Has security analysis: {has_security_analysis} (checks: security, vulnerability, risk) -> score: {security_score}")
+        self.logger.info(f"   Has validation steps: {has_validation_steps} (checks: test, verify, validate, check) -> score: {implementation_score}")
+        self.logger.info(f"   Category criteria: {len(category_criteria)} items, matches: {category_matches}, coverage: {category_coverage:.3f}")
+        if len(response) < 200:
+            self.logger.info(f"   Response preview: {response}")
+        else:
+            self.logger.info(f"   Response preview: {response[:200]}...")
+
+        return {
+            'syntax_correctness': syntax_score,
+            'security_pattern_application': security_score,
+            'implementation_guidance': implementation_score,
+            'category_coverage': category_coverage,
+            'response_length': len(response),
+            'response': response
+        }
+
+    def _calculate_overall_multi_domain_score(self, category_scores: Dict[str, float]) -> float:
+        """Calculate weighted overall multi-domain score."""
+        if not category_scores:
+            self.logger.warning("🎯 No category scores available for multi-domain calculation")
+            return 0.0
+
+        weighted_sum = 0
+        total_weight = 0
+
+        self.logger.info("🎯 Multi-domain Overall Score Calculation:")
+        for category, score in category_scores.items():
+            weight = self.category_weights.get(category, 1.0)
+            weighted_sum += score * weight
+            total_weight += weight
+            self.logger.info(f"   {category}: score={score:.3f}, weight={weight}, contribution={score*weight:.3f}")
+
+        final_score = weighted_sum / total_weight if total_weight > 0 else 0.0
+        self.logger.info(f"   Final calculation: {weighted_sum:.3f} / {total_weight:.3f} = {final_score:.3f}")
+
+        return final_score
+
+    def _determine_specialization_level(self, score: float) -> str:
+        """Determine specialization level based on score."""
+        if score >= 0.75:
+            return "High Specialization"
+        elif score >= 0.60:
+            return "Medium Specialization"
+        elif score >= 0.40:
+            return "Low Specialization"
+        else:
+            return "Minimal Specialization"
+
+
+def _validate_training_prerequisites(vulnerabilities: List[Dict[str, Any]]) -> None:
+    """
+    Validate that training prerequisites are met - FAIL-FAST before expensive operations.
+
+    Args:
+        vulnerabilities: List of vulnerability data from narrativization phase
+
+    Raises:
+        ValueError: If vulnerabilities are missing categorization or have unknown categories
+    """
+    missing_vulnerability_field = []
+    missing_categories = []
+    unknown_categories = []
+
+    for vuln_item in vulnerabilities:
+        vuln_id = vuln_item.get('vulnerability_id', 'unknown')
+
+        # Check if vulnerability field exists (from narrativization)
+        if 'vulnerability' not in vuln_item:
+            missing_vulnerability_field.append(vuln_id)
+            continue
+
+        vuln_data = vuln_item['vulnerability']
+
+        # Check for missing security_category field
+        if 'security_category' not in vuln_data:
+            missing_categories.append(vuln_id)
+        elif vuln_data['security_category'] == 'unknown':
+            unknown_categories.append(vuln_id)
+
+    # ✅ FAIL-FAST: Stop before training if data quality issues detected
+    if missing_vulnerability_field:
+        raise ValueError(f"❌ FAIL-FAST: {len(missing_vulnerability_field)} vulnerability items missing 'vulnerability' field. "
+                        f"This indicates narrativization phase data structure issues. "
+                        f"Examples: {missing_vulnerability_field[:5]}")
+
+    if missing_categories:
+        raise ValueError(f"❌ FAIL-FAST: {len(missing_categories)} vulnerabilities missing 'security_category' field. "
+                        f"Training cannot proceed without proper categorization from Phase 2C. "
+                        f"Examples: {missing_categories[:5]}")
+
+    if unknown_categories:
+        raise ValueError(f"❌ FAIL-FAST: {len(unknown_categories)} vulnerabilities have 'unknown' security_category. "
+                        f"This indicates categorization pipeline failure in Phase 2C that must be fixed before training. "
+                        f"Examples: {unknown_categories[:5]}")
+
 
 def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
                                      training_run: TrainingRun,
@@ -1619,6 +1959,11 @@ def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         if not model_name_prefix:
             model_name_prefix = f"webauthn-security-sequential_{timestamp}"
+
+        # Step 0: Validate training prerequisites - FAIL-FAST before expensive operations
+        logger.info("🔍 Step 0: Validating training prerequisites...")
+        _validate_training_prerequisites(vulnerabilities)
+        logger.info("✅ Training prerequisites validated - proceeding with training")
 
         # Step 1: Create sequential datasets - write directly to structured locations
         logger.info("📊 Step 1: Creating sequential datasets...")
@@ -1660,8 +2005,38 @@ def create_and_train_sequential_models(vulnerabilities: List[Dict[str, Any]],
             # Step 3: Validation
             logger.info("🧪 Step 3: Model validation...")
 
-            # Use subset of vulnerabilities for validation
-            test_vulns = vulnerabilities[:5] if len(vulnerabilities) > 5 else vulnerabilities
+            # Extract vulnerability objects from narrativized structure for validation
+            test_vulns = []
+            for narrative_item in vulnerabilities[:5]:
+                if isinstance(narrative_item, dict) and 'vulnerability' in narrative_item:
+                    # New narrativized format: extract vulnerability object
+                    test_vulns.append(narrative_item['vulnerability'])
+                else:
+                    # Legacy format: use item directly
+                    test_vulns.append(narrative_item)
+
+            # Fallback if no vulnerabilities extracted
+            if not test_vulns:
+                test_vulns = vulnerabilities[:5] if len(vulnerabilities) > 5 else vulnerabilities
+
+            # ✅ FAIL-FAST: Validate that extracted vulnerabilities have proper categorization
+            logger.info(f"🔍 Validating {len(test_vulns)} test vulnerabilities for proper categorization...")
+            for vuln in test_vulns:
+                if not isinstance(vuln, dict):
+                    raise ValueError(f"❌ FAIL-FAST: Test vulnerability is not a dict: {type(vuln)}")
+
+                vuln_id = vuln.get('id', 'unknown')
+                security_category = vuln.get('security_category')
+
+                if not security_category:
+                    raise ValueError(f"❌ FAIL-FAST: Test vulnerability {vuln_id} missing 'security_category' field. "
+                                   f"Cannot proceed with Stage 2 validation.")
+
+                if security_category == 'unknown':
+                    raise ValueError(f"❌ FAIL-FAST: Test vulnerability {vuln_id} has 'unknown' security_category. "
+                                   f"Cannot proceed with Stage 2 validation - categorization must be fixed first.")
+
+            logger.info(f"✅ All {len(test_vulns)} test vulnerabilities have proper categorization")
 
             stage1_validation = fine_tuner.validate_stage1_specialization(
                 training_result.stage1_model_path, test_vulns

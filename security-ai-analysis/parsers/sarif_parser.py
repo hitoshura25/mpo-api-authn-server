@@ -56,7 +56,18 @@ def _normalize_file_path(raw_path: str, tool_name: str = "Unknown") -> str:
         parts = raw_path.split('mpo-api-authn-server/')
         if len(parts) > 1:
             raw_path = parts[1]
-    
+
+    # Handle Trivy container image names - prefix with dockerfile:// for enhanced dataset creation
+    if tool_name.lower() == 'trivy':
+        # Check if this looks like a Docker image name (contains slash, no file extensions)
+        if ('/' in raw_path and
+            not any(ext in raw_path.lower() for ext in ['.json', '.lock', '.yml', '.yaml', '.toml', '.py', '.js', '.ts', '.java', '.kt', '.dockerfile']) and
+            not raw_path.startswith('.') and  # Not a relative path like ./something
+            not raw_path.startswith('/') and  # Not an absolute path
+            not raw_path.startswith('dockerfile://')):  # Not already prefixed
+            # This appears to be a Docker image name from Trivy container scan
+            return f"dockerfile://{raw_path}"
+
     return raw_path
 
 

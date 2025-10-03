@@ -16,7 +16,9 @@
       "path": "hitoshura25/webauthn-server",
       "start": {
         "line": 1
-      }
+      },
+      "security_category": "infrastructure_security",
+      "category_confidence": 0.85
     },
     "tool": "sarif-trivy",
     "id": "CVE-2016-2781"
@@ -38,7 +40,9 @@
       "path": "hitoshura25/webauthn-server",
       "start": {
         "line": 1
-      }
+      },
+      "security_category": "dependency_vulnerabilities",
+      "category_confidence": 0.90
     },
     "tool": "sarif-trivy",
     "id": "CVE-2025-0167"
@@ -60,7 +64,9 @@
       "path": ".github/workflows/android-e2e-tests.yml",
       "start": {
         "line": 166
-      }
+      },
+      "security_category": "infrastructure_security",
+      "category_confidence": 0.88
     },
     "tool": "sarif-checkov",
     "id": "CKV2_GHA_1"
@@ -88,7 +94,9 @@
       ],
       "owasp": [],
       "technology": [],
-      "category": "security"
+      "category": "security",
+      "security_category": "mobile_security",
+      "category_confidence": 0.92
     },
     "tool": "semgrep",
     "id": "java.android.security.exported_activity.exported_activity"
@@ -116,7 +124,9 @@
       ],
       "owasp": [],
       "technology": [],
-      "category": "security"
+      "category": "security",
+      "security_category": "webauthn_security",
+      "category_confidence": 0.95
     },
     "tool": "semgrep",
     "id": "semgrep-rules.webauthn-credential-validation-bypass"
@@ -144,7 +154,9 @@
       ],
       "owasp": [],
       "technology": [],
-      "category": "security"
+      "category": "security",
+      "security_category": "webauthn_security",
+      "category_confidence": 0.93
     },
     "tool": "semgrep",
     "id": "semgrep-rules.webauthn-credential-validation-bypass"
@@ -164,7 +176,9 @@
       "path": "/home/runner/work/mpo-api-authn-server/mpo-api-authn-server/android-test-client/app/gradle.lockfile",
       "start": {
         "line": 1
-      }
+      },
+      "security_category": "dependency_vulnerabilities",
+      "category_confidence": 0.91
     },
     "tool": "osv-scanner",
     "id": "GHSA-h46c-h94j-95f3"
@@ -193,7 +207,9 @@
       "path": "http://localhost:8081",
       "start": {
         "line": 1
-      }
+      },
+      "security_category": "web_security",
+      "category_confidence": 0.89
     },
     "tool": "zap",
     "id": "10049"

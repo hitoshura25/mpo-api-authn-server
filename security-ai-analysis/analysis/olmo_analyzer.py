@@ -76,10 +76,16 @@ class OLMoSecurityAnalyzer:
         # Framework info
         if MLX_AVAILABLE:
             try:
-                import mlx
-                print(f"   MLX version: {mlx.__version__}")
-            except:
-                print("   MLX version: Unknown")
+                import mlx.core
+                print(f"   MLX version: {mlx.core.__version__}")
+            except (ImportError, AttributeError):
+                try:
+                    import mlx
+                    print(f"   MLX version: Available (no version info)")
+                except ImportError:
+                    print("   MLX version: Import failed")
+            except Exception as e:
+                print(f"   MLX version: Error accessing version ({e})")
         else:
             try:
                 import torch

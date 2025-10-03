@@ -201,6 +201,39 @@ class VulnerableCodeExtractor:
             
             # Intelligent file search - find actual file regardless of path format
             if file_path:
+                # Check if this is a Docker image path (with or without dockerfile:// prefix)
+                # Docker image paths from Trivy represent container images, not source files
+                if (file_path.startswith('dockerfile://') or
+                    ('/' in file_path and not any(ext in file_path.lower() for ext in ['.kt', '.java', '.js', '.ts', '.py', '.html', '.xml', '.yml', '.yaml', '.json', '.dockerfile', '.md']))):
+
+                    # TODO: Future Enhancement - Docker Context Mapping
+                    # Currently we skip code extraction for Docker image paths because:
+                    # 1. Trivy scans built container images (e.g., "hitoshura25/webauthn-server")
+                    # 2. These are registry image names, not source file paths
+                    # 3. Container CVEs are about packages inside images, not Dockerfile syntax
+                    #
+                    # FUTURE: We could map Docker image names to actual Dockerfile paths:
+                    # - Map "hitoshura25/webauthn-server" → "webauthn-server/Dockerfile"
+                    # - Extract Dockerfile context around security issues (FROM lines, USER directives)
+                    # - Show source lines that introduced vulnerable packages or privilege escalation
+                    # - This would provide valuable Dockerfile context for container security fixes
+                    #
+                    # Implementation would require:
+                    # - Docker image name → project Dockerfile path mapping
+                    # - Dockerfile parsing to correlate CVEs with specific lines
+                    # - Enhanced context extraction for Infrastructure-as-Code security issues
+
+                    return ContextExtractionResult(
+                        success=True,
+                        code_context=None,
+                        error_message=None,
+                        extraction_metadata={
+                            'extraction_type': 'container',
+                            'original_path': file_path,
+                            'reason': 'Container image path - no source code context available (could be enhanced with Dockerfile mapping)'
+                        }
+                    )
+
                 actual_file_path = self._find_actual_file(file_path)
                 if actual_file_path:
                     file_path = str(actual_file_path)

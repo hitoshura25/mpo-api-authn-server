@@ -94,10 +94,10 @@ class TestProcessArtifactsScript:
             return {"analyzed_file": fixtures_dir / "analyzed_vulnerabilities_fixture.json"}
 
         elif target_phase == "datasets":
-            # Return paths to both narrativized and parsed fixtures
+            # Return paths to narrativized and analyzed fixtures (datasets phase needs both)
             return {
                 "narrativized_file": fixtures_dir / "narrativized_fixture.json",
-                "parsed_file": fixtures_dir / "parsed_vulnerabilities_fixture.json"
+                "analyzed_file": fixtures_dir / "analyzed_vulnerabilities_fixture.json"
             }
 
         elif target_phase == "training":
@@ -351,7 +351,7 @@ class TestProcessArtifactsScript:
         result = self.run_process_artifacts([
             "--only-datasets",
             "--narrativized-input", str(prerequisites["narrativized_file"]),
-            "--parsed-input", str(prerequisites["parsed_file"])
+            "--analyzed-input", str(prerequisites["analyzed_file"])
         ])
         assert result.returncode == 0, f"Script failed with return code {result.returncode}"
 
@@ -541,7 +541,7 @@ class TestProcessArtifactsScript:
         result = self.run_process_artifacts([
             "--only-datasets",
             "--narrativized-input", str(prerequisites["narrativized_file"]),
-            "--parsed-input", str(prerequisites["parsed_file"])
+            "--analyzed-input", str(prerequisites["analyzed_file"])
         ])
         assert result.returncode == 0, f"Datasets phase failed with return code {result.returncode}"
 
@@ -735,7 +735,7 @@ class TestProcessArtifactsScript:
     def test_model_validation_module_exists(self):
         """Test that validation module can be imported and used - should fail initially"""
         try:
-            from validate_model_artifacts import validate_model_artifacts
+            from scripts.validate_model_artifacts import validate_model_artifacts
             # If we get here, the module exists
             assert callable(validate_model_artifacts), \
                 "validate_model_artifacts should be a callable function"

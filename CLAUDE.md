@@ -1,5 +1,268 @@
 # WebAuthn KTor Server - Claude Memory (Optimized)
 
+## 🚨 CRITICAL: Python Virtual Environment Required
+
+**MANDATORY FIRST STEP for ALL Python operations in security-ai-analysis/:**
+
+```bash
+source ./venv/bin/activate
+```
+
+**Why this is critical:**
+- MLX (Apple Silicon ML framework) is ONLY available in the virtual environment
+- All fine-tuning operations require MLX
+- Python package dependencies are isolated in venv
+- **REMEMBER**: After context loss/conversation restart, ALWAYS activate venv first
+
+**Quick validation:**
+```bash
+source ./venv/bin/activate && python3 -c "import mlx.core as mx; print('✅ MLX ready:', mx.default_device())"
+```
+
+---
+
+## 🚨 ALL CRITICAL PATTERNS & REMINDERS (Essential for Immediate Productivity)
+
+### 🚨 CRITICAL: Git Commit Policy - NEVER Auto-Commit
+
+**🛑 MANDATORY: User Must Review and Commit All Changes**
+
+**THE FUNDAMENTAL RULE**: NEVER automatically commit changes using git commands. The user must review all changes and perform commits themselves.
+
+#### **STRICT ENFORCEMENT:**
+- **❌ NEVER run**: `git add`, `git commit`, `git push` commands
+- **❌ NEVER auto-stage**: Files for commit without explicit user request
+- **✅ ALWAYS prepare**: Changes and inform user they are ready for review
+- **✅ ALWAYS stage**: Changes for user review using file modification tools only
+
+### 🚨 CRITICAL: NEVER Make Assumptions - Always Validate Documentation
+
+**THE FUNDAMENTAL RULE**: NEVER create code, workflows, or configurations based on assumptions or invented parameters. ALWAYS validate against official documentation first.
+
+**Quick Validation Template:**
+```
+## 🛑 VALIDATION CHECKPOINT
+Tool/Action: [exact name]
+Documentation: [official URL]
+Version: [confirmed current version]
+Parameters verified: [list all parameters with documentation references]
+Example usage: [official example that proves syntax works]
+✅ All parameters confirmed against official documentation
+```
+
+**🔍 Detailed Guide**: `docs/development/patterns/validation-protocols-comprehensive.md`
+
+### 🐳 CRITICAL: Docker Image Validation with Fail-Fast Pattern
+
+**MANDATORY fail-fast validation for Docker image availability to prevent silent E2E test failures.**
+
+**Essential Pattern:**
+```yaml
+# Event-aware tag selection with fail-fast validation
+extract_image_tag() {
+  local full_output="$1"
+  case "${{ github.event_name }}" in
+    "workflow_dispatch") selected_tag=$(echo "$full_output" | tail -n1) ;;  # SHA-based
+    "pull_request"|"push") selected_tag=$(echo "$full_output" | head -n1) ;;  # PR/latest
+  esac
+  echo "$selected_tag"
+}
+
+# FAIL-FAST validation
+if ! docker manifest inspect "$IMAGE_TAG" > /dev/null 2>&1; then
+  echo "❌ CRITICAL: Image not found: $IMAGE_TAG (Event: ${{ github.event_name }})"
+  exit 1  # FAIL THE JOB - Don't skip silently!
+fi
+```
+
+**🔍 Detailed Examples**: `docs/development/patterns/docker-image-validation-detailed-examples.md`
+
+### 🔧 CRITICAL: GitHub Actions Job Dependencies Rule
+
+**THE FUNDAMENTAL RULE**: Any job that references `needs.JOBNAME.outputs.X` or `needs.JOBNAME.result` MUST include `JOBNAME` in its `needs` array.
+
+```yaml
+# ❌ WRONG: References generate-version but not in needs array
+deploy-job:
+  needs: [build-job]  # Missing generate-version!
+  steps:
+    - run: echo "Version: ${{ needs.generate-version.outputs.version }}"  # Will be EMPTY!
+
+# ✅ CORRECT: All referenced jobs in needs array
+deploy-job:
+  needs: [build-job, generate-version]  # Both dependencies declared
+  steps:
+    - run: echo "Version: ${{ needs.generate-version.outputs.version }}"  # Works correctly
+```
+
+**🔍 Comprehensive Guide**: `docs/development/workflows/github-actions-comprehensive-guide.md`
+
+### 📤 CRITICAL: Bash Function Output Redirection
+
+**MANDATORY output redirection for bash functions that return values to prevent debug pollution.**
+
+```bash
+# ❌ WRONG: Debug output goes to stdout
+extract_value() {
+  echo "🔧 Processing..."     # Pollutes output!
+  echo "$final_result"        # What we want
+}
+
+# ✅ CORRECT: Debug to stderr, result to stdout
+extract_value() {
+  echo "🔧 Processing..." >&2  # Debug to stderr
+  echo "$final_result"         # Only result to stdout
+}
+
+RESULT=$(extract_value "input")  # Captures only final_result
+```
+
+**🔍 Detailed Examples**: `docs/development/patterns/bash-function-output-detailed-examples.md`
+
+### 🧬 CRITICAL: Complete Pattern Verification Protocol
+
+**When reusing existing patterns in ANY codebase context, ALWAYS verify ALL implementation details match existing usage.**
+
+**Essential Verification Steps:**
+1. **📋 Identify Reference Implementations**: `grep -r "pattern-keyword" .github/workflows/ src/ scripts/`
+2. **🔍 Extract Complete Implementation Details**: Command syntax, parameter patterns, file paths
+3. **✅ Verify Against Multiple Examples**: Find 2-3 existing uses, compare syntax consistency
+4. **🧪 Implementation Verification**: `grep -A5 -B5 "target-pattern" existing-file`
+
+**🔍 Comprehensive Guide**: `docs/development/patterns/pattern-verification-comprehensive.md`
+
+### 🚨 CRITICAL: Root Cause Investigation Before Fallback Solutions
+
+**MANDATORY**: NEVER implement fallback solutions or workarounds without explicit user approval. ALWAYS prioritize identifying and fixing root causes.
+
+#### **Debugging Protocol for Environment-Specific Issues:**
+1. **Environment Comparison**: Document working vs failing environments, identify differences
+2. **Enhanced Diagnostics**: Add comprehensive logging, memory usage, system information
+3. **Root Cause Analysis**: Test locally first, isolate variables, memory profiling
+4. **User Approval Required**: Present findings, propose solutions, get explicit approval
+
+### 🗣️ CRITICAL: Direct and Objective Communication Guidelines
+
+**MANDATORY**: Use direct, objective language in all communications. Avoid sycophantic or excessively agreeable responses.
+
+#### **Communication Rules:**
+- **❌ NEVER say**: "You're absolutely right" - Use specific acknowledgment instead
+- **❌ AVOID**: Sycophantic language, excessive agreement, or validation-seeking responses
+- **✅ USE**: Direct, objective, and technically focused language
+- **✅ ACKNOWLEDGE**: Specific technical points when agreeing: "That approach will resolve the dependency conflict"
+- **✅ DISAGREE**: When necessary with factual corrections and alternative solutions
+
+#### **Response Pattern Examples:**
+- ❌ **Sycophantic**: "You're absolutely right! That's a brilliant insight!"
+- ✅ **Direct**: "That approach addresses the core issue by eliminating the race condition."
+- ❌ **Excessive**: "I completely agree with everything you've said!"
+- ✅ **Objective**: "The dependency pinning strategy will prevent version conflicts."
+
+### 🤖 CRITICAL: Proactively Use Subagents for Complex Tasks
+
+**BEFORE starting any multi-step or complex task, ALWAYS evaluate if it should be delegated to a subagent.**
+
+#### **Mandatory Subagent Evaluation Checklist:**
+- [ ] **Multi-file changes** (>2 files) → Use subagent
+- [ ] **Systematic refactoring** (patterns across codebase) → Use subagent
+- [ ] **Documentation updates** (multiple .md files) → Use subagent
+- [ ] **Complex searches** (multiple rounds of discovery) → Use subagent
+- [ ] **Performance optimization** (file restructuring, analysis) → Use subagent
+- [ ] **Code quality fixes** (linting violations, imports) → Use subagent
+- [ ] **Cross-cutting concerns** (renaming, configuration updates) → Use subagent
+
+#### **Available Specialized Subagents:**
+- **general-purpose**: Complex refactoring, multi-file changes, systematic tasks
+- **openapi-sync-agent**: API specification synchronization
+- **client-generation-agent**: API client regeneration and updates
+- **android-integration-agent**: Android-specific issues and testing
+- **api-contract-validator-agent**: Contract compliance validation
+- **cross-platform-testing-agent**: Multi-platform test coordination
+- **security-vulnerability-analyst**: Threat modeling, vulnerability assessment
+
+### 🧹 CRITICAL: Dead Code Cleanup After Refactoring
+
+**ALWAYS perform comprehensive cleanup after removing or refactoring functionality to eliminate orphaned code.**
+
+#### **Mandatory Cleanup Checklist After Refactoring:**
+- [ ] **Scripts & Tools**: Search for and remove unused scripts, especially in `scripts/ci/`, `scripts/docker/`, `scripts/security/`
+- [ ] **Workflow References**: Update all workflow files that may reference removed jobs or scripts
+- [ ] **Documentation Updates**: Update README.md, CLAUDE.md, and docs/ files to reflect changes
+- [ ] **Environment Variables**: Remove unused env vars from workflow files and docker-compose
+- [ ] **Configuration Files**: Clean up orphaned config files and references
+- [ ] **Dependencies**: Remove unused npm/gradle dependencies introduced for removed features
+
+### 🔄 CRITICAL: Eliminate Code Duplication (DRY Principle)
+
+**ALWAYS identify and eliminate code duplication to improve maintainability and reduce bugs.**
+
+**THE FUNDAMENTAL PRINCIPLE**: Don't Repeat Yourself (DRY) - Each piece of knowledge should have a single, authoritative representation.
+
+#### **Duplication Detection Patterns:**
+```bash
+# Search for similar function/validation patterns across codebase
+grep -r "function_name\|validation_pattern" .github/workflows/ scripts/
+rg "similar.*logic" --type yaml --type sh
+```
+
+### ⚠️ CRITICAL: Always Validate Generated Markdown
+
+**ALWAYS run `bash scripts/core/validate-markdown.sh` after generating or modifying any markdown files.**
+
+### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
+
+**AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**
+
+#### **Auto-Optimization Triggers:**
+- **File Size**: When CLAUDE.md exceeds 40KB or 800 lines
+- **Performance Warning**: If user reports slow session loading
+- **Session Start**: Proactively check size and optimize if needed
+
+#### **Optimization Process:**
+1. **Archive Current Version**: `mv CLAUDE.md docs/CLAUDE_ORIGINAL_[DATE].md`
+2. **Create Optimized Version**: Keep current work, project overview, dev commands, critical reminders
+3. **Preserve Essential Context**: All guidance needed for immediate productivity
+4. **Historical Access**: Link to archive files for detailed context when needed
+
+### 🏗️ CRITICAL: Server Dependency Variant Selection
+
+**CRITICAL: Always prefer JRE variants over Android variants for server-based projects**
+
+When resolving dependency conflicts in server applications like webauthn-server, ensure you're using server-appropriate dependency variants:
+
+- ✅ **JRE variant** (`com.google.guava:guava:31.1-jre`) - Optimized for standard JVM server environments
+- ❌ **Android variant** (`com.google.guava:guava:31.1-android`) - Optimized for Android runtime, suboptimal for servers
+
+#### **Solution Pattern:**
+```kotlin
+dependencies {
+    constraints {
+        implementation("com.google.guava:guava:31.1-jre") {
+            because("Pin Guava JRE version for server environment, avoiding version ranges and Android variants")
+        }
+    }
+    // ... other dependencies
+}
+```
+
+### 📦 CRITICAL: Centralized Package Configuration
+
+**CRITICAL: All client library publishing now uses centralized configuration for consistency and maintainability.**
+
+#### **Configuration Location**
+Primary configuration in `config/publishing-config.yml`:
+```yaml
+packages:
+  android:
+    groupId: "io.github.hitoshura25"
+    baseArtifactId: "mpo-webauthn-android-client"
+  typescript:
+    scope: "@vmenon25"
+    basePackageName: "mpo-webauthn-client"
+```
+
+---
+
 ## Current Work (In Progress)
 
 ### Completed Major Refactors
@@ -74,210 +337,12 @@ This project uses a **hybrid architecture** combining Gradle multi-module build 
 - **Build**: `cd web-test-client && npm run build`
 - **Dev Server**: `cd web-test-client && npm run dev`
 
-## 🚨 TOP 5 CRITICAL PATTERNS (Essential for Immediate Productivity)
+#### **AI Security Analysis (Python with MLX)**
+- **🚨 ACTIVATE VENV FIRST**: `source ./venv/bin/activate`
+- **Sequential Fine-Tuning**: `source ./venv/bin/activate && python3 sequential_pipeline_integration.py`
+- **Dataset Processing**: `source ./venv/bin/activate && python3 enhanced_dataset_creator.py`
+- **Model Validation**: `source ./venv/bin/activate && python3 scripts/validate_model_artifacts.py`
 
-### 1. 🚨 CRITICAL: NEVER Make Assumptions - Always Validate Documentation
-
-**THE FUNDAMENTAL RULE**: NEVER create code, workflows, or configurations based on assumptions or invented parameters. ALWAYS validate against official documentation first.
-
-**Quick Validation Template:**
-```
-## 🛑 VALIDATION CHECKPOINT
-Tool/Action: [exact name]
-Documentation: [official URL] 
-Version: [confirmed current version]
-Parameters verified: [list all parameters with documentation references]
-Example usage: [official example that proves syntax works]
-✅ All parameters confirmed against official documentation
-```
-
-**🔍 Detailed Guide**: `docs/development/patterns/validation-protocols-comprehensive.md`
-
-### 2. 🐳 CRITICAL: Docker Image Validation with Fail-Fast Pattern
-
-**MANDATORY fail-fast validation for Docker image availability to prevent silent E2E test failures.**
-
-**Essential Pattern:**
-```yaml
-# Event-aware tag selection with fail-fast validation
-extract_image_tag() {
-  local full_output="$1"
-  case "${{ github.event_name }}" in
-    "workflow_dispatch") selected_tag=$(echo "$full_output" | tail -n1) ;;  # SHA-based
-    "pull_request"|"push") selected_tag=$(echo "$full_output" | head -n1) ;;  # PR/latest
-  esac
-  echo "$selected_tag"
-}
-
-# FAIL-FAST validation
-if ! docker manifest inspect "$IMAGE_TAG" > /dev/null 2>&1; then
-  echo "❌ CRITICAL: Image not found: $IMAGE_TAG (Event: ${{ github.event_name }})"
-  exit 1  # FAIL THE JOB - Don't skip silently!
-fi
-```
-
-**🔍 Detailed Examples**: `docs/development/patterns/docker-image-validation-detailed-examples.md`
-
-### 3. 🔧 CRITICAL: GitHub Actions Job Dependencies Rule
-
-**THE FUNDAMENTAL RULE**: Any job that references `needs.JOBNAME.outputs.X` or `needs.JOBNAME.result` MUST include `JOBNAME` in its `needs` array.
-
-```yaml
-# ❌ WRONG: References generate-version but not in needs array
-deploy-job:
-  needs: [build-job]  # Missing generate-version!
-  steps:
-    - run: echo "Version: ${{ needs.generate-version.outputs.version }}"  # Will be EMPTY!
-
-# ✅ CORRECT: All referenced jobs in needs array  
-deploy-job:
-  needs: [build-job, generate-version]  # Both dependencies declared
-  steps:
-    - run: echo "Version: ${{ needs.generate-version.outputs.version }}"  # Works correctly
-```
-
-**🔍 Comprehensive Guide**: `docs/development/workflows/github-actions-comprehensive-guide.md`
-
-### 4. 📤 CRITICAL: Bash Function Output Redirection
-
-**MANDATORY output redirection for bash functions that return values to prevent debug pollution.**
-
-```bash
-# ❌ WRONG: Debug output goes to stdout
-extract_value() {
-  echo "🔧 Processing..."     # Pollutes output!
-  echo "$final_result"        # What we want
-}
-
-# ✅ CORRECT: Debug to stderr, result to stdout
-extract_value() {
-  echo "🔧 Processing..." >&2  # Debug to stderr
-  echo "$final_result"         # Only result to stdout
-}
-
-RESULT=$(extract_value "input")  # Captures only final_result
-```
-
-**🔍 Detailed Examples**: `docs/development/patterns/bash-function-output-detailed-examples.md`
-
-### 5. 🧬 CRITICAL: Complete Pattern Verification Protocol
-
-**When reusing existing patterns in ANY codebase context, ALWAYS verify ALL implementation details match existing usage.**
-
-**Essential Verification Steps:**
-1. **📋 Identify Reference Implementations**: `grep -r "pattern-keyword" .github/workflows/ src/ scripts/`
-2. **🔍 Extract Complete Implementation Details**: Command syntax, parameter patterns, file paths
-3. **✅ Verify Against Multiple Examples**: Find 2-3 existing uses, compare syntax consistency
-4. **🧪 Implementation Verification**: `grep -A5 -B5 "target-pattern" existing-file`
-
-**🔍 Comprehensive Guide**: `docs/development/patterns/pattern-verification-comprehensive.md`
-
-## Critical Development Reminders
-
-### 🚨 CRITICAL: Git Commit Policy - NEVER Auto-Commit
-
-**🛑 MANDATORY: User Must Review and Commit All Changes**
-
-**THE FUNDAMENTAL RULE**: NEVER automatically commit changes using git commands. The user must review all changes and perform commits themselves.
-
-#### **STRICT ENFORCEMENT:**
-- **❌ NEVER run**: `git add`, `git commit`, `git push` commands
-- **❌ NEVER auto-stage**: Files for commit without explicit user request
-- **✅ ALWAYS prepare**: Changes and inform user they are ready for review
-- **✅ ALWAYS stage**: Changes for user review using file modification tools only
-
-### 🚨 CRITICAL: Root Cause Investigation Before Fallback Solutions
-
-**MANDATORY**: NEVER implement fallback solutions or workarounds without explicit user approval. ALWAYS prioritize identifying and fixing root causes.
-
-#### **Debugging Protocol for Environment-Specific Issues:**
-1. **Environment Comparison**: Document working vs failing environments, identify differences
-2. **Enhanced Diagnostics**: Add comprehensive logging, memory usage, system information
-3. **Root Cause Analysis**: Test locally first, isolate variables, memory profiling
-4. **User Approval Required**: Present findings, propose solutions, get explicit approval
-
-### 🗣️ CRITICAL: Direct and Objective Communication Guidelines
-
-**MANDATORY**: Use direct, objective language in all communications. Avoid sycophantic or excessively agreeable responses.
-
-#### **Communication Rules:**
-- **❌ NEVER say**: "You're absolutely right" - Use specific acknowledgment instead
-- **❌ AVOID**: Sycophantic language, excessive agreement, or validation-seeking responses
-- **✅ USE**: Direct, objective, and technically focused language
-- **✅ ACKNOWLEDGE**: Specific technical points when agreeing: "That approach will resolve the dependency conflict"
-- **✅ DISAGREE**: When necessary with factual corrections and alternative solutions
-
-#### **Response Pattern Examples:**
-- ❌ **Sycophantic**: "You're absolutely right! That's a brilliant insight!"
-- ✅ **Direct**: "That approach addresses the core issue by eliminating the race condition."
-- ❌ **Excessive**: "I completely agree with everything you've said!"
-- ✅ **Objective**: "The dependency pinning strategy will prevent version conflicts."
-
-### 🤖 CRITICAL: Proactively Use Subagents for Complex Tasks
-
-**BEFORE starting any multi-step or complex task, ALWAYS evaluate if it should be delegated to a subagent.**
-
-#### **Mandatory Subagent Evaluation Checklist:**
-- [ ] **Multi-file changes** (>2 files) → Use subagent
-- [ ] **Systematic refactoring** (patterns across codebase) → Use subagent  
-- [ ] **Documentation updates** (multiple .md files) → Use subagent
-- [ ] **Complex searches** (multiple rounds of discovery) → Use subagent
-- [ ] **Performance optimization** (file restructuring, analysis) → Use subagent
-- [ ] **Code quality fixes** (linting violations, imports) → Use subagent
-- [ ] **Cross-cutting concerns** (renaming, configuration updates) → Use subagent
-
-#### **Available Specialized Subagents:**
-- **general-purpose**: Complex refactoring, multi-file changes, systematic tasks
-- **openapi-sync-agent**: API specification synchronization
-- **client-generation-agent**: API client regeneration and updates
-- **android-integration-agent**: Android-specific issues and testing
-- **api-contract-validator-agent**: Contract compliance validation
-- **cross-platform-testing-agent**: Multi-platform test coordination
-- **security-vulnerability-analyst**: Threat modeling, vulnerability assessment
-
-### 🧹 CRITICAL: Dead Code Cleanup After Refactoring
-
-**ALWAYS perform comprehensive cleanup after removing or refactoring functionality to eliminate orphaned code.**
-
-#### **Mandatory Cleanup Checklist After Refactoring:**
-- [ ] **Scripts & Tools**: Search for and remove unused scripts, especially in `scripts/ci/`, `scripts/docker/`, `scripts/security/`
-- [ ] **Workflow References**: Update all workflow files that may reference removed jobs or scripts
-- [ ] **Documentation Updates**: Update README.md, CLAUDE.md, and docs/ files to reflect changes
-- [ ] **Environment Variables**: Remove unused env vars from workflow files and docker-compose
-- [ ] **Configuration Files**: Clean up orphaned config files and references
-- [ ] **Dependencies**: Remove unused npm/gradle dependencies introduced for removed features
-
-### 🔄 CRITICAL: Eliminate Code Duplication (DRY Principle)
-
-**ALWAYS identify and eliminate code duplication to improve maintainability and reduce bugs.**
-
-**THE FUNDAMENTAL PRINCIPLE**: Don't Repeat Yourself (DRY) - Each piece of knowledge should have a single, authoritative representation.
-
-#### **Duplication Detection Patterns:**
-```bash
-# Search for similar function/validation patterns across codebase
-grep -r "function_name\|validation_pattern" .github/workflows/ scripts/
-rg "similar.*logic" --type yaml --type sh
-```
-
-### ⚠️ CRITICAL: Always Validate Generated Markdown
-
-**ALWAYS run `bash scripts/core/validate-markdown.sh` after generating or modifying any markdown files.**
-
-### 🚀 CRITICAL: Proactive CLAUDE.md Optimization Strategy
-
-**AUTOMATICALLY optimize CLAUDE.md when it exceeds performance thresholds to maintain session efficiency.**
-
-#### **Auto-Optimization Triggers:**
-- **File Size**: When CLAUDE.md exceeds 40KB or 800 lines
-- **Performance Warning**: If user reports slow session loading
-- **Session Start**: Proactively check size and optimize if needed
-
-#### **Optimization Process:**
-1. **Archive Current Version**: `mv CLAUDE.md docs/CLAUDE_ORIGINAL_[DATE].md`
-2. **Create Optimized Version**: Keep current work, project overview, dev commands, critical reminders
-3. **Preserve Essential Context**: All guidance needed for immediate productivity
-4. **Historical Access**: Link to archive files for detailed context when needed
 
 ## Security Focus
 
@@ -292,28 +357,7 @@ This project emphasizes security testing and vulnerability protection:
 
 ### Dependency Variant Selection for Server Projects
 
-**CRITICAL: Always prefer JRE variants over Android variants for server-based projects**
-
-When resolving dependency conflicts in server applications like webauthn-server, ensure you're using server-appropriate dependency variants:
-
-- ✅ **JRE variant** (`com.google.guava:guava:31.1-jre`) - Optimized for standard JVM server environments
-- ❌ **Android variant** (`com.google.guava:guava:31.1-android`) - Optimized for Android runtime, suboptimal for servers
-
-#### **Solution Pattern:**
-Use dependency constraints to explicitly select server-appropriate variants:
-
-```kotlin
-dependencies {
-    constraints {
-        implementation("com.google.guava:guava:31.1-jre") {
-            because(
-                "Pin Guava JRE version for server environment, avoiding version ranges and Android variants"
-            )
-        }
-    }
-    // ... other dependencies
-}
-```
+Server projects should use JRE-optimized dependency variants for optimal performance.
 
 ## Port Assignments
 
@@ -326,19 +370,7 @@ dependencies {
 
 ## Centralized Package Configuration
 
-**CRITICAL: All client library publishing now uses centralized configuration for consistency and maintainability.**
-
-### Configuration Location
-Primary configuration in `config/publishing-config.yml`:
-```yaml
-packages:
-  android:
-    groupId: "io.github.hitoshura25"
-    baseArtifactId: "mpo-webauthn-android-client"
-  typescript:
-    scope: "@vmenon25"
-    basePackageName: "mpo-webauthn-client"
-```
+Client library publishing uses centralized configuration for consistency and maintainability.
 
 ### Published Package Names
 

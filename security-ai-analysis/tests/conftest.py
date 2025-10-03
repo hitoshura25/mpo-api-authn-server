@@ -33,7 +33,12 @@ def setup_test_environment():
         # Test-friendly validation thresholds (fixture data regression testing)
         'OLMO_STAGE1_VALIDATION_THRESHOLD': '0.2',
         'OLMO_STAGE2_VALIDATION_THRESHOLD': '0.2',
-        'OLMO_SEQUENTIAL_VALIDATION_THRESHOLD': '0.15'
+        'OLMO_SEQUENTIAL_VALIDATION_THRESHOLD': '0.15',
+        # Multi-domain configuration for testing (always enabled)
+        'OLMO_MULTI_DOMAIN_OVERALL_THRESHOLD': '0.75',
+        'OLMO_MULTI_DOMAIN_CATEGORY_MIN': '0.40',
+        'OLMO_MULTI_DOMAIN_HIGH_THRESHOLD': '0.75',
+        'OLMO_MULTI_DOMAIN_MEDIUM_THRESHOLD': '0.60'
     }
 
     # Set test environment variables and store originals
@@ -230,6 +235,41 @@ def create_mock_model_files():
             f.write(struct.pack('<Q', header_length))
             f.write(header_json)
             f.write(tensor_data)
+
+        # Create README.md (required for model validation)
+        readme_content = """---
+language: en
+tags:
+- fine-tuned
+- security-analysis
+- test-model
+library_name: transformers
+pipeline_tag: text-generation
+---
+
+# Test Model
+
+This is a test model created for validation testing.
+
+## Model Details
+
+- **Base Model**: OLMo-2-1B
+- **Purpose**: Testing security analysis pipeline
+- **Training**: Mock training for test validation
+
+## Usage
+
+This model is for testing purposes only.
+
+## Performance
+
+Test model with minimal functionality for validation testing.
+
+## Training Data
+
+Mock training data for testing validation pipeline.
+"""
+        (directory / "README.md").write_text(readme_content)
 
     return create_files
 

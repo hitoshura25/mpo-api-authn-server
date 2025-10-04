@@ -28,6 +28,41 @@ The current 8+ phase architecture will be consolidated into a cleaner, more line
 *   **Replaces:** `parse_vulnerabilities_phase()`, and the categorization logic from `analysis_summary_phase()`.
 *   **Input:** Directory of security scan files (e.g., `data/security_artifacts/extracted/`).
 *   **Output:** A single file: `results/1_categorized_vulnerabilities.json`.
+    <details>
+    <summary>Example `results/1_categorized_vulnerabilities.json`</summary>
+
+    ```json
+    [
+      {
+        "id": "CVE-2021-44228",
+        "tool": "trivy",
+        "severity": "CRITICAL",
+        "details": {
+          "package": "log4j",
+          "version": "2.14.1",
+          "fixed_version": "2.17.1",
+          "description": "Remote code execution in Log4j"
+        },
+        "file_path": "pom.xml",
+        "security_category": "dependency_vulnerabilities",
+        "category_confidence": 0.95
+      },
+      {
+        "id": "CWE-79",
+        "tool": "semgrep",
+        "severity": "HIGH",
+        "details": {
+          "message": "Untrusted input flows into the 'innerHTML' property, which can lead to Cross-Site Scripting (XSS)."
+        },
+        "file_path": "src/main/webapp/views/user-profile.jsp",
+        "line": 42,
+        "code_snippet": "element.innerHTML = user.getProfileBio();",
+        "security_category": "code_vulnerabilities",
+        "category_confidence": 0.88
+      }
+    ]
+    ```
+    </details>
 *   **Logic:**
     1.  Find all security scan files (`trivy`, `zap`, `semgrep`, etc.).
     2.  Parse the vulnerabilities from each file using the existing parser modules.
@@ -41,6 +76,49 @@ The current 8+ phase architecture will be consolidated into a cleaner, more line
 *   **Replaces:** `core_analysis_phase()`, `rag_enhancement_phase()`, `analysis_summary_phase()`, `narrativization_phase()`.
 *   **Input:** The path to `results/1_categorized_vulnerabilities.json`.
 *   **Output:** A single file: `results/2_narrativized_analyses.json`.
+    <details>
+    <summary>Example `results/2_narrativized_analyses.json`</summary>
+
+    ```json
+    [
+      {
+        "vulnerability": {
+          "id": "CVE-2021-44228",
+          "tool": "trivy",
+          "severity": "CRITICAL",
+          "details": {
+            "package": "log4j",
+            "version": "2.14.1",
+            "fixed_version": "2.17.1",
+            "description": "Remote code execution in Log4j"
+          },
+          "file_path": "pom.xml",
+          "security_category": "dependency_vulnerabilities",
+          "category_confidence": 0.95
+        },
+        "ai_analysis": "A critical dependency vulnerability (CVE-2021-44228) was identified in the 'log4j' package version 2.14.1 within the 'pom.xml' file.",
+        "narrative": "This finding relates to the infamous Log4Shell vulnerability, a critical remote code execution (RCE) flaw in the Apache Log4j logging library. An attacker who can control log messages or log message parameters can execute arbitrary code loaded from LDAP servers when message lookup substitution is enabled. This vulnerability is widespread and can lead to a full server compromise."
+      },
+      {
+        "vulnerability": {
+          "id": "CWE-79",
+          "tool": "semgrep",
+          "severity": "HIGH",
+          "details": {
+            "message": "Untrusted input flows into the 'innerHTML' property, which can lead to Cross-Site Scripting (XSS)."
+          },
+          "file_path": "src/main/webapp/views/user-profile.jsp",
+          "line": 42,
+          "code_snippet": "element.innerHTML = user.getProfileBio();",
+          "security_category": "code_vulnerabilities",
+          "category_confidence": 0.88
+        },
+        "ai_analysis": "A high-severity code vulnerability (CWE-79) was detected in 'user-profile.jsp' on line 42, where untrusted input is assigned directly to an element's innerHTML.",
+        "narrative": "The application is vulnerable to Cross-Site Scripting (XSS). The code directly assigns user-provided data from 'user.getProfileBio()' to the 'innerHTML' property of a DOM element. This allows an attacker to inject malicious scripts into the user's profile bio, which will then be executed in the browser of any user who views the profile, potentially leading to session hijacking or data theft."
+      }
+    ]
+    ```
+    </details>
 *   **Logic:**
     1.  Initialize the `RAGEnhancedOLMoAnalyzer` and `SecurityNarrativizer` once.
     2.  Load the list of categorized vulnerabilities from the input file.
@@ -57,6 +135,26 @@ The current 8+ phase architecture will be consolidated into a cleaner, more line
 *   **Replaces:** The old `datasets_phase()`.
 *   **Input:** The path to `results/2_narrativized_analyses.json`.
 *   **Output:** `results/3_train_dataset.jsonl` and `results/3_validation_dataset.jsonl`.
+    <details>
+    <summary>Example `results/3_train_dataset.jsonl`</summary>
+
+    This is a **JSON Lines** file, where each line is a distinct JSON object.
+
+    **(Line 1: From a Public Dataset like CVEfixes)**
+    ```json
+    {"instruction": "Based on the following analysis, provide the fix.\n\nAnalysis: A stored Cross-Site Scripting (XSS) vulnerability exists in `example-app` before version 1.2.3. An attacker can inject arbitrary web script via the `comment` field.\n\nVulnerable Code:\n```java\nprotected void doPost(HttpServletRequest request, HttpServletResponse response) {\n    String commentText = request.getParameter(\"comment\");\n    database.saveComment(commentText);\n    // ...\n}\n```", "response": "```java\nprotected void doPost(HttpServletRequest request, HttpServletResponse response) {\n    String commentText = request.getParameter(\"comment\");\n    String sanitizedComment = org.owasp.encoder.Encode.forHtml(commentText);\n    database.saveComment(sanitizedComment);\n    // ...\n}\n```", "metadata": {"quality": "high", "source": "public"}}
+    ```
+
+    **(Line 2: Generated Fix from Project's Trivy Scan)**
+    ```json
+    {"instruction": "Based on the following analysis, provide the fix.\n\nAnalysis: A critical dependency vulnerability (CVE-2021-44228) was identified in the 'log4j' package version 2.14.1 within the 'pom.xml' file.\n\nContext: This finding relates to the infamous Log4Shell vulnerability, a critical remote code execution (RCE) flaw...", "response": "Upgrade the dependency 'log4j' from version '2.14.1' to '2.17.1' or higher in your `pom.xml` file.", "metadata": {"quality": "high", "source": "generated"}}
+    ```
+
+    **(Line 3: Narrative-based Fallback)**
+    ```json
+    {"instruction": "Based on the following analysis, provide remediation guidance.\n\nAnalysis: The web server is missing a Content Security Policy (CSP) header, which can increase the risk of XSS attacks.\n\nContext: A Content Security Policy is a security standard that helps prevent code injection attacks by specifying which dynamic resources are allowed to load. Without it, the application is more susceptible to data theft and malware execution.", "response": "Add a strong Content Security Policy (CSP) header to all HTTP responses. For example: `Content-Security-Policy: default-src 'self'; img-src *; media-src media1.com media2.com; script-src userscripts.example.com`", "metadata": {"quality": "low", "source": "narrative"}}
+    ```
+    </details>
 *   **Logic:**
     1.  **Source 1: Load Public Data.**
         *   Call a new helper function, `_load_public_dataset()`, which will use the `public_dataset_loader.py` module.
@@ -82,6 +180,21 @@ The current 8+ phase architecture will be consolidated into a cleaner, more line
 *   **Replaces:** `training_phase()`.
 *   **Input:** Paths to `3_train_dataset.jsonl` and `3_validation_dataset.jsonl`.
 *   **Output:** Path to the fine-tuned model artifacts.
+    <details>
+    <summary>Example Model Artifacts Directory Structure</summary>
+
+    This phase produces a directory containing the fine-tuned adapter model files.
+
+    ```
+    /path/to/fine_tuned_models/webauthn-security-sequential_20251003_143000/
+    ├── adapter_config.json
+    ├── adapter_model.safetensors
+    ├── README.md
+    ├── special_tokens_map.json
+    ├── tokenizer_config.json
+    └── tokenizer.json
+    ```
+    </details>
 *   **Logic:**
     1.  The function's logic remains similar, initiating the training process.
     2.  **CRITICAL:** The underlying training script (e.g., `sequential_pipeline_integration.py`) must be modified to read the `quality` field from the dataset's metadata.
@@ -93,6 +206,24 @@ The current 8+ phase architecture will be consolidated into a cleaner, more line
 *   **Replaces:** `upload_phase()`.
 *   **Input:** Path to the fine-tuned model artifacts and the dataset files.
 *   **Output:** Status of the upload.
+    <details>
+    <summary>Example Console Log Summary</summary>
+
+    This phase's primary output is a summary object logged to the console.
+
+    ```json
+    {
+      "upload_status": "completed",
+      "upload_results": {
+        "models_uploaded": 1,
+        "datasets_uploaded": 1,
+        "total_uploads": 2,
+        "model_url": "https://huggingface.co/hitoshura25/webauthn-security-sequential_20251003_143000",
+        "dataset_url": "https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo"
+      }
+    }
+    ```
+    </details>
 *   **Logic:** The logic can remain largely the same, handling the upload of the model and the newly generated high-quality datasets to the Hugging Face Hub.
 
 ---

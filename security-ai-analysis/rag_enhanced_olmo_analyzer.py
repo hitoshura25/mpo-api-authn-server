@@ -22,9 +22,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 sys.path.append(str(Path(__file__).parent))
 
 # Local imports
-from analysis.olmo_analyzer import OLMoSecurityAnalyzer
+from olmo_analyzer import OLMoSecurityAnalyzer
 from local_security_knowledge_base import LocalSecurityKnowledgeBase
-
 
 class RAGEnhancedOLMoAnalyzer(OLMoSecurityAnalyzer):
     """
@@ -97,9 +96,11 @@ class RAGEnhancedOLMoAnalyzer(OLMoSecurityAnalyzer):
         """
         
         if self.rag_enabled and self.knowledge_base and self.knowledge_base.vector_index is not None:
+            self.logger.info(f"🔍 Performing RAG-enhanced analysis for vulnerability ID: {vulnerability.get('id', 'unknown')}")
             return self._analyze_with_rag(vulnerability)
         else:
             # Fall back to baseline analysis
+            self.logger.info(f"🔄 RAG not available, using baseline analysis for vulnerability ID: {vulnerability.get('id', 'unknown')}")
             return super().analyze_vulnerability(vulnerability)
     
     def _analyze_with_rag(self, vulnerability: Dict[str, Any]) -> Dict[str, Any]:

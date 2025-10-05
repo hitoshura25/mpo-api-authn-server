@@ -5,7 +5,8 @@
 This guide documents all integration modes and usage patterns for the AI Security Fine-Tuning system (Phase 3 of the AI Security Dataset Research Initiative). The system provides flexible execution modes for different development and production scenarios.
 
 📖 **Quick Links:**
-- [← Back to Main README](../../security-ai-analysis/README.md) - System overview and basic setup
+
+- [← Back to Main README](../../security-ai-analysis-old/README.md) - System overview and basic setup
 - [🛠️ MLX Installation Guide](mlx-installation-guide.md) - Prerequisites for fine-tuning setup
 
 ---
@@ -16,14 +17,16 @@ This guide documents all integration modes and usage patterns for the AI Securit
 ## Architecture Summary
 
 ### 4-Phase AI Enhancement Pipeline
+
 1. **Phase 1: Enhanced Dataset Creation** → Professional FOSS tools scan code → 5x enhanced security patterns → Rich training datasets
 2. **Phase 2: RAG-Enhanced Analysis** → Context-aware vulnerability analysis with retrieval augmentation → Detailed narratives
 3. **Phase 3: Sequential Fine-Tuning** ⭐ **NEW DEFAULT** → Progressive specialization with two models:
-   - **Stage 1**: Vulnerability Analysis Specialist (base model → analysis expert)
-   - **Stage 2**: Code Fix Generation Specialist (Stage 1 model → code fix expert)
+    - **Stage 1**: Vulnerability Analysis Specialist (base model → analysis expert)
+    - **Stage 2**: Code Fix Generation Specialist (Stage 1 model → code fix expert)
 4. **Phase 4: Production Upload** → Specialized models and datasets published to HuggingFace Hub
 
 ### Default Behavior
+
 - **Sequential fine-tuning enabled by default** in all modes (creates two specialized models for maximum accuracy)
 - **Automatic fallback** to single-stage fine-tuning if sequential modules unavailable
 - **Opt-out available** for development/testing scenarios
@@ -34,6 +37,7 @@ This guide documents all integration modes and usage patterns for the AI Securit
 ### 1. Manual Mode (Development & Testing)
 
 #### 1.1 Standard Execution (Default)
+
 Complete 4-phase AI enhancement pipeline with sequential fine-tuning:
 
 ```bash
@@ -57,6 +61,7 @@ python3 process_artifacts.py --branch main --commit abc123def --upload-model
 ```
 
 **Expected Output**:
+
 ```
 🔒 WebAuthn Security Analysis with OLMo-2-1B
 =============================================================
@@ -78,6 +83,7 @@ Phase 4: Production Upload ✅
 ```
 
 #### 1.2 Development Mode (Opt-Out)
+
 Options for faster iteration during development:
 
 ```bash
@@ -94,11 +100,13 @@ python3 process_artifacts.py --disable-sequential-fine-tuning --branch develop
 ```
 
 **When to Use Opt-Out**:
+
 - 🧪 **Development/Testing**: Faster iteration during pipeline development
 - 🚨 **Emergency Mode**: If fine-tuning breaks, temporary disable
 - 📊 **Dataset-Only Runs**: Rare cases where only training data needed
 
 #### 1.3 Manual Artifact Processing
+
 Process existing artifacts with fine-tuning:
 
 ```bash
@@ -112,6 +120,7 @@ python3 process_artifacts.py --output-dir results/security_analysis_$(date +%Y%m
 ### 2. Automated Daemon Mode (Production)
 
 #### 2.1 Daemon Configuration
+
 Fine-tuning runs automatically every 5 minutes via LaunchAgent:
 
 ```bash
@@ -123,12 +132,14 @@ cat templates/daemon.plist.template
 ```
 
 **Daemon Configuration** (`local-analysis/security_artifact_daemon.py`):
+
 - **Polling**: Every 5 minutes via LaunchAgent
 - **Auto-Download**: Latest artifacts from main branch GitHub Actions
 - **Complete Pipeline**: All 5 phases including fine-tuning
 - **Error Handling**: Continues operation on fine-tuning failures
 
 #### 2.2 Emergency Override
+
 Disable fine-tuning in daemon mode (emergency only):
 
 ```yaml
@@ -139,6 +150,7 @@ fine_tuning:
 ```
 
 **When to Use Emergency Override**:
+
 - 🚨 **Fine-tuning broken**: Temporary disable while fixing issues
 - 🔧 **System maintenance**: Prevent fine-tuning during maintenance
 - 📊 **Resource constraints**: Temporary resource limitation
@@ -148,6 +160,7 @@ fine_tuning:
 ### 3. Standalone Mode (Advanced)
 
 #### 3.1 Direct MLX Fine-Tuning
+
 Advanced users can run fine-tuning directly on existing datasets:
 
 ```bash
@@ -172,12 +185,14 @@ python3 scripts/mlx_finetuning.py \
 ```
 
 #### 3.2 Standalone Options
+
 ```bash
 # Show all available options
 python3 scripts/mlx_finetuning.py --help
 ```
 
 **Key Parameters**:
+
 - `--dataset`: Path to JSONL training dataset (required)
 - `--output-name`: Custom fine-tuned model name
 - `--upload`: Upload to HuggingFace after fine-tuning
@@ -191,6 +206,7 @@ python3 scripts/mlx_finetuning.py --help
 ### Configuration Files
 
 #### Primary Configuration
+
 **File**: `config/olmo-security-config.yaml`
 
 ```yaml
@@ -221,6 +237,7 @@ fine_tuning:
 ```
 
 #### Environment Variable Overrides
+
 ```bash
 # Override configuration via environment variables
 export FINE_TUNING_BATCH_SIZE=4
@@ -235,6 +252,7 @@ python3 process_artifacts.py
 ```
 
 #### HuggingFace Model Upload Setup
+
 ```bash
 # 1. Get HuggingFace token from https://huggingface.co/settings/tokens
 # 2. Set environment variable
@@ -248,6 +266,7 @@ python3 process_artifacts.py --upload-model
 ```
 
 ### Workspace Structure
+
 ```
 fine-tuning/
 ├── training_data/           # Generated training datasets
@@ -265,6 +284,7 @@ fine-tuning/
 ### Real-Time Monitoring
 
 #### Check Fine-Tuning Status
+
 ```bash
 # Get current fine-tuning system status
 python3 -c "
@@ -276,6 +296,7 @@ print(json.dumps(status, indent=2))
 ```
 
 #### Monitor Active Fine-Tuning
+
 ```bash
 # Watch fine-tuning logs in real-time
 tail -f fine-tuning/logs/fine_tuning_$(date +%Y%m%d)*.log
@@ -290,6 +311,7 @@ print(f'MLX memory usage: {mx.metal.get_peak_memory() / 1e9:.2f}GB')
 ### Validation & Testing
 
 #### Test Integration Health
+
 ```bash
 # Run comprehensive integration tests
 bash scripts/tests/test-fine-tuning-phase3.sh
@@ -298,6 +320,7 @@ bash scripts/tests/test-fine-tuning-phase3.sh
 ```
 
 #### Validate Fine-Tuned Models
+
 ```bash
 # List available fine-tuned models
 ls -la ~/shared-olmo-models/fine-tuned/
@@ -318,35 +341,40 @@ for model in models:
 ### Generated Artifacts
 
 #### 1. Training Datasets
+
 - **Location**: `fine-tuning/training_data/`
 - **Format**: JSONL with prompt-completion pairs
 - **Split**: 80% training, 20% validation
 - **Metadata**: Dataset info with statistics
 
 #### 2. Fine-Tuned Models
+
 - **Location**: `~/shared-olmo-models/fine-tuned/`
 - **Format**: MLX-optimized model files
 - **Components**: weights.safetensors, tokenizer, config
 - **Naming**: `webauthn-security-olmo-YYYYMMDD-HHMMSS`
 
 #### 3. HuggingFace Uploads
+
 - **Dataset**: `hitoshura25/webauthn-security-vulnerabilities-olmo` (training data, Phase 4)
 - **Models**: `hitoshura25/webauthn-security-model-YYYYMMDD-HHMMSS` (fine-tuned models, Phase 3)
-- **Upload Triggers**: 
-  - `--upload-model` CLI flag (overrides config)
-  - `upload_enabled: true` in configuration
-  - Requires `HF_TOKEN` environment variable
+- **Upload Triggers**:
+    - `--upload-model` CLI flag (overrides config)
+    - `upload_enabled: true` in configuration
+    - Requires `HF_TOKEN` environment variable
 - **Visibility**: Public (research contribution)
 
 ### Performance Metrics
 
 #### Typical Performance (Apple Silicon M1/M2/M3)
+
 - **Fine-Tuning Speed**: 20-30X faster than CPU
 - **Memory Usage**: 2-4GB for OLMo-2-1B
 - **Fine-Tuning Duration**: 5-15 minutes (100-500 examples)
 - **Model Size**: ~1.2GB fine-tuned model
 
 #### Quality Metrics
+
 - **Training Loss**: Monitored during fine-tuning
 - **Validation Accuracy**: Computed on validation set
 - **Domain Adaptation**: Improved WebAuthn security analysis
@@ -356,26 +384,30 @@ for model in models:
 ### Error Categories
 
 #### 1. Legitimate Opt-Outs (Graceful Handling)
+
 - ✅ **CLI Flag**: `--skip-fine-tuning` (development mode)
 - ✅ **Config Override**: `skip_in_daemon: true` (emergency)
 - ✅ **MLX Unavailable**: Platform limitation (handled gracefully)
 - ✅ **Missing Data**: No training data available
 
 #### 2. Critical Failures (Fail-Fast)
+
 - ❌ **System Errors**: Disk space, permissions, memory issues
-- ❌ **Configuration Corruption**: Invalid YAML, missing required settings  
+- ❌ **Configuration Corruption**: Invalid YAML, missing required settings
 - ❌ **Model Corruption**: Base model files damaged
 - ❌ **Runtime Errors**: Unexpected MLX failures
 
 ### Common Issues & Solutions
 
-#### Issue: "MLX not available" 
+#### Issue: "MLX not available"
+
 ```bash
 # Solution: Install MLX (see MLX Installation Guide)
 pip install mlx mlx-lm
 ```
 
 #### Issue: Fine-tuning fails with memory error
+
 ```bash
 # Solution: Reduce batch size in config
 # config/olmo-security-config.yaml:
@@ -384,6 +416,7 @@ fine_tuning:
 ```
 
 #### Issue: Model upload fails
+
 ```bash
 # Solution: Check HuggingFace token
 export HF_TOKEN="hf_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
@@ -392,6 +425,7 @@ export FINE_TUNING_UPLOAD_ENABLED=false
 ```
 
 #### Issue: Training dataset empty
+
 ```bash
 # Solution: Check security analysis phase
 # Ensure vulnerabilities were found and analyzed in Phase 1-2
@@ -401,6 +435,7 @@ python3 process_artifacts.py --artifacts-dir data/security_artifacts
 ### Debug Commands
 
 #### Comprehensive System Check
+
 ```bash
 # Run full system diagnostics
 python3 -c "
@@ -425,18 +460,21 @@ except Exception as e:
 ## Best Practices
 
 ### Development Workflow
+
 1. **Use opt-out during development**: `--skip-fine-tuning` for faster iteration
-2. **Test with small datasets**: Validate pipeline before large runs  
+2. **Test with small datasets**: Validate pipeline before large runs
 3. **Monitor resource usage**: Check memory/disk space during fine-tuning
 4. **Validate models**: Test fine-tuned models before deployment
 
 ### Production Deployment
+
 1. **Enable daemon mode**: Automated fine-tuning on production security data
 2. **Monitor logs**: Regular log review for fine-tuning health
 3. **Resource planning**: Ensure adequate disk space for models
 4. **Backup models**: Fine-tuned models are valuable research assets
 
 ### Security Considerations
+
 1. **Data Privacy**: Fine-tuned models may contain security data patterns
 2. **Model Access**: Restrict access to fine-tuned model directory
 3. **Upload Review**: Review model cards before public HuggingFace upload
@@ -446,7 +484,8 @@ except Exception as e:
 
 **Last Updated**: 2025-09-14  
 **Version**: 1.0  
-**Related Documents**: 
+**Related Documents**:
+
 - `docs/development/mlx-installation-guide.md`
 - `docs/improvements/planned/ai-security-fine-tuning-implementation.md`
 - `docs/improvements/in-progress/ai-security-fine-tuning-implementation-progress.md`

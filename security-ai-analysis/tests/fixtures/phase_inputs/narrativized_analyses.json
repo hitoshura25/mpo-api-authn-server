@@ -1,0 +1,136 @@
+[
+  {
+    "vulnerability": {
+      "tool": "sarif-trivy",
+      "id": "CVE-2016-2781",
+      "severity": "LOW",
+      "level": "note",
+      "message": "Package: coreutils\nInstalled Version: 9.4-3ubuntu6\nVulnerability CVE-2016-2781\nSeverity: LOW\nFixed Version: \nLink: [CVE-2016-2781](https://avd.aquasec.com/nvd/cve-2016-2781)",
+      "file_path": "dockerfile://hitoshura25/webauthn-server",
+      "rule_name": "OsPackageVulnerability",
+      "short_description": "coreutils: Non-privileged session can escape to the parent session in chroot",
+      "full_description": "chroot in GNU coreutils, when used with --userspec, allows local users to escape to the parent session via a crafted TIOCSTI ioctl call, which pushes characters to the terminal's input buffer.",
+      "help_uri": "https://avd.aquasec.com/nvd/cve-2016-2781",
+      "tool_name": "Trivy",
+      "path": "dockerfile://hitoshura25/webauthn-server",
+      "start": {
+        "line": 1
+      },
+      "security_category": "container_security",
+      "category_confidence": 0.9
+    },
+    "ai_analysis": "Impact: Security impact requires further investigation. Remediation: The `trivy` utility is vulnerable to this vulnerability, and should be updated to a version that is not vulnerable. The `trivy` utility is available from the `trivy` package, which is available from the Ubuntu repositories. The `trivy` package is available from the Ubuntu repositories, and. Prevention: Implement security monitoring and regular updates",
+    "narrative": "\n=== Security Vulnerability Narrative ===\nDate Discovered: 2025-10-04T21:48:23.582894\nTool: sarif-trivy\nVulnerability ID: CVE-2016-2781\nSeverity: LOW\nFile: dockerfile://hitoshura25/webauthn-server\n\nCONTEXT:\nThis vulnerability was found in the WebAuthn authentication server project. \nPackage: coreutils\nInstalled Version: 9.4-3ubuntu6\nVulnerability CVE-2016-2781\nSeverity: LOW\nFixed Version: \nLink: [CVE-2016-2781](https://avd.aquasec.com/nvd/cve-2016-2781)\n\nPROBLEM DESCRIPTION:\nPackage: coreutils\nInstalled Version: 9.4-3ubuntu6\nVulnerability CVE-2016-2781\nSeverity: LOW\nFixed Version: \nLink: [CVE-2016-2781](https://avd.aquasec.com/nvd/cve-2016-2781)\nThe issue is located in dockerfile://hitoshura25/webauthn-server.\n\nSECURITY IMPACT:\nThis could potentially compromise system security.\nIn the context of a WebAuthn authentication system, this is particularly critical because:\n- Authentication systems are high-value targets\n- Vulnerabilities could affect all users\n- Trust in the authentication mechanism is essential\n\nSPECIFIC FIX REQUIRED:\nTo remediate this vulnerability, apply the following fix:\n\nApply security best practices for this issue type.\n\nSTEP-BY-STEP REMEDIATION:\n1. Locate the file: dockerfile://hitoshura25/webauthn-server\n2. Find the vulnerable code section\n3. Apply the fix pattern shown above\n4. Test the changes to ensure functionality is preserved\n5. Re-run security scans to validate the fix\n\nVALIDATION:\nAfter applying the fix:\n- The security scan should no longer report this issue\n- Functionality should remain intact\n- No new vulnerabilities should be introduced\n\nLEARNING POINTS:\nThis vulnerability teaches us about:\n- The importance of least privilege principles\n- Secure coding practices in Docker containerization\n- How automated security scanning helps catch issues early\n"
+  },
+  {
+    "vulnerability": {
+      "tool": "sarif-checkov",
+      "id": "CKV2_GHA_1",
+      "severity": "HIGH",
+      "level": "error",
+      "message": "Ensure top-level permissions are not set to write-all",
+      "file_path": ".github/workflows/android-e2e-tests.yml",
+      "rule_name": "Ensure top-level permissions are not set to write-all",
+      "short_description": "Ensure top-level permissions are not set to write-all",
+      "full_description": "Ensure top-level permissions are not set to write-all",
+      "help_uri": "",
+      "tool_name": "Checkov",
+      "path": ".github/workflows/android-e2e-tests.yml",
+      "start": {
+        "line": 166
+      },
+      "security_category": "infrastructure_security",
+      "category_confidence": 0.9500000000000001
+    },
+    "ai_analysis": "Impact: Security impact requires further investigation. Remediation: Review and apply security best practices. Prevention: Implement security monitoring and regular updates",
+    "narrative": "\n=== Security Vulnerability Narrative ===\nDate Discovered: 2025-10-04T21:48:24.325312\nTool: sarif-checkov\nVulnerability ID: CKV2_GHA_1\nSeverity: HIGH\nFile: .github/workflows/android-e2e-tests.yml\n\nCONTEXT:\nThis vulnerability was found in the WebAuthn authentication server project. \nGitHub Actions Excessive Permissions\n\nPROBLEM DESCRIPTION:\nTop-level permissions set to write-all\nThe issue is located in .github/workflows/android-e2e-tests.yml.\n\nSECURITY IMPACT:\nCould allow unauthorized repository modifications\nIn the context of a WebAuthn authentication system, this is particularly critical because:\n- Authentication systems are high-value targets\n- Vulnerabilities could affect all users\n- Trust in the authentication mechanism is essential\n\nSPECIFIC FIX REQUIRED:\nTo remediate this vulnerability, apply the following fix:\n\npermissions:\n  contents: read\n  # Add specific permissions only where needed\n\nSTEP-BY-STEP REMEDIATION:\n1. Locate the file: .github/workflows/android-e2e-tests.yml\n2. Find the vulnerable code section\n3. Apply the fix pattern shown above\n4. Test the changes to ensure functionality is preserved\n5. Re-run security scans to validate the fix\n\nVALIDATION:\nAfter applying the fix:\n- Checkov scan passes for CKV2_GHA_1\n- Functionality should remain intact\n- No new vulnerabilities should be introduced\n\nLEARNING POINTS:\nThis vulnerability teaches us about:\n- The importance of least privilege principles\n- Secure coding practices in GitHub Actions CI/CD pipelines\n- How automated security scanning helps catch issues early\n"
+  },
+  {
+    "vulnerability": {
+      "tool": "semgrep",
+      "id": "java.android.security.exported_activity.exported_activity",
+      "severity": "INFO",
+      "level": "info",
+      "message": "The application exports an activity. Any application on the device can launch the exported activity which may compromise the integrity of your application or its data.  Ensure that any exported activities do not have privileged access to your application's control plane.",
+      "file_path": "android-test-client/app/src/main/AndroidManifest.xml",
+      "rule_name": "java.android.security.exported_activity.exported_activity",
+      "short_description": "Semgrep Finding: java.android.security.exported_activity.exported_activity",
+      "full_description": "The application exports an activity. Any application on the device can launch the exported activity which may compromise the integrity of your application or its data.  Ensure that any exported activities do not have privileged access to your application's control plane.",
+      "help_uri": "https://semgrep.dev/r/java.android.security.exported_activity.exported_activity",
+      "tool_name": "Semgrep",
+      "path": "android-test-client/app/src/main/AndroidManifest.xml",
+      "start": {
+        "line": 21
+      },
+      "cwe": [
+        "CWE-926: Improper Export of Android Application Components"
+      ],
+      "owasp": [],
+      "technology": [],
+      "category": "security",
+      "security_category": "code_vulnerabilities",
+      "category_confidence": 0.7
+    },
+    "ai_analysis": "Impact: Security impact requires further investigation. Remediation: Ensure that any exported activities do not have privileged access to your application's control plane. 1. Impact explanation: The exported activity is the application that was exported from the application.  Any application on the device can launch the exported activity which may compromise the integrity of your application or its data.  Ensure that any exported activities do not have privileged access to your application's control plane. 2. Specific remediation steps: Ensure that any exported activities do not have privileged. Prevention: Implement security monitoring and regular updates",
+    "narrative": "\n=== Security Vulnerability Narrative ===\nDate Discovered: 2025-10-04T21:48:25.082337\nTool: semgrep\nVulnerability ID: java.android.security.exported_activity.exported_activity\nSeverity: INFO\nFile: android-test-client/app/src/main/AndroidManifest.xml\n\nCONTEXT:\nThis vulnerability was found in the WebAuthn authentication server project. \nThe application exports an activity. Any application on the device can launch the exported activity which may compromise the integrity of your application or its data.  Ensure that any exported activities do not have privileged access to your application's control plane.\n\nPROBLEM DESCRIPTION:\nThe application exports an activity. Any application on the device can launch the exported activity which may compromise the integrity of your application or its data.  Ensure that any exported activities do not have privileged access to your application's control plane.\nThe issue is located in android-test-client/app/src/main/AndroidManifest.xml.\n\nSECURITY IMPACT:\nThis could potentially compromise system security.\nIn the context of a WebAuthn authentication system, this is particularly critical because:\n- Authentication systems are high-value targets\n- Vulnerabilities could affect all users\n- Trust in the authentication mechanism is essential\n\nSPECIFIC FIX REQUIRED:\nTo remediate this vulnerability, apply the following fix:\n\nApply security best practices for this issue type.\n\nSTEP-BY-STEP REMEDIATION:\n1. Locate the file: android-test-client/app/src/main/AndroidManifest.xml\n2. Find the vulnerable code section\n3. Apply the fix pattern shown above\n4. Test the changes to ensure functionality is preserved\n5. Re-run security scans to validate the fix\n\nVALIDATION:\nAfter applying the fix:\n- The security scan should no longer report this issue\n- Functionality should remain intact\n- No new vulnerabilities should be introduced\n\nLEARNING POINTS:\nThis vulnerability teaches us about:\n- The importance of least privilege principles\n- Secure coding practices in modern web applications\n- How automated security scanning helps catch issues early\n"
+  },
+  {
+    "vulnerability": {
+      "tool": "osv-scanner",
+      "id": "GHSA-h46c-h94j-95f3",
+      "summary": "jackson-core can throw a StackoverflowError when processing deeply nested data",
+      "severity": "CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N",
+      "package_name": "com.fasterxml.jackson.core:jackson-core",
+      "package_version": "2.14.0-rc2",
+      "ecosystem": "Maven",
+      "source_path": "/home/runner/work/mpo-api-authn-server/mpo-api-authn-server/android-test-client/app/gradle.lockfile",
+      "source_type": "lockfile",
+      "path": "/home/runner/work/mpo-api-authn-server/mpo-api-authn-server/android-test-client/app/gradle.lockfile",
+      "start": {
+        "line": 1
+      },
+      "security_category": "dependency_vulnerabilities",
+      "category_confidence": 0.9
+    },
+    "ai_analysis": "Impact: Security impact requires further investigation. Remediation: Review and apply security best practices. Prevention: Implement security monitoring and regular updates",
+    "narrative": "\n=== Security Vulnerability Narrative ===\nDate Discovered: 2025-10-04T21:48:25.837390\nTool: osv-scanner\nVulnerability ID: GHSA-h46c-h94j-95f3\nSeverity: CVSS:4.0/AV:N/AC:L/AT:N/PR:N/UI:N/VC:N/VI:N/VA:H/SC:N/SI:N/SA:N\nFile: unknown\n\nCONTEXT:\nThis vulnerability was found in the WebAuthn authentication server project. \nSecurity issue detected\n\nPROBLEM DESCRIPTION:\n\nThe issue is located in the codebase.\n\nSECURITY IMPACT:\nThis could potentially compromise system security.\nIn the context of a WebAuthn authentication system, this is particularly critical because:\n- Authentication systems are high-value targets\n- Vulnerabilities could affect all users\n- Trust in the authentication mechanism is essential\n\nSPECIFIC FIX REQUIRED:\nTo remediate this vulnerability, apply the following fix:\n\nApply security best practices for this issue type.\n\nSTEP-BY-STEP REMEDIATION:\n1. Locate the file: affected file\n2. Find the vulnerable code section\n3. Apply the fix pattern shown above\n4. Test the changes to ensure functionality is preserved\n5. Re-run security scans to validate the fix\n\nVALIDATION:\nAfter applying the fix:\n- The security scan should no longer report this issue\n- Functionality should remain intact\n- No new vulnerabilities should be introduced\n\nLEARNING POINTS:\nThis vulnerability teaches us about:\n- The importance of least privilege principles\n- Secure coding practices in modern web applications\n- How automated security scanning helps catch issues early\n"
+  },
+  {
+    "vulnerability": {
+      "tool": "zap",
+      "id": "10049",
+      "alert_ref": "10049-3",
+      "name": "Storable and Cacheable Content",
+      "severity": "INFO",
+      "risk_code": "0",
+      "confidence": "2",
+      "risk_desc": "Informational (Medium)",
+      "description": "<p>The response contents are storable by caching components such as proxy servers, and may be retrieved directly from the cache, rather than from the origin server by the caching servers, in response to similar requests from other users. If the response data is sensitive, personal or user-specific, this may result in sensitive information being leaked. In some cases, this may even result in a user gaining complete control of the session of another user, depending on the configuration of the caching components in use in their environment. This is primarily an issue where \"shared\" caching servers such as \"proxy\" caches are configured on the local network. This configuration is typically found in corporate or educational environments, for instance.</p>",
+      "solution": "<p>Validate that the response does not contain sensitive, personal or user-specific information. If it does, consider the use of the following HTTP response headers, to limit, or prevent the content being stored and retrieved from the cache by another user:</p><p>Cache-Control: no-cache, no-store, must-revalidate, private</p><p>Pragma: no-cache</p><p>Expires: 0</p><p>This configuration directs both HTTP 1.0 and HTTP 1.1 compliant caching servers to not store the response, and to not retrieve the response (without validation) from the cache, in response to a similar request.</p>",
+      "reference": "<p>https://datatracker.ietf.org/doc/html/rfc7234</p><p>https://datatracker.ietf.org/doc/html/rfc7231</p><p>https://www.w3.org/Protocols/rfc2616/rfc2616-sec13.html</p>",
+      "site_host": "localhost",
+      "site_port": "8081",
+      "uri": "http://localhost:8081",
+      "url": "http://localhost:8081",
+      "method": "GET",
+      "instance_count": 1,
+      "zap_version": "2.16.1",
+      "path": "http://localhost:8081",
+      "start": {
+        "line": 1
+      },
+      "security_category": "web_security",
+      "category_confidence": 0.8500000000000001,
+      "code_context": {
+        "method": "GET",
+        "path": "/",
+        "file_path": "/Users/vinayakmenon/mpo-api-authn-server/webauthn-server/src/main/kotlin/com/vmenon/mpo/api/authn/routes/HealthRoutes.kt",
+        "line_number": 21,
+        "handler_type": "kotlin_ktor",
+        "route_definition": "get(\"/\") {"
+      }
+    },
+    "ai_analysis": "Impact: Security impact requires further investigation. Remediation: 1.. Prevention: Implement security monitoring and regular updates",
+    "narrative": "\n=== Security Vulnerability Narrative ===\nDate Discovered: 2025-10-04T21:48:26.681708\nTool: zap\nVulnerability ID: 10049\nSeverity: INFO\nFile: unknown\n\nCONTEXT:\nThis vulnerability was found in the WebAuthn authentication server project. \nSecurity issue detected\n\nPROBLEM DESCRIPTION:\n\nThe issue is located in the codebase.\n\nSECURITY IMPACT:\nThis could potentially compromise system security.\nIn the context of a WebAuthn authentication system, this is particularly critical because:\n- Authentication systems are high-value targets\n- Vulnerabilities could affect all users\n- Trust in the authentication mechanism is essential\n\nSPECIFIC FIX REQUIRED:\nTo remediate this vulnerability, apply the following fix:\n\nApply security best practices for this issue type.\n\nSTEP-BY-STEP REMEDIATION:\n1. Locate the file: affected file\n2. Find the vulnerable code section\n3. Apply the fix pattern shown above\n4. Test the changes to ensure functionality is preserved\n5. Re-run security scans to validate the fix\n\nVALIDATION:\nAfter applying the fix:\n- The security scan should no longer report this issue\n- Functionality should remain intact\n- No new vulnerabilities should be introduced\n\nLEARNING POINTS:\nThis vulnerability teaches us about:\n- The importance of least privilege principles\n- Secure coding practices in modern web applications\n- How automated security scanning helps catch issues early\n"
+  }
+]

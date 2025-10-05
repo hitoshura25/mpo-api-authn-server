@@ -15,6 +15,7 @@ except ImportError:
 
 from typing import Dict, List, Optional
 import json
+import logging
 import time
 import sys
 from pathlib import Path
@@ -31,6 +32,7 @@ class OLMoSecurityAnalyzer:
         Uses configuration manager for portable model paths
         """
         # Initialize configuration
+        self.logger = logging.getLogger(__name__)
         self.config = OLMoSecurityConfig()
         
         # Use configured model path if not specified
@@ -43,66 +45,68 @@ class OLMoSecurityAnalyzer:
         self.model_name = model_name
         self.mlx_optimized = False
             
-        print(f"🚀 Initializing MLX-Optimized OLMo-2 Security Analyzer...")
-        print(f"   Model path: {model_name}")
-        print(f"   MLX available: {MLX_AVAILABLE}")
-        
+        self.logger.info("🚀 Initializing MLX-Optimized OLMo-2 Security Analyzer...")
+        self.logger.info(f"   Model path: {model_name}")
+        self.logger.info(f"   MLX available: {MLX_AVAILABLE}")
+
         # Environment debugging
         self._print_environment_info()
-        
+
         # Fail-fast: No fallback mode, model must work
         self._load_model()
-        print("✅ OLMo-2 analyzer initialized successfully")
+        self.logger.info("✅ OLMo-2 analyzer initialized successfully")
     
     def _print_environment_info(self):
         """Print comprehensive environment debugging information"""
-        print("🔍 Environment Information:")
+        self.logger.info("🔍 Environment Information:")
         import sys
         import platform
-        print(f"   Python version: {sys.version}")
-        print(f"   Platform: {platform.platform()}")
-        print(f"   Architecture: {platform.architecture()}")
-        print(f"   Machine: {platform.machine()}")
-        print(f"   MLX available: {MLX_AVAILABLE}")
-        
+        self.logger.info(f"   Python version: {sys.version}")
+        self.logger.info(f"   Platform: {platform.platform()}")
+        self.logger.info(f"   Architecture: {platform.architecture()}")
+        self.logger.info(f"   Machine: {platform.machine()}")
+        self.logger.info(f"   MLX available: {MLX_AVAILABLE}")
+
         # Memory info
         try:
             import psutil
-            print(f"   Available memory: {psutil.virtual_memory().available / (1024**3):.1f} GB")
-            print(f"   Total memory: {psutil.virtual_memory().total / (1024**3):.1f} GB")
+            self.logger.info(f"   Available memory: {psutil.virtual_memory().available / (1024**3):.1f} GB")
+            self.logger.info(f"   Total memory: {psutil.virtual_memory().total / (1024**3):.1f} GB")
         except ImportError:
-            print("   Memory info: psutil not available")
-            
+            self.logger.info("   Memory info: psutil not available")
+
         # Framework info
         if MLX_AVAILABLE:
             try:
                 import mlx.core
-                print(f"   MLX version: {mlx.core.__version__}")
+                self.logger.info(f"   MLX version: {mlx.core.__version__}")
             except (ImportError, AttributeError):
                 try:
                     import mlx
-                    print(f"   MLX version: Available (no version info)")
+                    self.logger.info(f"   MLX version: Available (no version info)")
                 except ImportError:
-                    print("   MLX version: Import failed")
+                    self.logger.info("   MLX version: Import failed")
             except Exception as e:
-                print(f"   MLX version: Error accessing version ({e})")
+                self.logger.info(f"   MLX version: Error accessing version ({e})")
         else:
             try:
                 import torch
                 import transformers
-                print(f"   PyTorch version: {torch.__version__}")
-                print(f"   Transformers version: {transformers.__version__}")
-                print(f"   CUDA available: {torch.cuda.is_available()}")
+                self.logger.info(f"   PyTorch version: {torch.__version__}")
+                self.logger.info(f"   Transformers version: {transformers.__version__}")
+                self.logger.info(f"   CUDA available: {torch.cuda.is_available()}")
             except ImportError:
-                print("   PyTorch/Transformers: Not available")
+                self.logger.info("   PyTorch/Transformers: Not available")
     
     def _load_model(self):
         """Load model with MLX optimization when available"""
         if MLX_AVAILABLE and self._is_mlx_model_path():
-            print("🚀 Loading MLX-optimized OLMo-2 model...")
+            self.logger.info("🚀 Loading MLX-optimized OLMo-2 model...")
             self._load_mlx_model()
         else:
-            print("⚡ Loading with transformers library (fallback)...")
+            # For now raise an error until fallback is fully tested
+            raise RuntimeError("MLX not available or model path invalid - cannot load model")
+            self.logger.info("⚡ Loading with transformers library (fallback)...")
             self._load_transformers_model()
     
     def _is_mlx_model_path(self) -> bool:
@@ -115,20 +119,20 @@ class OLMoSecurityAnalyzer:
     
     def _load_mlx_model(self):
         """Load MLX-optimized model (validated against MLX-LM official API)"""
-        print(f"   Loading model and tokenizer from: {self.model_name}")
-        
+        self.logger.info(f"   Loading model and tokenizer from: {self.model_name}")
+
         # MLX-LM load() function - validated against official MLX-LM repository
         self.model, self.tokenizer = load(self.model_name)
         self.mlx_optimized = True
-        
-        print("✅ MLX-optimized model loaded successfully")
-        print(f"   Model type: {type(self.model)}")
-        print(f"   Tokenizer type: {type(self.tokenizer)}")
-        
+
+        self.logger.info("✅ MLX-optimized model loaded successfully")
+        self.logger.info(f"   Model type: {type(self.model)}")
+        self.logger.info(f"   Tokenizer type: {type(self.tokenizer)}")
+
         # MLX models don't need explicit pad token setting
         if hasattr(self.tokenizer, 'pad_token') and self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-            print(f"✅ Pad token set to EOS: '{self.tokenizer.eos_token}'")
+            self.logger.info(f"✅ Pad token set to EOS: '{self.tokenizer.eos_token}'")
     
     def _load_transformers_model(self):
         """Load model using transformers library (fallback)"""
@@ -138,14 +142,14 @@ class OLMoSecurityAnalyzer:
             import torch
         except ImportError:
             raise ImportError("transformers library not available for fallback")
-        
-        print(f"   Loading tokenizer from: {self.model_name}")
+
+        self.logger.info(f"   Loading tokenizer from: {self.model_name}")
         self.tokenizer = AutoTokenizer.from_pretrained(
             self.model_name,
             trust_remote_code=True
         )
-        
-        print(f"   Loading model from: {self.model_name}")
+
+        self.logger.info(f"   Loading model from: {self.model_name}")
         self.model = AutoModelForCausalLM.from_pretrained(
             self.model_name,
             torch_dtype=torch.float32,
@@ -154,13 +158,13 @@ class OLMoSecurityAnalyzer:
             low_cpu_mem_usage=True,
             use_cache=True
         )
-        
+
         self.mlx_optimized = False
-        
+
         # Set pad token
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token
-            print(f"✅ Pad token set to EOS: '{self.tokenizer.eos_token}'")
+            self.logger.info(f"✅ Pad token set to EOS: '{self.tokenizer.eos_token}'")
     
     def analyze_vulnerability(self, vulnerability: Dict) -> str:
         """
@@ -170,15 +174,15 @@ class OLMoSecurityAnalyzer:
         tool = vulnerability.get('tool', 'security-scan')
         vuln_id = vulnerability.get('id', 'UNKNOWN')
         description = vulnerability.get('description', vulnerability.get('message', 'No description'))
-        
-        print(f"      analyze_vulnerability() called for {vuln_id}", flush=True)
-        print(f"      model is None: {self.model is None}", flush=True)
-        
+
+        self.logger.debug(f"      analyze_vulnerability() called for {vuln_id}")
+        self.logger.debug(f"      model is None: {self.model is None}")
+
         # Fail-fast: Model must be loaded and functional
         if self.model is None:
             raise RuntimeError(f"Model not loaded - cannot analyze {vuln_id}")
-        
-        print(f"      Using {'MLX-optimized' if self.mlx_optimized else 'transformers'} model for {vuln_id}", flush=True)
+
+        self.logger.debug(f"      Using {'MLX-optimized' if self.mlx_optimized else 'transformers'} model for {vuln_id}")
         
         # Simplified, direct prompt optimized for OLMo-2
         prompt = f"""Vulnerability: {vuln_id}
@@ -195,58 +199,63 @@ Analysis:"""
         try:
             if self.mlx_optimized:
                 # Use MLX-LM with proper sampling - validated against official API
-                print(f"      🚀 Using MLX-optimized generation for {vuln_id}...", flush=True)
+                self.logger.debug(f"      🚀 Using MLX-optimized generation for {vuln_id}...")
                 start_time = time.time()
-                
+
                 # Import MLX sampling utilities
                 from mlx_lm.sample_utils import make_sampler, make_logits_processors
                 from mlx_lm.generate import generate_step
                 import mlx.core as mx
-                
+
                 # Tokenize prompt
                 tokens = mx.array(self.tokenizer.encode(prompt))
-                
+
                 # Create sampler and logits processors (validated against MLX-LM docs)
                 sampler = make_sampler(
                     temp=0.3,              # Temperature for focused output
-                    top_p=0.9,             # Nucleus sampling  
+                    top_p=0.9,             # Nucleus sampling
                     top_k=0                # No top-k restriction
                 )
-                
+
                 logits_processors = make_logits_processors(
                     repetition_penalty=1.1,  # Reduce repetition
                     repetition_context_size=20
                 )
-                
+
                 # Generate tokens using MLX-LM generate_step
                 generated_tokens = []
                 for token, _ in generate_step(
-                    tokens, 
+                    tokens,
                     self.model,
                     max_tokens=150,
                     sampler=sampler,
                     logits_processors=logits_processors
                 ):
                     generated_tokens.append(int(token))
-                
+
                 # Decode the complete response
                 all_tokens = tokens.tolist() + generated_tokens
                 response = self.tokenizer.decode(all_tokens)
-                
+
                 generation_time = time.time() - start_time
-                print(f"      ✅ MLX generation completed in {generation_time:.2f}s for {vuln_id}", flush=True)
-                
+                self.logger.info(f"✅ MLX generation completed in {generation_time:.2f}s for {vuln_id}")
+
+                debug_file = self.config.results_dir / "olmo_analysis" / (vuln_id.replace("/", "_") + "_debug.txt")
+                debug_file.parent.mkdir(parents=True, exist_ok=True)
+                with open(debug_file, 'a') as df:
+                    df.write(f"{response}\n")
+
                 # Extract only the generated part (after the prompt)
                 if response.startswith(prompt):
                     analysis = response[len(prompt):].strip()
                 else:
                     analysis = response.strip()
-                    
+
             else:
                 # Use transformers library (fallback)
-                print(f"      ⚡ Using transformers generation for {vuln_id}...", flush=True)
+                self.logger.debug(f"      ⚡ Using transformers generation for {vuln_id}...")
                 start_time = time.time()
-                
+
                 # Tokenization for transformers
                 inputs = self.tokenizer(
                     prompt,
@@ -255,11 +264,11 @@ Analysis:"""
                     max_length=512,
                     padding=False
                 )
-                
+
                 # Move to model device
                 device = next(self.model.parameters()).device
                 inputs = {k: v.to(device) for k, v in inputs.items()}
-                
+
                 # Generation with transformers
                 with torch.no_grad():
                     outputs = self.model.generate(
@@ -273,20 +282,20 @@ Analysis:"""
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id
                     )
-                
+
                 generation_time = time.time() - start_time
-                print(f"      ✅ Transformers generation completed in {generation_time:.2f}s for {vuln_id}", flush=True)
-                
+                self.logger.info(f"      ✅ Transformers generation completed in {generation_time:.2f}s for {vuln_id}")
+
                 # Decode and extract generated part
                 full_response = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
                 if "Analysis:" in full_response:
                     analysis = full_response.split("Analysis:")[1].strip()
                 else:
                     analysis = full_response[len(prompt):].strip()
-            
+
         except Exception as e:
-            print(f"❌ Generation failed for {vuln_id}: {str(e)}")
-            print("🔄 Falling back to template-based analysis")
+            self.logger.error(f"❌ Generation failed for {vuln_id}: {str(e)}")
+            self.logger.info("🔄 Falling back to template-based analysis")
             return self._generate_template_analysis(vulnerability)
         
         # Format the analysis for better readability
@@ -440,39 +449,39 @@ Analysis:"""
         Analyze multiple vulnerabilities with progress tracking
         """
         results = []
-        
+
         # Limit to max_items for performance
         items_to_process = vulnerabilities[:max_items]
-        
-        print(f"\n🔍 batch_analyze called with {len(vulnerabilities)} vulnerabilities, processing {len(items_to_process)}", flush=True)
-        print("-" * 50)
-        
+
+        self.logger.info(f"\n🔍 batch_analyze called with {len(vulnerabilities)} vulnerabilities, processing {len(items_to_process)}")
+        self.logger.info("-" * 50)
+
         for i, vuln in enumerate(items_to_process, 1):
             vuln_id = vuln.get('id', 'unknown')
-            print(f"[{i}/{len(items_to_process)}] Starting analysis of {vuln_id}...", flush=True)
-            
+            self.logger.info(f"[{i}/{len(items_to_process)}] Starting analysis of {vuln_id}...")
+
             try:
-                print(f"   Calling analyze_vulnerability() for {vuln_id}...", flush=True)
+                self.logger.debug(f"   Calling analyze_vulnerability() for {vuln_id}...")
                 analysis = self.analyze_vulnerability(vuln)
-                print(f"   ✅ Got analysis result for {vuln_id}", flush=True)
-                
+                self.logger.debug(f"   ✅ Got analysis result for {vuln_id}")
+
                 results.append({
                     'vulnerability': vuln,
                     'analysis': analysis,
                     'status': 'success'
                 })
-                print(f"[{i}/{len(items_to_process)}] ✅ Completed {vuln_id}", flush=True)
+                self.logger.info(f"[{i}/{len(items_to_process)}] ✅ Completed {vuln_id}")
             except Exception as e:
-                print(f"   ❌ Error analyzing {vuln_id}: {str(e)}", flush=True)
+                self.logger.error(f"   ❌ Error analyzing {vuln_id}: {str(e)}")
                 results.append({
                     'vulnerability': vuln,
                     'analysis': {'error': str(e)},
                     'status': 'error'
                 })
-        
-        print("-" * 50)
-        print(f"✅ batch_analyze complete: {len(results)} items processed", flush=True)
-        
+
+        self.logger.info("-" * 50)
+        self.logger.info(f"✅ batch_analyze complete: {len(results)} items processed")
+
         return results
     
     def generate_summary_report(self, analysis_results: List[Dict]) -> Dict:
@@ -509,43 +518,3 @@ Analysis:"""
                     })
         
         return summary
-
-
-def test_improved_analyzer():
-    """
-    Test function to validate the improved analyzer
-    """
-    print("🧪 Testing Improved OLMo Security Analyzer...")
-    
-    # Sample vulnerability for testing
-    test_vuln = {
-        'tool': 'checkov',
-        'id': 'CKV2_GHA_1',
-        'severity': 'HIGH',
-        'description': 'Ensure top-level permissions are not set to write-all in GitHub Actions workflows',
-        'file_path': '.github/workflows/test.yml'
-    }
-    
-    # Initialize analyzer
-    analyzer = ImprovedOLMoSecurityAnalyzer()
-    
-    # Test single analysis
-    print("\n📝 Testing single vulnerability analysis...")
-    result = analyzer.analyze_vulnerability(test_vuln)
-    print(json.dumps(result, indent=2))
-    
-    # Test batch analysis
-    print("\n📊 Testing batch analysis...")
-    test_vulns = [test_vuln] * 3  # Test with 3 items
-    results = analyzer.batch_analyze(test_vulns, max_items=3)
-    
-    # Generate summary
-    summary = analyzer.generate_summary_report(results)
-    print("\n📈 Summary Report:")
-    print(json.dumps(summary, indent=2))
-    
-    return results
-
-
-if __name__ == "__main__":
-    test_improved_analyzer()

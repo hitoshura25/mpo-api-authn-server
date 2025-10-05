@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
-
 @dataclass
 class LoRASection:
     """LoRA-specific configuration for parameter-efficient fine-tuning"""

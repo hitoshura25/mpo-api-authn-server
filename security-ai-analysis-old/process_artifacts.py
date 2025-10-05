@@ -44,7 +44,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-
 # Phase constants to avoid string repetition and typos
 class Phases:
     PARSING = "parsing"

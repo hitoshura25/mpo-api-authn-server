@@ -1,3 +1,4 @@
+import json
 import shutil
 import subprocess
 import os
@@ -288,3 +289,50 @@ class TestProcessArtifactsScript:
                 assert 'tool' in vulnerability, "Each narrativized item should have a 'tool'"
                 assert 'security_category' in vulnerability, "Each narrativized item should have a 'security_category'"
                 assert 'category_confidence' in vulnerability, "Each narrativized item should have a 'category_confidence'"
+
+    def test_datasets_only_fails_with_no_narrativized_input(self):
+        """Test dataset construction only mode fails with no narrativized input"""
+        result = self.run_process_artifacts(
+            additional_args=[
+                "--only-datasets"
+            ],
+            realtime_output=True
+        )
+        assert result == 1, f"Dataset construction only mode should fail with no narrativized input, got exit code {result}"
+
+    def test_datasets_only_with_narrativized_input(self):
+        """Test dataset construction only mode with provided narrativized input"""
+        datasets_result = self.run_process_artifacts(
+            additional_args=[
+                "--only-datasets",
+                "--narrativized-input", str(self.phase_inputs_dir / "narrativized_analyses.json")
+            ],
+            realtime_output=True
+        )
+        assert datasets_result == 0, f"Dataset construction only mode failed with exit code {datasets_result}"
+
+        # Verify expected output files exist
+        expected_train_file = self.temp_output_dir / "train_dataset.jsonl"
+        expected_validation_file = self.temp_output_dir / "validation_dataset.jsonl"
+        assert expected_train_file.exists(), f"Expected train dataset file not found: {expected_train_file}"
+        assert expected_validation_file.exists(), f"Expected validation dataset file not found: {expected_validation_file}"
+
+        # Verify content of the train dataset file
+        with open(expected_train_file, 'r') as f:
+            lines = f.readlines()
+            assert len(lines) > 0, "Train dataset file should not be empty"
+            for line in lines:
+                item = json.loads(line)
+                assert 'instruction' in item, "Each train dataset item should have an 'instruction'"
+                assert 'response' in item, "Each train dataset item should have a 'response'"
+                assert 'metadata' in item, "Each train dataset item should have 'metadata'"
+
+        # Verify content of the validation dataset file
+        with open(expected_validation_file, 'r') as f:
+            lines = f.readlines()
+            assert len(lines) > 0, "Validation dataset file should not be empty"
+            for line in lines:
+                item = json.loads(line)
+                assert 'instruction' in item, "Each validation dataset item should have an 'instruction'"
+                assert 'response' in item, "Each validation dataset item should have a 'response'"
+                assert 'metadata' in item, "Each validation dataset item should have 'metadata'"

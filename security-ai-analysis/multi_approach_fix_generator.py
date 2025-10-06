@@ -98,6 +98,9 @@ class MultiApproachFixGenerator:
     
     def __init__(self):
         """Initialize the fix generator."""
+        import logging
+        self.logger = logging.getLogger(__name__)
+
         # Common vulnerability patterns and their fix strategies
         self.vulnerability_patterns = {
             'sql_injection': [

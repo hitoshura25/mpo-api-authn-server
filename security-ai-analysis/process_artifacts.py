@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 import argparse
 import logging
+import subprocess
 from typing import Any, Dict, List
 from datetime import datetime
 
@@ -374,13 +375,21 @@ Your role is to analyze security vulnerabilities and provide comprehensive, acti
         if tool in ['trivy', 'sarif-trivy', 'osv', 'osv-scanner']:
             # Try to generate a specific fix
             try:
-                fixes = fix_generator.generate_fixes(vuln)
+                # Generate fixes and check success
+                result = fix_generator.generate_fixes(vuln, code_context=None)
+                if not result.success:
+                    logger.error(f"Fix generation failed for {vuln_id}: {result.error_message}")
+                    raise RuntimeError(f"Fix generation failed for {vuln_id}: {result.error_message}")
+
+                fixes = result.fixes
                 if fixes and len(fixes) > 0:
-                    primary_fix = fixes[0]  # Use the primary fix approach
+                    primary_fix = fixes[0]  # Use the primary fix approach (SecurityFix dataclass)
 
                     # Create training pair in MLX chat format
                     user_content = f"Based on the following analysis, provide the fix.\n\nAnalysis: {analysis['ai_analysis']}\n\nContext: {analysis.get('narrative', '')[:500]}"
-                    assistant_content = primary_fix.get('fix_code', primary_fix.get('description', ''))
+
+                    # SecurityFix is a dataclass - use attribute access, not dict.get()
+                    assistant_content = primary_fix.fixed_code or primary_fix.description
 
                     if assistant_content:
                         specific_fixes.append({
@@ -399,8 +408,9 @@ Your role is to analyze security vulnerabilities and provide comprehensive, acti
                             }
                         })
             except Exception as e:
-                logger.debug(f"Could not generate specific fix for {vuln_id}: {e}")
-                continue
+                # FAIL FAST - don't suppress exceptions
+                logger.error(f"Could not generate specific fix for {vuln_id}: {e}")
+                raise RuntimeError(f"Error generating specific fix for vulnerability {vuln_id}: {e}")
 
     return specific_fixes
 
@@ -630,6 +640,7 @@ def upload_artifacts_phase(
     # Analyze datasets for metadata
     logger.info("📊 Analyzing datasets for statistics...")
     dataset_stats = _analyze_datasets(train_dataset, validation_dataset)
+    logger.info(f"   Dataset statistics: {dataset_stats}")
     logger.info(f"   Train examples: {dataset_stats['train_examples']}")
     logger.info(f"   Validation examples: {dataset_stats['validation_examples']}")
     logger.info(f"   Quality distribution: {dataset_stats['quality_distribution']}")
@@ -829,6 +840,58 @@ def execute_single_phase(phase: str, args):
     else:
         raise ValueError(f"Unknown phase: {phase}")
 
+def ensure_base_model_ready(config: OLMoSecurityConfig) -> bool:
+    """
+    Ensure base model is downloaded and ready for training.
+    Automatically runs setup.py if model is missing.
+
+    Args:
+        config: Configuration object
+
+    Returns:
+        True if model is ready, False if setup failed
+    """
+    try:
+        # Check if base model exists
+        model_path = config.get_base_model_path()
+        logger.info(f"✅ Base model found: {model_path}")
+        return True
+    except FileNotFoundError:
+        # Model missing - run setup.py
+        logger.warning(f"⚠️  Base model not found: {config.default_base_model}")
+        logger.info("📥 Running setup.py to download and convert base model...")
+        logger.info("   This may take several minutes on first run...")
+
+        setup_script = Path(__file__).parent / "setup.py"
+
+        if not setup_script.exists():
+            logger.error(f"❌ setup.py not found at {setup_script}")
+            logger.error("   Please run setup.py manually to download the base model")
+            return False
+
+        # Run setup.py
+        result = subprocess.run(
+            [sys.executable, str(setup_script)],
+            capture_output=True,
+            text=True
+        )
+
+        # Show setup output
+        if result.stdout:
+            for line in result.stdout.splitlines():
+                logger.info(f"   {line}")
+
+        if result.returncode == 0:
+            logger.info("✅ Base model setup completed successfully")
+            return True
+        else:
+            logger.error("❌ Base model setup failed")
+            if result.stderr:
+                logger.error("Setup errors:")
+                for line in result.stderr.splitlines():
+                    logger.error(f"   {line}")
+            return False
+
 def main():
     """
     Main orchestrator for the security analysis pipeline.
@@ -867,7 +930,15 @@ def main():
 
     args = parser.parse_args()
 
-    # Check for single-phase execution
+    config = OLMoSecurityConfig()
+    if not ensure_base_model_ready(config):
+        logger.error("❌ Cannot proceed: Base model setup failed")
+        logger.error("   Please ensure:")
+        logger.error("   1. Virtual environment is activated: source ./venv/bin/activate")
+        logger.error("   2. mlx-lm is installed: pip install mlx-lm")
+        logger.error("   3. Internet connection is available")
+        return 1
+
     single_phase = get_active_only_phase(args)
 
     if single_phase:

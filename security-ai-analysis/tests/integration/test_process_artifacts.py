@@ -1,4 +1,5 @@
 import json
+import re
 import shutil
 import subprocess
 import os
@@ -474,3 +475,63 @@ class TestProcessArtifactsScript:
         assert "README.md" in upload_model_files, "Uploaded model README file not found"
         assert "adapter_config.json" in upload_model_files, "Uploaded adapter_config.json file not found"
         assert "training-recipe.yaml" in upload_model_files, "Uploaded training-recipe.yaml file not found"
+
+        # Verify Model README.md statistics counts are greater than 0
+        model_readme_path = upload_model_dir / "README.md"
+        with open(model_readme_path, 'r') as f:
+            model_readme_content = f.read()
+
+        # Extract and verify model README statistics
+        model_total_match = re.search(r'\*\*Total Examples\*\*: ([\d,]+)', model_readme_content)
+        model_train_match = re.search(r'\*\*Training Set\*\*: ([\d,]+) examples', model_readme_content)
+        model_val_match = re.search(r'\*\*Validation Set\*\*: ([\d,]+) examples', model_readme_content)
+        model_high_match = re.search(r'\*\*High Quality\*\*: ([\d,]+) examples', model_readme_content)
+        model_low_match = re.search(r'\*\*Low Quality\*\*: ([\d,]+) examples', model_readme_content)
+
+        assert model_total_match, "Model README missing Total Examples statistic"
+        assert model_train_match, "Model README missing Training Set statistic"
+        assert model_val_match, "Model README missing Validation Set statistic"
+        assert model_high_match, "Model README missing High Quality statistic"
+        assert model_low_match, "Model README missing Low Quality statistic"
+
+        model_total = int(model_total_match.group(1).replace(',', ''))
+        model_train = int(model_train_match.group(1).replace(',', ''))
+        model_val = int(model_val_match.group(1).replace(',', ''))
+        model_high = int(model_high_match.group(1).replace(',', ''))
+        model_low = int(model_low_match.group(1).replace(',', ''))
+
+        assert model_total > 0, f"Model README Total Examples must be > 0, got {model_total}"
+        assert model_train > 0, f"Model README Training Set must be > 0, got {model_train}"
+        assert model_val > 0, f"Model README Validation Set must be > 0, got {model_val}"
+        assert model_high > 0, f"Model README High Quality must be > 0, got {model_high}"
+        assert model_low > 0, f"Model README Low Quality must be > 0, got {model_low}"
+
+        # Verify Dataset README.md statistics counts are greater than 0
+        dataset_readme_path = upload_datasets_dir / "README.md"
+        with open(dataset_readme_path, 'r') as f:
+            dataset_readme_content = f.read()
+
+        # Extract and verify dataset README statistics
+        dataset_total_match = re.search(r'\*\*Total Examples\*\*: ([\d,]+)', dataset_readme_content)
+        dataset_train_match = re.search(r'\*\*Training Split\*\*: ([\d,]+)', dataset_readme_content)
+        dataset_val_match = re.search(r'\*\*Validation Split\*\*: ([\d,]+)', dataset_readme_content)
+        dataset_high_match = re.search(r'\*\*High Quality\*\*: ([\d,]+) examples', dataset_readme_content)
+        dataset_low_match = re.search(r'\*\*Low Quality\*\*: ([\d,]+) examples', dataset_readme_content)
+
+        assert dataset_total_match, "Dataset README missing Total Examples statistic"
+        assert dataset_train_match, "Dataset README missing Training Split statistic"
+        assert dataset_val_match, "Dataset README missing Validation Split statistic"
+        assert dataset_high_match, "Dataset README missing High Quality statistic"
+        assert dataset_low_match, "Dataset README missing Low Quality statistic"
+
+        dataset_total = int(dataset_total_match.group(1).replace(',', ''))
+        dataset_train = int(dataset_train_match.group(1).replace(',', ''))
+        dataset_val = int(dataset_val_match.group(1).replace(',', ''))
+        dataset_high = int(dataset_high_match.group(1).replace(',', ''))
+        dataset_low = int(dataset_low_match.group(1).replace(',', ''))
+
+        assert dataset_total > 0, f"Dataset README Total Examples must be > 0, got {dataset_total}"
+        assert dataset_train > 0, f"Dataset README Training Split must be > 0, got {dataset_train}"
+        assert dataset_val > 0, f"Dataset README Validation Split must be > 0, got {dataset_val}"
+        assert dataset_high > 0, f"Dataset README High Quality must be > 0, got {dataset_high}"
+        assert dataset_low > 0, f"Dataset README Low Quality must be > 0, got {dataset_low}"

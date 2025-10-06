@@ -14,6 +14,7 @@ Phase 5 Implementation - Enhanced Upload with:
 
 import os
 import sys
+import json
 import logging
 import platform
 from pathlib import Path
@@ -55,21 +56,90 @@ class ArtifactUploader:
         logger.info(f"ArtifactUploader initialized (skip_upload={skip_upload})")
         logger.info(f"  Staging directory: {self.staging_dir}")
 
-    def upload_model(self, adapter_path: Path, metadata: Dict[str, Any]) -> Optional[str]:
+    def upload_artifacts(
+        self,
+        adapter_path: Path,
+        train_file: Path,
+        val_file: Path,
+        metadata: Dict[str, Any]
+    ) -> Dict[str, Optional[str]]:
         """
-        Upload fine-tuned model to HuggingFace Hub with validation
+        Upload model and datasets to HuggingFace Hub with synchronized timestamps.
+
+        This method coordinates both model and dataset uploads with:
+        - Single shared timestamp for consistent naming
+        - Cross-references between model and dataset READMEs
+        - Atomic operation (both succeed or both fail)
 
         Args:
-            adapter_path: Path to the model adapter directory
+            adapter_path: Path to model adapter directory
+            train_file: Path to train_dataset.jsonl
+            val_file: Path to validation_dataset.jsonl
             metadata: Training metadata including stats and config
 
         Returns:
-            Repository URL if successful, None otherwise
+            Dict with 'model_url' and 'dataset_url' keys
         """
         if self.skip_upload:
-            logger.info("🛑 Model upload skipped (skip_upload=True)")
-            return None
+            logger.info("🛑 Upload skipped (skip_upload=True)")
+            return {"model_url": None, "dataset_url": None}
 
+        # Generate single shared timestamp for coordinated uploads
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
+        # Generate repository names with shared timestamp
+        model_repo_name = f"{self.config.fine_tuning.default_output_name}_{timestamp}"
+        dataset_repo_name = f"webauthn-security-training-data-{timestamp}"
+
+        model_full_name = f"{self.config.fine_tuning.default_repo_prefix}/{model_repo_name}"
+        dataset_full_name = f"{self.config.fine_tuning.default_repo_prefix}/{dataset_repo_name}"
+
+        logger.info(f"📤 Coordinated upload with timestamp: {timestamp}")
+        logger.info(f"   Model: {model_full_name}")
+        logger.info(f"   Dataset: {dataset_full_name}")
+
+        # Upload model with dataset reference
+        model_url = self._upload_model(
+            adapter_path,
+            metadata,
+            model_repo_name,
+            model_full_name,
+            dataset_full_name
+        )
+
+        # Upload dataset with model reference
+        dataset_url = self._upload_dataset(
+            train_file,
+            val_file,
+            metadata,
+            dataset_repo_name,
+            dataset_full_name,
+            model_full_name
+        )
+
+        return {"model_url": model_url, "dataset_url": dataset_url}
+
+    def _upload_model(
+        self,
+        adapter_path: Path,
+        metadata: Dict[str, Any],
+        repo_name: str,
+        full_repo_name: str,
+        dataset_full_name: str
+    ) -> str:
+        """
+        Private helper to upload model to HuggingFace Hub.
+
+        Args:
+            adapter_path: Path to model adapter directory
+            metadata: Training metadata
+            repo_name: Short repository name (e.g., 'webauthn-security-v1_20250101_120000')
+            full_repo_name: Full repository path (e.g., 'hitoshura25/webauthn-security-v1_20250101_120000')
+            dataset_full_name: Full dataset repository path for cross-reference
+
+        Returns:
+            Repository URL
+        """
         # Validate model artifacts before upload
         logger.info("🔍 Validating model artifacts...")
         validation_result = self._validate_model_artifacts(adapter_path)
@@ -87,7 +157,7 @@ class ArtifactUploader:
 
         if not self.config.fine_tuning.upload_enabled:
             logger.info("HuggingFace upload disabled in configuration")
-            return None
+            raise RuntimeError("Upload enabled must be true for upload_artifacts")
 
         if not HUGGINGFACE_AVAILABLE:
             logger.error("❌ CRITICAL: HuggingFace Hub dependency missing")
@@ -95,11 +165,6 @@ class ArtifactUploader:
             raise RuntimeError("HuggingFace Hub dependency missing")
 
         try:
-            # Generate repository name
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            repo_name = f"{self.config.fine_tuning.default_output_name}_{timestamp}"
-            full_repo_name = f"{self.config.fine_tuning.default_repo_prefix}/{repo_name}"
-
             # Create model staging directory
             model_staging_dir = self.staging_dir / "model" / repo_name
             model_staging_dir.mkdir(parents=True, exist_ok=True)
@@ -113,15 +178,26 @@ class ArtifactUploader:
                     shutil.copy2(item, model_staging_dir / item.name)
                     logger.debug(f"   Copied: {item.name}")
 
-            # Create README.md in staging
-            model_card = self._create_enhanced_model_card(metadata, repo_name)
+            # Sanitize adapter_config.json to remove local paths
+            logger.info("🔒 Sanitizing paths for privacy...")
+            self._sanitize_adapter_config(model_staging_dir, self.config.base_model_hf_id)
+
+            # Sanitize training_metadata.json
+            sanitized_metadata = self._sanitize_metadata_paths(metadata, self.config.base_model_hf_id)
+            metadata_file = model_staging_dir / "training_metadata.json"
+            with open(metadata_file, 'w') as f:
+                json.dump(sanitized_metadata, f, indent=2)
+            logger.info(f"✅ Sanitized training_metadata.json saved: {metadata_file}")
+
+            # Create README.md in staging with dataset reference
+            model_card = self._create_enhanced_model_card(metadata, repo_name, dataset_full_name)
             model_card_file = model_staging_dir / "README.md"
             with open(model_card_file, 'w') as f:
                 f.write(model_card)
             logger.info(f"✅ Model card created: {model_card_file}")
 
             # Create training-recipe.yaml in staging
-            recipe_yaml = self._generate_training_recipe(metadata)
+            recipe_yaml = self._generate_training_recipe(metadata, repo_name, dataset_full_name)
             recipe_file = model_staging_dir / "training-recipe.yaml"
             with open(recipe_file, 'w') as f:
                 f.write(recipe_yaml)
@@ -157,31 +233,33 @@ class ArtifactUploader:
             logger.error(f"❌ Model upload failed: {e}")
             raise
 
-    def upload_datasets(self, train_file: Path, val_file: Path, metadata: Dict[str, Any]) -> Optional[str]:
+    def _upload_dataset(
+        self,
+        train_file: Path,
+        val_file: Path,
+        metadata: Dict[str, Any],
+        repo_name: str,
+        full_repo_name: str,
+        model_full_name: str
+    ) -> str:
         """
-        Upload training datasets to HuggingFace Hub
+        Private helper to upload dataset to HuggingFace Hub.
 
         Args:
             train_file: Path to train_dataset.jsonl
             val_file: Path to validation_dataset.jsonl
-            metadata: Training metadata including dataset statistics
+            metadata: Training metadata
+            repo_name: Short repository name (e.g., 'webauthn-security-training-data-20250101_120000')
+            full_repo_name: Full repository path (e.g., 'hitoshura25/webauthn-security-training-data-20250101_120000')
+            model_full_name: Full model repository path for cross-reference
 
         Returns:
-            Repository URL if successful, None otherwise
+            Repository URL
         """
-        if self.skip_upload:
-            logger.info("🛑 Dataset upload skipped (skip_upload=True)")
-            return None
-
         if not HUGGINGFACE_AVAILABLE:
             raise RuntimeError("HuggingFace Hub dependency missing")
 
         try:
-            # Generate repository name
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            repo_name = f"webauthn-security-training-data-{timestamp}"
-            full_repo_name = f"{self.config.fine_tuning.default_repo_prefix}/{repo_name}"
-
             # Create dataset staging directory
             dataset_staging_dir = self.staging_dir / "datasets" / repo_name
             dataset_staging_dir.mkdir(parents=True, exist_ok=True)
@@ -194,8 +272,8 @@ class ArtifactUploader:
             shutil.copy2(val_file, dataset_staging_dir / "valid.jsonl")
             logger.debug(f"   Copied: train.jsonl, valid.jsonl")
 
-            # Create README.md in staging
-            dataset_card = self._create_dataset_card(train_file, val_file, metadata)
+            # Create README.md in staging with model reference
+            dataset_card = self._create_dataset_card(train_file, val_file, metadata, full_repo_name, model_full_name)
             card_file = dataset_staging_dir / "README.md"
             with open(card_file, 'w') as f:
                 f.write(dataset_card)
@@ -287,13 +365,14 @@ class ArtifactUploader:
         validation['overall_valid'] = all(validation['checks'].values())
         return validation
 
-    def _create_enhanced_model_card(self, metadata: Dict[str, Any], repo_name: str) -> str:
+    def _create_enhanced_model_card(self, metadata: Dict[str, Any], repo_name: str, dataset_full_name: str) -> str:
         """
         Generate comprehensive model card with metrics and training details
 
         Args:
             metadata: Training metadata
-            repo_name: Repository name
+            repo_name: Repository name (e.g., 'webauthn-security-v1_20250101_120000')
+            dataset_full_name: Full dataset repository path (e.g., 'hitoshura25/webauthn-security-training-data-20250101_120000')
 
         Returns:
             Model card markdown content
@@ -330,7 +409,7 @@ tags:
 library_name: transformers
 pipeline_tag: text-generation
 datasets:
-- hitoshura25/webauthn-security-training-data
+- {dataset_full_name}
 ---
 
 # {repo_name}
@@ -495,7 +574,7 @@ Generated by Security Analysis Pipeline Artifact Uploader v2.0
 """
         return model_card
 
-    def _create_dataset_card(self, train_file: Path, val_file: Path, metadata: Dict[str, Any]) -> str:
+    def _create_dataset_card(self, train_file: Path, val_file: Path, metadata: Dict[str, Any], dataset_full_name: str, model_full_name: str) -> str:
         """
         Generate dataset card with MLX chat format documentation
 
@@ -503,6 +582,8 @@ Generated by Security Analysis Pipeline Artifact Uploader v2.0
             train_file: Path to training dataset
             val_file: Path to validation dataset
             metadata: Dataset metadata
+            dataset_full_name: Full dataset repository path (e.g., 'hitoshura25/webauthn-security-training-data-20250101_120000')
+            model_full_name: Full model repository path (e.g., 'hitoshura25/webauthn-security-v1_20250101_120000')
 
         Returns:
             Dataset card markdown content
@@ -628,7 +709,7 @@ High-quality examples are duplicated 2.5x during training to prioritize learning
 from datasets import load_dataset
 
 # Load full dataset
-dataset = load_dataset("hitoshura25/webauthn-security-training-data")
+dataset = load_dataset("{dataset_full_name}")
 
 # Access splits
 train_data = dataset['train']
@@ -645,7 +726,7 @@ for example in train_data:
 
 ## Reproducibility
 
-This dataset was used to train: `hitoshura25/webauthn-security-YYYYMMDD_HHMMSS`
+This dataset was used to train: [`{model_full_name}`](https://huggingface.co/{model_full_name})
 
 **Training Recipe**: See model repository for complete configuration
 
@@ -678,17 +759,18 @@ Generated by Security Analysis Pipeline Artifact Uploader v2.0
 """
         return dataset_card
 
-    def _generate_training_recipe(self, metadata: Dict[str, Any]) -> str:
+    def _generate_training_recipe(self, metadata: Dict[str, Any], repo_name: str, dataset_full_name: str) -> str:
         """
         Generate YAML training recipe for reproducibility
 
         Args:
             metadata: Training metadata and configuration
+            repo_name: Model repository name (e.g., 'webauthn-security-v1_20250101_120000')
+            dataset_full_name: Full dataset repository path (e.g., 'hitoshura25/webauthn-security-training-data-20250101_120000')
 
         Returns:
             Training recipe YAML content
         """
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
 
         # Extract statistics
         dataset_stats = metadata.get('dataset_stats', {})
@@ -710,7 +792,7 @@ Generated by Security Analysis Pipeline Artifact Uploader v2.0
 # Generated: {datetime.now().isoformat()}
 # Reproducibility artifact for HuggingFace model
 
-name: "webauthn-security-{timestamp}"
+name: "{repo_name}"
 description: "MLX-finetuned OLMo for WebAuthn security analysis"
 
 ## Base Model
@@ -722,13 +804,13 @@ base_model:
 ## Training Data
 datasets:
   training:
-    repository: "hitoshura25/webauthn-security-training-data-{timestamp}"
+    repository: "{dataset_full_name}"
     file: "train.jsonl"
     format: "mlx_chat"
     examples: {train_count}
 
   validation:
-    repository: "hitoshura25/webauthn-security-training-data-{timestamp}"
+    repository: "{dataset_full_name}"
     file: "valid.jsonl"
     format: "mlx_chat"
     examples: {val_count}
@@ -825,6 +907,84 @@ expected_results:
 - Base Model: https://huggingface.co/allenai/OLMo-2-1B
 """
         return recipe
+
+    def _sanitize_metadata_paths(self, metadata: Dict[str, Any], base_model_hf_id: str) -> Dict[str, Any]:
+        """
+        Remove local paths from metadata, replacing with HuggingFace IDs or relative paths.
+
+        This improves privacy (removes username), portability (no machine-specific paths),
+        and follows ML best practices for reproducibility.
+
+        Args:
+            metadata: Original metadata dict with potentially sensitive local paths
+            base_model_hf_id: HuggingFace model ID (e.g., 'allenai/OLMo-2-1B')
+
+        Returns:
+            Sanitized metadata dict safe for public upload
+        """
+        import copy
+        sanitized = copy.deepcopy(metadata)
+
+        # Replace local base_model path with HF ID for reproducibility
+        if 'base_model' in sanitized:
+            sanitized['base_model'] = base_model_hf_id
+
+        # Remove local paths - not needed for reproducibility and expose username
+        if 'training_data_dir' in sanitized:
+            del sanitized['training_data_dir']
+        if 'adapter_path' in sanitized:
+            del sanitized['adapter_path']
+
+        return sanitized
+
+    def _sanitize_adapter_config(self, adapter_path: Path, base_model_hf_id: str) -> None:
+        """
+        Sanitize adapter_config.json to remove local paths.
+
+        MLX LoRA generates adapter_config.json with local file paths that include
+        usernames and machine-specific directories. This method sanitizes those paths
+        to use HuggingFace model IDs instead.
+
+        Modifies the file in-place during staging (before upload).
+
+        Args:
+            adapter_path: Path to adapter directory containing adapter_config.json
+            base_model_hf_id: HuggingFace model ID to replace local path
+        """
+        config_file = adapter_path / "adapter_config.json"
+        if not config_file.exists():
+            logger.warning(f"⚠️  adapter_config.json not found at {config_file}")
+            return
+
+        try:
+            with open(config_file, 'r') as f:
+                config = json.load(f)
+
+            # Replace local model path with HF ID
+            if 'model' in config:
+                original_model = config['model']
+                config['model'] = base_model_hf_id
+                logger.debug(f"   Sanitized model path: {original_model} → {base_model_hf_id}")
+
+            # Remove local data path - not needed for inference
+            if 'data' in config:
+                del config['data']
+                logger.debug("   Removed local data path")
+
+            # Remove local adapter_path - redundant when uploading
+            if 'adapter_path' in config:
+                del config['adapter_path']
+                logger.debug("   Removed local adapter_path")
+
+            # Write sanitized config back
+            with open(config_file, 'w') as f:
+                json.dump(config, f, indent=4)
+
+            logger.info(f"✅ Sanitized adapter_config.json (removed local paths)")
+
+        except Exception as e:
+            logger.error(f"❌ Failed to sanitize adapter_config.json: {e}")
+            raise
 
     def _is_test_environment(self) -> bool:
         """Detect if running in test environment"""

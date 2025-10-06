@@ -561,8 +561,8 @@ def _analyze_datasets(train_file: Path, val_file: Path) -> Dict[str, Any]:
         Dictionary with dataset statistics
     """
     stats = {
-        "train_examples": 0,
-        "validation_examples": 0,
+        "train_count": 0,
+        "val_count": 0,
         "quality_distribution": {"high": 0, "medium": 0, "low": 0, "unknown": 0},
         "source_distribution": {}
     }
@@ -571,7 +571,7 @@ def _analyze_datasets(train_file: Path, val_file: Path) -> Dict[str, Any]:
     with open(train_file, 'r') as f:
         for line in f:
             if line.strip():
-                stats["train_examples"] += 1
+                stats["train_count"] += 1
                 try:
                     example = json.loads(line)
                     metadata = example.get('metadata')
@@ -596,7 +596,7 @@ def _analyze_datasets(train_file: Path, val_file: Path) -> Dict[str, Any]:
     with open(val_file, 'r') as f:
         for line in f:
             if line.strip():
-                stats["validation_examples"] += 1
+                stats["val_count"] += 1
 
     return stats
 
@@ -641,8 +641,8 @@ def upload_artifacts_phase(
     logger.info("📊 Analyzing datasets for statistics...")
     dataset_stats = _analyze_datasets(train_dataset, validation_dataset)
     logger.info(f"   Dataset statistics: {dataset_stats}")
-    logger.info(f"   Train examples: {dataset_stats['train_examples']}")
-    logger.info(f"   Validation examples: {dataset_stats['validation_examples']}")
+    logger.info(f"   Train examples: {dataset_stats['train_count']}")
+    logger.info(f"   Validation examples: {dataset_stats['val_count']}")
     logger.info(f"   Quality distribution: {dataset_stats['quality_distribution']}")
 
     # Load training metadata if available
@@ -661,29 +661,28 @@ def upload_artifacts_phase(
         "upload_timestamp": datetime.now().isoformat()
     }
 
-    # Upload model
+    # Upload artifacts (both model and dataset with synchronized timestamps)
     try:
-        logger.info("📤 Uploading model to HuggingFace Hub...")
-        model_url = uploader.upload_model(adapter_path, upload_metadata)
-        if not model_url:
-            raise ValueError("Model upload returned empty URL")
-        results["model_url"] = model_url
-        logger.info(f"   ✅ Model uploaded: {model_url}")
-    except Exception as e:
-        logger.error(f"   ❌ Model upload failed: {e}")
-        raise RuntimeError(f"Model upload failed: {e}")
+        logger.info("📤 Uploading artifacts to HuggingFace Hub...")
+        upload_results = uploader.upload_artifacts(
+            adapter_path,
+            train_dataset,
+            validation_dataset,
+            upload_metadata
+        )
 
-    # Upload datasets
-    try:
-        logger.info("📤 Uploading datasets to HuggingFace Hub...")
-        dataset_url = uploader.upload_datasets(train_dataset, validation_dataset, upload_metadata)
-        if not dataset_url:
+        if not upload_results["model_url"]:
+            raise ValueError("Model upload returned empty URL")
+        if not upload_results["dataset_url"]:
             raise ValueError("Dataset upload returned empty URL")
-        results["dataset_url"] = dataset_url
-        logger.info(f"   ✅ Dataset uploaded: {dataset_url}")
+
+        results["model_url"] = upload_results["model_url"]
+        results["dataset_url"] = upload_results["dataset_url"]
+        logger.info(f"   ✅ Model uploaded: {results['model_url']}")
+        logger.info(f"   ✅ Dataset uploaded: {results['dataset_url']}")
     except Exception as e:
-        logger.error(f"   ❌ Dataset upload failed: {e}")
-        raise RuntimeError(f"Dataset upload failed: {e}")
+        logger.error(f"   ❌ Upload failed: {e}")
+        raise RuntimeError(f"Artifact upload failed: {e}")
 
     logger.info("✅ Phase 6 complete.")
     logger.info(f"   Model: {results['model_url']}")

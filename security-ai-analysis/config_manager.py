@@ -140,6 +140,11 @@ class OLMoSecurityConfig:
         self.default_base_model = os.getenv('OLMO_DEFAULT_BASE_MODEL',
                                           config.get('default_base_model', 'OLMo-2-1B-mlx-q4'))
 
+        # HuggingFace model ID for the base model (for reproducibility in uploads)
+        # This is the publicly accessible model identifier on HuggingFace Hub
+        self.base_model_hf_id = os.getenv('OLMO_BASE_MODEL_HF_ID',
+                                         config.get('base_model_hf_id', 'allenai/OLMo-2-1B'))
+
         # Load nested configuration sections
         self.fine_tuning = self._load_fine_tuning_section(config, project_root)
         self.knowledge_base = self._load_knowledge_base_section(config, project_root)

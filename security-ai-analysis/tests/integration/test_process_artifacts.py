@@ -21,7 +21,7 @@ class TestProcessArtifactsScript:
         assert cls.test_artifacts_dir.exists(), f"Test artifacts directory not found: {cls.test_artifacts_dir}"
         assert cls.phase_inputs_dir.exists(), f"Phase inputs directory not found: {cls.phase_inputs_dir}"
 
-        cls.temp_output_dir = Path(__file__).parent.parent / "security_ai_test_session" / "output"
+        cls.temp_output_dir = test_root / "phase_outputs"
 
         # Remove temporary output directory before tests
         if cls.temp_output_dir.exists():
@@ -323,9 +323,15 @@ class TestProcessArtifactsScript:
             assert len(lines) > 0, "Train dataset file should not be empty"
             for line in lines:
                 item = json.loads(line)
-                assert 'instruction' in item, "Each train dataset item should have an 'instruction'"
-                assert 'response' in item, "Each train dataset item should have a 'response'"
+                assert 'messages' in item, "Each train dataset item should have 'messages'"
                 assert 'metadata' in item, "Each train dataset item should have 'metadata'"
+                for message in item['messages']:
+                    assert 'role' in message, "Each message should have a 'role'"   
+                    assert 'content' in message, "Each message should have 'content'"
+                metadata = item['metadata']
+                assert 'quality' in metadata, "Metadata should have 'quality'"
+                assert 'source' in metadata, "Metadata should have 'source'"
+                assert 'chat_template' in metadata, "Metadata should have 'chat_template'"
 
         # Verify content of the validation dataset file
         with open(expected_validation_file, 'r') as f:
@@ -333,6 +339,66 @@ class TestProcessArtifactsScript:
             assert len(lines) > 0, "Validation dataset file should not be empty"
             for line in lines:
                 item = json.loads(line)
-                assert 'instruction' in item, "Each validation dataset item should have an 'instruction'"
-                assert 'response' in item, "Each validation dataset item should have a 'response'"
+                assert 'messages' in item, "Each validation dataset item should have 'messages'"
                 assert 'metadata' in item, "Each validation dataset item should have 'metadata'"
+                for message in item['messages']:
+                    assert 'role' in message, "Each message should have a 'role'"   
+                    assert 'content' in message, "Each message should have 'content'"
+                metadata = item['metadata']
+                assert 'quality' in metadata, "Metadata should have 'quality'"
+                assert 'source' in metadata, "Metadata should have 'source'"
+                assert 'chat_template' in metadata, "Metadata should have 'chat_template'"
+
+    def test_training_only_fails_with_no_datasets(self):
+        """Test training only mode fails with no datasets"""
+        result = self.run_process_artifacts(
+            additional_args=[
+                "--only-training"
+            ],
+            realtime_output=True
+        )
+        assert result == 1, f"Training only mode should fail with no datasets, got exit code {result}"
+
+    def test_training_only_fails_with_no_validation_dataset(self):
+        """Test training only mode fails with no validation dataset"""
+        result = self.run_process_artifacts(
+            additional_args=[
+                "--only-training",
+                "--train-dataset", str(self.phase_inputs_dir / "train_dataset.jsonl")
+            ],
+            realtime_output=True
+        )
+        assert result == 1, f"Training only mode should fail with no validation dataset, got exit code {result}"
+
+    def test_training_only_fails_with_no_train_dataset(self):
+        """Test training only mode fails with no train dataset"""
+        result = self.run_process_artifacts(
+            additional_args=[
+                "--only-training",
+                "--validation-dataset", str(self.phase_inputs_dir / "validation_dataset.jsonl")
+            ],
+            realtime_output=True
+        )
+        assert result == 1, f"Training only mode should fail with no train dataset, got exit code {result}"
+
+    def test_training_only_with_datasets(self, test_models_dir):
+        """Test training only mode with provided datasets"""
+        training_result = self.run_process_artifacts(
+            additional_args=[
+                "--only-training",
+                "--train-dataset", str(self.phase_inputs_dir / "train_dataset.jsonl"),
+                "--validation-dataset", str(self.phase_inputs_dir / "validation_dataset.jsonl")
+            ],
+            realtime_output=True
+        )
+        assert training_result == 0, f"Training only mode failed with exit code {training_result}"
+
+        # Verify expected model output directory exists
+        assert test_models_dir.exists(), f"Expected model output directory not found: {test_models_dir}"
+
+        # Verify model files exist in the output directory
+        model_dir = list(test_models_dir.glob("*"))
+        assert len(model_dir) == 1, "No model directory found in the output directory"
+        adapters_dir = model_dir[0] / "adapters"
+        assert adapters_dir.exists(), f"Adapters directory not found in model output: {adapters_dir}"
+        assert (adapters_dir / 'adapters.safetensors').exists(), f"Adapters file not found in: {adapters_dir}"

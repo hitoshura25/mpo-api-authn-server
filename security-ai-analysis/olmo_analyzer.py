@@ -166,36 +166,31 @@ class OLMoSecurityAnalyzer:
             self.tokenizer.pad_token = self.tokenizer.eos_token
             self.logger.info(f"✅ Pad token set to EOS: '{self.tokenizer.eos_token}'")
     
-    def analyze_vulnerability(self, vulnerability: Dict) -> str:
+    def _generate_with_prompt(
+        self,
+        prompt: str,
+        vuln_id: str = "unknown",
+        max_tokens: int = 150,
+        repetition_penalty: float = 1.1
+    ) -> str:
         """
-        Generate analysis with improved prompting for OLMo or fallback mode
+        Generate text using the model with a custom prompt.
+
+        Args:
+            prompt: The prompt to use for generation
+            vuln_id: Vulnerability ID for logging purposes
+            max_tokens: Maximum tokens to generate (default: 150)
+            repetition_penalty: Penalty for repeating tokens (default: 1.1)
+
+        Returns:
+            Raw generated text (without prompt)
         """
-        severity = vulnerability.get('severity', 'UNKNOWN')
-        tool = vulnerability.get('tool', 'security-scan')
-        vuln_id = vulnerability.get('id', 'UNKNOWN')
-        description = vulnerability.get('description', vulnerability.get('message', 'No description'))
-
-        self.logger.debug(f"      analyze_vulnerability() called for {vuln_id}")
-        self.logger.debug(f"      model is None: {self.model is None}")
-
         # Fail-fast: Model must be loaded and functional
         if self.model is None:
-            raise RuntimeError(f"Model not loaded - cannot analyze {vuln_id}")
+            raise RuntimeError(f"Model not loaded - cannot generate for {vuln_id}")
 
         self.logger.debug(f"      Using {'MLX-optimized' if self.mlx_optimized else 'transformers'} model for {vuln_id}")
-        
-        # Simplified, direct prompt optimized for OLMo-2
-        prompt = f"""Vulnerability: {vuln_id}
-Severity: {severity}
-Tool: {tool}
-Issue: {description}
 
-Provide a concise security analysis with:
-1. Impact explanation
-2. Specific remediation steps
-
-Analysis:"""
-        
         try:
             if self.mlx_optimized:
                 # Use MLX-LM with proper sampling - validated against official API
@@ -218,7 +213,7 @@ Analysis:"""
                 )
 
                 logits_processors = make_logits_processors(
-                    repetition_penalty=1.1,  # Reduce repetition
+                    repetition_penalty=repetition_penalty,  # Configurable repetition penalty
                     repetition_context_size=20
                 )
 
@@ -227,7 +222,7 @@ Analysis:"""
                 for token, _ in generate_step(
                     tokens,
                     self.model,
-                    max_tokens=150,
+                    max_tokens=max_tokens,  # Configurable max tokens
                     sampler=sampler,
                     logits_processors=logits_processors
                 ):
@@ -274,11 +269,11 @@ Analysis:"""
                     outputs = self.model.generate(
                         input_ids=inputs['input_ids'],
                         attention_mask=inputs.get('attention_mask'),
-                        max_new_tokens=150,
+                        max_new_tokens=max_tokens,  # Configurable max tokens
                         temperature=0.3,
                         do_sample=True,
                         top_p=0.9,
-                        repetition_penalty=1.1,
+                        repetition_penalty=repetition_penalty,  # Configurable repetition penalty
                         pad_token_id=self.tokenizer.pad_token_id,
                         eos_token_id=self.tokenizer.eos_token_id
                     )
@@ -295,12 +290,49 @@ Analysis:"""
 
         except Exception as e:
             self.logger.error(f"❌ Generation failed for {vuln_id}: {str(e)}")
+            raise  # Re-raise to let caller handle fallback
+
+        return analysis
+
+    def analyze_vulnerability(self, vulnerability: Dict) -> str:
+        """
+        Generate analysis with improved prompting for OLMo or fallback mode
+        """
+        severity = vulnerability.get('severity', 'UNKNOWN')
+        tool = vulnerability.get('tool', 'security-scan')
+        vuln_id = vulnerability.get('id', 'UNKNOWN')
+        description = vulnerability.get('description', vulnerability.get('message', 'No description'))
+
+        self.logger.debug(f"      analyze_vulnerability() called for {vuln_id}")
+        self.logger.debug(f"      model is None: {self.model is None}")
+
+        # Fail-fast: Model must be loaded and functional
+        if self.model is None:
+            raise RuntimeError(f"Model not loaded - cannot analyze {vuln_id}")
+
+        # Simplified, direct prompt optimized for OLMo-2
+        prompt = f"""Vulnerability: {vuln_id}
+Severity: {severity}
+Tool: {tool}
+Issue: {description}
+
+Provide a concise security analysis with:
+1. Impact explanation
+2. Specific remediation steps
+
+Analysis:"""
+
+        try:
+            # Use the extracted generation method
+            analysis = self._generate_with_prompt(prompt, vuln_id)
+        except Exception as e:
+            self.logger.error(f"❌ Generation failed: {e}")
             self.logger.info("🔄 Falling back to template-based analysis")
             return self._generate_template_analysis(vulnerability)
-        
+
         # Format the analysis for better readability
         formatted_analysis = self._format_analysis(analysis, vulnerability)
-        
+
         return formatted_analysis
     
     def _format_analysis(self, raw_analysis: str, vulnerability: Dict) -> Dict:
@@ -309,13 +341,13 @@ Analysis:"""
         """
         # Parse the raw analysis and structure it
         lines = raw_analysis.split('\n')
-        
+
         analysis = {
             "vulnerability_id": vulnerability.get('id', 'UNKNOWN'),
             "severity": vulnerability.get('severity', 'UNKNOWN'),
             "tool": vulnerability.get('tool', 'unknown'),
             "raw_analysis": raw_analysis,
-            "structured_analysis": {
+            "baseline_analysis": {
                 "impact": "",
                 "remediation": "",
                 "prevention": ""
@@ -328,7 +360,7 @@ Analysis:"""
             line = line.strip()
             if not line:
                 continue
-                
+
             # Detect section headers
             if any(key in line.lower() for key in ['impact:', 'risk:', 'consequence:']):
                 current_section = 'impact'
@@ -336,38 +368,38 @@ Analysis:"""
                 if ':' in line:
                     content = line.split(':', 1)[1].strip()
                     if content:
-                        analysis['structured_analysis']['impact'] = content
+                        analysis['baseline_analysis']['impact'] = content
             elif any(key in line.lower() for key in ['fix:', 'remediation:', 'solution:', 'update']):
                 current_section = 'remediation'
                 if ':' in line:
                     content = line.split(':', 1)[1].strip()
                     if content:
-                        analysis['structured_analysis']['remediation'] = content
+                        analysis['baseline_analysis']['remediation'] = content
             elif any(key in line.lower() for key in ['prevent:', 'avoid:', 'best practice']):
                 current_section = 'prevention'
                 if ':' in line:
                     content = line.split(':', 1)[1].strip()
                     if content:
-                        analysis['structured_analysis']['prevention'] = content
+                        analysis['baseline_analysis']['prevention'] = content
             elif current_section:
                 # Continue adding to current section
-                analysis['structured_analysis'][current_section] += " " + line
-        
+                analysis['baseline_analysis'][current_section] += " " + line
+
         # Clean up the structured sections
-        for key in analysis['structured_analysis']:
-            analysis['structured_analysis'][key] = analysis['structured_analysis'][key].strip()
-            
+        for key in analysis['baseline_analysis']:
+            analysis['baseline_analysis'][key] = analysis['baseline_analysis'][key].strip()
+
             # If a section is empty, try to extract from raw analysis
-            if not analysis['structured_analysis'][key] and raw_analysis:
+            if not analysis['baseline_analysis'][key] and raw_analysis:
                 if key == 'impact':
-                    analysis['structured_analysis'][key] = "Security impact requires further investigation"
+                    analysis['baseline_analysis'][key] = "Security impact requires further investigation"
                 elif key == 'remediation':
                     if 'update' in raw_analysis.lower() or 'patch' in raw_analysis.lower():
-                        analysis['structured_analysis'][key] = "Apply security updates as recommended"
+                        analysis['baseline_analysis'][key] = "Apply security updates as recommended"
                     else:
-                        analysis['structured_analysis'][key] = "Review and apply security best practices"
+                        analysis['baseline_analysis'][key] = "Review and apply security best practices"
                 elif key == 'prevention':
-                    analysis['structured_analysis'][key] = "Implement security monitoring and regular updates"
+                    analysis['baseline_analysis'][key] = "Implement security monitoring and regular updates"
         
         return analysis
     

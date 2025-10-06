@@ -3,7 +3,9 @@ import sys
 from pathlib import Path
 import argparse
 import logging
+from typing import Any, Dict, List
 
+from config_manager import OLMoSecurityConfig
 from parsers.trivy_parser import parse_trivy_json
 from parsers.checkov_parser import parse_checkov_json
 from parsers.sarif_parser import parse_sarif_json
@@ -11,10 +13,12 @@ from parsers.semgrep_parser import parse_semgrep_sarif
 from parsers.osv_parser import parse_osv_json
 from parsers.zap_parser import parse_zap_json
 from vulnerability_categorizer import VulnerabilityCategorizor
-
 from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
 from create_narrativized_dataset import SecurityNarrativizer
 from url_to_code_mapper import URLToCodeMapper
+from public_dataset_loader import PublicDatasetLoader
+from multi_approach_fix_generator import MultiApproachFixGenerator
+import random
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -24,10 +28,12 @@ class Phases:
     PARSING = "parsing"
     CATEGORIZATION = "categorization"
     NARRATIVE = "narrative"
+    DATASETS = "datasets"
+    TRAINING = "training"
 
     # List for validation
     ALL_PHASES = [
-        PARSING, CATEGORIZATION, NARRATIVE
+        PARSING, CATEGORIZATION, NARRATIVE, DATASETS, TRAINING
     ]
 
     # Input requirements mapping
@@ -35,6 +41,8 @@ class Phases:
         PARSING: [],  # Uses --artifacts-dir
         CATEGORIZATION: ['parsed_input'],
         NARRATIVE: ['categorized_input'],
+        DATASETS: ['narrativized_input'],
+        TRAINING: ['train_dataset_input', 'validation_dataset_input'],
     }
 
 def find_security_files(directory: str) -> dict:
@@ -219,11 +227,12 @@ def analyze_and_narrate_phase(categorized_vulns_file: Path, output_dir: Path) ->
 
             with open(analysis_result_file, 'w') as f:
                 json.dump(analysis_result, f, indent=2)
-            
-            structured_analysis = analysis_result.get('structured_analysis')
-            if not structured_analysis:
-                raise ValueError("Structured analysis returned empty result")
-            ai_analysis = f"Impact: {structured_analysis.get('impact', 'N/A')}. Remediation: {structured_analysis.get('remediation', 'N/A')}. Prevention: {structured_analysis.get('prevention', 'N/A')}"
+
+            # TODO: Revisit using other analysis field (i.e. raw_analysis or enhanced_analysis)
+            baseline_analysis = analysis_result.get('baseline_analysis')
+            if not baseline_analysis:
+                raise ValueError("Baseline analysis returned empty result")
+            ai_analysis = f"Impact: {baseline_analysis.get('impact', 'N/A')}. Remediation: {baseline_analysis.get('remediation', 'N/A')}. Prevention: {baseline_analysis.get('prevention', 'N/A')}"
                 
             # Step 3: Generate narrative description
             narrative = narrativizer.narrativize_vulnerability(vuln)
@@ -251,6 +260,286 @@ def analyze_and_narrate_phase(categorized_vulns_file: Path, output_dir: Path) ->
     logger.info(f"Output saved to: {output_file}")
     return output_file
 
+def construct_datasets_phase(narrativized_file: Path, output_dir: Path) -> tuple[Path, Path]:
+    """
+    PHASE 3: Construct Datasets
+    - Loads public datasets (CVEfixes)
+    - Generates specific fixes for deterministic vulnerabilities
+    - Processes narratives into training pairs
+    - Combines and splits into train/validation sets
+    """
+    logger.info("🚀 Starting Phase 3: Construct Datasets")
+
+    if not narrativized_file.exists():
+        raise FileNotFoundError(f"Narrativized file not found: {narrativized_file}")
+
+    # Load narrativized analyses
+    with open(narrativized_file, 'r') as f:
+        narrativized_analyses = json.load(f)
+
+    logger.info(f"Loaded {len(narrativized_analyses)} narrativized analyses")
+
+    all_training_pairs = []
+
+    # SOURCE 1: Load Public Data
+    logger.info("📚 Source 1: Loading public datasets...")
+    public_loader = PublicDatasetLoader()
+    public_examples = public_loader.load_public_datasets()  # Load all available data
+    all_training_pairs.extend(public_examples)
+    logger.info(f"   Added {len(public_examples)} examples from public datasets")
+
+    # SOURCE 2: Generate Specific Fixes
+    logger.info("🔧 Source 2: Generating specific fixes...")
+    specific_fixes = _generate_specific_fixes(narrativized_analyses)
+    all_training_pairs.extend(specific_fixes)
+    logger.info(f"   Added {len(specific_fixes)} specific fix examples")
+
+    # SOURCE 3: Process AI Narratives
+    logger.info("📝 Source 3: Processing AI narratives...")
+    narrative_examples = _process_narratives_to_training_pairs(narrativized_analyses, specific_fixes)
+    all_training_pairs.extend(narrative_examples)
+    logger.info(f"   Added {len(narrative_examples)} narrative-based examples")
+
+    # Combine and shuffle
+    logger.info(f"📊 Total training pairs: {len(all_training_pairs)}")
+    random.shuffle(all_training_pairs)
+
+    # Split 80/20 train/validation
+    split_idx = int(len(all_training_pairs) * 0.8)
+    train_pairs = all_training_pairs[:split_idx]
+    val_pairs = all_training_pairs[split_idx:]
+
+    logger.info(f"   Train set: {len(train_pairs)} examples")
+    logger.info(f"   Validation set: {len(val_pairs)} examples")
+
+    # Save as JSONL
+    output_dir.mkdir(parents=True, exist_ok=True)
+    train_file = output_dir / "train_dataset.jsonl"
+    val_file = output_dir / "validation_dataset.jsonl"
+
+    with open(train_file, 'w') as f:
+        for pair in train_pairs:
+            f.write(json.dumps(pair) + '\n')
+
+    with open(val_file, 'w') as f:
+        for pair in val_pairs:
+            f.write(json.dumps(pair) + '\n')
+
+    logger.info(f"✅ Phase 3 complete.")
+    logger.info(f"   Train dataset: {train_file}")
+    logger.info(f"   Validation dataset: {val_file}")
+
+    return train_file, val_file
+
+
+def _generate_specific_fixes(narrativized_analyses: List[Dict]) -> List[Dict[str, Any]]:
+    """
+    Generate specific fixes for deterministic vulnerabilities (e.g., dependency upgrades) in MLX chat format.
+
+    Returns training pairs in MLX-compatible chat format:
+    {
+        "messages": [
+            {"role": "system", "content": "..."},
+            {"role": "user", "content": "..."},
+            {"role": "assistant", "content": "..."}
+        ],
+        "metadata": {...}
+    }
+    """
+    specific_fixes = []
+    fix_generator = MultiApproachFixGenerator()
+
+    # System message for security analysis
+    system_message = """You are a cybersecurity analyst specializing in WebAuthn and FIDO2 security vulnerabilities.
+
+CRITICAL SECURITY GUIDELINES:
+- Always prioritize security in your analysis and recommendations
+- Provide actionable remediation steps for identified vulnerabilities
+- Consider the broader security implications of each finding
+- Maintain accuracy and precision in threat assessments
+- Follow responsible disclosure principles
+- Preserve safety guidelines and ethical analysis standards
+
+Your role is to analyze security vulnerabilities and provide comprehensive, actionable guidance for remediation."""
+
+    for analysis in narrativized_analyses:
+        vuln = analysis['vulnerability']
+        tool = vuln.get('tool', '')
+        vuln_id = vuln.get('id', '')
+
+        # Check for deterministic fixes (Trivy/OSV dependency vulnerabilities)
+        if tool in ['trivy', 'sarif-trivy', 'osv', 'osv-scanner']:
+            # Try to generate a specific fix
+            try:
+                fixes = fix_generator.generate_fixes(vuln)
+                if fixes and len(fixes) > 0:
+                    primary_fix = fixes[0]  # Use the primary fix approach
+
+                    # Create training pair in MLX chat format
+                    user_content = f"Based on the following analysis, provide the fix.\n\nAnalysis: {analysis['ai_analysis']}\n\nContext: {analysis.get('narrative', '')[:500]}"
+                    assistant_content = primary_fix.get('fix_code', primary_fix.get('description', ''))
+
+                    if assistant_content:
+                        specific_fixes.append({
+                            "messages": [
+                                {"role": "system", "content": system_message},
+                                {"role": "user", "content": user_content},
+                                {"role": "assistant", "content": assistant_content}
+                            ],
+                            "metadata": {
+                                "quality": "high",
+                                "source": "generated",
+                                "vulnerability_id": vuln_id,
+                                "tool": tool,
+                                "chat_template": "chatml",
+                                "security_framework": "webauthn-security-analysis"
+                            }
+                        })
+            except Exception as e:
+                logger.debug(f"Could not generate specific fix for {vuln_id}: {e}")
+                continue
+
+    return specific_fixes
+
+
+def _process_narratives_to_training_pairs(narrativized_analyses: List[Dict], specific_fixes: List[Dict]) -> List[Dict[str, Any]]:
+    """
+    Process narratives into training pairs in MLX chat format.
+    If a specific fix exists, use it as response. Otherwise, use narrative/analysis as response.
+
+    Returns training pairs in MLX-compatible chat format:
+    {
+        "messages": [
+            {"role": "system", "content": "..."},
+            {"role": "user", "content": "..."},
+            {"role": "assistant", "content": "..."}
+        ],
+        "metadata": {...}
+    }
+    """
+    narrative_pairs = []
+
+    # Create a mapping of vulnerability IDs to specific fixes
+    fix_map = {fix['metadata']['vulnerability_id']: fix for fix in specific_fixes if 'vulnerability_id' in fix.get('metadata', {})}
+
+    # System message for security analysis
+    system_message = """You are a cybersecurity analyst specializing in WebAuthn and FIDO2 security vulnerabilities.
+
+CRITICAL SECURITY GUIDELINES:
+- Always prioritize security in your analysis and recommendations
+- Provide actionable remediation steps for identified vulnerabilities
+- Consider the broader security implications of each finding
+- Maintain accuracy and precision in threat assessments
+- Follow responsible disclosure principles
+- Preserve safety guidelines and ethical analysis standards
+
+Your role is to analyze security vulnerabilities and provide comprehensive, actionable guidance for remediation."""
+
+    for analysis in narrativized_analyses:
+        vuln = analysis['vulnerability']
+        vuln_id = vuln.get('id', '')
+
+        # Check if we have a specific fix for this vulnerability
+        if vuln_id in fix_map:
+            # Use the specific fix (extract assistant content from messages)
+            fix = fix_map[vuln_id]
+            user_content = f"Based on the following analysis, provide remediation guidance.\n\nAnalysis: {analysis['ai_analysis']}\n\nContext: {analysis.get('narrative', '')[:500]}"
+            # Extract assistant content from fix messages
+            assistant_content = fix['messages'][2]['content']  # Assistant is the 3rd message (index 2)
+            quality = "high"
+        else:
+            # Use narrative as fallback
+            user_content = f"Based on the following analysis, provide remediation guidance.\n\nAnalysis: {analysis['ai_analysis']}\n\nContext: {analysis.get('narrative', '')[:500]}"
+            assistant_content = analysis['ai_analysis']  # Use AI analysis as response
+            quality = "low"
+
+        # Create MLX chat format
+        narrative_pairs.append({
+            "messages": [
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_content},
+                {"role": "assistant", "content": assistant_content}
+            ],
+            "metadata": {
+                "quality": quality,
+                "source": "narrative",
+                "vulnerability_id": vuln_id,
+                "tool": vuln.get('tool', 'unknown'),
+                "chat_template": "chatml",
+                "security_framework": "webauthn-security-analysis"
+            }
+        })
+
+    return narrative_pairs
+
+
+def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
+    """
+    PHASE 4: Train Model
+    - Creates structured training run directory with manifest
+    - Applies quality-weighted sampling to prioritize high-quality examples
+    - Fine-tunes model using MLX LoRA
+    - Saves adapter artifacts
+
+    Args:
+        train_dataset: Path to train_dataset.jsonl
+        validation_dataset: Path to validation_dataset.jsonl
+
+    Returns:
+        Path to trained adapter directory
+    """
+    logger.info("🚀 Starting Phase 4: Train Model")
+    config = OLMoSecurityConfig()
+
+    if not train_dataset.exists():
+        raise FileNotFoundError(f"Train dataset not found: {train_dataset}")
+    if not validation_dataset.exists():
+        raise FileNotFoundError(f"Validation dataset not found: {validation_dataset}")
+
+    # Import managers
+    from mlx_trainer import MLXTrainer
+    from training_run_manager import TrainingRunManager
+
+    # Create training run with structured directory
+    run_manager = TrainingRunManager(config)
+
+    training_params = {
+        "learning_rate": config.fine_tuning.learning_rate,
+        "batch_size": config.fine_tuning.batch_size,
+        "num_iters": config.fine_tuning.max_stage1_iters,
+        "quality_weight_multiplier": 2.5
+    }
+
+    # Create run (this copies datasets to train.jsonl/valid.jsonl)
+    training_run = run_manager.create_run(
+        train_dataset=train_dataset,
+        validation_dataset=validation_dataset,
+        training_params=training_params
+    )
+
+    logger.info(f"Train dataset: {train_dataset}")
+    logger.info(f"Validation dataset: {validation_dataset}")
+    logger.info(f"Training run: {training_run.run_id}")
+    logger.info(f"Training data directory: {training_run.training_data_path}")
+
+    # Initialize trainer with config
+    trainer = MLXTrainer(
+        config=config,
+        output_dir=training_run.adapters_path
+    )
+
+    # Run training (uses training_run.training_data_path with train.jsonl/valid.jsonl)
+    adapter_path = trainer.train(
+        training_data_dir=training_run.training_data_path
+    )
+
+    logger.info(f"✅ Phase 4 complete.")
+    logger.info(f"   Training run: {training_run.run_dir}")
+    logger.info(f"   Adapter artifacts: {adapter_path}")
+
+    return adapter_path
+
+
 def get_active_only_phase(args) -> str:
     """Get the single active --only-* phase flag, or None for multi-phase"""
 
@@ -258,6 +547,8 @@ def get_active_only_phase(args) -> str:
         Phases.PARSING: args.only_parsing,
         Phases.CATEGORIZATION: args.only_categorization,
         Phases.NARRATIVE: args.only_narrativization,
+        Phases.DATASETS: args.only_datasets,
+        Phases.TRAINING: args.only_training,
     }
 
     active_phases = [phase for phase, flag in only_flags.items() if flag]
@@ -285,15 +576,22 @@ def validate_phase_inputs(phase: str, args):
 def run_full_pipeline(artifacts_dir: str, output_dir: Path):
     # --- Execute Pipeline Phases ---
 
-    # Phase 1
+    # Phase 1: Parse
     parsed_vulns_file = parse_vulnerabilities_phase(artifacts_dir, output_dir)
+
+    # Phase 2: Categorize
     categorized_vulns_file = categorize_vulnerabilities_phase(parsed_vulns_file, output_dir)
-    narratived_file = analyze_and_narrate_phase(categorized_vulns_file, output_dir)
 
+    # Phase 3: Analyze & Narrate
+    narrativized_file = analyze_and_narrate_phase(categorized_vulns_file, output_dir)
 
-    # (Future phases will be called here)
-    # phase_2_analyze_and_narrate(categorized_vulns_file, ...)
-    logger.info("\n✅ Pipeline finished.")
+    # Phase 4: Construct Datasets
+    train_file, val_file = construct_datasets_phase(narrativized_file, output_dir)
+
+    logger.info("\n✅ Full pipeline completed successfully!")
+    logger.info(f"   Final outputs:")
+    logger.info(f"     - Train dataset: {train_file}")
+    logger.info(f"     - Validation dataset: {val_file}")
 
 def execute_single_phase(phase: str, args):
     """Execute a single phase with provided inputs"""
@@ -321,6 +619,27 @@ def execute_single_phase(phase: str, args):
         print(f"✅ Narrativization completed. Output files:")
         print(f"   Narrativization results: {narrativization_file}")
         return 0, {"phase": phase, "narrativization_file": str(narrativization_file)}
+
+    elif phase == Phases.DATASETS:
+        narrativized_file = args.narrativized_input
+        train_file, val_file = construct_datasets_phase(narrativized_file, output_dir)
+        print(f"✅ Dataset construction completed. Output files:")
+        print(f"   Train dataset: {train_file}")
+        print(f"   Validation dataset: {val_file}")
+        return 0, {"phase": phase, "train_file": str(train_file), "val_file": str(val_file)}
+
+    elif phase == Phases.TRAINING:
+        train_dataset = args.train_dataset_input
+        validation_dataset = args.validation_dataset_input
+
+        adapter_path = train_model_phase(
+            train_dataset,
+            validation_dataset
+        )
+        print(f"✅ Model training completed. Output files:")
+        print(f"   Adapter artifacts: {adapter_path}")
+        return 0, {"phase": phase, "adapter_path": str(adapter_path)}
+
     else:
         raise ValueError(f"Unknown phase: {phase}")
 
@@ -337,6 +656,8 @@ def main():
     phase_group.add_argument("--only-parsing", action="store_true", help="Execute only parsing phase")
     phase_group.add_argument("--only-categorization", action="store_true", help="Execute only categorization phase")
     phase_group.add_argument("--only-narrativization", action="store_true", help="Execute only narrative analysis phase")
+    phase_group.add_argument("--only-datasets", action="store_true", help="Execute only dataset construction phase")
+    phase_group.add_argument("--only-training", action="store_true", help="Execute only model training phase")
 
     # Input file arguments
     input_group = parser.add_argument_group('Phase Input Files')
@@ -344,6 +665,13 @@ def main():
                             help="Parsed vulnerabilities file (for categorization)")
     input_group.add_argument("--categorized-input", type=Path,
                             help="Categorized vulnerabilities file (for narrative analysis)")
+    input_group.add_argument("--narrativized-input", type=Path,
+                            help="Narrativized analyses file (for dataset construction)")
+    input_group.add_argument("--train-dataset-input", type=Path,
+                            help="Training dataset file (for model training)")
+    input_group.add_argument("--validation-dataset-input", type=Path,
+                            help="Validation dataset file (for model training)")
+
     args = parser.parse_args()
 
     # Check for single-phase execution

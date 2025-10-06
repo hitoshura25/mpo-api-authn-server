@@ -218,9 +218,6 @@ class MLXTrainer:
                 text=True
             )
 
-            logger.info("✅ MLX training completed successfully")
-            logger.info(f"   Adapter saved: {self.output_dir}")
-
             # Log training output
             if result.stdout:
                 logger.debug(f"Training output:\n{result.stdout}")
@@ -274,10 +271,8 @@ class MLXTrainer:
         # Step 3: Save training metadata
         self._save_training_metadata(adapter_path, training_data_dir)
 
-        logger.info("=" * 60)
-        logger.info("✅ Phase 4 Complete: Model Training")
-        logger.info(f"   Adapter path: {adapter_path}")
-        logger.info("=" * 60)
+        logger.info("✅ MLX training completed successfully")
+        logger.info(f"   Adapter saved: {self.output_dir}")
 
         return adapter_path
 

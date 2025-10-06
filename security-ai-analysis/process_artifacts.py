@@ -588,10 +588,20 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path):
     # Phase 4: Construct Datasets
     train_file, val_file = construct_datasets_phase(narrativized_file, output_dir)
 
+    # Phase 5: Train Model
+    adapter_path = train_model_phase(
+        train_file,
+        val_file
+    )
+
     logger.info("\n✅ Full pipeline completed successfully!")
     logger.info(f"   Final outputs:")
-    logger.info(f"     - Train dataset: {train_file}")
-    logger.info(f"     - Validation dataset: {val_file}")
+    logger.info(f"   Parsed vulnerabilities: {parsed_vulns_file}")
+    logger.info(f"   Categorized vulnerabilities: {categorized_vulns_file}")
+    logger.info(f"   Narrativized analyses: {narrativized_file}")
+    logger.info(f"   Train dataset: {train_file}")
+    logger.info(f"   Validation dataset: {val_file}")
+    logger.info(f"   Adapter artifacts: {adapter_path}")
 
 def execute_single_phase(phase: str, args):
     """Execute a single phase with provided inputs"""

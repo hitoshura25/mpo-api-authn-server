@@ -402,3 +402,75 @@ class TestProcessArtifactsScript:
         adapters_dir = model_dir[0] / "adapters"
         assert adapters_dir.exists(), f"Adapters directory not found in model output: {adapters_dir}"
         assert (adapters_dir / 'adapters.safetensors').exists(), f"Adapters file not found in: {adapters_dir}"
+        assert (adapters_dir / 'training_metadata.json').exists(), f"training_metadata.json file not found in: {adapters_dir}"
+
+    def test_upload_only_fails_with_no_adapters(self):
+        """Test upload only mode fails with no model directory"""
+        result = self.run_process_artifacts(
+            additional_args=[
+                "--only-upload"
+            ],
+            realtime_output=True
+        )
+        assert result == 1, f"Upload only mode should fail with no model directory, got exit code {result}"
+    
+    def test_upload_only_fails_with_no_train_dataset(self):
+        """Test upload only mode fails with no training dataset"""
+        result = self.run_process_artifacts(
+            additional_args=[
+                "--only-upload",
+                "--adapter-input", str(self.phase_inputs_dir / "adapters"),
+            ],
+            realtime_output=True
+        )
+        assert result == 1, f"Upload only mode should fail with no training dataset, got exit code {result}"
+
+    def test_upload_only_fails_with_no_validation_dataset(self):
+        """Test upload only mode fails with no validation dataset"""
+        result = self.run_process_artifacts(
+            additional_args=[
+                "--only-upload",
+                "--adapter-input", str(self.phase_inputs_dir / "adapters"),
+                "--train-dataset", str(self.phase_inputs_dir / "train_dataset.jsonl"),
+            ],
+            realtime_output=True
+        )
+        assert result == 1, f"Upload only mode should fail with no validation dataset, got exit code {result}"
+
+    def test_upload_only_with_adapters_and_datasets(self, test_upload_staging_dir):
+        """Test upload only mode with provided model directory and datasets"""
+        upload_result = self.run_process_artifacts(
+            additional_args=[
+                "--only-upload",
+                "--adapter-input", str(self.phase_inputs_dir / "adapters"),
+                "--train-dataset", str(self.phase_inputs_dir / "train_dataset.jsonl"),
+                "--validation-dataset", str(self.phase_inputs_dir / "validation_dataset.jsonl")
+            ],
+            realtime_output=True
+        )
+        assert upload_result == 0, f"Upload only mode failed with exit code {upload_result}"
+
+        # Verify expected output file exists
+        upload_datasets_dirs = list(test_upload_staging_dir.glob("datasets/*"))
+        assert len(upload_datasets_dirs) == 1, "No upload datasets directory found in the output directory"
+
+        upload_datasets_dir = upload_datasets_dirs[0]
+        assert upload_datasets_dir.exists(), f"Expected upload datasets directory not found: {upload_datasets_dir}"
+
+        upload_datasets_files = list(map(lambda f: f.name, list(upload_datasets_dir.glob("*"))))
+        assert "README.md" in upload_datasets_files, "Uploaded train dataset file not found"
+        assert "train.jsonl" in upload_datasets_files, "Uploaded train dataset file not found"
+        assert "valid.jsonl" in upload_datasets_files, "Uploaded validation dataset file not found"
+
+        upload_model_dirs = list(test_upload_staging_dir.glob("model/*"))
+        assert len(upload_model_dirs) == 1, "No upload model directory found in the output directory"
+
+        upload_model_dir = upload_model_dirs[0]
+        upload_model_files = list(map(lambda f: f.name, list(upload_model_dir.glob("*"))))
+        assert upload_model_dir.exists(), f"Expected upload models directory not found: {upload_model_dir}"
+
+        assert "adapters.safetensors" in upload_model_files, "Uploaded adapters file not found"
+        assert "training_metadata.json" in upload_model_files, "Uploaded training metadata file not found"
+        assert "README.md" in upload_model_files, "Uploaded model README file not found"
+        assert "adapter_config.json" in upload_model_files, "Uploaded adapter_config.json file not found"
+        assert "training-recipe.yaml" in upload_model_files, "Uploaded training-recipe.yaml file not found"

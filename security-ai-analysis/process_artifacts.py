@@ -4,6 +4,7 @@ from pathlib import Path
 import argparse
 import logging
 from typing import Any, Dict, List
+from datetime import datetime
 
 from config_manager import OLMoSecurityConfig
 from parsers.trivy_parser import parse_trivy_json
@@ -30,10 +31,11 @@ class Phases:
     NARRATIVE = "narrative"
     DATASETS = "datasets"
     TRAINING = "training"
+    UPLOAD = "upload"
 
     # List for validation
     ALL_PHASES = [
-        PARSING, CATEGORIZATION, NARRATIVE, DATASETS, TRAINING
+        PARSING, CATEGORIZATION, NARRATIVE, DATASETS, TRAINING, UPLOAD
     ]
 
     # Input requirements mapping
@@ -43,6 +45,7 @@ class Phases:
         NARRATIVE: ['categorized_input'],
         DATASETS: ['narrativized_input'],
         TRAINING: ['train_dataset_input', 'validation_dataset_input'],
+        UPLOAD: ['adapter_input', 'train_dataset_input', 'validation_dataset_input'],
     }
 
 def find_security_files(directory: str) -> dict:
@@ -540,6 +543,145 @@ def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
     return adapter_path
 
 
+def _analyze_datasets(train_file: Path, val_file: Path) -> Dict[str, Any]:
+    """
+    Analyze datasets for statistics to include in model/dataset cards.
+
+    Returns:
+        Dictionary with dataset statistics
+    """
+    stats = {
+        "train_examples": 0,
+        "validation_examples": 0,
+        "quality_distribution": {"high": 0, "medium": 0, "low": 0, "unknown": 0},
+        "source_distribution": {}
+    }
+
+    # Analyze training dataset
+    with open(train_file, 'r') as f:
+        for line in f:
+            if line.strip():
+                stats["train_examples"] += 1
+                try:
+                    example = json.loads(line)
+                    metadata = example.get('metadata')
+                    if not metadata:
+                        raise ValueError("Missing metadata field in training example")
+
+                    # Track quality
+                    quality = metadata.get('quality')
+                    if not quality:
+                        raise ValueError("Missing quality field in metadata")
+                    stats["quality_distribution"][quality] = stats["quality_distribution"].get(quality, 0) + 1
+
+                    # Track source
+                    source = metadata.get('source')
+                    if not source:
+                        raise ValueError("Missing source field in metadata")
+                    stats["source_distribution"][source] = stats["source_distribution"].get(source, 0) + 1
+                except json.JSONDecodeError:
+                    continue
+
+    # Analyze validation dataset
+    with open(val_file, 'r') as f:
+        for line in f:
+            if line.strip():
+                stats["validation_examples"] += 1
+
+    return stats
+
+
+def upload_artifacts_phase(
+    adapter_path: Path,
+    train_dataset: Path,
+    validation_dataset: Path,
+    skip_upload: bool = False
+) -> Dict[str, Any]:
+    """
+    PHASE 6: Upload Artifacts to HuggingFace Hub
+
+    Uploads model, datasets, and training artifacts with comprehensive documentation.
+
+    Args:
+        adapter_path: Path to trained model adapter
+        train_dataset: Path to training dataset (train.jsonl)
+        validation_dataset: Path to validation dataset (valid.jsonl)
+        skip_upload: If True, skip actual upload operations
+
+    Returns:
+        Dictionary with upload status and URLs
+    """
+    logger.info("=" * 60)
+    logger.info("📤 Phase 6: Upload Artifacts")
+    logger.info("=" * 60)
+
+    from artifact_uploader import ArtifactUploader
+
+    # Initialize uploader
+    uploader = ArtifactUploader(skip_upload=skip_upload)
+
+    results = {
+        "model_url": None,
+        "dataset_url": None,
+        "staging_dir": str(uploader.staging_dir),
+        "skipped": skip_upload
+    }
+
+    # Analyze datasets for metadata
+    logger.info("📊 Analyzing datasets for statistics...")
+    dataset_stats = _analyze_datasets(train_dataset, validation_dataset)
+    logger.info(f"   Train examples: {dataset_stats['train_examples']}")
+    logger.info(f"   Validation examples: {dataset_stats['validation_examples']}")
+    logger.info(f"   Quality distribution: {dataset_stats['quality_distribution']}")
+
+    # Load training metadata if available
+    training_metadata = {}
+    metadata_file = adapter_path / "training_metadata.json"
+    if not metadata_file.exists():
+        raise FileNotFoundError(f"Training metadata file not found: {metadata_file}")
+
+    with open(metadata_file, 'r') as f:
+        training_metadata = json.load(f)
+
+    # Combine metadata
+    upload_metadata = {
+        **training_metadata,
+        "dataset_stats": dataset_stats,
+        "upload_timestamp": datetime.now().isoformat()
+    }
+
+    # Upload model
+    try:
+        logger.info("📤 Uploading model to HuggingFace Hub...")
+        model_url = uploader.upload_model(adapter_path, upload_metadata)
+        if not model_url:
+            raise ValueError("Model upload returned empty URL")
+        results["model_url"] = model_url
+        logger.info(f"   ✅ Model uploaded: {model_url}")
+    except Exception as e:
+        logger.error(f"   ❌ Model upload failed: {e}")
+        raise RuntimeError(f"Model upload failed: {e}")
+
+    # Upload datasets
+    try:
+        logger.info("📤 Uploading datasets to HuggingFace Hub...")
+        dataset_url = uploader.upload_datasets(train_dataset, validation_dataset, upload_metadata)
+        if not dataset_url:
+            raise ValueError("Dataset upload returned empty URL")
+        results["dataset_url"] = dataset_url
+        logger.info(f"   ✅ Dataset uploaded: {dataset_url}")
+    except Exception as e:
+        logger.error(f"   ❌ Dataset upload failed: {e}")
+        raise RuntimeError(f"Dataset upload failed: {e}")
+
+    logger.info("✅ Phase 6 complete.")
+    logger.info(f"   Model: {results['model_url']}")
+    logger.info(f"   Dataset: {results['dataset_url']}")
+    logger.info(f"   Staging: {results['staging_dir']}")
+
+    return results
+
+
 def get_active_only_phase(args) -> str:
     """Get the single active --only-* phase flag, or None for multi-phase"""
 
@@ -549,6 +691,7 @@ def get_active_only_phase(args) -> str:
         Phases.NARRATIVE: args.only_narrativization,
         Phases.DATASETS: args.only_datasets,
         Phases.TRAINING: args.only_training,
+        Phases.UPLOAD: args.only_upload,
     }
 
     active_phases = [phase for phase, flag in only_flags.items() if flag]
@@ -573,7 +716,7 @@ def validate_phase_inputs(phase: str, args):
     if missing_inputs:
         raise ValueError(f"Error: --only-{phase} requires: {', '.join(missing_inputs)}")
 
-def run_full_pipeline(artifacts_dir: str, output_dir: Path):
+def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = False):
     # --- Execute Pipeline Phases ---
 
     # Phase 1: Parse
@@ -594,6 +737,14 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path):
         val_file
     )
 
+    # Phase 6: Upload Artifacts
+    upload_results = upload_artifacts_phase(
+        adapter_path,
+        train_file,
+        val_file,
+        skip_upload=skip_upload
+    )
+
     logger.info("\n✅ Full pipeline completed successfully!")
     logger.info(f"   Final outputs:")
     logger.info(f"   Parsed vulnerabilities: {parsed_vulns_file}")
@@ -602,6 +753,10 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path):
     logger.info(f"   Train dataset: {train_file}")
     logger.info(f"   Validation dataset: {val_file}")
     logger.info(f"   Adapter artifacts: {adapter_path}")
+    if upload_results.get("model_url"):
+        logger.info(f"   Model URL: {upload_results['model_url']}")
+    if upload_results.get("dataset_url"):
+        logger.info(f"   Dataset URL: {upload_results['dataset_url']}")
 
 def execute_single_phase(phase: str, args):
     """Execute a single phase with provided inputs"""
@@ -650,6 +805,27 @@ def execute_single_phase(phase: str, args):
         print(f"   Adapter artifacts: {adapter_path}")
         return 0, {"phase": phase, "adapter_path": str(adapter_path)}
 
+    elif phase == Phases.UPLOAD:
+        adapter_path = args.adapter_input
+        train_dataset = args.train_dataset_input
+        validation_dataset = args.validation_dataset_input
+        skip_upload = getattr(args, 'skip_upload', False)
+
+        upload_results = upload_artifacts_phase(
+            adapter_path,
+            train_dataset,
+            validation_dataset,
+            skip_upload=skip_upload
+        )
+        print(f"✅ Upload completed.")
+        if upload_results.get("model_url"):
+            print(f"   Model: {upload_results['model_url']}")
+        if upload_results.get("dataset_url"):
+            print(f"   Dataset: {upload_results['dataset_url']}")
+        if upload_results.get("staging_dir"):
+            print(f"   Staging: {upload_results['staging_dir']}")
+        return 0, {"phase": phase, **upload_results}
+
     else:
         raise ValueError(f"Unknown phase: {phase}")
 
@@ -668,6 +844,11 @@ def main():
     phase_group.add_argument("--only-narrativization", action="store_true", help="Execute only narrative analysis phase")
     phase_group.add_argument("--only-datasets", action="store_true", help="Execute only dataset construction phase")
     phase_group.add_argument("--only-training", action="store_true", help="Execute only model training phase")
+    phase_group.add_argument("--only-upload", action="store_true", help="Execute only artifact upload phase")
+
+    # Upload control flags
+    upload_group = parser.add_argument_group('Upload Options')
+    upload_group.add_argument("--skip-upload", action="store_true", help="Skip artifact upload in full pipeline (default: False)")
 
     # Input file arguments
     input_group = parser.add_argument_group('Phase Input Files')
@@ -678,9 +859,11 @@ def main():
     input_group.add_argument("--narrativized-input", type=Path,
                             help="Narrativized analyses file (for dataset construction)")
     input_group.add_argument("--train-dataset-input", type=Path,
-                            help="Training dataset file (for model training)")
+                            help="Training dataset file (for model training and upload)")
     input_group.add_argument("--validation-dataset-input", type=Path,
-                            help="Validation dataset file (for model training)")
+                            help="Validation dataset file (for model training and upload)")
+    input_group.add_argument("--adapter-input", type=Path,
+                            help="Trained adapter directory (for upload)")
 
     args = parser.parse_args()
 
@@ -704,7 +887,7 @@ def main():
         print(f"Summary: {summary}")
         return result
 
-    run_full_pipeline(str(args.artifacts_dir), args.output_dir)
+    run_full_pipeline(str(args.artifacts_dir), args.output_dir, skip_upload=args.skip_upload)
 
 if __name__ == "__main__":
     main()

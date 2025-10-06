@@ -1,0 +1,12 @@
+{
+  "timestamp": "2025-10-06T11:24:44.707644",
+  "base_model": "/Users/vinayakmenon/shared-olmo-models/base/OLMo-2-1B-mlx-q4",
+  "training_data_dir": "/Users/vinayakmenon/mpo-api-authn-server/security-ai-analysis/tests/security_ai_test_session/test_models/webauthn-security-20251006_112442/training-data",
+  "hyperparameters": {
+    "learning_rate": 0.0002,
+    "batch_size": 1,
+    "num_iters": 0,
+    "quality_weight_multiplier": 2.5
+  },
+  "adapter_path": "/Users/vinayakmenon/mpo-api-authn-server/security-ai-analysis/tests/security_ai_test_session/test_models/webauthn-security-20251006_112442/adapters"
+}

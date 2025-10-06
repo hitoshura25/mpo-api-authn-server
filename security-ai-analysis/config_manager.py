@@ -53,6 +53,7 @@ class FineTuningSection:
     default_repo_prefix: str
     private_repos: bool
     skip_in_daemon: bool
+    upload_staging_dir: Path
 
 
 @dataclass
@@ -234,6 +235,11 @@ class OLMoSecurityConfig:
         # HuggingFace settings
         hf_config = ft_config.get('huggingface', {})
 
+        # Resolve upload staging directory
+        upload_staging_dir = Path(
+            os.getenv('OLMO_UPLOAD_STAGING_DIR', str(workspace_dir / hf_config.get('upload_staging_dir', 'upload_staging')))
+        ).expanduser()
+
         return FineTuningSection(
             workspace_dir=workspace_dir,
             default_output_name=ft_config['default_output_name'],
@@ -261,7 +267,8 @@ class OLMoSecurityConfig:
             upload_enabled=hf_config.get('upload_enabled', True),
             default_repo_prefix=hf_config.get('default_repo_prefix', 'hitoshura25'),
             private_repos=hf_config.get('private_repos', False),
-            skip_in_daemon=ft_config.get('skip_in_daemon', False)
+            skip_in_daemon=ft_config.get('skip_in_daemon', False),
+            upload_staging_dir=upload_staging_dir
         )
 
     def _load_knowledge_base_section(self, config: Dict[str, Any], project_root: Path) -> KnowledgeBaseSection:

@@ -20,6 +20,7 @@ from create_narrativized_dataset import SecurityNarrativizer
 from url_to_code_mapper import URLToCodeMapper
 from public_dataset_loader import PublicDatasetLoader
 from multi_approach_fix_generator import MultiApproachFixGenerator
+from build_knowledge_base import build_knowledge_base_from_narrativized_file
 import random
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -262,6 +263,17 @@ def analyze_and_narrate_phase(categorized_vulns_file: Path, output_dir: Path) ->
 
     logger.info(f"✅ Narrativization phase complete. Narrativized {len(narrativized_analyses)} vulnerabilities")
     logger.info(f"Output saved to: {output_file}")
+
+    # Rebuild knowledge base for future RAG-enhanced analyses
+    logger.info("=" * 60)
+    logger.info("🧠 Rebuilding knowledge base...")
+    logger.info("=" * 60)
+
+    if build_knowledge_base_from_narrativized_file(output_file):
+        logger.info("✅ Knowledge base updated successfully")
+    else:
+        raise RuntimeError("Failed to update knowledge base")
+
     return output_file
 
 def construct_datasets_phase(narrativized_file: Path, output_dir: Path) -> tuple[Path, Path]:

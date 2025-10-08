@@ -8,19 +8,11 @@ from typing import Any, Dict, List
 from datetime import datetime
 
 from config_manager import OLMoSecurityConfig
-from parsers.trivy_parser import parse_trivy_json
-from parsers.checkov_parser import parse_checkov_json
-from parsers.sarif_parser import parse_sarif_json
-from parsers.semgrep_parser import parse_semgrep_sarif
-from parsers.osv_parser import parse_osv_json
+from parsers.sarif_trivy_parser import parse_trivy_sarif
+from parsers.sarif_checkov_parser import parse_checkov_sarif
+from parsers.semgrep_parser import parse_semgrep_json
+from parsers.osv_parser import parse_osv_json_enhanced
 from parsers.zap_parser import parse_zap_json
-from vulnerability_categorizer import VulnerabilityCategorizor
-from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
-from create_narrativized_dataset import SecurityNarrativizer
-from url_to_code_mapper import URLToCodeMapper
-from public_dataset_loader import PublicDatasetLoader
-from multi_approach_fix_generator import MultiApproachFixGenerator
-from build_knowledge_base import build_knowledge_base_from_narrativized_file
 import random
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -29,23 +21,19 @@ logger = logging.getLogger(__name__)
 # Phase constants to avoid string repetition and typos
 class Phases:
     PARSING = "parsing"
-    CATEGORIZATION = "categorization"
-    NARRATIVE = "narrative"
     DATASETS = "datasets"
     TRAINING = "training"
     UPLOAD = "upload"
 
     # List for validation
     ALL_PHASES = [
-        PARSING, CATEGORIZATION, NARRATIVE, DATASETS, TRAINING, UPLOAD
+        PARSING, DATASETS, TRAINING, UPLOAD
     ]
 
     # Input requirements mapping
     PHASE_INPUTS = {
         PARSING: [],  # Uses --artifacts-dir
-        CATEGORIZATION: ['parsed_input'],
-        NARRATIVE: ['categorized_input'],
-        DATASETS: ['narrativized_input'],
+        DATASETS: ['parsed_vulnerabilities_input'],
         TRAINING: ['train_dataset_input', 'validation_dataset_input'],
         UPLOAD: ['adapter_input', 'train_dataset_input', 'validation_dataset_input'],
     }
@@ -68,18 +56,16 @@ def find_security_files(directory: str) -> dict:
 
         file_str = str(file_path).lower()
 
-        if 'trivy' in file_str and file_path.suffix in ['.json', '.sarif']:
+        if 'trivy' in file_str and file_path.suffix in ['.sarif']:
             scan_files['trivy'].append(str(file_path))
-        elif 'checkov' in file_str and file_path.suffix in ['.json', '.sarif']:
+        elif 'checkov' in file_str and file_path.suffix in ['.sarif']:
             scan_files['checkov'].append(str(file_path))
-        elif 'semgrep' in file_str and file_path.suffix in ['.json', '.sarif']:
+        elif 'semgrep' in file_str and file_path.suffix in ['.json']:
             scan_files['semgrep'].append(str(file_path))
         elif 'osv' in file_str and file_path.suffix == '.json':
             scan_files['osv'].append(str(file_path))
         elif 'zap' in file_str and file_path.suffix == '.json':
             scan_files['zap'].append(str(file_path))
-        elif file_path.suffix == '.sarif' and 'semgrep' not in file_str and 'trivy' not in file_str and 'checkov' not in file_str:
-            scan_files['sarif'].append(str(file_path))
 
     logger.info("Found security scan files:")
     for scan_type, files in scan_files.items():
@@ -106,11 +92,10 @@ def parse_vulnerabilities_phase(artifacts_dir: str, output_dir: Path) -> Path:
 
     all_vulnerabilities = []
     parser_map = {
-        'trivy': lambda path: parse_sarif_json(path) if path.endswith('.sarif') else parse_trivy_json(path),
-        'checkov': lambda path: parse_sarif_json(path) if path.endswith('.sarif') else parse_checkov_json(path),
-        'semgrep': parse_semgrep_sarif,
-        'osv': parse_osv_json,
-        'sarif': parse_sarif_json,
+        'trivy': parse_trivy_sarif,
+        'checkov': parse_checkov_sarif,
+        'semgrep': parse_semgrep_json,
+        'osv': parse_osv_json_enhanced,
         'zap': parse_zap_json,
     }
 
@@ -118,10 +103,11 @@ def parse_vulnerabilities_phase(artifacts_dir: str, output_dir: Path) -> Path:
     for scan_type, files in scan_files.items():
         if not files:
             continue
-        logger.info(f"Parsing {len(files)} files for scan type: {scan_type}")
+        logger.info(f"Determing parser for scan type: {scan_type}")
         parser_func = parser_map.get(scan_type)
         if not parser_func:
             continue
+        logger.info(f"Parsing {len(files)} files for scan type: {scan_type}")
         for file_path in files:
             try:
                 vulns = parser_func(file_path)
@@ -139,144 +125,7 @@ def parse_vulnerabilities_phase(artifacts_dir: str, output_dir: Path) -> Path:
     logger.info(f"✅ Parse vulnerabilities phase complete. Output saved to: {output_file}")
     return output_file
 
-def categorize_vulnerabilities_phase(parsed_vulns_file: Path, output_dir: Path) -> Path:
-    """
-    PHASE 2:
-    - Categorizes each vulnerability by security domain.
-    - Saves the aggregated, categorized list to a single JSON file.
-    """
-    if not parsed_vulns_file.exists():
-        raise FileNotFoundError(f"Parsed vulnerabilities file not found: {parsed_vulns_file}")
-    
-    all_vulnerabilities = []
-    with open(parsed_vulns_file, 'r') as f:
-        all_vulnerabilities = json.load(f)
-
-    if not all_vulnerabilities:
-        raise ValueError("No vulnerabilities found in the parsed input file.")
-    else:
-        logger.info("Categorizing vulnerabilities by security domain...")
-        categorizer = VulnerabilityCategorizor()
-        categorized_vulnerabilities = []
-        for vuln in all_vulnerabilities:
-            try:
-                category, confidence = categorizer.categorize_vulnerability(vuln)
-                vuln['security_category'] = category
-                vuln['category_confidence'] = confidence
-                categorized_vulnerabilities.append(vuln)
-            except Exception as e:
-                raise ValueError(f"Failed to categorize vulnerability {vuln.get('id', 'N/A')}: {e}")
-
-        logger.info(f"Successfully categorized {len(categorized_vulnerabilities)} vulnerabilities.")
-
-    output_file = output_dir / "categorized_vulnerabilities.json"
-    with open(output_file, 'w') as f:
-        json.dump(categorized_vulnerabilities, f, indent=2)
-
-    logger.info(f"✅ Phase 2 complete. Output saved to: {output_file}")
-    return output_file
-
-def analyze_and_narrate_phase(categorized_vulns_file: Path, output_dir: Path) -> Path:
-    """
-    PHASE: Analyze & Narrate
-    - Uses RAG-enhanced analyzer to generate AI analysis for each vulnerability
-    - Generates descriptive narratives using SecurityNarrativizer
-    - Maps URLs to code for DAST/ZAP findings
-    - Saves combined analysis to JSON file
-    """
-    logger.info("🚀 Starting Phase: Analyze & Narrate")
-
-    if not categorized_vulns_file.exists():
-        raise FileNotFoundError(f"Categorized vulnerabilities file not found: {categorized_vulns_file}")
-
-    # Load categorized vulnerabilities
-    with open(categorized_vulns_file, 'r') as f:
-        categorized_vulnerabilities = json.load(f)
-
-    if not categorized_vulnerabilities:
-        raise ValueError("No categorized vulnerabilities found in input file")
-
-    logger.info(f"Loaded {len(categorized_vulnerabilities)} categorized vulnerabilities")
-
-    # Initialize analyzers once
-    logger.info("Initializing RAG-enhanced analyzer and narrativizer...")
-    try:
-        rag_analyzer = RAGEnhancedOLMoAnalyzer(enable_rag=True)
-    except Exception as e:
-        raise RuntimeError(f"Failed to initialize RAG-enhanced analyzer: {e}")
-
-    narrativizer = SecurityNarrativizer()
-
-    # Initialize URL-to-code mapper for ZAP findings
-    project_root = Path(__file__).parent.parent
-    url_mapper = URLToCodeMapper(project_root)
-
-    # Process each vulnerability
-    narrativized_analyses = []
-
-    for idx, vuln in enumerate(categorized_vulnerabilities, 1):
-        logger.info(f"Processing vulnerability {idx}/{len(categorized_vulnerabilities)}: {vuln.get('id', 'N/A')}")
-
-        try:
-            # Step 1: URL-to-code mapping for ZAP/DAST findings
-            if vuln.get('tool') == 'zap' and 'url' in vuln:
-                route_mapping = url_mapper.find_route_handler(vuln['url'])
-                if route_mapping:
-                    vuln['code_context'] = route_mapping
-                    logger.info(f"  Mapped URL to code: {route_mapping.get('file_path', 'N/A')}")
-
-            # Step 2: Generate AI analysis using RAG-enhanced analyzer
-            analysis_result = rag_analyzer.analyze_vulnerability(vuln)
-            analysis_result_file = output_dir / "rag_analysis" / f"{vuln.get('id', 'unknown').replace('/', '_')}_analysis.json"
-            analysis_result_file.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(analysis_result_file, 'w') as f:
-                json.dump(analysis_result, f, indent=2)
-
-            # TODO: Revisit using other analysis field (i.e. raw_analysis or enhanced_analysis)
-            baseline_analysis = analysis_result.get('baseline_analysis')
-            if not baseline_analysis:
-                raise ValueError("Baseline analysis returned empty result")
-            ai_analysis = f"Impact: {baseline_analysis.get('impact', 'N/A')}. Remediation: {baseline_analysis.get('remediation', 'N/A')}. Prevention: {baseline_analysis.get('prevention', 'N/A')}"
-                
-            # Step 3: Generate narrative description
-            narrative = narrativizer.narrativize_vulnerability(vuln)
-
-            # Step 4: Create combined output structure
-            narrativized_entry = {
-                "vulnerability": vuln,
-                "ai_analysis": ai_analysis,
-                "narrative": narrative
-            }
-
-            narrativized_analyses.append(narrativized_entry)
-
-        except Exception as e:
-            raise RuntimeError(f"Error processing vulnerability {vuln.get('id', 'N/A')}: {e}")
-
-    # Save output
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_file = output_dir / "narrativized_analyses.json"
-
-    with open(output_file, 'w') as f:
-        json.dump(narrativized_analyses, f, indent=2)
-
-    logger.info(f"✅ Narrativization phase complete. Narrativized {len(narrativized_analyses)} vulnerabilities")
-    logger.info(f"Output saved to: {output_file}")
-
-    # Rebuild knowledge base for future RAG-enhanced analyses
-    logger.info("=" * 60)
-    logger.info("🧠 Rebuilding knowledge base...")
-    logger.info("=" * 60)
-
-    if build_knowledge_base_from_narrativized_file(output_file):
-        logger.info("✅ Knowledge base updated successfully")
-    else:
-        raise RuntimeError("Failed to update knowledge base")
-
-    return output_file
-
-def construct_datasets_phase(narrativized_file: Path, output_dir: Path) -> tuple[Path, Path]:
+def construct_datasets_phase(parsed_vulns_file: Path, output_dir: Path) -> tuple[Path, Path]:
     """
     PHASE 3: Construct Datasets
     - Loads public datasets (CVEfixes)
@@ -286,35 +135,29 @@ def construct_datasets_phase(narrativized_file: Path, output_dir: Path) -> tuple
     """
     logger.info("🚀 Starting Phase 3: Construct Datasets")
 
-    if not narrativized_file.exists():
-        raise FileNotFoundError(f"Narrativized file not found: {narrativized_file}")
+    if not parsed_vulns_file.exists():
+        raise FileNotFoundError(f"Parsed vulnerabilities file not found: {parsed_vulns_file}")
 
-    # Load narrativized analyses
-    with open(narrativized_file, 'r') as f:
-        narrativized_analyses = json.load(f)
+    # Load parsed vulnerabilities
+    with open(parsed_vulns_file, 'r') as f:
+        parsed_vulns = json.load(f)
 
-    logger.info(f"Loaded {len(narrativized_analyses)} narrativized analyses")
+    logger.info(f"Loaded {len(parsed_vulns)} parsed vulnerabilities")
 
     all_training_pairs = []
 
     # SOURCE 1: Load Public Data
-    logger.info("📚 Source 1: Loading public datasets...")
-    public_loader = PublicDatasetLoader()
-    public_examples = public_loader.load_public_datasets()  # Load all available data
-    all_training_pairs.extend(public_examples)
-    logger.info(f"   Added {len(public_examples)} examples from public datasets")
+    #logger.info("📚 Source 1: Loading public datasets...")
+    #public_loader = PublicDatasetLoader()
+    #public_examples = public_loader.load_public_datasets()  # Load all available data
+    #all_training_pairs.extend(public_examples)
+    #logger.info(f"   Added {len(public_examples)} examples from public datasets")
 
     # SOURCE 2: Generate Specific Fixes
     logger.info("🔧 Source 2: Generating specific fixes...")
-    specific_fixes = _generate_specific_fixes(narrativized_analyses)
+    specific_fixes = _generate_specific_fixes(parsed_vulns)
     all_training_pairs.extend(specific_fixes)
     logger.info(f"   Added {len(specific_fixes)} specific fix examples")
-
-    # SOURCE 3: Process AI Narratives
-    logger.info("📝 Source 3: Processing AI narratives...")
-    narrative_examples = _process_narratives_to_training_pairs(narrativized_analyses, specific_fixes)
-    all_training_pairs.extend(narrative_examples)
-    logger.info(f"   Added {len(narrative_examples)} narrative-based examples")
 
     # Combine and shuffle
     logger.info(f"📊 Total training pairs: {len(all_training_pairs)}")
@@ -348,155 +191,235 @@ def construct_datasets_phase(narrativized_file: Path, output_dir: Path) -> tuple
     return train_file, val_file
 
 
-def _generate_specific_fixes(narrativized_analyses: List[Dict]) -> List[Dict[str, Any]]:
+def _create_vulnerability_prompt(vuln: Dict) -> str:
     """
-    Generate specific fixes for deterministic vulnerabilities (e.g., dependency upgrades) in MLX chat format.
+    Create tool-specific user prompt based on vulnerability data.
 
-    Returns training pairs in MLX-compatible chat format:
-    {
-        "messages": [
-            {"role": "system", "content": "..."},
-            {"role": "user", "content": "..."},
-            {"role": "assistant", "content": "..."}
-        ],
-        "metadata": {...}
-    }
+    Args:
+        vuln: Vulnerability dictionary with tool, security_category, and vulnerability details
+
+    Returns:
+        Formatted user prompt for the training pair
     """
-    specific_fixes = []
-    fix_generator = MultiApproachFixGenerator()
+    tool = vuln.get('tool', '')
+    category = vuln.get('security_category', 'unknown')
 
-    # System message for security analysis
-    system_message = """You are a cybersecurity analyst specializing in WebAuthn and FIDO2 security vulnerabilities.
+    # Dependency vulnerabilities (OSV, Trivy)
+    if category == 'dependency_vulnerabilities':
+        return f"""Fix the following security vulnerability:
 
-CRITICAL SECURITY GUIDELINES:
-- Always prioritize security in your analysis and recommendations
-- Provide actionable remediation steps for identified vulnerabilities
-- Consider the broader security implications of each finding
-- Maintain accuracy and precision in threat assessments
-- Follow responsible disclosure principles
-- Preserve safety guidelines and ethical analysis standards
+Vulnerability: {vuln.get('id', 'Unknown')}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+Package: {vuln.get('package_name', vuln.get('title', 'Unknown'))}
+Current Version: {vuln.get('installed_version', vuln.get('version', 'Unknown'))}
+Fixed Version: {vuln.get('fixed_version', 'Latest')}
+Description: {vuln.get('description', vuln.get('message', 'No description'))}"""
 
-Your role is to analyze security vulnerabilities and provide comprehensive, actionable guidance for remediation."""
+    # Code vulnerabilities (Semgrep)
+    elif category == 'code_vulnerability':
+        code_context = vuln.get('code_context', {})
+        vulnerable_code = code_context.get('vulnerable_code', 'N/A')
 
-    for analysis in narrativized_analyses:
-        vuln = analysis['vulnerability']
-        tool = vuln.get('tool', '')
-        vuln_id = vuln.get('id', '')
+        return f"""Fix the following code security vulnerability:
 
-        # Check for deterministic fixes (Trivy/OSV dependency vulnerabilities)
-        if tool in ['trivy', 'sarif-trivy', 'osv', 'osv-scanner']:
-            # Try to generate a specific fix
-            try:
-                # Generate fixes and check success
-                result = fix_generator.generate_fixes(vuln, code_context=None)
-                if not result.success:
-                    logger.error(f"Fix generation failed for {vuln_id}: {result.error_message}")
-                    raise RuntimeError(f"Fix generation failed for {vuln_id}: {result.error_message}")
+Vulnerability: {vuln.get('id', 'Unknown')}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+File: {vuln.get('file_path', 'Unknown')}
+Line: {vuln.get('start', {}).get('line', 'Unknown')}
+Message: {vuln.get('message', 'No description')}
 
-                fixes = result.fixes
-                if fixes and len(fixes) > 0:
-                    primary_fix = fixes[0]  # Use the primary fix approach (SecurityFix dataclass)
+Vulnerable Code:
+{vulnerable_code}
 
-                    # Create training pair in MLX chat format
-                    user_content = f"Based on the following analysis, provide the fix.\n\nAnalysis: {analysis['ai_analysis']}\n\nContext: {analysis.get('narrative', '')[:500]}"
+Provide a secure fix for this code."""
 
-                    # SecurityFix is a dataclass - use attribute access, not dict.get()
-                    assistant_content = primary_fix.fixed_code or primary_fix.description
+    # Web/HTTP security (ZAP)
+    elif category == 'web_security':
+        return f"""Fix the following web security vulnerability:
 
-                    if assistant_content:
-                        specific_fixes.append({
-                            "messages": [
-                                {"role": "system", "content": system_message},
-                                {"role": "user", "content": user_content},
-                                {"role": "assistant", "content": assistant_content}
-                            ],
-                            "metadata": {
-                                "quality": "high",
-                                "source": "generated",
-                                "vulnerability_id": vuln_id,
-                                "tool": tool,
-                                "chat_template": "chatml",
-                                "security_framework": "webauthn-security-analysis"
-                            }
-                        })
-            except Exception as e:
-                # FAIL FAST - don't suppress exceptions
-                logger.error(f"Could not generate specific fix for {vuln_id}: {e}")
-                raise RuntimeError(f"Error generating specific fix for vulnerability {vuln_id}: {e}")
+Alert: {vuln.get('alert', 'Unknown')}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+URL: {vuln.get('uri', 'Unknown')}
+Description: {vuln.get('description', 'No description')}
+Solution: {vuln.get('solution', 'No solution provided')}"""
 
-    return specific_fixes
+    # Configuration security (Checkov)
+    elif category == 'configuration_security':
+        code_context = vuln.get('code_context', {})
+        vulnerable_code = code_context.get('vulnerable_code', 'N/A')
+
+        return f"""Fix the following configuration security issue:
+
+Rule: {vuln.get('rule_name', vuln.get('id', 'Unknown'))}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+File: {vuln.get('file_path', 'Unknown')}
+Config Type: {vuln.get('config_type', 'Unknown')}
+Message: {vuln.get('message', 'No description')}
+
+Current Configuration:
+{vulnerable_code}
+
+Provide a secure configuration."""
+
+    # Fallback for unknown categories
+    else:
+        return f"""Fix the following security issue:
+
+ID: {vuln.get('id', 'Unknown')}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+Category: {category}
+Description: {vuln.get('message', vuln.get('description', 'No description'))}"""
 
 
-def _process_narratives_to_training_pairs(narrativized_analyses: List[Dict], specific_fixes: List[Dict]) -> List[Dict[str, Any]]:
+def _format_assistant_response(fix_data: Dict) -> str:
     """
-    Process narratives into training pairs in MLX chat format.
-    If a specific fix exists, use it as response. Otherwise, use narrative/analysis as response.
+    Format the fix data into a comprehensive assistant response.
 
-    Returns training pairs in MLX-compatible chat format:
-    {
-        "messages": [
-            {"role": "system", "content": "..."},
-            {"role": "user", "content": "..."},
-            {"role": "assistant", "content": "..."}
-        ],
-        "metadata": {...}
-    }
+    Args:
+        fix_data: Fix dictionary with description, fixed_code, explanation, and alternatives
+
+    Returns:
+        Formatted assistant response for the training pair
     """
-    narrative_pairs = []
+    description = fix_data.get('description', '')
+    fixed_code = fix_data.get('fixed_code', '')
+    explanation = fix_data.get('explanation', '')
+    alternatives = fix_data.get('alternatives', [])
 
-    # Create a mapping of vulnerability IDs to specific fixes
-    fix_map = {fix['metadata']['vulnerability_id']: fix for fix in specific_fixes if 'vulnerability_id' in fix.get('metadata', {})}
+    # Build comprehensive response
+    response_parts = []
 
-    # System message for security analysis
-    system_message = """You are a cybersecurity analyst specializing in WebAuthn and FIDO2 security vulnerabilities.
+    # Primary fix
+    if description:
+        response_parts.append(f"## Fix: {description}\n")
 
-CRITICAL SECURITY GUIDELINES:
-- Always prioritize security in your analysis and recommendations
-- Provide actionable remediation steps for identified vulnerabilities
-- Consider the broader security implications of each finding
-- Maintain accuracy and precision in threat assessments
-- Follow responsible disclosure principles
-- Preserve safety guidelines and ethical analysis standards
+    if fixed_code:
+        response_parts.append(f"```\n{fixed_code}\n```\n")
 
-Your role is to analyze security vulnerabilities and provide comprehensive, actionable guidance for remediation."""
+    if explanation:
+        response_parts.append(f"### Explanation\n{explanation}\n")
 
-    for analysis in narrativized_analyses:
-        vuln = analysis['vulnerability']
-        vuln_id = vuln.get('id', '')
+    # Alternative approaches
+    if alternatives:
+        response_parts.append("### Alternative Approaches\n")
+        for i, alt in enumerate(alternatives, 1):
+            alt_desc = alt.get('description', '')
+            alt_code = alt.get('fixed_code', '')
+            alt_exp = alt.get('explanation', '')
 
-        # Check if we have a specific fix for this vulnerability
-        if vuln_id in fix_map:
-            # Use the specific fix (extract assistant content from messages)
-            fix = fix_map[vuln_id]
-            user_content = f"Based on the following analysis, provide remediation guidance.\n\nAnalysis: {analysis['ai_analysis']}\n\nContext: {analysis.get('narrative', '')[:500]}"
-            # Extract assistant content from fix messages
-            assistant_content = fix['messages'][2]['content']  # Assistant is the 3rd message (index 2)
-            quality = "high"
-        else:
-            # Use narrative as fallback
-            user_content = f"Based on the following analysis, provide remediation guidance.\n\nAnalysis: {analysis['ai_analysis']}\n\nContext: {analysis.get('narrative', '')[:500]}"
-            assistant_content = analysis['ai_analysis']  # Use AI analysis as response
-            quality = "low"
+            if alt_desc:
+                response_parts.append(f"\n**Alternative {i}: {alt_desc}**\n")
+            if alt_code:
+                response_parts.append(f"```\n{alt_code}\n```\n")
+            if alt_exp:
+                response_parts.append(f"{alt_exp}\n")
 
-        # Create MLX chat format
-        narrative_pairs.append({
+    return '\n'.join(response_parts).strip()
+
+
+def _generate_specific_fixes(parsed_vulns: List[Dict]) -> List[Dict[str, Any]]:
+    """
+    Generate training pairs from parsed vulnerabilities with pre-generated fixes.
+
+    Uses the enhanced parsing architecture where all tools (OSV, Trivy, Semgrep, ZAP, Checkov)
+    generate fixes during parsing. This function creates tool-specific prompts and formats
+    the pre-generated fixes into MLX-compatible training pairs.
+
+    Args:
+        parsed_vulns: List of flat vulnerability dictionaries with 'fix' field containing:
+            - description: Fix description
+            - fixed_code: The fixed code/configuration
+            - explanation: Detailed explanation
+            - alternatives: List of alternative fixes (optional)
+
+    Returns:
+        List of training pairs in MLX-compatible chat format:
+        {
             "messages": [
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": user_content},
-                {"role": "assistant", "content": assistant_content}
+                {"role": "system", "content": "..."},
+                {"role": "user", "content": "..."},
+                {"role": "assistant", "content": "..."}
             ],
             "metadata": {
-                "quality": quality,
-                "source": "narrative",
-                "vulnerability_id": vuln_id,
-                "tool": vuln.get('tool', 'unknown'),
-                "chat_template": "chatml",
-                "security_framework": "webauthn-security-analysis"
+                "quality": "high",
+                "source": "generated",
+                "vulnerability_id": "...",
+                "tool": "osv|trivy|semgrep|zap|checkov",
+                "security_category": "...",
+                "confidence": 0.0-1.0,
+                ...
             }
-        })
+        }
+    """
+    specific_fixes = []
+    # System message for security analysis
+    system_message = """You are a cybersecurity analyst specializing in WebAuthn and FIDO2 security vulnerabilities.
 
-    return narrative_pairs
+CRITICAL SECURITY GUIDELINES:
+- Always prioritize security in your analysis and recommendations
+- Provide actionable remediation steps for identified vulnerabilities
+- Consider the broader security implications of each finding
+- Maintain accuracy and precision in threat assessments
+- Follow responsible disclosure principles
+- Preserve safety guidelines and ethical analysis standards
 
+Your role is to analyze security vulnerabilities and provide comprehensive, actionable guidance for remediation."""
+
+    for vuln in parsed_vulns:
+        # Vulnerabilities are now flat objects with pre-generated fixes
+        tool = vuln.get('tool')
+        vuln_id = vuln.get('id')
+        fix_data = vuln.get('fix')
+
+        if not vuln_id:
+            logger.error(f"Missing vulnerability ID in entry: {vuln}")
+            raise ValueError("Each vulnerability must have an 'id' field")
+
+        if not tool:
+            logger.error(f"Missing tool information for vulnerability {vuln_id}")
+            raise ValueError(f"Missing tool information for vulnerability {vuln_id}")
+
+        if not fix_data:
+            logger.error(f"No fix data found for {vuln_id} from {tool}")
+            raise ValueError(f"Missing fix data for vulnerability {vuln_id} from {tool}")
+
+        try:
+            # Generate tool-specific user prompt based on vulnerability category
+            user_content = _create_vulnerability_prompt(vuln)
+
+            # Use the pre-generated fix from parsing phase
+            # Primary fix has description, fixed_code, and explanation
+            assistant_content = _format_assistant_response(fix_data)
+
+            if assistant_content:
+                specific_fixes.append({
+                    "messages": [
+                        {"role": "system", "content": system_message},
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": assistant_content}
+                    ],
+                    "metadata": {
+                        "quality": "high",
+                        "source": "generated",
+                        "vulnerability_id": vuln_id,
+                        "tool": tool,
+                        "security_category": vuln.get('security_category', 'unknown'),
+                        "confidence": fix_data.get('confidence', 0.7),
+                        "chat_template": "chatml",
+                        "security_framework": "webauthn-security-analysis"
+                    }
+                })
+        except Exception as e:
+            # FAIL FAST - don't suppress exceptions
+            logger.error(f"Could not generate training pair for {vuln_id}: {e}")
+            raise RuntimeError(f"Error generating training pair for vulnerability {vuln_id}: {e}")
+
+    return specific_fixes
 
 def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
     """
@@ -709,8 +632,6 @@ def get_active_only_phase(args) -> str:
 
     only_flags = {
         Phases.PARSING: args.only_parsing,
-        Phases.CATEGORIZATION: args.only_categorization,
-        Phases.NARRATIVE: args.only_narrativization,
         Phases.DATASETS: args.only_datasets,
         Phases.TRAINING: args.only_training,
         Phases.UPLOAD: args.only_upload,
@@ -744,14 +665,8 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = 
     # Phase 1: Parse
     parsed_vulns_file = parse_vulnerabilities_phase(artifacts_dir, output_dir)
 
-    # Phase 2: Categorize
-    categorized_vulns_file = categorize_vulnerabilities_phase(parsed_vulns_file, output_dir)
-
-    # Phase 3: Analyze & Narrate
-    narrativized_file = analyze_and_narrate_phase(categorized_vulns_file, output_dir)
-
-    # Phase 4: Construct Datasets
-    train_file, val_file = construct_datasets_phase(narrativized_file, output_dir)
+    # Phase 2: Construct Datasets
+    train_file, val_file = construct_datasets_phase(parsed_vulns_file, output_dir)
 
     # Phase 5: Train Model
     adapter_path = train_model_phase(
@@ -770,8 +685,6 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = 
     logger.info("\n✅ Full pipeline completed successfully!")
     logger.info(f"   Final outputs:")
     logger.info(f"   Parsed vulnerabilities: {parsed_vulns_file}")
-    logger.info(f"   Categorized vulnerabilities: {categorized_vulns_file}")
-    logger.info(f"   Narrativized analyses: {narrativized_file}")
     logger.info(f"   Train dataset: {train_file}")
     logger.info(f"   Validation dataset: {val_file}")
     logger.info(f"   Adapter artifacts: {adapter_path}")
@@ -793,23 +706,9 @@ def execute_single_phase(phase: str, args):
         print(f"   Parsed vulnerabilities: {vulnerabilities_file}")
         return 0, {"phase": phase, "vulnerabilities_file": str(vulnerabilities_file)}
 
-    elif phase == Phases.CATEGORIZATION:
-        vulnerabilities_file = args.parsed_input
-        categorization_file = categorize_vulnerabilities_phase(vulnerabilities_file, output_dir)
-        print(f"✅ Categorization completed. Output files:")
-        print(f"   Categorization  results: {categorization_file}")
-        return 0, {"phase": phase, "categorization_file": str(categorization_file)}
-    
-    elif phase == Phases.NARRATIVE:
-        categories_file = args.categorized_input
-        narrativization_file = analyze_and_narrate_phase(categories_file, output_dir)
-        print(f"✅ Narrativization completed. Output files:")
-        print(f"   Narrativization results: {narrativization_file}")
-        return 0, {"phase": phase, "narrativization_file": str(narrativization_file)}
-
     elif phase == Phases.DATASETS:
-        narrativized_file = args.narrativized_input
-        train_file, val_file = construct_datasets_phase(narrativized_file, output_dir)
+        parsed_vulnerabilities_file = args.parsed_vulnerabilities_input
+        train_file, val_file = construct_datasets_phase(parsed_vulnerabilities_file, output_dir)
         print(f"✅ Dataset construction completed. Output files:")
         print(f"   Train dataset: {train_file}")
         print(f"   Validation dataset: {val_file}")
@@ -914,8 +813,6 @@ def main():
     # Single-phase execution flags
     phase_group = parser.add_argument_group('Single Phase Execution')
     phase_group.add_argument("--only-parsing", action="store_true", help="Execute only parsing phase")
-    phase_group.add_argument("--only-categorization", action="store_true", help="Execute only categorization phase")
-    phase_group.add_argument("--only-narrativization", action="store_true", help="Execute only narrative analysis phase")
     phase_group.add_argument("--only-datasets", action="store_true", help="Execute only dataset construction phase")
     phase_group.add_argument("--only-training", action="store_true", help="Execute only model training phase")
     phase_group.add_argument("--only-upload", action="store_true", help="Execute only artifact upload phase")
@@ -928,10 +825,8 @@ def main():
     input_group = parser.add_argument_group('Phase Input Files')
     input_group.add_argument("--parsed-input", type=Path,
                             help="Parsed vulnerabilities file (for categorization)")
-    input_group.add_argument("--categorized-input", type=Path,
-                            help="Categorized vulnerabilities file (for narrative analysis)")
-    input_group.add_argument("--narrativized-input", type=Path,
-                            help="Narrativized analyses file (for dataset construction)")
+    input_group.add_argument("--parsed-vulnerabilities-input", type=Path,
+                            help="Parsed vulnerabilities file (for dataset construction)")
     input_group.add_argument("--train-dataset-input", type=Path,
                             help="Training dataset file (for model training and upload)")
     input_group.add_argument("--validation-dataset-input", type=Path,

@@ -144,25 +144,43 @@ class MultiApproachFixGenerator:
             'typescript': self._get_typescript_templates()
         }
     
-    def generate_fixes(self, vulnerability: Dict[str, Any], 
+    def generate_fixes(self, vulnerability: Dict[str, Any],
                       code_context: Optional[CodeContext]) -> FixGenerationResult:
         """
         Generate multiple fix approaches for a vulnerability.
-        
+
+        Universal fix generation - delegates to tool-specific methods when available.
+
         Args:
             vulnerability: Vulnerability data from security tools
             code_context: Extracted code context around vulnerability (None for infrastructure vulnerabilities)
-            
+
         Returns:
             FixGenerationResult with generated fixes
         """
         try:
+            # Check for tool-specific fix generation
+            tool = vulnerability.get('tool', '').lower()
+
+            # Delegate to tool-specific methods
+            if 'osv' in tool:
+                return self._generate_osv_fix(vulnerability, code_context)
+            elif 'trivy' in tool:
+                return self._generate_trivy_fix(vulnerability, code_context)
+            elif 'semgrep' in tool:
+                return self._generate_semgrep_fix(vulnerability, code_context)
+            elif 'zap' in tool:
+                return self._generate_zap_fix(vulnerability, code_context)
+            elif 'checkov' in tool:
+                return self._generate_checkov_fix(vulnerability, code_context)
+
+            # Fall back to generic multi-approach generation
             # Analyze vulnerability type
             vuln_type = self._classify_vulnerability(vulnerability)
-            
+
             # Get applicable fix approaches
             approaches = self._get_fix_approaches(vuln_type, code_context)
-            
+
             # Generate fixes for each approach
             fixes = []
             for approach in approaches:
@@ -171,7 +189,7 @@ class MultiApproachFixGenerator:
                 )
                 if fix:
                     fixes.append(fix)
-            
+
             return FixGenerationResult(
                 success=True,
                 fixes=fixes,
@@ -185,7 +203,7 @@ class MultiApproachFixGenerator:
                     'infrastructure_vulnerability': code_context is None
                 }
             )
-            
+
         except Exception as e:
             self.logger.error(f"Fix generation failed: {e}")
             raise
@@ -280,10 +298,102 @@ class MultiApproachFixGenerator:
         # Apply template to generate fix
         return self._apply_fix_template(template, approach, vulnerability, code_context)
 
-    def _generate_infrastructure_fix(self, approach: FixApproach, 
+    def _parse_dependency_info(self, vulnerability: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        """
+        Parse dependency upgrade information from vulnerability message.
+
+        Extracts package name, installed version, and fixed version from the vulnerability
+        message field for Trivy/OSV dependency vulnerabilities.
+
+        Args:
+            vulnerability: Vulnerability dict with 'message' field
+
+        Returns:
+            Dict with 'package', 'installed_version', 'fixed_version' keys, or None if parsing fails
+        """
+        message = vulnerability.get('message', '')
+
+        if not message:
+            return None
+
+        # Parse package name (e.g., "Package: ch.qos.logback:logback-core")
+        package_match = re.search(r'Package:\s*([^\n]+)', message)
+        if not package_match:
+            return None
+        package_name = package_match.group(1).strip()
+
+        # Parse installed version (e.g., "Installed Version: 1.4.14")
+        installed_match = re.search(r'Installed Version:\s*([^\n]+)', message)
+        if not installed_match:
+            return None
+        installed_version = installed_match.group(1).strip()
+
+        # Parse fixed version (e.g., "Fixed Version: 1.5.13, 1.3.15")
+        # CRITICAL BUG FIX: Parse line-by-line to avoid capturing markdown links
+        fixed_version = ''
+        for line in message.split('\n'):
+            if line.startswith('Fixed Version:'):
+                fixed_ver = line.replace('Fixed Version:', '').strip()
+                # Remove markdown links if present (e.g., "1.5.13\nLink: [CVE-...]")
+                if '[' in fixed_ver:
+                    fixed_ver = fixed_ver.split('[')[0].strip()
+                fixed_version = fixed_ver.rstrip(',').strip()
+                break
+
+        # If fixed version is empty, use 'latest'
+        if not fixed_version:
+            fixed_version = 'latest'
+
+        return {
+            'package': package_name,
+            'installed_version': installed_version,
+            'fixed_version': fixed_version
+        }
+
+    def _generate_infrastructure_fix(self, approach: FixApproach,
                                    vulnerability: Dict[str, Any]) -> SecurityFix:
         """Generate infrastructure-specific fixes for vulnerabilities without code context."""
-        
+
+        # Try to parse dependency information for specific upgrade instructions
+        dependency_info = self._parse_dependency_info(vulnerability)
+
+        if dependency_info:
+            # Generate specific dependency upgrade instruction
+            package = dependency_info['package']
+            installed_version = dependency_info['installed_version']
+            fixed_version = dependency_info['fixed_version']
+
+            # Create specific upgrade instruction
+            if fixed_version and fixed_version.lower() != 'latest':
+                fixed_instruction = f"Upgrade '{package}' from version '{installed_version}' to version '{fixed_version}' in your dependency management file (build.gradle.kts, pom.xml, package.json, requirements.txt, etc.)."
+            else:
+                fixed_instruction = f"Upgrade '{package}' from version '{installed_version}' to the latest secure version in your dependency management file (build.gradle.kts, pom.xml, package.json, requirements.txt, etc.)."
+
+            return SecurityFix(
+                approach=approach,
+                title='Dependency Security Update',
+                description=f'Update {package} to fix security vulnerability',
+                vulnerable_code=f'Current version: {package} {installed_version}',
+                fixed_code=fixed_instruction,
+                explanation=f'The installed version {installed_version} of {package} contains a known security vulnerability. Upgrading to {fixed_version} addresses this issue.',
+                benefits=[
+                    'Eliminates known security vulnerabilities',
+                    'Provides security patches and bug fixes',
+                    'Maintains compatibility with security standards'
+                ],
+                trade_offs=['May require dependency compatibility testing', 'Could introduce breaking changes in major version upgrades'],
+                implementation_notes=[
+                    'Update the dependency version in your build file',
+                    'Run tests to ensure compatibility',
+                    'Check release notes for any breaking changes'
+                ],
+                language='infrastructure',
+                framework=None,
+                complexity_level='low',
+                security_impact='high'
+            )
+
+        # Fallback to generic templates if parsing fails
         approach_templates = {
             FixApproach.CONFIGURATION_CHANGE: {
                 'title': 'Configuration Security Enhancement',
@@ -354,9 +464,9 @@ class MultiApproachFixGenerator:
                 ]
             }
         }
-        
+
         template = approach_templates.get(approach, approach_templates[FixApproach.CONFIGURATION_CHANGE])
-        
+
         return SecurityFix(
             approach=approach,
             title=template['title'],
@@ -680,6 +790,476 @@ class MultiApproachFixGenerator:
             training_examples.append(training_example)
         
         return training_examples
+
+    # ========================================
+    # Tool-Specific Fix Generation Methods
+    # ========================================
+
+    def _generate_osv_fix(self, vuln: Dict, code_context: Optional[CodeContext]) -> FixGenerationResult:
+        """
+        OSV-specific: Extract fixed versions from affected ranges.
+
+        OSV provides complex version ranges:
+        - Multiple branches (1.3.x → 1.3.15, 1.5.x → 1.5.13)
+        - Ecosystem-specific format
+        - Rich metadata (CVSS v4, patch commits)
+        """
+        # Extract fixed versions from OSV data
+        # OSV format has 'vulnerabilities' array with 'affected' field
+        fixed_versions = self._extract_osv_fixed_versions(vuln)
+
+        if not fixed_versions:
+            return FixGenerationResult(
+                success=False,
+                error_message="No fixed version available in OSV data"
+            )
+
+        # Primary fix: Latest version
+        primary_version = fixed_versions[0]
+        package_name = vuln.get('package_name', 'Unknown')
+        current_version = vuln.get('package_version', 'Unknown')
+        ecosystem = vuln.get('ecosystem', 'Maven')
+
+        fix = SecurityFix(
+            approach=FixApproach.LIBRARY_REPLACEMENT,
+            title=f"Upgrade {package_name} to fix {vuln.get('id', 'vulnerability')}",
+            description=f"Upgrade {package_name} from {current_version} to {primary_version}",
+            vulnerable_code=code_context.vulnerable_code if code_context else f'{package_name}:{current_version}',
+            fixed_code=self._generate_dependency_upgrade_code(
+                package_name,
+                primary_version,
+                ecosystem
+            ),
+            explanation=vuln.get('summary', f'Security vulnerability fixed in version {primary_version}'),
+            benefits=[
+                'Eliminates known security vulnerability',
+                'Includes security patches from upstream',
+                'Maintains compatibility with ecosystem'
+            ],
+            trade_offs=[
+                'May require dependency testing',
+                'Could introduce breaking changes if major version upgrade'
+            ],
+            implementation_notes=[
+                f"Update dependency to version {primary_version}",
+                'Run tests to ensure compatibility',
+                'Check release notes for breaking changes'
+            ],
+            language=code_context.language if code_context else ecosystem.lower(),
+            complexity_level='low',
+            security_impact='high'
+        )
+
+        # Alternative fixes: Other fixed versions
+        alternatives = []
+        for alt_version in fixed_versions[1:]:
+            alt_fix = SecurityFix(
+                approach=FixApproach.LIBRARY_REPLACEMENT,
+                title=f"Alternative: Upgrade to {alt_version}",
+                description=f"Upgrade {package_name} from {current_version} to {alt_version}",
+                vulnerable_code=code_context.vulnerable_code if code_context else f'{package_name}:{current_version}',
+                fixed_code=self._generate_dependency_upgrade_code(
+                    package_name,
+                    alt_version,
+                    ecosystem
+                ),
+                explanation=f"Alternative fix for projects on different release branch ({alt_version} branch)",
+                benefits=[
+                    'Same security fix as primary version',
+                    'May be more compatible with existing dependencies'
+                ],
+                trade_offs=[
+                    'Different version branch may have different features'
+                ],
+                complexity_level='low',
+                security_impact='high'
+            )
+            alternatives.append(alt_fix)
+
+        return FixGenerationResult(
+            success=True,
+            fixes=[fix] + alternatives,
+            generation_metadata={
+                'tool': 'osv',
+                'confidence': 1.0,
+                'fixed_versions': fixed_versions,
+                'ecosystem': ecosystem
+            }
+        )
+
+    def _generate_trivy_fix(self, vuln: Dict, code_context: Optional[CodeContext]) -> FixGenerationResult:
+        """
+        Trivy-specific: Parse message field for dependency info.
+
+        Uses existing _parse_dependency_info() method (lines 283-325).
+        """
+        # Use existing dependency parsing method
+        dependency_info = self._parse_dependency_info(vuln)
+
+        if not dependency_info:
+            return FixGenerationResult(
+                success=False,
+                error_message="Could not parse Trivy dependency information from message field"
+            )
+
+        # Generate fix using existing infrastructure method
+        fix = self._generate_infrastructure_fix(
+            FixApproach.LIBRARY_REPLACEMENT,
+            vuln
+        )
+
+        return FixGenerationResult(
+            success=True,
+            fixes=[fix],
+            generation_metadata={
+                'tool': 'trivy',
+                'confidence': 1.0
+            }
+        )
+
+    def _generate_semgrep_fix(self, vuln: Dict, code_context: Optional[CodeContext]) -> FixGenerationResult:
+        """
+        Semgrep-specific: Multi-approach code pattern fixes.
+
+        Uses existing vulnerability_patterns + language_templates.
+        Requires code_context.
+        """
+        if not code_context:
+            return FixGenerationResult(
+                success=False,
+                error_message="Code context required for Semgrep fix generation"
+            )
+
+        # Use existing pattern-based fix generation (fall through to generic)
+        vuln_type = self._classify_vulnerability(vuln)
+        approaches = self._get_fix_approaches(vuln_type, code_context)
+
+        fixes = []
+        for approach in approaches:
+            fix = self._generate_fix_for_approach(approach, vuln, code_context, vuln_type)
+            if fix:
+                fixes.append(fix)
+
+        return FixGenerationResult(
+            success=True,
+            fixes=fixes,
+            generation_metadata={
+                'tool': 'semgrep',
+                'confidence': 0.7,
+                'vuln_type': vuln_type,
+                'approaches_used': [f.approach.value for f in fixes]
+            }
+        )
+    def _generate_zap_fix(self, vuln: Dict, code_context: Optional[CodeContext]) -> FixGenerationResult:
+        """
+        ZAP-specific: HTTP security configuration fixes.
+
+        ZAP findings are HTTP-level and typically don't have code context.
+        Uses ZAP's solution field to generate configuration-based fixes.
+        """
+        # Extract ZAP solution
+        solution = vuln.get('solution', '').strip()
+        if not solution:
+            return FixGenerationResult(
+                success=False,
+                error_message="No solution provided by ZAP"
+            )
+
+        alert_name = vuln.get('alert', 'HTTP security issue')
+
+        # Generate generic HTTP configuration fix based on alert type
+        fixed_code = self._generate_http_security_fix(alert_name, solution)
+
+        # Use clean solution (already stripped of HTML in parser)
+        clean_solution = solution[:200] + ('...' if len(solution) > 200 else '')
+
+        fix = SecurityFix(
+            approach=FixApproach.CONFIGURATION_CHANGE,
+            title=f"Fix {alert_name}",
+            description=clean_solution,
+            vulnerable_code=f"HTTP endpoint: {vuln.get('uri', 'Unknown URL')}",
+            fixed_code=fixed_code,
+            explanation=f"ZAP identified {alert_name} in HTTP response. {solution}",
+            benefits=[
+                'Addresses HTTP security misconfiguration',
+                'Improves web application security posture',
+                'Prevents common web attacks'
+            ],
+            language='http',
+            complexity_level='low',
+            security_impact='medium'
+        )
+
+        return FixGenerationResult(
+            success=True,
+            fixes=[fix],
+            generation_metadata={
+                'tool': 'zap',
+                'confidence': 0.9
+            }
+        )
+
+    def _generate_http_security_fix(self, alert_name: str, solution: str) -> str:
+        """
+        Generate HTTP security configuration fix based on alert type.
+
+        Maps common ZAP alerts to generic configuration examples.
+        """
+        alert_lower = alert_name.lower()
+
+        if 'cors' in alert_lower:
+            return """// Ktor CORS Configuration
+install(CORS) {
+    allowHost("yourdomain.com", schemes = listOf("https"))
+    allowCredentials = true
+    allowMethod(HttpMethod.Get)
+    allowMethod(HttpMethod.Post)
+}"""
+        elif 'x-content-type-options' in alert_lower:
+            return """// Ktor Security Headers
+install(DefaultHeaders) {
+    header("X-Content-Type-Options", "nosniff")
+}"""
+        elif 'cache' in alert_lower or 'cacheable' in alert_lower:
+            return """// Ktor Cache Control
+install(CachingHeaders) {
+    options { call, _ ->
+        when {
+            call.request.path().startsWith("/api") ->
+                CachingOptions(CacheControl.NoStore(CacheControl.Visibility.Private))
+            else -> null
+        }
+    }
+}"""
+        elif 'cross-origin-resource-policy' in alert_lower or 'spectre' in alert_lower:
+            return """// Ktor Security Headers
+install(DefaultHeaders) {
+    header("Cross-Origin-Resource-Policy", "same-origin")
+}"""
+        elif 'sec-fetch' in alert_lower:
+            return """// Server-side validation of Sec-Fetch headers
+intercept(ApplicationCallPipeline.Call) {
+    val fetchDest = call.request.headers["Sec-Fetch-Dest"]
+    val fetchMode = call.request.headers["Sec-Fetch-Mode"]
+    val fetchSite = call.request.headers["Sec-Fetch-Site"]
+
+    // Validate Sec-Fetch headers for sensitive endpoints
+    if (call.request.path().startsWith("/api/") && fetchSite == "cross-site") {
+        call.respond(HttpStatusCode.Forbidden)
+        finish()
+    }
+}"""
+        else:
+            return f"""// HTTP Security Configuration
+// {solution}
+
+// Apply appropriate security headers or configuration changes
+// based on the specific security requirement."""
+
+    def _generate_checkov_fix(self, vuln: Dict, code_context: Optional[CodeContext]) -> FixGenerationResult:
+        """
+        Checkov-specific: Configuration/IaC security fixes.
+
+        Uses rule knowledge base + YAML context.
+        Falls back to generic fix if no specific pattern available.
+        """
+        rule_id = vuln.get('id', vuln.get('check_id', vuln.get('rule_name', '')))
+        rule_name = vuln.get('rule_name', vuln.get('message', 'Security configuration issue'))
+        message = vuln.get('message', rule_name)
+
+        # Look up rule fix pattern
+        fix_pattern = self._get_checkov_fix_pattern(rule_id)
+
+        if fix_pattern:
+            # Use predefined pattern
+            fix = SecurityFix(
+                approach=FixApproach.CONFIGURATION_CHANGE,
+                title=fix_pattern['title'],
+                description=fix_pattern['description'],
+                vulnerable_code=code_context.vulnerable_code if code_context else f"Configuration issue in {vuln.get('file_path', 'config file')}",
+                fixed_code=fix_pattern['fixed_code'],
+                explanation=fix_pattern['explanation'],
+                benefits=fix_pattern.get('benefits', []),
+                language=code_context.language if code_context else 'yaml',
+                complexity_level='low',
+                security_impact='medium'
+            )
+            confidence = 0.8  # High confidence for known patterns
+        else:
+            # Generate generic fix based on rule message
+            fix = SecurityFix(
+                approach=FixApproach.CONFIGURATION_CHANGE,
+                title=f"Fix {rule_name}",
+                description=message[:200] + ('...' if len(message) > 200 else ''),
+                vulnerable_code=code_context.vulnerable_code if code_context else f"Configuration in {vuln.get('file_path', 'config file')}",
+                fixed_code=f"# Apply fix based on Checkov rule {rule_id}\n# {message}\n\n# Review and update configuration to address the security issue",
+                explanation=f"Checkov identified {rule_name}. Review the configuration and apply the recommended changes from Checkov documentation.",
+                benefits=[
+                    'Improves configuration security',
+                    'Follows security best practices',
+                    'Reduces attack surface'
+                ],
+                language=code_context.language if code_context else 'yaml',
+                complexity_level='low',
+                security_impact='medium'
+            )
+            confidence = 0.7  # Lower confidence for generic fixes
+
+        return FixGenerationResult(
+            success=True,
+            fixes=[fix],
+            generation_metadata={
+                'tool': 'checkov',
+                'confidence': confidence,
+                'rule_id': rule_id
+            }
+        )
+
+    def _extract_osv_fixed_versions(self, vuln: Dict) -> List[str]:
+        """
+        Extract fixed versions from OSV vulnerability data.
+
+        OSV format can have fixed versions in multiple places:
+        1. Direct 'fixed_version' field (from our parser)
+        2. 'affected' array with ranges/events (full OSV JSON)
+        """
+        fixed_versions = []
+
+        # Check for direct fixed_version field (from simplified parser output)
+        if 'fixed_version' in vuln:
+            fixed_version = vuln['fixed_version']
+            if fixed_version and fixed_version != 'Unknown':
+                # Could be comma-separated list
+                if ',' in fixed_version:
+                    fixed_versions = [v.strip() for v in fixed_version.split(',')]
+                else:
+                    fixed_versions = [fixed_version]
+
+        # Check for full OSV format with 'affected' array
+        if 'affected' in vuln:
+            for affected_item in vuln['affected']:
+                for range_obj in affected_item.get('ranges', []):
+                    for event in range_obj.get('events', []):
+                        if 'fixed' in event:
+                            fixed_versions.append(event['fixed'])
+
+        # Remove duplicates and empty strings, sort by version (latest first)
+        fixed_versions = [v for v in set(fixed_versions) if v and v.strip()]
+
+        # Simple version sorting (latest first) - this is basic, could be improved with packaging.version
+        return sorted(fixed_versions, reverse=True)
+
+    def _generate_dependency_upgrade_code(self, package: str, version: str, ecosystem: str) -> str:
+        """Generate ecosystem-specific dependency upgrade code."""
+        if ecosystem == 'Maven' or ecosystem == 'maven':
+            # Gradle Kotlin DSL format
+            return f'implementation("{package}:{version}")'
+        elif ecosystem == 'npm' or ecosystem == 'npm':
+            # package.json format
+            pkg_name = package.split('/')[-1]  # Handle scoped packages
+            return f'"{package}": "^{version}"'
+        elif ecosystem == 'PyPI' or ecosystem == 'pypi':
+            # requirements.txt format
+            return f'{package}=={version}'
+        elif ecosystem == 'Go':
+            # go.mod format
+            return f'require {package} v{version}'
+        else:
+            # Generic format
+            return f'{package}:{version}'
+
+    def _detect_framework(self, language: str, file_path: str) -> str:
+        """Detect web framework from code context."""
+        if not language:
+            language = ''
+        if not file_path:
+            file_path = ''
+
+        language = language.lower()
+        file_path = file_path.lower()
+
+        if 'kotlin' in language or '.kt' in file_path or 'ktor' in file_path:
+            return 'Ktor'
+        elif 'typescript' in language or 'javascript' in language or '.ts' in file_path or '.js' in file_path:
+            if 'express' in file_path:
+                return 'Express'
+            return 'Node.js'
+        elif 'python' in language or '.py' in file_path:
+            return 'Python'
+        elif 'java' in language or '.java' in file_path:
+            return 'Spring'
+        return 'unknown'
+
+    def _generate_framework_specific_fix(self, alert: str, solution: str, framework: str, code_context: CodeContext) -> str:
+        """Generate framework-specific fix code."""
+        # Framework-specific code generation logic
+        # This can be expanded with templates for different frameworks
+
+        if framework == 'Ktor' and 'CORS' in alert:
+            return """install(CORS) {
+    allowHost("app.example.com", schemes = listOf("https"))
+    allowCredentials = true
+}"""
+        elif (framework == 'Express' or framework == 'Node.js') and 'CORS' in alert:
+            return """app.use(cors({
+    origin: 'https://app.example.com',
+    credentials: true
+}));"""
+        elif framework == 'Ktor' and 'Content Security Policy' in alert:
+            return """install(DefaultHeaders) {
+    header("Content-Security-Policy", "default-src 'self'")
+}"""
+        elif (framework == 'Express' or framework == 'Node.js') and 'Content Security Policy' in alert:
+            return """app.use(helmet({
+    contentSecurityPolicy: {
+        directives: {
+            defaultSrc: ["'self'"]
+        }
+    }
+}));"""
+
+        # Generic fix based on solution
+        return f"// Apply fix based on: {solution[:100]}..."
+
+    def _get_checkov_fix_pattern(self, rule_id: str) -> Optional[Dict]:
+        """
+        Get fix pattern for Checkov rule.
+
+        Includes patterns for common GitHub Actions, Docker, and IaC rules.
+        """
+        patterns = {
+            'CKV_GHA_1': {
+                'title': 'Add explicit workflow permissions',
+                'description': 'Configure explicit permissions instead of inheriting defaults',
+                'fixed_code': 'permissions:\n  contents: read\n  pull-requests: write',
+                'explanation': 'Explicit permissions follow principle of least privilege',
+                'benefits': ['Reduces attack surface', 'Prevents unauthorized access']
+            },
+            'CKV2_GHA_1': {
+                'title': 'Remove write-all from top-level permissions',
+                'description': 'Replace write-all with granular permissions',
+                'fixed_code': '''permissions:
+  contents: read      # For checking out code
+  pull-requests: write # For commenting on PRs
+  issues: write       # For creating/updating issues
+  # Remove: permissions: write-all''',
+                'explanation': 'Using write-all grants excessive permissions. Specify only the permissions each job needs.',
+                'benefits': [
+                    'Follows principle of least privilege',
+                    'Reduces risk of unauthorized changes',
+                    'Limits blast radius of compromised workflows'
+                ]
+            },
+            'CKV_GHA_7': {
+                'title': 'Pin GitHub Actions to commit SHA',
+                'description': 'Use commit SHA instead of tag for reproducibility',
+                'fixed_code': 'uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1',
+                'explanation': 'Pinning to SHA ensures exact version and prevents tag hijacking',
+                'benefits': ['Prevents supply chain attacks', 'Ensures reproducibility']
+            }
+        }
+
+        return patterns.get(rule_id, None)
 
 
 # Convenience function for quick usage

@@ -1,171 +1,115 @@
-"""
-Parse Semgrep SAST scan outputs
-Semgrep SARIF format documented at: https://sarifweb.azurewebsites.net/
-"""
+
 import json
 import logging
-from pathlib import Path
 from typing import List, Dict
+
+from vulnerable_code_extractor import VulnerableCodeExtractor
+from multi_approach_fix_generator import MultiApproachFixGenerator
 
 logger = logging.getLogger(__name__)
 
-
-def _normalize_file_path(raw_path: str, tool_name: str = "semgrep") -> str:
+def parse_semgrep_json(filepath: str) -> List[Dict]:
     """
-    Normalize file paths from SARIF data for enhanced dataset creation.
-
-    Keep ALL vulnerability data - no filtering. Apply minimal normalization for consistency:
-    - Fix GitHub workflow paths (add missing dot prefix)
-    - Normalize CI environment paths to relative paths
-    - Extract project-relative paths from absolute paths
-    - Keep all Docker images, URLs, JARs, etc. - they represent legitimate security concerns
+    Parse Semgrep JSON output files.
     """
-    if not raw_path or raw_path == 'Unknown':
-        return 'Unknown'
-
-    # Handle CI environment absolute paths with /home/runner/work/
-    if '/home/runner/work/' in raw_path:
-        # Extract relative path from CI environment
-        parts = raw_path.split('/home/runner/work/')
-        if len(parts) > 1:
-            # Remove the project name part and get relative path
-            remaining = parts[1]
-            path_parts = remaining.split('/')
-            if len(path_parts) > 2:  # project/project/actual-path
-                extracted_path = '/'.join(path_parts[2:])
-                # Apply additional normalization to extracted path
-                return _normalize_file_path(extracted_path, tool_name)
-
-    # Handle paths that start with CI environment artifacts (missing leading slash)
-    if raw_path.startswith('home/runner/work/'):
-        # Extract relative path from CI environment
-        path_parts = raw_path.split('/')
-        if len(path_parts) > 5:  # home/runner/work/project/project/actual-path
-            extracted_path = '/'.join(path_parts[5:])
-            # Apply additional normalization to extracted path
-            return _normalize_file_path(extracted_path, tool_name)
-
-    # Fix GitHub workflow paths (add missing dot)
-    if raw_path.startswith('github/workflows/'):
-        raw_path = '.' + raw_path
-
-    # Handle other absolute paths - try to make relative
-    if raw_path.startswith('/Users/') and 'mpo-api-authn-server' in raw_path:
-        # Extract path relative to project root
-        parts = raw_path.split('mpo-api-authn-server/')
-        if len(parts) > 1:
-            raw_path = parts[1]
-
-    return raw_path
-
-
-def parse_semgrep_sarif(filepath: str) -> List[Dict]:
-    """
-    Parse Semgrep SARIF output
-
-    SARIF v2.1.0 structure:
-    {
-        "runs": [
-            {
-                "tool": {
-                    "driver": {
-                        "name": "...",
-                        "rules": [...]
-                    }
-                },
-                "results": [
-                    {
-                        "ruleId": "...",
-                        "message": {"text": "..."},
-                        "locations": [...],
-                        "level": "..."
-                    }
-                ]
-            }
-        ]
-    }
-    """
-    # Graceful handling for optional tool execution
-    if not Path(filepath).exists():
-        logger.info(f"ℹ️ Semgrep scan file not found: {filepath}")
-        logger.info("This is acceptable - Semgrep SAST scanning may not have been run")
+    try:
+        with open(filepath) as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        logger.error(f"File not found: {filepath}")
+        return []
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON in file: {filepath}")
         return []
 
-    # Fail fast on corrupted existing files
-    try:
-        with open(filepath, 'r') as f:
-            data = json.load(f)
+    findings = []
+    code_extractor = VulnerableCodeExtractor()
+    fix_generator = MultiApproachFixGenerator()
 
-        findings = []
-        for run in data.get('runs', []):
-            tool_name = run.get('tool', {}).get('driver', {}).get('name', 'Unknown')
-            rules = run.get('tool', {}).get('driver', {}).get('rules', [])
+    for result in data.get('results', []):
+        # Extract vulnerability info and add tool field for proper routing
+        # VulnerableCodeExtractor will handle path resolution intelligently
+        extraction_result = code_extractor.extract_vulnerability_context(vulnerability={
+            'file_path': result.get('path'),  # Let extractor resolve the path
+            'path': result.get('path'),
+            'start': result.get('start'),
+            'tool': 'semgrep'  # Add tool field for routing
+        })
 
-            # Create rule lookup for additional context
-            rule_lookup = {rule.get('id'): rule for rule in rules}
+        code_context_dict = None
+        if extraction_result.success and extraction_result.code_context:
+            code_context_dict = {
+                'file_path': extraction_result.code_context.file_path,
+                'language': extraction_result.code_context.language,
+                'file_extension': extraction_result.code_context.file_extension,
+                'vulnerability_line': extraction_result.code_context.vulnerability_line,
+                'vulnerability_column': extraction_result.code_context.vulnerability_column,
+                'vulnerable_code': extraction_result.code_context.vulnerable_code,
+                'before_lines': extraction_result.code_context.before_lines,
+                'after_lines': extraction_result.code_context.after_lines,
+                'function_name': extraction_result.code_context.function_name,
+                'function_context': extraction_result.code_context.function_context,
+                'function_start_line': extraction_result.code_context.function_start_line,
+                'function_end_line': extraction_result.code_context.function_end_line,
+                'class_name': extraction_result.code_context.class_name,
+                'class_context': extraction_result.code_context.class_context,
+                'class_start_line': extraction_result.code_context.class_start_line,
+                'extraction_type': getattr(extraction_result.code_context, 'extraction_type', 'code'),
+                'extraction_success': True
+            }
 
-            for result in run.get('results', []):
-                rule_id = result.get('ruleId', 'Unknown')
-                rule_info = rule_lookup.get(rule_id, {})
+        # Add tool field to result for proper routing in MultiApproachFixGenerator
+        result_with_tool = {
+            **result,
+            'tool': 'semgrep',
+            'check_id': result.get('check_id'),  # Ensure check_id is preserved
+            'extra': result.get('extra', {})
+        }
 
-                # Extract location information with line numbers
-                locations = result.get('locations', [])
-                file_path = 'Unknown'
-                start_line = 1
-                if locations:
-                    physical_location = locations[0].get('physicalLocation', {})
-                    artifact_location = physical_location.get('artifactLocation', {})
-                    raw_path = artifact_location.get('uri', 'Unknown')
+        fix_result = fix_generator.generate_fixes(result_with_tool, extraction_result.code_context)
 
-                    # Normalize file paths for enhanced dataset creation
-                    file_path = _normalize_file_path(raw_path, 'semgrep')
+        fix_object = None
+        if fix_result.success and fix_result.fixes:
+            primary_fix = fix_result.fixes[0]
+            fix_object = {
+                "confidence": fix_result.generation_metadata.get('confidence', 0.7),
+                "description": primary_fix.description,
+                "fixed_code": primary_fix.fixed_code,
+                "explanation": primary_fix.explanation,
+                "alternatives": [
+                    {
+                        "description": alt_fix.description,
+                        "fixed_code": alt_fix.fixed_code,
+                        "explanation": alt_fix.explanation
+                    }
+                    for alt_fix in fix_result.fixes[1:]
+                ]
+            }
 
-                    # Extract line number from region if available
-                    region = physical_location.get('region', {})
-                    start_line = region.get('startLine', 1)
+        finding = {
+            'tool': 'semgrep',
+            'id': result.get('check_id'),
+            'file_path': result.get('path'),
+            'path': result.get('path'),
+            'start': result.get('start'),
+            'end': result.get('end'),
+            'message': result.get('extra', {}).get('message'),
+            'severity': result.get('extra', {}).get('severity'),
+            'code_context': code_context_dict,
+            'fix': fix_object,
+            'cwe': result.get('extra', {}).get('metadata', {}).get('cwe'),
+            'owasp': result.get('extra', {}).get('metadata', {}).get('owasp'),
+            'confidence': result.get('extra', {}).get('metadata', {}).get('confidence'),
+            'likelihood': result.get('extra', {}).get('metadata', {}).get('likelihood'),
+            'impact': result.get('extra', {}).get('metadata', {}).get('impact'),
+            'technology': result.get('extra', {}).get('metadata', {}).get('technology'),
+            'references': result.get('extra', {}).get('metadata', {}).get('references'),
+            'tool_name': 'Semgrep',
+            'tool_version': data.get('version'),
+            'security_category': 'code_vulnerability',
+            'category_confidence': 0.7,
+            'fix_complexity': 'high',
+        }
+        findings.append(finding)
 
-                # Extract severity/level
-                level = result.get('level', 'info')
-                severity_map = {
-                    'error': 'HIGH',
-                    'warning': 'MEDIUM',
-                    'note': 'LOW',
-                    'info': 'INFO'
-                }
-                severity = severity_map.get(level, level.upper())
-
-                # Get message
-                message = result.get('message', {})
-                message_text = message.get('text', 'No description')
-
-                # Extract Semgrep-specific metadata from rule info
-                properties = rule_info.get('properties', {})
-                cwe = properties.get('tags', [])
-                # Filter to get only CWE tags
-                cwe_tags = [tag for tag in cwe if tag.startswith('CWE-') or 'CWE' in tag]
-
-                findings.append({
-                    'tool': 'semgrep',  # Use consistent tool name
-                    'id': rule_id,
-                    'severity': severity,
-                    'level': level,
-                    'message': message_text,
-                    'file_path': file_path,
-                    'rule_name': rule_info.get('name', 'Unknown'),
-                    'short_description': rule_info.get('shortDescription', {}).get('text', ''),
-                    'full_description': rule_info.get('fullDescription', {}).get('text', ''),
-                    'help_uri': rule_info.get('helpUri', ''),
-                    'tool_name': 'Semgrep',
-                    'path': file_path,  # Map file_path to path field for enhanced dataset creation
-                    'start': {'line': start_line},  # Extract actual line number from SARIF region
-                    'cwe': cwe_tags,
-                    'owasp': properties.get('owasp', []),
-                    'technology': properties.get('technology', []),
-                    'category': properties.get('category', 'security')
-                })
-
-        return findings
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Corrupted Semgrep scan data in {filepath}: {e}")
-        logger.error("🔍 File exists but is corrupted - indicates Semgrep tool malfunction requiring investigation")
-        raise RuntimeError(f"Corrupted Semgrep scan data requires investigation: {e}") from e
+    return findings

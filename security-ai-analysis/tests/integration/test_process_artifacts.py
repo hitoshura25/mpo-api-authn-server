@@ -212,101 +212,28 @@ class TestProcessArtifactsScript:
                 assert 'id' in vuln, "Each vulnerability should have an 'id'"
                 assert 'tool' in vuln, "Each vulnerability should have a 'tool'"
                 assert 'severity' in vuln, "Each vulnerability should have a 'severity'"
+                assert 'fix' in vuln, "Each vulnerability should have a 'fix'"
+                fix = vuln['fix']
+                assert 'confidence' in fix, "Each fix should have a 'confidence'"
+                assert 'description' in fix, "Each fix should have a 'description'"
 
-    def test_categorization_only_fails_with_no_parsed_input(self):
-        """Test categorization only mode with sample artifacts"""
-        result = self.run_process_artifacts(
-            additional_args=[
-                "--only-categorization"
-            ],
-            realtime_output=True
-        )
-        assert result == 1, f"Categorization only mode should faile with no parsed input, got exit code {result}"
 
-    def test_categorization_only_with_parsed_input(self): 
-        """Test categorization only mode with sample artifacts and provided parsed input"""
-        categorization_result = self.run_process_artifacts(
-            additional_args=[
-                "--only-categorization",
-                "--parsed-input", str(self.phase_inputs_dir / "parsed_vulnerabilities.json")
-            ],
-            realtime_output=True
-        )
-        assert categorization_result == 0, f"Categorization only mode failed with exit code {categorization_result}"
-
-        # Verify expected output file exists
-        expected_analysis_file = self.temp_output_dir / "categorized_vulnerabilities.json"
-        assert expected_analysis_file.exists(), f"Expected analysis file not found: {expected_analysis_file}"
-
-        # Verify content of the analysis file
-        import json
-        with open(expected_analysis_file, 'r') as f:
-            data = json.load(f)
-            assert isinstance(data, list), "Analysis data should be a list"
-            assert len(data) > 0, "Analysis data should not be empty"
-            for item in data:
-                assert 'id' in item, "Each analysis item should have an 'id'"
-                assert 'tool' in item, "Each analysis item should have a 'tool'"
-                assert 'security_category' in item, "Each analysis item should have a 'security_category'"
-                assert 'category_confidence' in item, "Each analysis item should have a 'category_confidence'"
-
-    def test_narrativization_only_fails_with_no_categorized_input(self):
-        """Test narrativization only mode fails with no categorized input"""
-        result = self.run_process_artifacts(
-            additional_args=[
-                "--only-narrativization"
-            ],
-            realtime_output=True
-        )
-        assert result == 1, f"Narrativization only mode should fail with no categorized input, got exit code {result}"
-
-    def test_narrativization_only_with_categorized_input(self):
-        """Test narrativization only mode with provided categorized input"""
-        narrativization_result = self.run_process_artifacts(
-            additional_args=[
-                "--only-narrativization",
-                "--categorized-input", str(self.phase_inputs_dir / "categorized_vulnerabilities.json")
-            ],
-            realtime_output=True
-        )
-        assert narrativization_result == 0, f"Narrativization only mode failed with exit code {narrativization_result}"
-
-        # Verify expected output file exists
-        expected_narrativization_file = self.temp_output_dir / "narrativized_analyses.json"
-        assert expected_narrativization_file.exists(), f"Expected narrativization file not found: {expected_narrativization_file}"
-
-        # Verify content of the narrativization file
-        import json
-        with open(expected_narrativization_file, 'r') as f:
-            data = json.load(f)
-            assert isinstance(data, list), "Narrativization data should be a list"
-            assert len(data) > 0, "Narrativization data should not be empty"
-            for item in data:
-                assert 'ai_analysis' in item, "Each narrativized item should have an 'ai_analysis'"
-                assert 'narrative' in item, "Each narrativized item should have a 'narrative'"
-                assert 'vulnerability' in item, "Each narrativized item should have a 'vulnerability'"
-                vulnerability = item['vulnerability']
-                assert 'id' in vulnerability, "Each narrativized item should have an 'id'"
-                assert 'tool' in vulnerability, "Each narrativized item should have a 'tool'"
-                assert 'security_category' in vulnerability, "Each narrativized item should have a 'security_category'"
-                assert 'category_confidence' in vulnerability, "Each narrativized item should have a 'category_confidence'"
-
-    def test_datasets_only_fails_with_no_narrativized_input(self):
-        """Test dataset construction only mode fails with no narrativized input"""
+    def test_datasets_only_fails_with_no_parsed_vulnerabilities_input(self):
+        """Test dataset construction only mode fails with no parsed vulnerabilities input"""
         result = self.run_process_artifacts(
             additional_args=[
                 "--only-datasets"
             ],
             realtime_output=True
         )
-        assert result == 1, f"Dataset construction only mode should fail with no narrativized input, got exit code {result}"
+        assert result == 1, f"Dataset construction only mode should fail with no parsed vulnerabilities input, got exit code {result}"
 
-    def test_datasets_only_with_narrativized_input(self):
-        """Test dataset construction only mode with provided narrativized input"""
+    def test_datasets_only_with_parsed_vulnerabilities_input(self):
+        """Test dataset construction only mode with provided parsed vulnerabilities input"""
         datasets_result = self.run_process_artifacts(
             additional_args=[
                 "--only-datasets",
-                "--narrativized-input", str(self.phase_inputs_dir / "narrativized_analyses.json")
+                "--parsed-vulnerabilities-input", str(self.phase_inputs_dir / "parsed_vulnerabilities.json")
             ],
             realtime_output=True
         )

@@ -15,12 +15,12 @@ Usage:
     context = extractor.extract_vulnerability_context(vulnerability_data)
 """
 
+import logging
 import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, NamedTuple
 from dataclasses import dataclass, field
-
 
 @dataclass
 class CodeContext:
@@ -105,6 +105,7 @@ class VulnerableCodeExtractor:
         Args:
             project_root: Root directory of the project. If None, auto-detects.
         """
+        self.logger = logging.getLogger(__name__)
         self.project_root = project_root or self._detect_project_root()
         
         # Language detection mappings
@@ -204,7 +205,7 @@ class VulnerableCodeExtractor:
                 # Check if this is a Docker image path (with or without dockerfile:// prefix)
                 # Docker image paths from Trivy represent container images, not source files
                 if (file_path.startswith('dockerfile://') or
-                    ('/' in file_path and not any(ext in file_path.lower() for ext in ['.kt', '.java', '.js', '.ts', '.py', '.html', '.xml', '.yml', '.yaml', '.json', '.dockerfile', '.md']))):
+                    ('/' in file_path and not any(ext in file_path.lower() for ext in ['.kt', '.java', '.js', '.cjs', '.ts', '.py', '.html', '.xml', '.yml', '.yaml', '.json', '.dockerfile', '.md']))):
 
                     # TODO: Future Enhancement - Docker Context Mapping
                     # Currently we skip code extraction for Docker image paths because:
@@ -518,6 +519,8 @@ class VulnerableCodeExtractor:
         
         # Get vulnerable line (1-indexed to 0-indexed)
         vuln_line_idx = line_num - 1
+        if not (0 <= vuln_line_idx < len(file_lines)):
+            return None
         vulnerable_code = file_lines[vuln_line_idx].rstrip() if vuln_line_idx < len(file_lines) else ""
         
         # Extract context lines
@@ -554,7 +557,7 @@ class VulnerableCodeExtractor:
     
     def _find_function_context(self, file_lines: List[str], vuln_line_idx: int, language: str) -> Dict[str, Any]:
         """Find the function containing the vulnerable line."""
-        if language not in self.function_patterns:
+        if not file_lines or language not in self.function_patterns:
             return {}
         
         patterns = self.function_patterns[language]
@@ -593,7 +596,7 @@ class VulnerableCodeExtractor:
     
     def _find_class_context(self, file_lines: List[str], vuln_line_idx: int, language: str) -> Dict[str, Any]:
         """Find the class containing the vulnerable line."""
-        if language not in self.class_patterns:
+        if not file_lines or language not in self.class_patterns:
             return {}
         
         patterns = self.class_patterns[language]

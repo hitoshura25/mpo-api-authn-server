@@ -103,12 +103,14 @@ class MLXTrainer:
 
         for example in examples:
             quality = example.get('metadata', {}).get('quality', 'unknown')
+            source = example.get('metadata', {}).get('source', 'unknown')
 
             # Always include the example once
             weighted_examples.append(example)
 
-            # Duplicate high-quality examples based on multiplier
-            if quality == 'high':
+            # Duplicate ONLY original high-quality examples (not augmented)
+            # Augmented examples already provide diversity, we want to emphasize real fixes
+            if quality == 'high' and source != 'augmented':
                 # Add (multiplier - 1) additional copies
                 duplicates = int(self.quality_weight_multiplier - 1)
                 for _ in range(duplicates):
@@ -123,10 +125,14 @@ class MLXTrainer:
             for example in weighted_examples:
                 f.write(json.dumps(example) + '\n')
 
+        # Count augmented vs original for reporting
+        augmented_count = sum(1 for ex in examples if ex.get('metadata', {}).get('source') == 'augmented')
+        original_count = len(examples) - augmented_count
+
         logger.info(f"   ✅ Weighted dataset saved: {output_path}")
-        logger.info(f"   Original: {len(examples)} examples")
-        logger.info(f"   Weighted: {len(weighted_examples)} examples")
-        logger.info(f"   High-quality boost: {self.quality_weight_multiplier}x")
+        logger.info(f"   Original dataset: {len(examples)} examples ({original_count} original, {augmented_count} augmented)")
+        logger.info(f"   Weighted dataset: {len(weighted_examples)} examples")
+        logger.info(f"   High-quality boost: {self.quality_weight_multiplier}x (original examples only)")
 
         return {
             "original_count": len(examples),

@@ -4,7 +4,7 @@ from pathlib import Path
 import argparse
 import logging
 import subprocess
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from config_manager import OLMoSecurityConfig
@@ -23,11 +23,12 @@ class Phases:
     PARSING = "parsing"
     DATASETS = "datasets"
     TRAINING = "training"
+    EVALUATION = "evaluation"
     UPLOAD = "upload"
 
     # List for validation
     ALL_PHASES = [
-        PARSING, DATASETS, TRAINING, UPLOAD
+        PARSING, DATASETS, TRAINING, EVALUATION, UPLOAD
     ]
 
     # Input requirements mapping
@@ -35,7 +36,8 @@ class Phases:
         PARSING: [],  # Uses --artifacts-dir
         DATASETS: ['parsed_vulnerabilities_input'],
         TRAINING: ['train_dataset_input', 'validation_dataset_input'],
-        UPLOAD: ['adapter_input', 'train_dataset_input', 'validation_dataset_input'],
+        EVALUATION: ['adapter_input', 'test_dataset_input'],
+        UPLOAD: ['adapter_input', 'train_dataset_input', 'validation_dataset_input', 'test_dataset_input'],
     }
 
 def find_security_files(directory: str) -> dict:
@@ -125,15 +127,16 @@ def parse_vulnerabilities_phase(artifacts_dir: str, output_dir: Path) -> Path:
     logger.info(f"✅ Parse vulnerabilities phase complete. Output saved to: {output_file}")
     return output_file
 
-def construct_datasets_phase(parsed_vulns_file: Path, output_dir: Path) -> tuple[Path, Path]:
+def construct_datasets_phase(parsed_vulns_file: Path, output_dir: Path) -> tuple[Path, Path, Path]:
     """
-    PHASE 3: Construct Datasets
+    PHASE: Construct Datasets
     - Loads public datasets (CVEfixes)
     - Generates specific fixes for deterministic vulnerabilities
+    - Applies data augmentation (semantic variations, self-mixup, context blending)
     - Processes narratives into training pairs
-    - Combines and splits into train/validation sets
+    - Combines and splits into train/validation/test sets (80/10/10)
     """
-    logger.info("🚀 Starting Phase 3: Construct Datasets")
+    logger.info("🚀 Starting Phase: Construct Datasets")
 
     if not parsed_vulns_file.exists():
         raise FileNotFoundError(f"Parsed vulnerabilities file not found: {parsed_vulns_file}")
@@ -156,25 +159,47 @@ def construct_datasets_phase(parsed_vulns_file: Path, output_dir: Path) -> tuple
     # SOURCE 2: Generate Specific Fixes
     logger.info("🔧 Source 2: Generating specific fixes...")
     specific_fixes = _generate_specific_fixes(parsed_vulns)
-    all_training_pairs.extend(specific_fixes)
-    logger.info(f"   Added {len(specific_fixes)} specific fix examples")
+    logger.info(f"   Generated {len(specific_fixes)} specific fix examples")
 
-    # Combine and shuffle
-    logger.info(f"📊 Total training pairs: {len(all_training_pairs)}")
-    random.shuffle(all_training_pairs)
+    # CRITICAL: Split BEFORE augmentation to keep test set pure (ground truth)
+    # Test set must contain only original examples for valid evaluation
+    logger.info("📊 Splitting original examples (80/10/10)...")
+    random.shuffle(specific_fixes)
+    total_original = len(specific_fixes)
+    train_size = int(total_original * 0.8)
+    val_size = int(total_original * 0.1)
 
-    # Split 80/20 train/validation
-    split_idx = int(len(all_training_pairs) * 0.8)
-    train_pairs = all_training_pairs[:split_idx]
-    val_pairs = all_training_pairs[split_idx:]
+    original_train = specific_fixes[:train_size]
+    original_val = specific_fixes[train_size:train_size + val_size]
+    test_pairs = specific_fixes[train_size + val_size:]  # Pure ground truth!
 
-    logger.info(f"   Train set: {len(train_pairs)} examples")
-    logger.info(f"   Validation set: {len(val_pairs)} examples")
+    logger.info(f"   Original split: {len(original_train)} train / {len(original_val)} val / {len(test_pairs)} test")
+
+    # SOURCE 3: Data Augmentation (ONLY for train/val sets)
+    # Test set remains pure original examples for valid evaluation
+    logger.info("🎨 Source 3: Applying data augmentation to train/val sets...")
+    augmented_train = _augment_training_pairs(original_train)
+    augmented_val = _augment_training_pairs(original_val)
+    logger.info(f"   Augmented: +{len(augmented_train)} train examples, +{len(augmented_val)} val examples")
+
+    # Combine original + augmented for train/val
+    train_pairs = original_train + augmented_train
+    val_pairs = original_val + augmented_val
+
+    # Shuffle each set independently
+    random.shuffle(train_pairs)
+    random.shuffle(val_pairs)
+
+    logger.info(f"📊 Final dataset sizes:")
+    logger.info(f"   Train set: {len(train_pairs)} examples ({len(original_train)} original + {len(augmented_train)} augmented)")
+    logger.info(f"   Validation set: {len(val_pairs)} examples ({len(original_val)} original + {len(augmented_val)} augmented)")
+    logger.info(f"   Test set: {len(test_pairs)} examples (100% original, no augmentation)")
 
     # Save as JSONL
     output_dir.mkdir(parents=True, exist_ok=True)
     train_file = output_dir / "train_dataset.jsonl"
     val_file = output_dir / "validation_dataset.jsonl"
+    test_file = output_dir / "test_dataset.jsonl"
 
     with open(train_file, 'w') as f:
         for pair in train_pairs:
@@ -184,11 +209,16 @@ def construct_datasets_phase(parsed_vulns_file: Path, output_dir: Path) -> tuple
         for pair in val_pairs:
             f.write(json.dumps(pair) + '\n')
 
-    logger.info(f"✅ Phase 3 complete.")
+    with open(test_file, 'w') as f:
+        for pair in test_pairs:
+            f.write(json.dumps(pair) + '\n')
+
+    logger.info(f"✅ Phase complete.")
     logger.info(f"   Train dataset: {train_file}")
     logger.info(f"   Validation dataset: {val_file}")
+    logger.info(f"   Test dataset: {test_file}")
 
-    return train_file, val_file
+    return train_file, val_file, test_file
 
 
 def _create_vulnerability_prompt(vuln: Dict) -> str:
@@ -421,9 +451,44 @@ Your role is to analyze security vulnerabilities and provide comprehensive, acti
 
     return specific_fixes
 
+
+def _augment_training_pairs(training_pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Augment training pairs using research-backed data augmentation techniques.
+
+    Applies semantic variations, self-mixup, and context blending to increase
+    dataset diversity and improve model generalization on small datasets.
+
+    Args:
+        training_pairs: Original training pairs in ChatML format
+
+    Returns:
+        List of augmented training pairs (target: 3x original count)
+    """
+    from dataset_augmentor import SecurityDataAugmentor, AugmentationConfig
+    import yaml
+
+    # Load augmentation config from YAML
+    config = OLMoSecurityConfig()
+    config_file = Path(__file__).parent.parent / "config" / "olmo-security-config.yaml"
+
+    with open(config_file, 'r') as f:
+        raw_config = yaml.safe_load(f)
+
+    aug_config = AugmentationConfig.from_config(raw_config)
+
+    # Initialize augmentor
+    augmentor = SecurityDataAugmentor(aug_config)
+
+    # Generate augmented examples
+    augmented_pairs = augmentor.augment_training_data(training_pairs)
+
+    return augmented_pairs
+
+
 def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
     """
-    PHASE 4: Train Model
+    PHASE: Train Model
     - Creates structured training run directory with manifest
     - Applies quality-weighted sampling to prioritize high-quality examples
     - Fine-tunes model using MLX LoRA
@@ -436,7 +501,7 @@ def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
     Returns:
         Path to trained adapter directory
     """
-    logger.info("🚀 Starting Phase 4: Train Model")
+    logger.info("🚀 Starting Phase: Train Model")
     config = OLMoSecurityConfig()
 
     if not train_dataset.exists():
@@ -481,16 +546,80 @@ def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
         training_data_dir=training_run.training_data_path
     )
 
-    logger.info(f"✅ Phase 4 complete.")
+    logger.info(f"✅ Phase complete.")
     logger.info(f"   Training run: {training_run.run_dir}")
     logger.info(f"   Adapter artifacts: {adapter_path}")
 
     return adapter_path
 
 
-def _analyze_datasets(train_file: Path, val_file: Path) -> Dict[str, Any]:
+def evaluate_model_phase(
+    adapter_path: Path,
+    test_dataset: Path,
+    output_dir: Path
+) -> Dict[str, Any]:
+    """
+    PHASE: Evaluate Model
+
+    Evaluates the fine-tuned model on held-out test dataset using:
+    - Exact Match Accuracy: Character-for-character comparison
+    - CodeBLEU: Semantic/structural code similarity
+
+    Args:
+        adapter_path: Path to trained model adapter directory
+        test_dataset: Path to test_dataset.jsonl
+        output_dir: Path to save evaluation results
+
+    Returns:
+        Dictionary with evaluation metrics and results
+    """
+    logger.info("=" * 60)
+    logger.info("🔬 Phase: Evaluate Model")
+    logger.info("=" * 60)
+
+    if not adapter_path.exists():
+        raise FileNotFoundError(f"Adapter path not found: {adapter_path}")
+    if not test_dataset.exists():
+        raise FileNotFoundError(f"Test dataset not found: {test_dataset}")
+
+    # Import evaluation module
+    from evaluate_model import evaluate_model
+
+    # Set evaluation output path
+    eval_output_file = output_dir / "evaluation_results.json"
+
+    logger.info(f"Adapter: {adapter_path}")
+    logger.info(f"Test dataset: {test_dataset}")
+    logger.info(f"Output: {eval_output_file}")
+
+    # Run evaluation
+    eval_results = evaluate_model(
+        model_path=adapter_path,
+        test_dataset=test_dataset,
+        output_file=eval_output_file,
+        max_tokens=512,
+        temperature=0.0
+    )
+
+    # Log summary
+    metrics = eval_results.get('metrics', {})
+    logger.info(f"\n✅ Phase complete.")
+    logger.info(f"   Exact Match Accuracy: {metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"   Average CodeBLEU: {metrics.get('avg_codebleu', 0):.4f}")
+    logger.info(f"   Test Examples: {eval_results.get('total_examples', 0)}")
+    logger.info(f"   Results saved: {eval_output_file}")
+
+    return eval_results
+
+
+def _analyze_datasets(train_file: Path, val_file: Path, test_file: Path) -> Dict[str, Any]:
     """
     Analyze datasets for statistics to include in model/dataset cards.
+
+    Args:
+        train_file: Path to training dataset
+        val_file: Path to validation dataset
+        test_file: Path to test dataset
 
     Returns:
         Dictionary with dataset statistics
@@ -498,6 +627,7 @@ def _analyze_datasets(train_file: Path, val_file: Path) -> Dict[str, Any]:
     stats = {
         "train_count": 0,
         "val_count": 0,
+        "test_count": 0,
         "quality_distribution": {"high": 0, "medium": 0, "low": 0, "unknown": 0},
         "source_distribution": {}
     }
@@ -533,6 +663,13 @@ def _analyze_datasets(train_file: Path, val_file: Path) -> Dict[str, Any]:
             if line.strip():
                 stats["val_count"] += 1
 
+    # Analyze test dataset if provided
+    if test_file and test_file.exists():
+        with open(test_file, 'r') as f:
+            for line in f:
+                if line.strip():
+                    stats["test_count"] += 1
+
     return stats
 
 
@@ -540,10 +677,11 @@ def upload_artifacts_phase(
     adapter_path: Path,
     train_dataset: Path,
     validation_dataset: Path,
+    test_dataset: Path,
     skip_upload: bool = False
 ) -> Dict[str, Any]:
     """
-    PHASE 6: Upload Artifacts to HuggingFace Hub
+    PHASE: Upload Artifacts to HuggingFace Hub
 
     Uploads model, datasets, and training artifacts with comprehensive documentation.
 
@@ -551,6 +689,7 @@ def upload_artifacts_phase(
         adapter_path: Path to trained model adapter
         train_dataset: Path to training dataset (train.jsonl)
         validation_dataset: Path to validation dataset (valid.jsonl)
+        test_dataset: Path to test dataset (test.jsonl)
         skip_upload: If True, skip actual upload operations
 
     Returns:
@@ -574,10 +713,12 @@ def upload_artifacts_phase(
 
     # Analyze datasets for metadata
     logger.info("📊 Analyzing datasets for statistics...")
-    dataset_stats = _analyze_datasets(train_dataset, validation_dataset)
+    dataset_stats = _analyze_datasets(train_dataset, validation_dataset, test_dataset)
     logger.info(f"   Dataset statistics: {dataset_stats}")
     logger.info(f"   Train examples: {dataset_stats['train_count']}")
     logger.info(f"   Validation examples: {dataset_stats['val_count']}")
+    if test_dataset:
+        logger.info(f"   Test examples: {dataset_stats['test_count']}")
     logger.info(f"   Quality distribution: {dataset_stats['quality_distribution']}")
 
     # Load training metadata if available
@@ -603,7 +744,8 @@ def upload_artifacts_phase(
             adapter_path,
             train_dataset,
             validation_dataset,
-            upload_metadata
+            upload_metadata,
+            test_dataset
         )
 
         if not upload_results["model_url"]:
@@ -619,7 +761,7 @@ def upload_artifacts_phase(
         logger.error(f"   ❌ Upload failed: {e}")
         raise RuntimeError(f"Artifact upload failed: {e}")
 
-    logger.info("✅ Phase 6 complete.")
+    logger.info("✅ Phase complete.")
     logger.info(f"   Model: {results['model_url']}")
     logger.info(f"   Dataset: {results['dataset_url']}")
     logger.info(f"   Staging: {results['staging_dir']}")
@@ -634,6 +776,7 @@ def get_active_only_phase(args) -> str:
         Phases.PARSING: args.only_parsing,
         Phases.DATASETS: args.only_datasets,
         Phases.TRAINING: args.only_training,
+        Phases.EVALUATION: args.only_evaluation,
         Phases.UPLOAD: args.only_upload,
     }
 
@@ -662,23 +805,31 @@ def validate_phase_inputs(phase: str, args):
 def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = False):
     # --- Execute Pipeline Phases ---
 
-    # Phase 1: Parse
+    # Phase: Parse
     parsed_vulns_file = parse_vulnerabilities_phase(artifacts_dir, output_dir)
 
-    # Phase 2: Construct Datasets
-    train_file, val_file = construct_datasets_phase(parsed_vulns_file, output_dir)
+    # Phase: Construct Datasets
+    train_file, val_file, test_file = construct_datasets_phase(parsed_vulns_file, output_dir)
 
-    # Phase 5: Train Model
+    # Phase: Train Model
     adapter_path = train_model_phase(
         train_file,
         val_file
     )
 
-    # Phase 6: Upload Artifacts
+    # Phase: Evaluate Model
+    eval_results = evaluate_model_phase(
+        adapter_path,
+        test_file,
+        output_dir
+    )
+
+    # Phase: Upload Artifacts
     upload_results = upload_artifacts_phase(
         adapter_path,
         train_file,
         val_file,
+        test_file,
         skip_upload=skip_upload
     )
 
@@ -687,7 +838,11 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = 
     logger.info(f"   Parsed vulnerabilities: {parsed_vulns_file}")
     logger.info(f"   Train dataset: {train_file}")
     logger.info(f"   Validation dataset: {val_file}")
+    logger.info(f"   Test dataset: {test_file}")
     logger.info(f"   Adapter artifacts: {adapter_path}")
+    logger.info(f"   Evaluation metrics:")
+    logger.info(f"     - Exact Match: {eval_results.get('metrics', {}).get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"     - Avg CodeBLEU: {eval_results.get('metrics', {}).get('avg_codebleu', 0):.4f}")
     if upload_results.get("model_url"):
         logger.info(f"   Model URL: {upload_results['model_url']}")
     if upload_results.get("dataset_url"):
@@ -708,11 +863,12 @@ def execute_single_phase(phase: str, args):
 
     elif phase == Phases.DATASETS:
         parsed_vulnerabilities_file = args.parsed_vulnerabilities_input
-        train_file, val_file = construct_datasets_phase(parsed_vulnerabilities_file, output_dir)
+        train_file, val_file, test_file = construct_datasets_phase(parsed_vulnerabilities_file, output_dir)
         print(f"✅ Dataset construction completed. Output files:")
         print(f"   Train dataset: {train_file}")
         print(f"   Validation dataset: {val_file}")
-        return 0, {"phase": phase, "train_file": str(train_file), "val_file": str(val_file)}
+        print(f"   Test dataset: {test_file}")
+        return 0, {"phase": phase, "train_file": str(train_file), "val_file": str(val_file), "test_file": str(test_file)}
 
     elif phase == Phases.TRAINING:
         train_dataset = args.train_dataset_input
@@ -726,16 +882,34 @@ def execute_single_phase(phase: str, args):
         print(f"   Adapter artifacts: {adapter_path}")
         return 0, {"phase": phase, "adapter_path": str(adapter_path)}
 
+    elif phase == Phases.EVALUATION:
+        adapter_path = args.adapter_input
+        test_dataset = args.test_dataset_input
+
+        eval_results = evaluate_model_phase(
+            adapter_path,
+            test_dataset,
+            output_dir
+        )
+        print(f"✅ Evaluation completed.")
+        metrics = eval_results.get('metrics', {})
+        print(f"   Exact Match: {metrics.get('exact_match_percentage', 0):.2f}%")
+        print(f"   Avg CodeBLEU: {metrics.get('avg_codebleu', 0):.4f}")
+        print(f"   Test Examples: {eval_results.get('total_examples', 0)}")
+        return 0, {"phase": phase, "eval_results": eval_results}
+
     elif phase == Phases.UPLOAD:
         adapter_path = args.adapter_input
         train_dataset = args.train_dataset_input
         validation_dataset = args.validation_dataset_input
-        skip_upload = getattr(args, 'skip_upload', False)
+        test_dataset = args.test_dataset_input
+        skip_upload = bool(args.skip_upload)
 
         upload_results = upload_artifacts_phase(
             adapter_path,
             train_dataset,
             validation_dataset,
+            test_dataset,
             skip_upload=skip_upload
         )
         print(f"✅ Upload completed.")
@@ -815,6 +989,7 @@ def main():
     phase_group.add_argument("--only-parsing", action="store_true", help="Execute only parsing phase")
     phase_group.add_argument("--only-datasets", action="store_true", help="Execute only dataset construction phase")
     phase_group.add_argument("--only-training", action="store_true", help="Execute only model training phase")
+    phase_group.add_argument("--only-evaluation", action="store_true", help="Execute only model evaluation phase")
     phase_group.add_argument("--only-upload", action="store_true", help="Execute only artifact upload phase")
 
     # Upload control flags
@@ -831,6 +1006,8 @@ def main():
                             help="Training dataset file (for model training and upload)")
     input_group.add_argument("--validation-dataset-input", type=Path,
                             help="Validation dataset file (for model training and upload)")
+    input_group.add_argument("--test-dataset-input", type=Path,
+                            help="Test dataset file (for evaluation and upload)")
     input_group.add_argument("--adapter-input", type=Path,
                             help="Trained adapter directory (for upload)")
 

@@ -132,7 +132,6 @@ class OLMoSecurityConfig:
         # Configure project directories (fixed within project structure)
         # These are NOT configurable - they follow standard project layout
         project_root = Path(__file__).parent.parent
-        self.venv_dir = project_root / "security-ai-analysis" / "venv"
         self.data_dir = project_root / "security-ai-analysis" / "data"
         self.results_dir = project_root / "security-ai-analysis" / "results"
         
@@ -143,7 +142,7 @@ class OLMoSecurityConfig:
         # HuggingFace model ID for the base model (for reproducibility in uploads)
         # This is the publicly accessible model identifier on HuggingFace Hub
         self.base_model_hf_id = os.getenv('OLMO_BASE_MODEL_HF_ID',
-                                         config.get('base_model_hf_id', 'allenai/OLMo-2-1B'))
+                                         config.get('base_model_hf_id', 'allenai/OLMo-2-0425-1B-Instruct'))
 
         # Load nested configuration sections
         self.fine_tuning = self._load_fine_tuning_section(config, project_root)
@@ -206,7 +205,6 @@ class OLMoSecurityConfig:
         return {
             'base_models_dir': str(self.base_models_dir),
             'fine_tuned_models_dir': str(self.fine_tuned_models_dir),
-            'venv_dir': str(self.venv_dir),
             'data_dir': str(self.data_dir),
             'results_dir': str(self.results_dir),
             'default_base_model': self.default_base_model,

@@ -98,13 +98,7 @@ except Exception as e:
         ]
 
         print("🔧 Executing model download and conversion subprocess...")
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
-
-        # Show output for debugging
-        if result.stdout:
-            print(result.stdout)
-        if result.stderr:
-            print(result.stderr)
+        result = subprocess.run(cmd, text=True, timeout=1800)
 
         if result.returncode == 0:
             # Verify the model was actually downloaded
@@ -213,6 +207,7 @@ def main():
         # Maps our internal model names to actual HuggingFace repositories
         model_mapping = {
             'OLMo-2-1B-mlx-q4': 'allenai/OLMo-2-0425-1B',
+            'OLMo-2-1B-Instruct-mlx-q4': 'allenai/OLMo-2-0425-1B-Instruct',
             'OLMo-2-1B-mlx': 'allenai/OLMo-2-0425-1B-Instruct',
         }
 

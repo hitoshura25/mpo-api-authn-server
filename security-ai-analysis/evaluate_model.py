@@ -198,7 +198,7 @@ def evaluate_model(
         'detailed_results': []
     }
 
-    debug_file_path = config.results_dir / "model_evaluation"
+    debug_file_path = output_file.parent / "model_evaluation"
     if debug_file_path.exists():
         shutil.rmtree(debug_file_path)
 

@@ -314,13 +314,26 @@ class TestProcessArtifactsScript:
         )
         assert result == 1, f"Training only mode should fail with no train dataset, got exit code {result}"
 
+    def test_training_only_fails_with_no_test_dataset(self):
+        """Test training only mode fails with no test dataset"""
+        result = self.run_process_artifacts(
+            additional_args=[
+                "--only-training",
+                "--train-dataset", str(self.phase_inputs_dir / "train_dataset.jsonl"),
+                "--validation-dataset", str(self.phase_inputs_dir / "validation_dataset.jsonl"),
+            ],
+            realtime_output=True
+        )
+        assert result == 1, f"Training only mode should fail with no test dataset, got exit code {result}"
+
     def test_training_only_with_datasets(self, test_models_dir):
         """Test training only mode with provided datasets"""
         training_result = self.run_process_artifacts(
             additional_args=[
                 "--only-training",
                 "--train-dataset", str(self.phase_inputs_dir / "train_dataset.jsonl"),
-                "--validation-dataset", str(self.phase_inputs_dir / "validation_dataset.jsonl")
+                "--validation-dataset", str(self.phase_inputs_dir / "validation_dataset.jsonl"),
+                "--test-dataset", str(self.phase_inputs_dir / "test_dataset.jsonl"),
             ],
             realtime_output=True
         )
@@ -337,41 +350,9 @@ class TestProcessArtifactsScript:
         assert (adapters_dir / 'adapters.safetensors').exists(), f"Adapters file not found in: {adapters_dir}"
         assert (adapters_dir / 'training_metadata.json').exists(), f"training_metadata.json file not found in: {adapters_dir}"
 
-    def test_evaluation_only_fails_with_no_test_dataset(self):
-        """Test evaluation only mode fails with no test dataset"""
-        result = self.run_process_artifacts(
-            additional_args=[
-                "--only-evaluation",
-            ],
-            realtime_output=True
-        )
-        assert result == 1, f"Evaluation only mode should fail with no test dataset, got exit code {result}"
-
-    def test_evaluation_only_fails_with_no_adapters(self):
-        """Test evaluation only mode fails with no model directory"""
-        result = self.run_process_artifacts(
-            additional_args=[
-                "--only-evaluation",
-                "--test-dataset", str(self.phase_inputs_dir / "test_dataset.jsonl"),
-            ],
-            realtime_output=True
-        )
-        assert result == 1, f"Evaluation only mode should fail with no model directory, got exit code {result}" 
-
-    def test_evaluation_only_with_adapters_and_test_dataset(self):
-        """Test evaluation only mode with provided model directory and test dataset"""
-        eval_result = self.run_process_artifacts(
-            additional_args=[
-                "--only-evaluation",
-                "--adapter-input", str(self.phase_inputs_dir / "adapters"),
-                "--test-dataset", str(self.phase_inputs_dir / "test_dataset.jsonl"),
-            ],
-            realtime_output=True
-        )
-        assert eval_result == 0, f"Evaluation only mode failed with exit code {eval_result}"
-
-        # Verify expected output file exists
-        expected_output_file = self.temp_output_dir / "evaluation_results.json"
+         # Verify expected output file exists
+        evaluation_dir = model_dir[0] / "evaluation"
+        expected_output_file = evaluation_dir / "evaluation_results.json"
         assert expected_output_file.exists(), f"Expected evaluation results file not found: {expected_output_file}"
 
         # Verify content of the output file

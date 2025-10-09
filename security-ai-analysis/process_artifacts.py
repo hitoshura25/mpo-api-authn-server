@@ -23,20 +23,18 @@ class Phases:
     PARSING = "parsing"
     DATASETS = "datasets"
     TRAINING = "training"
-    EVALUATION = "evaluation"
     UPLOAD = "upload"
 
     # List for validation
     ALL_PHASES = [
-        PARSING, DATASETS, TRAINING, EVALUATION, UPLOAD
+        PARSING, DATASETS, TRAINING, UPLOAD
     ]
 
     # Input requirements mapping
     PHASE_INPUTS = {
         PARSING: [],  # Uses --artifacts-dir
         DATASETS: ['parsed_vulnerabilities_input'],
-        TRAINING: ['train_dataset_input', 'validation_dataset_input'],
-        EVALUATION: ['adapter_input', 'test_dataset_input'],
+        TRAINING: ['train_dataset_input', 'validation_dataset_input', 'test_dataset_input'],
         UPLOAD: ['adapter_input', 'train_dataset_input', 'validation_dataset_input', 'test_dataset_input'],
     }
 
@@ -492,20 +490,22 @@ def _augment_training_pairs(training_pairs: List[Dict[str, Any]]) -> List[Dict[s
     return augmented_pairs
 
 
-def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
+def train_model_phase(train_dataset: Path, validation_dataset: Path, test_dataset: Path):
     """
-    PHASE: Train Model
+    PHASE: Train Model (with automatic evaluation)
     - Creates structured training run directory with manifest
     - Applies quality-weighted sampling to prioritize high-quality examples
     - Fine-tunes model using MLX LoRA
-    - Saves adapter artifacts
+    - Automatically evaluates model on test dataset
+    - Saves all artifacts and results to run directory
 
     Args:
         train_dataset: Path to train_dataset.jsonl
         validation_dataset: Path to validation_dataset.jsonl
+        test_dataset: Path to test_dataset.jsonl
 
     Returns:
-        Path to trained adapter directory
+        TrainingRun instance with trained model and evaluation results
     """
     logger.info("🚀 Starting Phase: Train Model")
     config = OLMoSecurityConfig()
@@ -514,6 +514,8 @@ def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
         raise FileNotFoundError(f"Train dataset not found: {train_dataset}")
     if not validation_dataset.exists():
         raise FileNotFoundError(f"Validation dataset not found: {validation_dataset}")
+    if not test_dataset.exists():
+        raise FileNotFoundError(f"Test dataset not found: {test_dataset}")
 
     # Import managers
     from mlx_trainer import MLXTrainer
@@ -538,6 +540,7 @@ def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
 
     logger.info(f"Train dataset: {train_dataset}")
     logger.info(f"Validation dataset: {validation_dataset}")
+    logger.info(f"Test dataset: {test_dataset}")
     logger.info(f"Training run: {training_run.run_id}")
     logger.info(f"Training data directory: {training_run.training_data_path}")
 
@@ -552,70 +555,21 @@ def train_model_phase(train_dataset: Path, validation_dataset: Path) -> Path:
         training_data_dir=training_run.training_data_path
     )
 
-    logger.info(f"✅ Phase complete.")
+    logger.info(f"✅ Training complete.")
     logger.info(f"   Training run: {training_run.run_dir}")
     logger.info(f"   Adapter artifacts: {adapter_path}")
 
-    return adapter_path
+    logger.info("🔬 Running evaluation...")
+    eval_results = run_manager.evaluate(training_run, test_dataset)
 
-
-def evaluate_model_phase(
-    adapter_path: Path,
-    test_dataset: Path,
-    output_dir: Path
-) -> Dict[str, Any]:
-    """
-    PHASE: Evaluate Model
-
-    Evaluates the fine-tuned model on held-out test dataset using:
-    - Exact Match Accuracy: Character-for-character comparison
-    - CodeBLEU: Semantic/structural code similarity
-
-    Args:
-        adapter_path: Path to trained model adapter directory
-        test_dataset: Path to test_dataset.jsonl
-        output_dir: Path to save evaluation results
-
-    Returns:
-        Dictionary with evaluation metrics and results
-    """
-    logger.info("=" * 60)
-    logger.info("🔬 Phase: Evaluate Model")
-    logger.info("=" * 60)
-
-    if not adapter_path.exists():
-        raise FileNotFoundError(f"Adapter path not found: {adapter_path}")
-    if not test_dataset.exists():
-        raise FileNotFoundError(f"Test dataset not found: {test_dataset}")
-
-    # Import evaluation module
-    from evaluate_model import evaluate_model
-
-    # Set evaluation output path
-    eval_output_file = output_dir / "evaluation_results.json"
-
-    logger.info(f"Adapter: {adapter_path}")
-    logger.info(f"Test dataset: {test_dataset}")
-    logger.info(f"Output: {eval_output_file}")
-
-    # Run evaluation
-    eval_results = evaluate_model(
-        model_path=adapter_path,
-        test_dataset=test_dataset,
-        output_file=eval_output_file,
-        max_tokens=512,
-        temperature=0.0
-    )
-
-    # Log summary
     metrics = eval_results.get('metrics', {})
-    logger.info(f"\n✅ Phase complete.")
-    logger.info(f"   Exact Match Accuracy: {metrics.get('exact_match_percentage', 0):.2f}%")
-    logger.info(f"   Average CodeBLEU: {metrics.get('avg_codebleu', 0):.4f}")
+    logger.info(f"✅ Evaluation complete.")
+    logger.info(f"   Exact Match: {metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"   Avg CodeBLEU: {metrics.get('avg_codebleu', 0):.4f}")
     logger.info(f"   Test Examples: {eval_results.get('total_examples', 0)}")
-    logger.info(f"   Results saved: {eval_output_file}")
 
-    return eval_results
+    return training_run
+
 
 
 def _analyze_datasets(train_file: Path, val_file: Path, test_file: Path) -> Dict[str, Any]:
@@ -782,7 +736,6 @@ def get_active_only_phase(args) -> str:
         Phases.PARSING: args.only_parsing,
         Phases.DATASETS: args.only_datasets,
         Phases.TRAINING: args.only_training,
-        Phases.EVALUATION: args.only_evaluation,
         Phases.UPLOAD: args.only_upload,
     }
 
@@ -817,27 +770,29 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = 
     # Phase: Construct Datasets
     train_file, val_file, test_file = construct_datasets_phase(parsed_vulns_file, output_dir)
 
-    # Phase: Train Model
-    adapter_path = train_model_phase(
+    # Phase: Train Model (with automatic evaluation)
+    training_run = train_model_phase(
         train_file,
-        val_file
-    )
-
-    # Phase: Evaluate Model
-    eval_results = evaluate_model_phase(
-        adapter_path,
-        test_file,
-        output_dir
+        val_file,
+        test_file
     )
 
     # Phase: Upload Artifacts
     upload_results = upload_artifacts_phase(
-        adapter_path,
+        training_run.adapters_path,
         train_file,
         val_file,
         test_file,
         skip_upload=skip_upload
     )
+
+    # Load evaluation results from training run
+    eval_results_file = training_run.manifest.evaluation_results_path / "evaluation_results.json"
+    eval_results = {}
+    if eval_results_file.exists():
+        import json
+        with open(eval_results_file, 'r') as f:
+            eval_results = json.load(f)
 
     logger.info("\n✅ Full pipeline completed successfully!")
     logger.info(f"   Final outputs:")
@@ -845,7 +800,8 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = 
     logger.info(f"   Train dataset: {train_file}")
     logger.info(f"   Validation dataset: {val_file}")
     logger.info(f"   Test dataset: {test_file}")
-    logger.info(f"   Adapter artifacts: {adapter_path}")
+    logger.info(f"   Training run: {training_run.run_dir}")
+    logger.info(f"   Adapter artifacts: {training_run.adapters_path}")
     logger.info(f"   Evaluation metrics:")
     logger.info(f"     - Exact Match: {eval_results.get('metrics', {}).get('exact_match_percentage', 0):.2f}%")
     logger.info(f"     - Avg CodeBLEU: {eval_results.get('metrics', {}).get('avg_codebleu', 0):.4f}")
@@ -879,30 +835,18 @@ def execute_single_phase(phase: str, args):
     elif phase == Phases.TRAINING:
         train_dataset = args.train_dataset_input
         validation_dataset = args.validation_dataset_input
-
-        adapter_path = train_model_phase(
-            train_dataset,
-            validation_dataset
-        )
-        print(f"✅ Model training completed. Output files:")
-        print(f"   Adapter artifacts: {adapter_path}")
-        return 0, {"phase": phase, "adapter_path": str(adapter_path)}
-
-    elif phase == Phases.EVALUATION:
-        adapter_path = args.adapter_input
         test_dataset = args.test_dataset_input
 
-        eval_results = evaluate_model_phase(
-            adapter_path,
-            test_dataset,
-            output_dir
+        training_run = train_model_phase(
+            train_dataset,
+            validation_dataset,
+            test_dataset
         )
-        print(f"✅ Evaluation completed.")
-        metrics = eval_results.get('metrics', {})
-        print(f"   Exact Match: {metrics.get('exact_match_percentage', 0):.2f}%")
-        print(f"   Avg CodeBLEU: {metrics.get('avg_codebleu', 0):.4f}")
-        print(f"   Test Examples: {eval_results.get('total_examples', 0)}")
-        return 0, {"phase": phase, "eval_results": eval_results}
+        print(f"✅ Model training and evaluation completed. Output files:")
+        print(f"   Training run: {training_run.run_dir}")
+        print(f"   Adapter artifacts: {training_run.adapters_path}")
+        print(f"   Evaluation results: {training_run.run_dir / 'evaluation'}")
+        return 0, {"phase": phase, "training_run": str(training_run.run_dir)}
 
     elif phase == Phases.UPLOAD:
         adapter_path = args.adapter_input
@@ -994,8 +938,7 @@ def main():
     phase_group = parser.add_argument_group('Single Phase Execution')
     phase_group.add_argument("--only-parsing", action="store_true", help="Execute only parsing phase")
     phase_group.add_argument("--only-datasets", action="store_true", help="Execute only dataset construction phase")
-    phase_group.add_argument("--only-training", action="store_true", help="Execute only model training phase")
-    phase_group.add_argument("--only-evaluation", action="store_true", help="Execute only model evaluation phase")
+    phase_group.add_argument("--only-training", action="store_true", help="Execute only model training phase (includes automatic evaluation)")
     phase_group.add_argument("--only-upload", action="store_true", help="Execute only artifact upload phase")
 
     # Upload control flags
@@ -1013,7 +956,7 @@ def main():
     input_group.add_argument("--validation-dataset-input", type=Path,
                             help="Validation dataset file (for model training and upload)")
     input_group.add_argument("--test-dataset-input", type=Path,
-                            help="Test dataset file (for evaluation and upload)")
+                            help="Test dataset file (for automatic evaluation during training and upload)")
     input_group.add_argument("--adapter-input", type=Path,
                             help="Trained adapter directory (for upload)")
 

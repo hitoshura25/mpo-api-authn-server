@@ -27,6 +27,7 @@ class RunManifest:
     training_params: Dict[str, Any] = None
     adapters_path: str = "./adapters"
     training_data_path: str = "./training-data"
+    evaluation_results_path: str = "./evaluation"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
@@ -37,7 +38,8 @@ class RunManifest:
             "base_model": self.base_model,
             "training_params": self.training_params or {},
             "adapters_path": self.adapters_path,
-            "training_data_path": self.training_data_path
+            "training_data_path": self.training_data_path,
+            "evaluation_results_path": self.evaluation_results_path,
         }
 
 
@@ -78,7 +80,8 @@ class TrainingRun:
                 base_model=manifest_data.get("base_model", ""),
                 training_params=manifest_data.get("training_params", {}),
                 adapters_path=manifest_data.get("adapters_path", "./adapters"),
-                training_data_path=manifest_data.get("training_data_path", "./training-data")
+                training_data_path=manifest_data.get("training_data_path", "./training-data"),
+                evaluation_results_path=manifest_data.get("evaluation_results_path", "./evaluation"),
             )
 
             return manifest
@@ -246,3 +249,39 @@ class TrainingRunManager:
             raise FileNotFoundError(f"Training run not found: {run_id}")
 
         return TrainingRun(run_dir)
+
+    def evaluate(self, training_run: TrainingRun, test_dataset: Path) -> Dict[str, Any]:
+        """
+        Evaluate the trained model and save results to run directory.
+
+        Creates {run_dir}/evaluation/ with:
+        - evaluation_results.json (metrics, detailed results)
+        - model_evaluation/ (debug files per test case)
+
+        Args:
+            training_run: TrainingRun instance with trained adapters
+            test_dataset: Path to test dataset JSONL file
+
+        Returns:
+            Dictionary with evaluation results and metrics
+        """
+        from evaluate_model import evaluate_model
+
+        # Create evaluation directory in training run
+        eval_dir = training_run.run_dir / "evaluation"
+        eval_dir.mkdir(exist_ok=True)
+
+        # Run evaluation with output in training run directory
+        results = evaluate_model(
+            model_path=training_run.adapters_path,
+            test_dataset=test_dataset,
+            output_file=eval_dir / "evaluation_results.json"
+        )
+
+        # Update manifest with evaluation metadata
+        training_run.manifest.evaluation_results_path = "./evaluation"
+        training_run.save_manifest()
+
+        logger.info(f"✅ Evaluation complete. Results saved to: {eval_dir}")
+
+        return results

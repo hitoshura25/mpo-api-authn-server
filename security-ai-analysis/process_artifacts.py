@@ -161,17 +161,11 @@ def construct_datasets_phase(parsed_vulns_file: Path, output_dir: Path) -> tuple
 
     # CRITICAL: Split BEFORE augmentation to keep test set pure (ground truth)
     # Test set must contain only original examples for valid evaluation
-    logger.info("📊 Splitting original examples (80/10/10)...")
-    random.shuffle(specific_fixes)
-    total_original = len(specific_fixes)
-    train_size = int(total_original * 0.8)
-    val_size = int(total_original * 0.1)
+    # Using stratified split to ensure consistent test set across runs
+    logger.info("📊 Splitting original examples with stratified sampling by tool...")
+    original_train, original_val, test_pairs = _stratified_split_by_tool(specific_fixes)
 
-    original_train = specific_fixes[:train_size]
-    original_val = specific_fixes[train_size:train_size + val_size]
-    test_pairs = specific_fixes[train_size + val_size:]  # Pure ground truth!
-
-    logger.info(f"   Original split: {len(original_train)} train / {len(original_val)} val / {len(test_pairs)} test")
+    logger.info(f"   Final split: {len(original_train)} train / {len(original_val)} val / {len(test_pairs)} test")
 
     # SOURCE 3: Data Augmentation (ONLY for train/val sets)
     # Test set remains pure original examples for valid evaluation
@@ -219,6 +213,151 @@ def construct_datasets_phase(parsed_vulns_file: Path, output_dir: Path) -> tuple
     return train_file, val_file, test_file
 
 
+def _stratified_split_by_tool(training_pairs: List[Dict[str, Any]], random_seed: int = 42) -> tuple[List[Dict], List[Dict], List[Dict]]:
+    """
+    Split training pairs into train/val/test sets using stratified sampling by tool.
+
+    Ensures each tool (Trivy, Semgrep, OSV, ZAP, Checkov) is represented proportionally
+    in all three sets, providing consistent evaluation across runs.
+
+    Args:
+        training_pairs: List of training examples with metadata containing 'tool' field
+        random_seed: Fixed random seed for reproducibility (default: 42)
+
+    Returns:
+        Tuple of (train_pairs, val_pairs, test_pairs)
+    """
+    # Group vulnerabilities by tool
+    tool_groups = {}
+    for pair in training_pairs:
+        tool = pair.get('metadata', {}).get('tool', 'unknown')
+        if tool not in tool_groups:
+            tool_groups[tool] = []
+        tool_groups[tool].append(pair)
+
+    # Set fixed seed for reproducibility
+    random.seed(random_seed)
+
+    train_pairs = []
+    val_pairs = []
+    test_pairs = []
+
+    logger.info(f"📊 Stratified split by tool:")
+
+    # Split each tool's vulnerabilities proportionally
+    for tool, pairs in tool_groups.items():
+        # Shuffle within tool group
+        random.shuffle(pairs)
+        count = len(pairs)
+
+        # Calculate split sizes
+        if count >= 10:
+            # Standard 80/10/10 split for tools with enough data
+            train_size = int(count * 0.8)
+            val_size = int(count * 0.1)
+            test_size = count - train_size - val_size  # Remainder goes to test
+        else:
+            # For small datasets, ensure at least 1 in test and val if possible
+            test_size = max(1, int(count * 0.1))
+            val_size = max(1, int(count * 0.1)) if count > test_size else 0
+            train_size = count - test_size - val_size
+
+            # Edge case: if only 1-2 examples, put in test for evaluation
+            if count <= 2:
+                test_size = count
+                val_size = 0
+                train_size = 0
+
+        # Split the tool's pairs
+        tool_train = pairs[:train_size]
+        tool_val = pairs[train_size:train_size + val_size]
+        tool_test = pairs[train_size + val_size:]
+
+        train_pairs.extend(tool_train)
+        val_pairs.extend(tool_val)
+        test_pairs.extend(tool_test)
+
+        logger.info(f"   {tool}: {count} total → {len(tool_train)} train / {len(tool_val)} val / {len(tool_test)} test")
+
+    # Final shuffle of combined sets (but maintain tool distribution)
+    random.shuffle(train_pairs)
+    random.shuffle(val_pairs)
+    random.shuffle(test_pairs)
+
+    return train_pairs, val_pairs, test_pairs
+
+
+def _create_system_prompt(category: str) -> str:
+    """
+    Create tool-specific system prompt based on security category.
+
+    Args:
+        category: Security category (dependency_vulnerabilities, code_vulnerability, etc.)
+
+    Returns:
+        Specialized system prompt optimized for the category
+    """
+    if category in ['dependency_vulnerabilities', 'dependency_security']:
+        return """You are a dependency security specialist.
+
+EXPERTISE: Version constraints, semver, Gradle/Maven/npm dependency management
+
+TASK: Provide precise dependency upgrade instructions
+- Specify exact versions (no ranges)
+- Use correct build syntax (Gradle Kotlin DSL, package.json)
+- Include security rationale
+
+OUTPUT: implementation("group:artifact:VERSION")"""
+
+    elif category == 'code_vulnerability':
+        return """You are a secure code specialist.
+
+EXPERTISE: OWASP patterns, Kotlin/Java security APIs, WebAuthn
+
+TASK: Provide minimal code fixes that eliminate vulnerabilities
+- Preserve functionality
+- Use appropriate security libraries
+- Include security comments
+
+OUTPUT: Fixed code block with brief explanation"""
+
+    elif category == 'web_security':
+        return """You are a web security specialist.
+
+EXPERTISE: HTTP security headers, CORS, session security, KTor framework
+
+TASK: Provide framework-native security configurations
+- Use KTor install() syntax
+- Follow strict security policies
+
+OUTPUT: KTor configuration code"""
+
+    elif category == 'configuration_security':
+        return """You are a DevOps security specialist.
+
+EXPERTISE: GitHub Actions, IaC security, least-privilege permissions
+
+TASK: Provide minimal security configuration fixes
+- Use platform-specific syntax (YAML, HCL)
+- Preserve functionality
+
+OUTPUT: Corrected configuration"""
+
+    else:
+        # Fallback for unknown categories
+        return """You are a cybersecurity analyst specializing in WebAuthn and FIDO2 security vulnerabilities.
+
+CRITICAL SECURITY GUIDELINES:
+- Always prioritize security in your analysis and recommendations
+- Provide actionable remediation steps for identified vulnerabilities
+- Consider the broader security implications of each finding
+- Maintain accuracy and precision in threat assessments
+- Follow responsible disclosure principles
+- Preserve safety guidelines and ethical analysis standards
+
+Your role is to analyze security vulnerabilities and provide comprehensive, actionable guidance for remediation."""
+
+
 def _create_vulnerability_prompt(vuln: Dict) -> str:
     """
     Create tool-specific user prompt based on vulnerability data.
@@ -233,21 +372,20 @@ def _create_vulnerability_prompt(vuln: Dict) -> str:
     category = vuln.get('security_category', 'unknown')
 
     # Dependency vulnerabilities (OSV, Trivy)
-    if category == 'dependency_vulnerabilities':
+    if category in ['dependency_vulnerabilities', 'dependency_security']:
         current_version = vuln.get('installed_version')
         if not current_version:
             raise ValueError(f"Installed version information missing in vulnerability data: ${vuln}")
         fixed_version = vuln.get('fixed_version')
         if not fixed_version:
             raise ValueError(f"Fixed version information missing in vulnerability data: ${vuln}")
-        return f"""Fix the following security vulnerability:
-
-Vulnerability: {vuln.get('id', 'Unknown')}
+        package = vuln.get('package_name', vuln.get('title', 'Unknown'))
+        return f"""Vulnerability: {vuln.get('id', 'Unknown')}
 Severity: {vuln.get('severity', 'Unknown')}
 Tool: {tool}
-Package: {vuln.get('package_name', vuln.get('title', 'Unknown'))}
-Current Version: {vuln.get('installed_version', vuln.get('version', 'Unknown'))}
-Fixed Version: {vuln.get('fixed_version', 'Latest')}
+Package: {package}
+Current Version: {current_version}
+Fixed Version: {fixed_version}
 Description: {vuln.get('description', vuln.get('message', 'No description'))}"""
 
     # Code vulnerabilities (Semgrep)
@@ -255,9 +393,7 @@ Description: {vuln.get('description', vuln.get('message', 'No description'))}"""
         code_context = vuln.get('code_context', {})
         vulnerable_code = code_context.get('vulnerable_code', 'N/A')
 
-        return f"""Fix the following code security vulnerability:
-
-Vulnerability: {vuln.get('id', 'Unknown')}
+        return f"""Vulnerability: {vuln.get('id', 'Unknown')}
 Severity: {vuln.get('severity', 'Unknown')}
 Tool: {tool}
 File: {vuln.get('file_path', 'Unknown')}
@@ -265,15 +401,11 @@ Line: {vuln.get('start', {}).get('line', 'Unknown')}
 Message: {vuln.get('message', 'No description')}
 
 Vulnerable Code:
-{vulnerable_code}
-
-Provide a secure fix for this code."""
+{vulnerable_code}"""
 
     # Web/HTTP security (ZAP)
     elif category == 'web_security':
-        return f"""Fix the following web security vulnerability:
-
-Alert: {vuln.get('alert', 'Unknown')}
+        return f"""Alert: {vuln.get('alert', 'Unknown')}
 Severity: {vuln.get('severity', 'Unknown')}
 Tool: {tool}
 URL: {vuln.get('uri', 'Unknown')}
@@ -284,20 +416,17 @@ Solution: {vuln.get('solution', 'No solution provided')}"""
     elif category == 'configuration_security':
         code_context = vuln.get('code_context', {})
         vulnerable_code = code_context.get('vulnerable_code', 'N/A')
+        config_type = vuln.get('config_type', 'Unknown')
 
-        return f"""Fix the following configuration security issue:
-
-Rule: {vuln.get('rule_name', vuln.get('id', 'Unknown'))}
+        return f"""Rule: {vuln.get('rule_name', vuln.get('id', 'Unknown'))}
 Severity: {vuln.get('severity', 'Unknown')}
 Tool: {tool}
 File: {vuln.get('file_path', 'Unknown')}
-Config Type: {vuln.get('config_type', 'Unknown')}
+Config Type: {config_type}
 Message: {vuln.get('message', 'No description')}
 
 Current Configuration:
-{vulnerable_code}
-
-Provide a secure configuration."""
+{vulnerable_code}"""
 
     # Fallback for unknown categories
     else:
@@ -391,18 +520,6 @@ def _generate_specific_fixes(parsed_vulns: List[Dict]) -> List[Dict[str, Any]]:
         }
     """
     specific_fixes = []
-    # System message for security analysis
-    system_message = """You are a cybersecurity analyst specializing in WebAuthn and FIDO2 security vulnerabilities.
-
-CRITICAL SECURITY GUIDELINES:
-- Always prioritize security in your analysis and recommendations
-- Provide actionable remediation steps for identified vulnerabilities
-- Consider the broader security implications of each finding
-- Maintain accuracy and precision in threat assessments
-- Follow responsible disclosure principles
-- Preserve safety guidelines and ethical analysis standards
-
-Your role is to analyze security vulnerabilities and provide comprehensive, actionable guidance for remediation."""
 
     for vuln in parsed_vulns:
         # Vulnerabilities are now flat objects with pre-generated fixes
@@ -423,6 +540,12 @@ Your role is to analyze security vulnerabilities and provide comprehensive, acti
             raise ValueError(f"Missing fix data for vulnerability {vuln_id} from {tool}")
 
         try:
+            # Get security category for tool-specific prompt generation
+            security_category = vuln.get('security_category', 'unknown')
+
+            # Generate tool-specific system prompt based on category
+            system_content = _create_system_prompt(security_category)
+
             # Generate tool-specific user prompt based on vulnerability category
             user_content = _create_vulnerability_prompt(vuln)
 
@@ -433,7 +556,7 @@ Your role is to analyze security vulnerabilities and provide comprehensive, acti
             if assistant_content:
                 specific_fixes.append({
                     "messages": [
-                        {"role": "system", "content": system_message},
+                        {"role": "system", "content": system_content},
                         {"role": "user", "content": user_content},
                         {"role": "assistant", "content": assistant_content}
                     ],
@@ -708,6 +831,10 @@ def upload_artifacts_phase(
             test_dataset
         )
 
+        if skip_upload:
+            logger.info("   ⚠️ Upload skipped as per configuration.")
+            return results
+
         if not upload_results["model_url"]:
             raise ValueError("Model upload returned empty URL")
         if not upload_results["dataset_url"]:
@@ -787,7 +914,7 @@ def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = 
     )
 
     # Load evaluation results from training run
-    eval_results_file = training_run.manifest.evaluation_results_path / "evaluation_results.json"
+    eval_results_file = training_run.evaluation_results_path / "evaluation_results.json"
     eval_results = {}
     if eval_results_file.exists():
         import json

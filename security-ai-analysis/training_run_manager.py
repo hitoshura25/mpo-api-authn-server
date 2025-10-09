@@ -116,6 +116,11 @@ class TrainingRun:
     def training_data_path(self) -> Path:
         """Get path to training data directory"""
         return self.run_dir / self.manifest.training_data_path
+    
+    @property
+    def evaluation_results_path(self) -> Path:
+        """Get path to evaluation results directory"""
+        return self.run_dir / self.manifest.evaluation_results_path
 
     def prepare_training_data(self, train_dataset: Path, validation_dataset: Path) -> Path:
         """

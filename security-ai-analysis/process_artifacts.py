@@ -236,6 +236,12 @@ def _create_vulnerability_prompt(vuln: Dict) -> str:
 
     # Dependency vulnerabilities (OSV, Trivy)
     if category == 'dependency_vulnerabilities':
+        current_version = vuln.get('installed_version')
+        if not current_version:
+            raise ValueError(f"Installed version information missing in vulnerability data: ${vuln}")
+        fixed_version = vuln.get('fixed_version')
+        if not fixed_version:
+            raise ValueError(f"Fixed version information missing in vulnerability data: ${vuln}")
         return f"""Fix the following security vulnerability:
 
 Vulnerability: {vuln.get('id', 'Unknown')}

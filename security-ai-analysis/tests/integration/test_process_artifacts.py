@@ -217,6 +217,11 @@ class TestProcessArtifactsScript:
                 assert 'confidence' in fix, "Each fix should have a 'confidence'"
                 assert 'description' in fix, "Each fix should have a 'description'"
 
+                assert vuln['tool'] in ['trivy', 'osv-scanner', 'checkov', 'semgrep', 'zap'], f"Unexpected tool: {vuln['tool']}"
+                if vuln['tool'] in ['trivy', 'osv-scanner']:
+                    assert 'fixed_version' in vuln, f"Each vulnerability from {vuln['tool']} should have 'fixed_version'"
+                    assert 'installed_version' in vuln, f"Each vulnerability from {vuln['tool']} should have 'installed_version'"
+
 
     def test_datasets_only_fails_with_no_parsed_vulnerabilities_input(self):
         """Test dataset construction only mode fails with no parsed vulnerabilities input"""

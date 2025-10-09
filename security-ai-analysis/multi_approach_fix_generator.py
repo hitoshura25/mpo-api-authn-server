@@ -816,9 +816,16 @@ class MultiApproachFixGenerator:
 
         # Primary fix: Latest version
         primary_version = fixed_versions[0]
-        package_name = vuln.get('package_name', 'Unknown')
-        current_version = vuln.get('package_version', 'Unknown')
-        ecosystem = vuln.get('ecosystem', 'Maven')
+        package_name = vuln.get('package_name')
+        current_version = vuln.get('installed_version')
+        ecosystem = vuln.get('ecosystem')
+
+        if not package_name:
+            raise ValueError("Package name missing in OSV vulnerability data")
+        if not current_version:
+            raise ValueError("Installed version missing in OSV vulnerability data")
+        if not ecosystem:
+            raise ValueError("Ecosystem information missing in OSV vulnerability data")
 
         fix = SecurityFix(
             approach=FixApproach.LIBRARY_REPLACEMENT,

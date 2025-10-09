@@ -89,7 +89,7 @@ def _parse_osv_json(filepath: str) -> List[Dict]:
                         'details': vuln.get('details', ''),
                         'severity': severity,
                         'package_name': pkg_name,
-                        'package_version': pkg_version,
+                        'installed_version': pkg_version,
                         'ecosystem': ecosystem,
                         'source_path': source_path,
                         'source_type': source_type,
@@ -237,7 +237,7 @@ def parse_osv_json_enhanced(filepath: str) -> List[Dict]:
                     'file_path': vuln.get('source_path', 'Unknown'),
                     'language': vuln.get('ecosystem', 'Maven').lower(),
                     'file_extension': '.gradle' if 'gradle' in vuln.get('source_path', '') else '.lock',
-                    'vulnerable_code': f"{vuln.get('package_name', 'Unknown')}:{vuln.get('package_version', 'Unknown')}",
+                    'vulnerable_code': f"{vuln.get('package_name', 'Unknown')}:{vuln.get('installed_version', 'Unknown')}",
                     'extraction_type': 'dependency_file',
                     'extraction_success': False
                 }

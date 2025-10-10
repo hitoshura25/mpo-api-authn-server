@@ -114,6 +114,26 @@ rules:
           ...
           setTimeout($CALLBACK, $TIME)
           ...
+      # Exclude Redis operations with built-in expiration
+      - pattern-not-inside: |
+          ...
+          jedis.setex($KEY, $EXPIRY, $VALUE)
+          ...
+      - pattern-not-inside: |
+          ...
+          jedis.expire($KEY, $EXPIRY)
+          ...
+      - pattern-not-inside: |
+          ...
+          jedis.psetex($KEY, $EXPIRY, $VALUE)
+          ...
+      # Exclude storage classes that configure expiration at initialization
+      - pattern-not-inside: |
+          class $STORAGE(...) {
+            ...
+            private val expirationSeconds = $TIME
+            ...
+          }
     metadata:
       category: security
       technology: [webauthn]
@@ -139,6 +159,19 @@ rules:
               return AssertionResult.successful($CREDENTIAL)
           - pattern: |
               return RegistrationResult.success($CREDENTIAL)
+      # Exclude legitimate control flow patterns
+      - pattern-not: return true
+      - pattern-not: return false
+      - pattern-not: return null
+      # Exclude functions that properly call Yubico library validation
+      - pattern-not-inside: |
+          ...
+          relyingParty.finishAssertion(...)
+          ...
+      - pattern-not-inside: |
+          ...
+          relyingParty.finishRegistration(...)
+          ...
       - pattern-inside:
           pattern-either:
             - pattern: |

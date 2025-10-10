@@ -386,7 +386,14 @@ Tool: {tool}
 Package: {package}
 Current Version: {current_version}
 Fixed Version: {fixed_version}
-Description: {vuln.get('description', vuln.get('message', 'No description'))}"""
+Description: {vuln.get('summary', vuln.get('description', vuln.get('message', 'No description')))}
+
+STRICT CONSTRAINTS:
+- Do NOT add sections beyond what's specified above
+- Do NOT include "Alternative Approaches" or similar sections
+- Code blocks: ONLY the fix, no surrounding context
+- Explanations: EXACTLY 2-3 sentences, no more
+- Follow the markdown format exactly as shown"""
 
     # Code vulnerabilities (Semgrep)
     elif category == 'code_vulnerability':
@@ -401,7 +408,14 @@ Line: {vuln.get('start', {}).get('line', 'Unknown')}
 Message: {vuln.get('message', 'No description')}
 
 Vulnerable Code:
-{vulnerable_code}"""
+{vulnerable_code}
+
+STRICT CONSTRAINTS:
+- Do NOT add sections beyond what's specified above
+- Do NOT include "Alternative Approaches" or similar sections
+- Code blocks: ONLY the fix, no surrounding context
+- Explanations: EXACTLY 2-3 sentences, no more
+- Follow the markdown format exactly as shown"""
 
     # Web/HTTP security (ZAP)
     elif category == 'web_security':
@@ -410,7 +424,14 @@ Severity: {vuln.get('severity', 'Unknown')}
 Tool: {tool}
 URL: {vuln.get('uri', 'Unknown')}
 Description: {vuln.get('description', 'No description')}
-Solution: {vuln.get('solution', 'No solution provided')}"""
+Solution: {vuln.get('solution', 'No solution provided')}
+
+STRICT CONSTRAINTS:
+- Do NOT add sections beyond what's specified above
+- Do NOT include "Alternative Approaches" or similar sections
+- Code blocks: ONLY the fix, no surrounding context
+- Explanations: EXACTLY 2-3 sentences, no more
+- Follow the markdown format exactly as shown"""
 
     # Configuration security (Checkov)
     elif category == 'configuration_security':
@@ -426,7 +447,14 @@ Config Type: {config_type}
 Message: {vuln.get('message', 'No description')}
 
 Current Configuration:
-{vulnerable_code}"""
+{vulnerable_code}
+
+STRICT CONSTRAINTS:
+- Do NOT add sections beyond what's specified above
+- Do NOT include "Alternative Approaches" or similar sections
+- Code blocks: ONLY the fix, no surrounding context
+- Explanations: EXACTLY 2-3 sentences, no more
+- Follow the markdown format exactly as shown"""
 
     # Fallback for unknown categories
     else:

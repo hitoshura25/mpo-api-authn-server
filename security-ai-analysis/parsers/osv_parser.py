@@ -100,7 +100,14 @@ def _parse_osv_json(filepath: str) -> List[Dict]:
 
                     # Add fixed_version field if available (for simplified access)
                     if fixed_versions:
-                        vuln_dict['fixed_version'] = ', '.join(fixed_versions)
+                        # Deduplicate while preserving order
+                        unique_versions = []
+                        seen = set()
+                        for v in fixed_versions:
+                            if v not in seen:
+                                unique_versions.append(v)
+                                seen.add(v)
+                        vuln_dict['fixed_version'] = ', '.join(unique_versions)
 
                     vulnerabilities.append(vuln_dict)
         

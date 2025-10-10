@@ -857,9 +857,9 @@ class MultiApproachFixGenerator:
             security_impact='high'
         )
 
-        # Alternative fixes: Other fixed versions
+        # Alternative fixes: Other fixed versions (limit to 1 to match Trivy pattern)
         alternatives = []
-        for alt_version in fixed_versions[1:]:
+        for alt_version in fixed_versions[1:2]:  # Only take first alternative
             alt_fix = SecurityFix(
                 approach=FixApproach.LIBRARY_REPLACEMENT,
                 title=f"Alternative: Upgrade to {alt_version}",

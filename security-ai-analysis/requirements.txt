@@ -15,6 +15,7 @@ cachetools==6.2.0
 certifi==2025.8.3
 charset-normalizer==3.4.3
 codebleu==0.7.0
+cwe2==2.0.0
 datasets==4.1.1
 dill==0.4.0
 faiss-cpu==1.12.0

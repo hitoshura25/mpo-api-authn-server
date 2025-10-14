@@ -54,10 +54,14 @@ import zipfile
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
+import numpy as np
 import argparse
 import os
 import fcntl
 import concurrent.futures
+import math
 from typing import Dict, List, Set, Optional, Any
 
 # Configure logging
@@ -65,6 +69,33 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
+
+# Define PyArrow schema for the dataset to ensure type consistency
+CVEFIXES_SCHEMA = pa.schema([
+    pa.field("cve_id", pa.string()),
+    pa.field("hash", pa.string()),
+    pa.field("repo_url", pa.string()),
+    pa.field("cve_description", pa.string()),
+    pa.field("cvss2_base_score", pa.float64()),
+    pa.field("cvss3_base_score", pa.float64()),
+    pa.field("published_date", pa.string()),
+    pa.field("severity", pa.string()),
+    pa.field("cwe_id", pa.string()),
+    pa.field("cwe_name", pa.string()),
+    pa.field("cwe_description", pa.string()),
+    pa.field("commit_message", pa.string()),
+    pa.field("commit_date", pa.string()),
+    pa.field("version_tag", pa.string()),
+    pa.field("repo_total_files", pa.int64()),
+    pa.field("repo_total_commits", pa.int64()),
+    pa.field("file_paths", pa.list_(pa.string())),
+    pa.field("language", pa.string()),
+    pa.field("diff_stats", pa.string()),
+    pa.field("diff_with_context", pa.string()),
+    pa.field("vulnerable_code", pa.string()),
+    pa.field("fixed_code", pa.string()),
+    pa.field("security_keywords", pa.list_(pa.string()))
+])
 
 
 class ChunkedCheckpointer:
@@ -95,17 +126,27 @@ class ChunkedCheckpointer:
             with open(chunk_file, 'r') as f:
                 for line in f:
                     if line.strip():
-                        all_records.append(json.loads(line))
+                        record = json.loads(line)
+                        # Convert diff_stats dict to JSON string to conform to schema for datasets library
+                        if 'diff_stats' in record and isinstance(record['diff_stats'], dict):
+                            record['diff_stats'] = json.dumps(record['diff_stats'])
+                        all_records.append(record)
 
         if not all_records:
             logging.warning("No records found to assemble into Parquet")
             return None
 
         df = pd.DataFrame(all_records)
-        parquet_path = self.output_dir / output_filename
-        df.to_parquet(parquet_path, index=False)
 
-        logging.info(f"✅ Assembled {len(df)} records into {parquet_path}")
+        # Clean up data: convert score columns to numeric, coercing errors to NaN
+        df['cvss2_base_score'] = pd.to_numeric(df['cvss2_base_score'], errors='coerce')
+        df['cvss3_base_score'] = pd.to_numeric(df['cvss3_base_score'], errors='coerce')
+
+        parquet_path = self.output_dir / output_filename
+
+        df.to_parquet(parquet_path, index=False, schema=CVEFIXES_SCHEMA)
+
+        logging.info(f"✅ Assembled {len(df)} records into {parquet_path} with explicit schema")
         logging.info(f"   Columns: {list(df.columns)}")
         logging.info(f"   File size: {parquet_path.stat().st_size / (1024*1024):.1f} MB")
 
@@ -501,6 +542,8 @@ def shard_and_upload_via_folder(
     private: bool,
     token: str,
     readme_content: str,
+    schema: pa.Schema,
+    total_size_bytes: int,
     shard_size_mb: int = 500
 ) -> str:
     """
@@ -542,16 +585,12 @@ def shard_and_upload_via_folder(
 
     logging.info(f"📦 Creating manual shards in: {upload_dir}")
 
-    # Calculate rows per shard based on target size
-    # Estimate row size from memory usage
-    estimated_row_size_bytes = df.memory_usage(deep=True).sum() / len(df)
+    # Calculate rows per shard based on target size using the deterministic file size
     target_size_bytes = shard_size_mb * 1024 * 1024
-    rows_per_shard = max(1, int(target_size_bytes / estimated_row_size_bytes))
+    num_shards = max(1, int(math.ceil(total_size_bytes / target_size_bytes))) if target_size_bytes > 0 else 1
+    rows_per_shard = (len(df) + num_shards - 1) // num_shards
 
-    # Calculate number of shards
-    num_shards = (len(df) + rows_per_shard - 1) // rows_per_shard
-
-    logging.info(f"   Estimated row size: {estimated_row_size_bytes / 1024:.1f} KB")
+    logging.info(f"   Total dataset size: {total_size_bytes / (1024*1024):.1f} MB")
     logging.info(f"   Rows per shard: {rows_per_shard:,}")
     logging.info(f"   Number of shards: {num_shards}")
 
@@ -565,7 +604,7 @@ def shard_and_upload_via_folder(
         shard_filename = f"train-{shard_idx:05d}-of-{num_shards:05d}.parquet"
         shard_path = data_dir / shard_filename
 
-        shard_df.to_parquet(shard_path, index=False)
+        shard_df.to_parquet(shard_path, index=False, schema=schema)
         shard_size_mb = shard_path.stat().st_size / (1024 * 1024)
 
         logging.info(f"   ✅ Created {shard_filename} ({len(shard_df):,} rows, {shard_size_mb:.1f} MB)")
@@ -582,6 +621,14 @@ def shard_and_upload_via_folder(
 
     # Upload entire folder structure at once
     logging.info(f"⬆️  Uploading {num_shards} shards + README via upload_folder()...")
+
+    # Clean up existing data
+    try: 
+        api.delete_folder(repo_id=repo_id, repo_type="dataset", path_in_repo="data", commit_message="Cleanup existing data")
+        api.delete_file(repo_id=repo_id, repo_type="dataset", path_in_repo="README.md", commit_message="Cleanup existing data")
+    except Exception as e:
+        logging.warning(f"⚠️  Cleanup failed (may not exist): {e}")
+
     api.upload_folder(
         folder_path=str(upload_dir),
         repo_id=repo_id,
@@ -672,85 +719,21 @@ def upload_cvefixes_to_huggingface(
     logging.info(f"⬆️  Uploading dataset via manual sharding approach...")
     logging.info(f"   This bypasses HuggingFace's automatic YAML metadata generation")
 
-    try:
-        hf_url = shard_and_upload_via_folder(
-            df=df,
-            output_dir=output_dir,
-            repo_id=repo_id,
-            private=private,
-            token=token,
-            readme_content=dataset_card,
-            shard_size_mb=500  # Target 500MB per shard
-        )
-        logging.info(f"✅ Dataset uploaded successfully: {hf_url}")
-        return hf_url
+    total_size_bytes = parquet_file.stat().st_size
 
-    except Exception as e:
-        # If manual sharding fails, fall back to graceful 413 handling approach
-        logging.warning(f"⚠️  Manual sharding upload failed: {e}")
-        logging.info(f"   Attempting fallback with datasets library...")
-
-        dataset = load_dataset("parquet", data_files=str(parquet_file))
-        api = HfApi(token=token)
-        upload_succeeded = False
-
-        # Save dataset card locally for fallback
-        readme_path = output_dir / "README.md"
-        with open(readme_path, 'w') as f:
-            f.write(dataset_card)
-
-        try:
-            dataset.card_data = None  # Disable automatic card generation
-            dataset.push_to_hub(
-                repo_id,
-                private=private,
-                token=token,
-                create_pr=False,
-                embed_external_files=False
-            )
-            upload_succeeded = True
-            logging.info(f"✅ Dataset upload completed successfully (fallback method)")
-
-        except Exception as fallback_error:
-            error_message = str(fallback_error)
-
-            # Check if this is the known 413 error
-            if "413" in error_message or "Payload Too Large" in error_message:
-                logging.warning(f"⚠️  Fallback also got 413 error: {fallback_error}")
-                logging.info(f"   Checking if files were uploaded despite error...")
-
-                try:
-                    repo_files = api.list_repo_files(repo_id=repo_id, repo_type="dataset", token=token)
-                    data_files = [f for f in repo_files if f.startswith("data/train-") and f.endswith(".parquet")]
-
-                    if data_files:
-                        logging.info(f"✅ Found {len(data_files)} data files in repository:")
-                        logging.info(f"   {data_files[0]} through {data_files[-1]}")
-                        upload_succeeded = True
-                    else:
-                        raise Exception(f"Upload failed - no data files found: {fallback_error}")
-
-                except Exception as verify_error:
-                    raise Exception(f"Upload failed and could not verify: {fallback_error}")
-            else:
-                raise
-
-        # Upload README.md if fallback succeeded
-        if upload_succeeded:
-            logging.info(f"⬆️  Uploading README.md (fallback method)...")
-            api.upload_file(
-                path_or_fileobj=str(readme_path),
-                path_in_repo="README.md",
-                repo_id=repo_id,
-                repo_type="dataset",
-                commit_message="Add dataset card"
-            )
-            logging.info(f"✅ README.md uploaded successfully")
-
-        hf_url = f"https://huggingface.co/datasets/{repo_id}"
-        logging.info(f"✅ Dataset uploaded successfully (via fallback): {hf_url}")
-        return hf_url
-
+    hf_url = shard_and_upload_via_folder(
+        df=df,
+        output_dir=output_dir,
+        repo_id=repo_id,
+        private=private,
+        token=token,
+        readme_content=dataset_card,
+        schema=CVEFIXES_SCHEMA,
+        total_size_bytes=total_size_bytes,
+        shard_size_mb=500  # Target 500MB per shard
+    )
+    logging.info(f"✅ Dataset uploaded successfully: {hf_url}")
+    return hf_url
 
 def download_with_progress(url: str, output_path: Path, timeout: int = 3600) -> bool:
     """
@@ -2066,7 +2049,7 @@ def main():
                 logging.info(f"✅ Dataset available at: {hf_url}")
             except Exception as e:
                 logging.error(f"❌ Failed to upload to HuggingFace: {e}")
-
+                raise
             return
         else:
             logging.info("   Parquet file already exists. Use --upload-to-hf to upload to HuggingFace.")

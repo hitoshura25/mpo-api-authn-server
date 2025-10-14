@@ -32,6 +32,7 @@ class FineTuningSection:
 
     # Training parameters
     learning_rate: float
+    stage2_learning_rate: float
     batch_size: int
     max_epochs: int
     warmup_steps: int
@@ -39,6 +40,7 @@ class FineTuningSection:
     eval_steps: int
     max_stage1_iters: int
     max_stage2_iters: int
+    stage1_replay_ratio: float
 
     # LoRA settings
     lora: LoRASection
@@ -248,6 +250,7 @@ class OLMoSecurityConfig:
             default_output_name=ft_config['default_output_name'],
             # Training parameters with environment overrides
             learning_rate=float(os.getenv('OLMO_LEARNING_RATE', train_config.get('learning_rate', 2e-5))),
+            stage2_learning_rate=float(os.getenv('OLMO_STAGE2_LEARNING_RATE', train_config.get('stage2_learning_rate', 1e-6))),
             batch_size=int(os.getenv('OLMO_BATCH_SIZE', train_config.get('batch_size', 1))),
             max_epochs=int(os.getenv('OLMO_MAX_EPOCHS', train_config.get('max_epochs', 3))),
             warmup_steps=int(os.getenv('OLMO_WARMUP_STEPS', train_config.get('warmup_steps', 100))),
@@ -255,6 +258,7 @@ class OLMoSecurityConfig:
             eval_steps=int(os.getenv('OLMO_EVAL_STEPS', train_config.get('eval_steps', 250))),
             max_stage1_iters=int(os.getenv('OLMO_MAX_STAGE1_ITERS', train_config.get('max_stage1_iters', 100))),
             max_stage2_iters=int(os.getenv('OLMO_MAX_STAGE2_ITERS', train_config.get('max_stage2_iters', 150))),
+            stage1_replay_ratio=float(os.getenv('OLMO_STAGE1_REPLAY_RATIO', train_config.get('stage1_replay_ratio', 0.15))),
             # LoRA settings
             lora=LoRASection(
                 rank=int(os.getenv('OLMO_LORA_RANK', lora_config.get('rank', 8))),

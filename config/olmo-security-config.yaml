@@ -21,6 +21,7 @@ fine_tuning:
   # Sources: Databricks LoRA Guide, Sebastian Raschka's Practical Tips, MLPerf LoRA Study
   training:
     learning_rate: 5e-6    # 2e-5→5e-6: Conservative for CF prevention (Raschka 2024)
+    stage2_learning_rate: 1e-6  # Stage 2: 0.2x Stage 1 LR for fine specialization
     batch_size: 1          # KEEP: Optimal for Metal GPU memory efficiency
     max_epochs: 5          # 3→5: More passes over limited dataset
     warmup_steps: 150      # 100→150: Longer warmup for stability
@@ -28,6 +29,7 @@ fine_tuning:
     eval_steps: 100        # 250→100: Continuous validation monitoring
     max_stage1_iters: 800  # 100→800: 8x increase for deep specialization (Databricks)
     max_stage2_iters: 1200 # 150→1200: 8x increase for complex code generation
+    stage1_replay_ratio: 0.15  # Stage 2: 15% Stage 1 data replay for catastrophic forgetting prevention
 
   # Advanced LoRA configuration - 2024-2025 research optimizations
   # Sources: LoRA original paper, Databricks LoRA Guide, Sebastian Raschka's Practical Tips

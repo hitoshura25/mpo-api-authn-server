@@ -916,54 +916,280 @@ def validate_phase_inputs(phase: str, args):
     if missing_inputs:
         raise ValueError(f"Error: --only-{phase} requires: {', '.join(missing_inputs)}")
 
-def run_full_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = False):
-    # --- Execute Pipeline Phases ---
+def run_sequential_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = False):
+    """
+    Execute the 2-stage sequential fine-tuning pipeline.
 
-    # Phase: Parse
-    parsed_vulns_file = parse_vulnerabilities_phase(artifacts_dir, output_dir)
+    Stage 1: General Security Education (Public Datasets)
+    - Load CrossVul + CVEfixes from HuggingFace (~22K examples)
+    - Train from base model
+    - Evaluate Stage 1 performance
 
-    # Phase: Construct Datasets
-    train_file, val_file, test_file = construct_datasets_phase(parsed_vulns_file, output_dir)
+    Stage 2: WebAuthn Domain Specialization
+    - Parse WebAuthn security tools (Trivy, Semgrep, OSV, ZAP, Checkov)
+    - Mix with 15% Stage 1 data (catastrophic forgetting prevention)
+    - Resume training from Stage 1 adapter
+    - Evaluate final model
 
-    # Phase: Train Model (with automatic evaluation)
-    training_run = train_model_phase(
-        train_file,
-        val_file,
-        test_file
+    Args:
+        artifacts_dir: Directory containing WebAuthn security scan artifacts
+        output_dir: Output directory for intermediate files
+        skip_upload: If True, skip HuggingFace upload
+    """
+    logger.info("=" * 80)
+    logger.info("🚀 SEQUENTIAL FINE-TUNING PIPELINE (2-STAGE)")
+    logger.info("=" * 80)
+
+    config = OLMoSecurityConfig()
+    from mlx_trainer import MLXTrainer
+    from training_run_manager import TrainingRunManager
+    from public_dataset_loader import PublicDatasetLoader
+
+    # Initialize managers
+    run_manager = TrainingRunManager(config)
+    public_loader = PublicDatasetLoader(config)
+
+    # Create sequential training run with stage1/stage2 structure
+    training_run = run_manager.create_sequential_run()
+
+    logger.info(f"Training run created: {training_run.run_id}")
+    logger.info(f"Run directory: {training_run.run_dir}")
+
+    # ====================================================================
+    # STAGE 1: General Security Education (Public Datasets)
+    # ====================================================================
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("STAGE 1: General Security Education (Public Datasets)")
+    logger.info("=" * 80)
+
+    # Load public datasets from HuggingFace
+    logger.info("📚 Loading public datasets from HuggingFace...")
+    stage1_examples = public_loader.load_all_public_datasets()
+    logger.info(f"   Loaded {len(stage1_examples)} examples (CrossVul + CVEfixes)")
+
+    # Split into train/validation/test (80/10/10)
+    logger.info("📊 Splitting Stage 1 dataset...")
+    stage1_train, stage1_val, stage1_test = _stratified_split_by_source(stage1_examples)
+
+    logger.info(f"   Train: {len(stage1_train)} examples")
+    logger.info(f"   Validation: {len(stage1_val)} examples")
+    logger.info(f"   Test: {len(stage1_test)} examples")
+
+    # Save Stage 1 datasets
+    stage1_data_dir = output_dir / "stage1_data"
+    stage1_data_dir.mkdir(parents=True, exist_ok=True)
+
+    stage1_train_file = stage1_data_dir / "train_dataset.jsonl"
+    stage1_val_file = stage1_data_dir / "validation_dataset.jsonl"
+    stage1_test_file = stage1_data_dir / "test_dataset.jsonl"
+
+    _save_jsonl(stage1_train, stage1_train_file)
+    _save_jsonl(stage1_val, stage1_val_file)
+    _save_jsonl(stage1_test, stage1_test_file)
+
+    logger.info(f"   Saved Stage 1 datasets to: {stage1_data_dir}")
+
+    # Train Stage 1
+    logger.info("🎓 Training Stage 1 model...")
+    trainer = MLXTrainer(config=config, output_dir=training_run.stage1_adapters_path)
+
+    stage1_adapter_path = trainer.train_stage1(
+        training_run,
+        stage1_train_file,
+        stage1_val_file
     )
 
-    # Phase: Upload Artifacts
+    logger.info(f"   Stage 1 adapter saved: {stage1_adapter_path}")
+
+    # Evaluate Stage 1
+    logger.info("🔬 Evaluating Stage 1 model...")
+    stage1_eval_results = run_manager.evaluate(training_run, stage1_test_file, stage=1)
+
+    stage1_metrics = stage1_eval_results.get('metrics', {})
+    logger.info(f"   Stage 1 Exact Match: {stage1_metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"   Stage 1 Avg CodeBLEU: {stage1_metrics.get('avg_codebleu', 0):.4f}")
+
+    # Update manifest with Stage 1 statistics
+    training_run.manifest.stage1.dataset_stats = {
+        "train_count": len(stage1_train),
+        "val_count": len(stage1_val),
+        "test_count": len(stage1_test),
+        "sources": ["crossvul", "cvefixes"]
+    }
+    training_run.save_manifest()
+
+    # ====================================================================
+    # STAGE 2: WebAuthn Domain Specialization with 15% Replay
+    # ====================================================================
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("STAGE 2: WebAuthn Domain Specialization (15% Replay)")
+    logger.info("=" * 80)
+
+    # Parse WebAuthn security tools
+    logger.info("🔍 Parsing WebAuthn security tools...")
+    parsed_vulns_file = parse_vulnerabilities_phase(artifacts_dir, output_dir)
+
+    # Construct WebAuthn-specific datasets
+    logger.info("🛠️ Constructing WebAuthn datasets...")
+    stage2_train_base, stage2_val, stage2_test = construct_datasets_phase(parsed_vulns_file, output_dir)
+
+    # Load Stage 2 base examples
+    with open(stage2_train_base, 'r') as f:
+        stage2_webauthn_examples = [json.loads(line) for line in f if line.strip()]
+
+    logger.info(f"   WebAuthn examples: {len(stage2_webauthn_examples)}")
+
+    # Mix with 15% Stage 1 replay (catastrophic forgetting prevention)
+    logger.info("🔄 Mixing with 15% Stage 1 replay...")
+    replay_count = int(len(stage1_train) * 0.15)
+    stage1_replay = random.sample(stage1_train, min(replay_count, len(stage1_train)))
+
+    stage2_train_mixed = stage2_webauthn_examples + stage1_replay
+    random.shuffle(stage2_train_mixed)
+
+    logger.info(f"   Stage 2 training set: {len(stage2_train_mixed)} examples")
+    logger.info(f"     - WebAuthn: {len(stage2_webauthn_examples)} examples")
+    logger.info(f"     - Stage 1 replay: {len(stage1_replay)} examples ({len(stage1_replay)/len(stage2_train_mixed)*100:.1f}%)")
+
+    # Save Stage 2 mixed training set
+    stage2_data_dir = output_dir / "stage2_data"
+    stage2_data_dir.mkdir(parents=True, exist_ok=True)
+
+    stage2_train_file = stage2_data_dir / "train_dataset.jsonl"
+    _save_jsonl(stage2_train_mixed, stage2_train_file)
+
+    logger.info(f"   Saved Stage 2 training set to: {stage2_train_file}")
+
+    # Train Stage 2 (resume from Stage 1 adapter)
+    logger.info("🎯 Training Stage 2 model (resuming from Stage 1)...")
+
+    stage2_adapter_path = trainer.train_stage2(
+        training_run,
+        stage2_train_file,
+        stage2_val,
+        stage1_adapter_path
+    )
+
+    logger.info(f"   Stage 2 adapter saved: {stage2_adapter_path}")
+
+    # Evaluate Stage 2 (final model)
+    logger.info("🔬 Evaluating Stage 2 model (final model)...")
+    stage2_eval_results = run_manager.evaluate(training_run, stage2_test, stage=2)
+
+    stage2_metrics = stage2_eval_results.get('metrics', {})
+    logger.info(f"   Stage 2 Exact Match: {stage2_metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"   Stage 2 Avg CodeBLEU: {stage2_metrics.get('avg_codebleu', 0):.4f}")
+
+    # Update manifest with Stage 2 statistics
+    training_run.manifest.stage2.dataset_stats = {
+        "train_count": len(stage2_train_mixed),
+        "val_count": sum(1 for _ in open(stage2_val)),
+        "test_count": sum(1 for _ in open(stage2_test)),
+        "webauthn_examples": len(stage2_webauthn_examples),
+        "stage1_replay_examples": len(stage1_replay),
+        "replay_percentage": len(stage1_replay) / len(stage2_train_mixed) * 100
+    }
+    training_run.save_manifest()
+
+    # ====================================================================
+    # UPLOAD: Upload Final Model and Datasets
+    # ====================================================================
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("UPLOAD: Artifacts to HuggingFace Hub")
+    logger.info("=" * 80)
+
     upload_results = upload_artifacts_phase(
-        training_run.adapters_path,
-        train_file,
-        val_file,
-        test_file,
+        stage2_adapter_path,
+        stage2_train_file,
+        stage2_val,
+        stage2_test,
         skip_upload=skip_upload
     )
 
-    # Load evaluation results from training run
-    eval_results_file = training_run.evaluation_results_path / "evaluation_results.json"
-    eval_results = {}
-    if eval_results_file.exists():
-        import json
-        with open(eval_results_file, 'r') as f:
-            eval_results = json.load(f)
-
-    logger.info("\n✅ Full pipeline completed successfully!")
-    logger.info(f"   Final outputs:")
-    logger.info(f"   Parsed vulnerabilities: {parsed_vulns_file}")
-    logger.info(f"   Train dataset: {train_file}")
-    logger.info(f"   Validation dataset: {val_file}")
-    logger.info(f"   Test dataset: {test_file}")
-    logger.info(f"   Training run: {training_run.run_dir}")
-    logger.info(f"   Adapter artifacts: {training_run.adapters_path}")
-    logger.info(f"   Evaluation metrics:")
-    logger.info(f"     - Exact Match: {eval_results.get('metrics', {}).get('exact_match_percentage', 0):.2f}%")
-    logger.info(f"     - Avg CodeBLEU: {eval_results.get('metrics', {}).get('avg_codebleu', 0):.4f}")
+    # ====================================================================
+    # FINAL SUMMARY
+    # ====================================================================
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("✅ SEQUENTIAL FINE-TUNING PIPELINE COMPLETED")
+    logger.info("=" * 80)
+    logger.info(f"Training Run: {training_run.run_dir}")
+    logger.info("")
+    logger.info("STAGE 1 (General Security):")
+    logger.info(f"  Dataset: {len(stage1_train)} train / {len(stage1_val)} val / {len(stage1_test)} test")
+    logger.info(f"  Adapter: {stage1_adapter_path}")
+    logger.info(f"  Exact Match: {stage1_metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"  Avg CodeBLEU: {stage1_metrics.get('avg_codebleu', 0):.4f}")
+    logger.info("")
+    logger.info("STAGE 2 (WebAuthn Specialization):")
+    logger.info(f"  Dataset: {len(stage2_train_mixed)} train ({len(stage2_webauthn_examples)} WebAuthn + {len(stage1_replay)} replay)")
+    logger.info(f"  Adapter: {stage2_adapter_path}")
+    logger.info(f"  Exact Match: {stage2_metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"  Avg CodeBLEU: {stage2_metrics.get('avg_codebleu', 0):.4f}")
+    logger.info("")
     if upload_results.get("model_url"):
-        logger.info(f"   Model URL: {upload_results['model_url']}")
+        logger.info(f"Model URL: {upload_results['model_url']}")
     if upload_results.get("dataset_url"):
-        logger.info(f"   Dataset URL: {upload_results['dataset_url']}")
+        logger.info(f"Dataset URL: {upload_results['dataset_url']}")
+    logger.info("=" * 80)
+
+
+def _stratified_split_by_source(examples: List[Dict[str, Any]],
+                                 train_ratio: float = 0.8,
+                                 val_ratio: float = 0.1) -> tuple[List[Dict], List[Dict], List[Dict]]:
+    """
+    Split public dataset examples by source (crossvul vs cvefixes) to ensure
+    balanced representation in train/val/test sets.
+
+    Args:
+        examples: List of training examples with metadata containing 'source' field
+        train_ratio: Proportion for training set (default: 0.8)
+        val_ratio: Proportion for validation set (default: 0.1)
+
+    Returns:
+        Tuple of (train_examples, val_examples, test_examples)
+    """
+    # Group by source
+    source_groups = {}
+    for example in examples:
+        source = example.get('metadata', {}).get('source', 'unknown')
+        if source not in source_groups:
+            source_groups[source] = []
+        source_groups[source].append(example)
+
+    train_examples = []
+    val_examples = []
+    test_examples = []
+
+    # Split each source proportionally
+    for source, source_examples in source_groups.items():
+        random.shuffle(source_examples)
+        count = len(source_examples)
+
+        train_size = int(count * train_ratio)
+        val_size = int(count * val_ratio)
+
+        train_examples.extend(source_examples[:train_size])
+        val_examples.extend(source_examples[train_size:train_size + val_size])
+        test_examples.extend(source_examples[train_size + val_size:])
+
+    # Shuffle combined sets
+    random.shuffle(train_examples)
+    random.shuffle(val_examples)
+    random.shuffle(test_examples)
+
+    return train_examples, val_examples, test_examples
+
+
+def _save_jsonl(examples: List[Dict[str, Any]], filepath: Path) -> None:
+    """Save examples to JSONL format."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with open(filepath, 'w') as f:
+        for example in examples:
+            f.write(json.dumps(example) + '\n')
 
 def execute_single_phase(phase: str, args):
     """Execute a single phase with provided inputs"""
@@ -1088,7 +1314,12 @@ def main():
     parser = argparse.ArgumentParser(description="Refactored Security Analysis Pipeline")
     parser.add_argument("--artifacts-dir", type=Path, required=True, help="Directory containing security scan artifacts (e.g., extracted zip files).")
     parser.add_argument("--output-dir", type=Path, default=Path("results"), help="Directory to save phase outputs.")
-    
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose debug output"
+    )
+
     # Single-phase execution flags
     phase_group = parser.add_argument_group('Single Phase Execution')
     phase_group.add_argument("--only-parsing", action="store_true", help="Execute only parsing phase")
@@ -1116,6 +1347,10 @@ def main():
                             help="Trained adapter directory (for upload)")
 
     args = parser.parse_args()
+
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logging.debug("🐛 Debug logging enabled")
 
     config = OLMoSecurityConfig()
     if not ensure_base_model_ready(config):
@@ -1145,7 +1380,7 @@ def main():
         print(f"Summary: {summary}")
         return result
 
-    run_full_pipeline(str(args.artifacts_dir), args.output_dir, skip_upload=args.skip_upload)
+    run_sequential_pipeline(str(args.artifacts_dir), args.output_dir, skip_upload=args.skip_upload)
 
 if __name__ == "__main__":
     main()

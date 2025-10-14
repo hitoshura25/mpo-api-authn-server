@@ -305,6 +305,192 @@ class MLXTrainer:
 
         logger.info(f"   Training metadata saved: {metadata_file}")
 
+    # ======================================================================
+    # Sequential Fine-Tuning Methods (2-Stage Pipeline)
+    # ======================================================================
+
+    def train_stage1(self,
+                     training_run,
+                     stage1_train_dataset: Path,
+                     stage1_validation_dataset: Path) -> Path:
+        """
+        Train Stage 1: General Security Education on Public Datasets.
+
+        Trains from base model on CrossVul + CVEfixes datasets (~22K examples).
+        Uses existing train() method internally.
+
+        Args:
+            training_run: TrainingRun instance with stage1 configuration
+            stage1_train_dataset: Path to Stage 1 training dataset
+            stage1_validation_dataset: Path to Stage 1 validation dataset
+
+        Returns:
+            Path to Stage 1 adapter artifacts
+        """
+        logger.info("=" * 80)
+        logger.info("🎓 STAGE 1: General Security Education (Public Datasets)")
+        logger.info("=" * 80)
+
+        # Prepare Stage 1 training data in run directory
+        training_run.prepare_stage_training_data(
+            training_run.stage1_training_data_path,
+            stage1_train_dataset,
+            stage1_validation_dataset
+        )
+
+        # Update output_dir to Stage 1 adapters path
+        original_output_dir = self.output_dir
+        self.output_dir = training_run.stage1_adapters_path
+
+        # Update iterations from config for Stage 1
+        original_iters = self.num_iters
+        self.num_iters = self.config.fine_tuning.max_stage1_iters
+
+        try:
+            # Run training using existing train() method
+            adapter_path = self.train(training_run.stage1_training_data_path)
+
+            logger.info("✅ Stage 1 training completed")
+            logger.info(f"   Adapter saved: {adapter_path}")
+
+            return adapter_path
+
+        finally:
+            # Restore original settings
+            self.output_dir = original_output_dir
+            self.num_iters = original_iters
+
+    def train_stage2(self,
+                     training_run,
+                     stage2_train_dataset: Path,
+                     stage2_validation_dataset: Path,
+                     stage1_adapter_path: Path) -> Path:
+        """
+        Train Stage 2: WebAuthn Domain Specialization with Replay.
+
+        Continues training from Stage 1 adapter on WebAuthn-specific data
+        mixed with 15% Stage 1 replay to prevent catastrophic forgetting.
+        Uses --resume-adapter-file to continue from Stage 1.
+
+        Args:
+            training_run: TrainingRun instance with stage2 configuration
+            stage2_train_dataset: Path to Stage 2 training dataset (with 15% replay)
+            stage2_validation_dataset: Path to Stage 2 validation dataset
+            stage1_adapter_path: Path to Stage 1 adapter to resume from
+
+        Returns:
+            Path to Stage 2 adapter artifacts
+        """
+        logger.info("=" * 80)
+        logger.info("🎯 STAGE 2: WebAuthn Domain Specialization (15% Replay)")
+        logger.info("=" * 80)
+
+        # Prepare Stage 2 training data in run directory
+        training_run.prepare_stage_training_data(
+            training_run.stage2_training_data_path,
+            stage2_train_dataset,
+            stage2_validation_dataset
+        )
+
+        # Update output_dir to Stage 2 adapters path
+        original_output_dir = self.output_dir
+        self.output_dir = training_run.stage2_adapters_path
+
+        # Update iterations and learning rate from config for Stage 2
+        original_iters = self.num_iters
+        original_lr = self.learning_rate
+
+        self.num_iters = self.config.fine_tuning.max_stage2_iters
+        self.learning_rate = self.config.fine_tuning.stage2_learning_rate
+
+        try:
+            # Run MLX training with adapter resumption
+            adapter_path = self.run_mlx_training_with_resume(
+                training_run.stage2_training_data_path,
+                stage1_adapter_path
+            )
+
+            # Save training metadata
+            self._save_training_metadata(adapter_path, training_run.stage2_training_data_path)
+
+            logger.info("✅ Stage 2 training completed")
+            logger.info(f"   Adapter saved: {adapter_path}")
+
+            return adapter_path
+
+        finally:
+            # Restore original settings
+            self.output_dir = original_output_dir
+            self.num_iters = original_iters
+            self.learning_rate = original_lr
+
+    def run_mlx_training_with_resume(self,
+                                      mlx_data_dir: Path,
+                                      resume_adapter_path: Path) -> Path:
+        """
+        Execute MLX LoRA fine-tuning with adapter resumption.
+
+        Uses --resume-adapter-file to continue training from a previous adapter,
+        enabling Stage 2 to build on Stage 1 knowledge.
+
+        Args:
+            mlx_data_dir: Directory containing train.jsonl and valid.jsonl
+            resume_adapter_path: Path to adapter to resume from (Stage 1)
+
+        Returns:
+            Path to trained adapter directory
+        """
+        logger.info("🚀 Starting MLX LoRA fine-tuning with adapter resumption...")
+        logger.info(f"   Resuming from: {resume_adapter_path}")
+
+        # Ensure output directory exists
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build MLX LoRA command with --resume-adapter-file
+        command = [
+            "python", "-m", "mlx_lm", "lora",
+            "--model", str(self.base_model_path),
+            "--train",
+            "--data", str(mlx_data_dir),
+            "--adapter-path", str(self.output_dir),
+            "--resume-adapter-file", str(resume_adapter_path / "adapters.safetensors"),
+            "--batch-size", str(self.batch_size),
+            "--iters", str(self.num_iters),
+            "--learning-rate", str(self.learning_rate),
+            "--fine-tune-type", "lora",
+            "--optimizer", "adamw"
+        ]
+
+        logger.info(f"   Command: {' '.join(command)}")
+        logger.info(f"   Base model: {self.base_model_path}")
+        logger.info(f"   Training data: {mlx_data_dir}")
+        logger.info(f"   Output: {self.output_dir}")
+        logger.info(f"   Resume from: {resume_adapter_path}")
+        logger.info(f"   Iterations: {self.num_iters}")
+        logger.info(f"   Batch size: {self.batch_size}")
+        logger.info(f"   Learning rate: {self.learning_rate}")
+
+        try:
+            # Execute MLX training
+            result = subprocess.run(
+                command,
+                check=True,
+                capture_output=True,
+                text=True
+            )
+
+            # Log training output
+            if result.stdout:
+                logger.debug(f"Training output:\n{result.stdout}")
+
+            return self.output_dir
+
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ MLX training with resumption failed with exit code {e.returncode}")
+            logger.error(f"   stdout: {e.stdout}")
+            logger.error(f"   stderr: {e.stderr}")
+            raise RuntimeError(f"MLX training with resumption failed: {e.stderr}")
+
 
 def main():
     """CLI entry point for standalone testing"""

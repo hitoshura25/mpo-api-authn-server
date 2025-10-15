@@ -157,7 +157,7 @@
           "redis_data": "/data"
         },
         "healthcheck": {
-          "test": "redis-cli --raw incr ping",
+          "test": "redis-cli --raw ping",
           "interval": "10s",
           "timeout": "3s",
           "retries": 5
@@ -213,7 +213,7 @@
     "docker-compose": "https://raw.githubusercontent.com/hitoshura25/mpo-api-authn-server/main/webauthn-server/docker-compose.yml",
     "minimal-example": {
       "description": "Minimal docker-compose.yml for external project integration",
-      "yaml": "version: '3.8'\nservices:\n  postgres:\n    image: postgres:15-alpine\n    environment:\n      POSTGRES_DB: webauthn_db\n      POSTGRES_USER: webauthn_user\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U webauthn_user -d webauthn_db\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n\n  redis:\n    image: redis:7-alpine\n    command: redis-server --requirepass ${REDIS_PASSWORD}\n    volumes:\n      - redis_data:/data\n    healthcheck:\n      test: [\"CMD\", \"redis-cli\", \"--raw\", \"incr\", \"ping\"]\n      interval: 10s\n      timeout: 3s\n      retries: 5\n\n  webauthn-server:\n    image: hitoshura25/webauthn-server:latest\n    ports:\n      - \"8080:8080\"\n    environment:\n      - MPO_AUTHN_DB_HOST=postgres\n      - MPO_AUTHN_DB_PORT=5432\n      - MPO_AUTHN_DB_NAME=webauthn_db\n      - MPO_AUTHN_DB_USERNAME=webauthn_user\n      - MPO_AUTHN_DB_PASSWORD=${POSTGRES_PASSWORD}\n      - MPO_AUTHN_REDIS_HOST=redis\n      - MPO_AUTHN_REDIS_PORT=6379\n      - MPO_AUTHN_REDIS_PASSWORD=${REDIS_PASSWORD}\n      - MPO_AUTHN_APP_RELYING_PARTY_ID=localhost\n      - MPO_AUTHN_APP_RELYING_PARTY_NAME=My Application\n    depends_on:\n      postgres:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n\nvolumes:\n  postgres_data:\n  redis_data:\n"
+      "yaml": "version: '3.8'\nservices:\n  postgres:\n    image: postgres:15-alpine\n    environment:\n      POSTGRES_DB: webauthn_db\n      POSTGRES_USER: webauthn_user\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U webauthn_user -d webauthn_db\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n\n  redis:\n    image: redis:7-alpine\n    command: redis-server --requirepass ${REDIS_PASSWORD}\n    volumes:\n      - redis_data:/data\n    healthcheck:\n      test: [\"CMD\", \"redis-cli\", \"--raw\", \"ping\"]\n      interval: 10s\n      timeout: 3s\n      retries: 5\n\n  webauthn-server:\n    image: hitoshura25/webauthn-server:latest\n    ports:\n      - \"8080:8080\"\n    environment:\n      - MPO_AUTHN_DB_HOST=postgres\n      - MPO_AUTHN_DB_PORT=5432\n      - MPO_AUTHN_DB_NAME=webauthn_db\n      - MPO_AUTHN_DB_USERNAME=webauthn_user\n      - MPO_AUTHN_DB_PASSWORD=${POSTGRES_PASSWORD}\n      - MPO_AUTHN_REDIS_HOST=redis\n      - MPO_AUTHN_REDIS_PORT=6379\n      - MPO_AUTHN_REDIS_PASSWORD=${REDIS_PASSWORD}\n      - MPO_AUTHN_APP_RELYING_PARTY_ID=localhost\n      - MPO_AUTHN_APP_RELYING_PARTY_NAME=My Application\n    depends_on:\n      postgres:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n\nvolumes:\n  postgres_data:\n  redis_data:\n"
     },
     "environment-setup": {
       "description": "Required environment variables (create .env file)",

@@ -29,7 +29,7 @@ LABEL org.opencontainers.image.title="MPO WebAuthn Server" \
 # AI Agent Discovery Labels - Point to structured configuration
 LABEL com.mpo.ai-agents.config.url="https://raw.githubusercontent.com/hitoshura25/mpo-api-authn-server/main/.ai-agents.json" \
       com.mpo.ai-agents.config.format="json" \
-      com.mpo.ai-agents.quick-start="https://github.com/hitoshura25/mpo-api-authn-server#-for-ai-agents--developers"
+      com.mpo.ai-agents.quick-start="https://github.com/hitoshura25/mpo-api-authn-server#for-ai-agents--developers"
 
 # Environment Variable Documentation Labels
 LABEL com.mpo.env.database.host="MPO_AUTHN_DB_HOST" \

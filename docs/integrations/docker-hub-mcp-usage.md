@@ -188,7 +188,7 @@ See the reference implementation in `/webauthn-server/Dockerfile` (lines 17-75).
 ## Related Documentation
 
 - **Complete Configuration**: [`.ai-agents.json`](../../.ai-agents.json)
-- **Integration Guide**: [README - For AI Agents](../../README.md#-for-ai-agents--developers)
+- **Integration Guide**: [README - For AI Agents](../../README.md#for-ai-agents--developers)
 - **Docker Setup**: [docker-compose.yml](../../webauthn-server/docker-compose.yml)
 - **OCI Image Spec**: https://github.com/opencontainers/image-spec/blob/main/annotations.md
 

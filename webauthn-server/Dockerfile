@@ -18,7 +18,7 @@ FROM base AS app
 # Standard OCI annotations (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
 LABEL org.opencontainers.image.title="MPO WebAuthn Server" \
       org.opencontainers.image.description="WebAuthn (FIDO2/Passkeys) authentication server built with Ktor and comprehensive security testing" \
-      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.version="latest" \
       org.opencontainers.image.authors="Vinayak Menon <hitoshura25@users.noreply.github.com>" \
       org.opencontainers.image.url="https://github.com/hitoshura25/mpo-api-authn-server" \
       org.opencontainers.image.documentation="https://github.com/hitoshura25/mpo-api-authn-server/blob/main/README.md" \

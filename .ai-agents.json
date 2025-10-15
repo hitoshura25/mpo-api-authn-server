@@ -1,0 +1,247 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "name": "mpo-webauthn-server",
+  "version": "1.0.0",
+  "description": "WebAuthn authentication server built with Ktor and Yubico java-webauthn-server library for FIDO2/WebAuthn implementation",
+  "repository": "https://github.com/hitoshura25/mpo-api-authn-server",
+  "documentation": "https://github.com/hitoshura25/mpo-api-authn-server",
+  "docker": {
+    "image": {
+      "name": "hitoshura25/webauthn-server",
+      "registry": "docker.io",
+      "tags": {
+        "latest": "Most recent stable release",
+        "staging": "CI staging builds (not for production use)"
+      },
+      "note": "GHCR images (ghcr.io) are for CI testing only - always use Docker Hub for production"
+    },
+    "ports": {
+      "8080": {
+        "description": "HTTP API endpoint",
+        "protocol": "http",
+        "endpoints": {
+          "/health": "Health check endpoint",
+          "/swagger": "OpenAPI documentation",
+          "/register/start": "WebAuthn registration initiation",
+          "/register/finish": "WebAuthn registration completion",
+          "/authenticate/start": "WebAuthn authentication initiation",
+          "/authenticate/finish": "WebAuthn authentication completion"
+        }
+      }
+    },
+    "environment": {
+      "database": {
+        "MPO_AUTHN_DB_HOST": {
+          "description": "PostgreSQL server hostname",
+          "required": true,
+          "default": "postgres",
+          "example": "postgres"
+        },
+        "MPO_AUTHN_DB_PORT": {
+          "description": "PostgreSQL server port",
+          "required": true,
+          "default": "5432",
+          "example": "5432"
+        },
+        "MPO_AUTHN_DB_NAME": {
+          "description": "PostgreSQL database name",
+          "required": true,
+          "default": "webauthn_db",
+          "example": "webauthn_db"
+        },
+        "MPO_AUTHN_DB_USERNAME": {
+          "description": "PostgreSQL username",
+          "required": true,
+          "default": "webauthn_user",
+          "example": "webauthn_user"
+        },
+        "MPO_AUTHN_DB_PASSWORD": {
+          "description": "PostgreSQL password (use secure random value)",
+          "required": true,
+          "sensitive": true,
+          "example": "changeme_secure_password"
+        }
+      },
+      "redis": {
+        "MPO_AUTHN_REDIS_HOST": {
+          "description": "Redis server hostname",
+          "required": true,
+          "default": "redis",
+          "example": "redis"
+        },
+        "MPO_AUTHN_REDIS_PORT": {
+          "description": "Redis server port",
+          "required": true,
+          "default": "6379",
+          "example": "6379"
+        },
+        "MPO_AUTHN_REDIS_PASSWORD": {
+          "description": "Redis password (use secure random value)",
+          "required": true,
+          "sensitive": true,
+          "example": "changeme_secure_password"
+        }
+      },
+      "application": {
+        "MPO_AUTHN_APP_RELYING_PARTY_ID": {
+          "description": "WebAuthn Relying Party ID (must match your domain)",
+          "required": true,
+          "default": "localhost",
+          "example": "example.com",
+          "validation": "Must be a valid domain name or 'localhost' for development"
+        },
+        "MPO_AUTHN_APP_RELYING_PARTY_NAME": {
+          "description": "WebAuthn Relying Party display name",
+          "required": true,
+          "default": "MPO Api Authn",
+          "example": "My Application"
+        }
+      },
+      "observability": {
+        "MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME": {
+          "description": "OpenTelemetry service name for tracing",
+          "required": false,
+          "default": "webauthn-server",
+          "example": "webauthn-server"
+        },
+        "MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT": {
+          "description": "Jaeger OTLP endpoint for traces (gRPC)",
+          "required": false,
+          "default": "http://jaeger:4317",
+          "example": "http://jaeger:4317"
+        }
+      }
+    },
+    "dependencies": {
+      "postgres": {
+        "description": "PostgreSQL database for credential storage",
+        "image": "postgres:15-alpine",
+        "required": true,
+        "ports": {
+          "5432": "PostgreSQL server"
+        },
+        "environment": {
+          "POSTGRES_DB": {
+            "description": "Database name (should match MPO_AUTHN_DB_NAME)",
+            "example": "webauthn_db"
+          },
+          "POSTGRES_USER": {
+            "description": "Database user (should match MPO_AUTHN_DB_USERNAME)",
+            "example": "webauthn_user"
+          },
+          "POSTGRES_PASSWORD": {
+            "description": "Database password (should match MPO_AUTHN_DB_PASSWORD)",
+            "sensitive": true,
+            "example": "changeme_secure_password"
+          }
+        },
+        "volumes": {
+          "postgres_data": "/var/lib/postgresql/data"
+        },
+        "healthcheck": {
+          "test": "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}",
+          "interval": "10s",
+          "timeout": "5s",
+          "retries": 5
+        }
+      },
+      "redis": {
+        "description": "Redis for session storage",
+        "image": "redis:7-alpine",
+        "required": true,
+        "ports": {
+          "6379": "Redis server"
+        },
+        "command": "redis-server --requirepass ${MPO_AUTHN_REDIS_PASSWORD}",
+        "volumes": {
+          "redis_data": "/data"
+        },
+        "healthcheck": {
+          "test": "redis-cli --raw ping",
+          "interval": "10s",
+          "timeout": "3s",
+          "retries": 5
+        }
+      },
+      "jaeger": {
+        "description": "Jaeger for distributed tracing (optional)",
+        "image": "jaegertracing/all-in-one:1.53",
+        "required": false,
+        "ports": {
+          "16686": "Jaeger UI",
+          "4317": "OTLP gRPC endpoint",
+          "14268": "HTTP endpoint for spans",
+          "9411": "Zipkin compatible endpoint"
+        },
+        "environment": {
+          "COLLECTOR_OTLP_ENABLED": "true"
+        },
+        "healthcheck": {
+          "test": "wget --no-verbose --tries=1 --spider http://localhost:16686/",
+          "interval": "10s",
+          "timeout": "3s",
+          "retries": 5
+        }
+      }
+    },
+    "volumes": {
+      "postgres_data": {
+        "description": "PostgreSQL data persistence"
+      },
+      "redis_data": {
+        "description": "Redis data persistence"
+      }
+    },
+    "deployment": {
+      "depends_on": {
+        "postgres": {
+          "condition": "service_healthy"
+        },
+        "redis": {
+          "condition": "service_healthy"
+        }
+      },
+      "restart": "unless-stopped",
+      "healthcheck": {
+        "note": "Distroless image - use external health check",
+        "endpoint": "http://localhost:8080/health",
+        "method": "GET"
+      }
+    }
+  },
+  "quickstart": {
+    "docker-compose": "https://raw.githubusercontent.com/hitoshura25/mpo-api-authn-server/main/webauthn-server/docker-compose.yml",
+    "minimal-example": {
+      "description": "Minimal docker-compose.yml for external project integration",
+      "yaml": "version: '3.8'\nservices:\n  postgres:\n    image: postgres:15-alpine\n    environment:\n      POSTGRES_DB: webauthn_db\n      POSTGRES_USER: webauthn_user\n      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}\n    volumes:\n      - postgres_data:/var/lib/postgresql/data\n    healthcheck:\n      test: [\"CMD-SHELL\", \"pg_isready -U webauthn_user -d webauthn_db\"]\n      interval: 10s\n      timeout: 5s\n      retries: 5\n\n  redis:\n    image: redis:7-alpine\n    command: redis-server --requirepass ${REDIS_PASSWORD}\n    volumes:\n      - redis_data:/data\n    healthcheck:\n      test: [\"CMD\", \"redis-cli\", \"--raw\", \"ping\"]\n      interval: 10s\n      timeout: 3s\n      retries: 5\n\n  webauthn-server:\n    image: hitoshura25/webauthn-server:latest\n    ports:\n      - \"8080:8080\"\n    environment:\n      - MPO_AUTHN_DB_HOST=postgres\n      - MPO_AUTHN_DB_PORT=5432\n      - MPO_AUTHN_DB_NAME=webauthn_db\n      - MPO_AUTHN_DB_USERNAME=webauthn_user\n      - MPO_AUTHN_DB_PASSWORD=${POSTGRES_PASSWORD}\n      - MPO_AUTHN_REDIS_HOST=redis\n      - MPO_AUTHN_REDIS_PORT=6379\n      - MPO_AUTHN_REDIS_PASSWORD=${REDIS_PASSWORD}\n      - MPO_AUTHN_APP_RELYING_PARTY_ID=localhost\n      - MPO_AUTHN_APP_RELYING_PARTY_NAME=My Application\n    depends_on:\n      postgres:\n        condition: service_healthy\n      redis:\n        condition: service_healthy\n    restart: unless-stopped\n\nvolumes:\n  postgres_data:\n  redis_data:\n"
+    },
+    "environment-setup": {
+      "description": "Required environment variables (create .env file)",
+      "example": "POSTGRES_PASSWORD=your_secure_password_here\nREDIS_PASSWORD=your_secure_password_here\n"
+    }
+  },
+  "security": {
+    "features": [
+      "Username enumeration protection (CVE-2024-39912)",
+      "PoisonSeed attack prevention",
+      "Replay attack protection",
+      "Credential tampering validation",
+      "FIDO2/WebAuthn standard compliance"
+    ],
+    "credentials": {
+      "storage": "PostgreSQL with encrypted credential data",
+      "sessions": "Redis with secure session management"
+    }
+  },
+  "api": {
+    "openapi": "https://raw.githubusercontent.com/hitoshura25/mpo-api-authn-server/main/webauthn-server/openapi/webauthn-api.yaml",
+    "swagger-ui": "http://localhost:8080/swagger"
+  },
+  "ai-agent-notes": {
+    "relying-party-id": "CRITICAL: MPO_AUTHN_APP_RELYING_PARTY_ID must match the domain where your frontend is hosted. Use 'localhost' for local development only.",
+    "passwords": "Generate secure random passwords for POSTGRES_PASSWORD and REDIS_PASSWORD. Do not use default values in production.",
+    "health-checks": "The webauthn-server uses a distroless image without curl/wget. Use external health checks via HTTP GET to /health endpoint.",
+    "jaeger-optional": "Jaeger is optional for observability. Omit if you don't need distributed tracing.",
+    "staging-images": "Never use ghcr.io staging images in production - they are for CI testing only."
+  }
+}

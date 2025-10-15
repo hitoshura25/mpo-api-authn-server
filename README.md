@@ -16,6 +16,26 @@ This project follows a multi-module architecture for clear separation of concern
 - **android-client-library/** - Dedicated Android client library submodule
 - **typescript-client-library/** - Dedicated TypeScript client library submodule
 
+## 🤖 For AI Agents & Developers
+
+**Quick Integration**: Looking to add WebAuthn authentication to your project? Check out [`.ai-agents.json`](./.ai-agents.json) for complete Docker setup configuration.
+
+**Docker Image**: `hitoshura25/webauthn-server:latest` (Docker Hub)
+
+### Example AI Agent Prompt
+
+```
+Add hitoshura25/webauthn-server to my docker-compose.yml using the configuration from:
+https://raw.githubusercontent.com/hitoshura25/mpo-api-authn-server/main/.ai-agents.json
+```
+
+This structured configuration file contains:
+- Complete environment variable documentation with defaults
+- PostgreSQL and Redis dependency configurations
+- Health check setup and deployment requirements
+- Ready-to-use docker-compose.yml template
+- Security considerations and critical configuration notes
+
 ## 🚀 Quick Start
 
 ### Prerequisites

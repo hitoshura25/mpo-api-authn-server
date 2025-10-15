@@ -22,9 +22,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 sys.path.append(str(Path(__file__).parent))
 
 # Local imports
-from analysis.olmo_analyzer import OLMoSecurityAnalyzer
+from olmo_analyzer import OLMoSecurityAnalyzer
 from local_security_knowledge_base import LocalSecurityKnowledgeBase
-
 
 class RAGEnhancedOLMoAnalyzer(OLMoSecurityAnalyzer):
     """
@@ -97,9 +96,11 @@ class RAGEnhancedOLMoAnalyzer(OLMoSecurityAnalyzer):
         """
         
         if self.rag_enabled and self.knowledge_base and self.knowledge_base.vector_index is not None:
+            self.logger.info(f"🔍 Performing RAG-enhanced analysis for vulnerability ID: {vulnerability.get('id', 'unknown')}")
             return self._analyze_with_rag(vulnerability)
         else:
             # Fall back to baseline analysis
+            self.logger.info(f"🔄 RAG not available, using baseline analysis for vulnerability ID: {vulnerability.get('id', 'unknown')}")
             return super().analyze_vulnerability(vulnerability)
     
     def _analyze_with_rag(self, vulnerability: Dict[str, Any]) -> Dict[str, Any]:
@@ -138,7 +139,6 @@ class RAGEnhancedOLMoAnalyzer(OLMoSecurityAnalyzer):
             
         except Exception as e:
             self.logger.error(f"❌ RAG analysis failed: {e}")
-            self.logger.info("🔄 Falling back to baseline analysis")
             raise
     
     def _create_rag_enhanced_prompt(
@@ -149,58 +149,65 @@ class RAGEnhancedOLMoAnalyzer(OLMoSecurityAnalyzer):
     ) -> str:
         """Create enhanced prompt with RAG context."""
         
-        # Format similar vulnerabilities for context
-        similar_cases_text = ""
-        for i, sim_vuln in enumerate(similar_vulnerabilities, 1):
+        # Format similar vulnerabilities in compressed format (optimized for 1B model)
+        # Compress format to save tokens: "- TYPE (SEVERITY): description"
+        similar_cases = []
+        for sim_vuln in similar_vulnerabilities:
             metadata = sim_vuln['metadata']
-            similarity = sim_vuln['similarity_percentage']
-            
-            similar_cases_text += f"""
-Similar Case {i} ({similarity} match):
-- Tool: {metadata['tool']}
-- Type: {metadata['type']}
-- Severity: {metadata['severity']}
-- Description: {metadata.get('description', 'N/A')[:200]}...
-- File: {metadata.get('file_path', 'N/A')}
-"""
+            # Truncate description to 60 chars for token efficiency
+            desc = metadata.get('description', '')[:60]
+            case_summary = f"- {metadata['type']} ({metadata['severity']}): {desc}"
+            similar_cases.append(case_summary)
 
-        # Create comprehensive RAG-enhanced prompt
-        rag_prompt = f"""You are a security expert analyzing vulnerabilities with access to historical similar cases.
+        similar_cases_text = "\n".join(similar_cases)
 
-CURRENT VULNERABILITY:
-Tool: {vulnerability.get('tool', 'unknown')}
+        # RAG prompt optimized for OLMo-2-1B (1B parameter model)
+        #
+        # Research sources for small language model (SLM) RAG prompt design:
+        # 1. RAG capabilities of small models (Phi-3 3.8B analysis):
+        #    https://medium.com/data-science-at-microsoft/evaluating-rag-capabilities-of-small-language-models-e7531b3a5061
+        #    Key findings: Context window limits (~864 tokens), performance degrades with complex prompts
+        #
+        # 2. RAG prompt templates and contextual understanding:
+        #    https://medium.com/@ajayverma23/the-art-and-science-of-rag-mastering-prompt-templates-and-contextual-understanding-a47961a57e27
+        #    Key findings: Simple, direct prompts > complex multi-step instructions for SLMs
+        #
+        # 3. OLMo-2 best practices:
+        #    https://www.promptingguide.ai/models/olmo
+        #    Key findings: Direct task specification, concise context, avoid excessive few-shot examples
+        #
+        # Design principles applied:
+        # - Match baseline prompt structure EXACTLY (no meta-instructions like "Based on...")
+        # - Remove baseline analysis from prompt (let model generate fresh, avoid repetition)
+        # - Add similar cases as passive context before task instruction
+        # - Compress similar case format (60 chars vs 100 chars per case)
+        # - Keep task instruction identical to baseline for consistency
+        #
+        rag_prompt = f"""Vulnerability: {vulnerability.get('id', 'unknown')}
 Severity: {vulnerability.get('severity', 'unknown')}
-Type: {vulnerability.get('type', vulnerability.get('id', 'unknown'))}
-Description: {vulnerability.get('description', vulnerability.get('message', ''))}
-File: {vulnerability.get('file_path', vulnerability.get('path', 'N/A'))}
+Tool: {vulnerability.get('tool', 'unknown')}
+Issue: {vulnerability.get('description', vulnerability.get('message', ''))}
 
-BASELINE ANALYSIS:
-{self._format_baseline_analysis(baseline_analysis)}
-
-SIMILAR HISTORICAL CASES:
+Similar cases:
 {similar_cases_text}
 
-Based on the current vulnerability, baseline analysis, and similar historical cases, provide an ENHANCED analysis that:
+Provide a concise security analysis with:
+1. Impact explanation
+2. Specific remediation steps
 
-1. **Leverages Historical Patterns**: How do the similar cases inform our understanding?
-2. **Enhanced Impact Assessment**: What additional impacts should we consider based on historical data?
-3. **Proven Remediation Strategies**: What specific fixes have worked for similar cases?
-4. **Contextual Risk Assessment**: How does this compare to the historical pattern of similar vulnerabilities?
-5. **Specific Implementation Guidance**: Provide concrete, actionable remediation steps.
-
-Focus on actionable, specific guidance informed by the historical similar cases."""
+Analysis:"""
 
         return rag_prompt
     
     def _format_baseline_analysis(self, baseline_analysis: Dict[str, Any]) -> str:
         """Format baseline analysis for inclusion in RAG prompt."""
-        
-        if 'structured_analysis' in baseline_analysis:
-            structured = baseline_analysis['structured_analysis']
+
+        if 'baseline_analysis' in baseline_analysis:
+            baseline = baseline_analysis['baseline_analysis']
             return f"""
-Impact: {structured.get('impact', 'N/A')}
-Remediation: {structured.get('remediation', 'N/A')}
-Prevention: {structured.get('prevention', 'N/A')}"""
+Impact: {baseline.get('impact', 'N/A')}
+Remediation: {baseline.get('remediation', 'N/A')}
+Prevention: {baseline.get('prevention', 'N/A')}"""
         else:
             return baseline_analysis.get('raw_analysis', 'No baseline analysis available')
     
@@ -219,10 +226,22 @@ Prevention: {structured.get('prevention', 'N/A')}"""
         return self._parse_enhanced_analysis(enhanced_response, vulnerability)
     
     def _generate_analysis_text(self, prompt: str) -> str:
-        """Generate analysis text using the base analyzer's generation method."""
-        
-        # Use the existing generation infrastructure from the base class
-        return super()._generate_structured_analysis_internal(prompt)
+        """
+        Generate analysis text using the base analyzer's generation method.
+
+        Uses higher token limit and stronger repetition penalty for RAG generation
+        to reduce cutoffs and repetition loops.
+        """
+
+        # Use higher parameters for RAG generation to address quality issues:
+        # - max_tokens=250 (vs baseline 150): Gives model room to complete thoughts, reduces mid-sentence cutoffs
+        # - repetition_penalty=1.2 (vs baseline 1.1): Reduces repetition loops while staying under 1.3 quality degradation threshold
+        return super()._generate_with_prompt(
+            prompt,
+            vuln_id="rag-enhanced",
+            max_tokens=200,           # 67% more tokens to prevent cutoffs
+            repetition_penalty=1.2    # Stronger penalty to reduce loops
+        )
     
     def _parse_enhanced_analysis(self, enhanced_text: str, vulnerability: Dict[str, Any]) -> Dict[str, Any]:
         """Parse the RAG-enhanced analysis response into structured format."""
@@ -281,13 +300,13 @@ Prevention: {structured.get('prevention', 'N/A')}"""
         similar_vulnerabilities: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """Merge baseline and enhanced analyses with RAG metadata."""
-        
-        # Start with baseline analysis
+
+        # Start with baseline analysis (keep unchanged)
         merged_analysis = baseline_analysis.copy()
-        
-        # Add RAG enhancements
+
+        # Add RAG enhancements (separate from baseline)
         merged_analysis.update(enhanced_analysis)
-        
+
         # Add RAG metadata
         merged_analysis['rag_metadata'] = {
             'rag_enhanced': True,
@@ -295,23 +314,17 @@ Prevention: {structured.get('prevention', 'N/A')}"""
             'similar_cases_summary': [
                 {
                     'tool': sim['metadata']['tool'],
-                    'type': sim['metadata']['type'], 
+                    'type': sim['metadata']['type'],
                     'similarity': sim['similarity_percentage']
                 } for sim in similar_vulnerabilities
             ],
             'enhancement_method': 'local_faiss_similarity_search',
             'knowledge_base_size': self.knowledge_base.get_knowledge_base_stats()['total_vectors']
         }
-        
-        # Enhance structured analysis if it exists
-        if 'structured_analysis' in merged_analysis:
-            structured = merged_analysis['structured_analysis']
-            
-            # Add RAG enhancement markers
-            for key in ['impact', 'remediation', 'prevention']:
-                if key in structured:
-                    structured[key] = f"[RAG-Enhanced] {structured[key]}"
-        
+
+        # NOTE: baseline_analysis is kept unchanged for reliable fallback
+        # RAG enhancements are in separate fields: enhanced_analysis, rag_metadata
+
         return merged_analysis
     
     def get_rag_status(self) -> Dict[str, Any]:

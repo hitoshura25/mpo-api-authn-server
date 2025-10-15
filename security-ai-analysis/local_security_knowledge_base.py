@@ -78,16 +78,22 @@ class LocalSecurityKnowledgeBase:
         
     def _initialize_embeddings_model(self):
         """Initialize the sentence transformer model for embeddings."""
-        
+
         if self.embeddings_model is None:
             try:
+                import os
+                # Disable OpenMP threading to prevent semaphore leaks in Python 3.13
+                # Note: This reduces single-process performance but is necessary for stability
+                os.environ['OMP_NUM_THREADS'] = '1'
+                os.environ['MKL_NUM_THREADS'] = '1'
+
                 # Use a lightweight, fast model that works well for security text
                 self.embeddings_model = SentenceTransformer(
                     'all-MiniLM-L6-v2',
                     device='cpu'  # Ensure CPU usage for compatibility
                 )
                 self.logger.info("✅ Initialized SentenceTransformer model: all-MiniLM-L6-v2")
-                
+
             except Exception as e:
                 self.logger.error(f"❌ Failed to initialize embeddings model: {e}")
                 raise
@@ -134,12 +140,12 @@ class LocalSecurityKnowledgeBase:
                 
                 # Add analysis content if available
                 if isinstance(analysis, dict):
-                    structured_analysis = analysis.get('structured_analysis', {})
-                    if structured_analysis:
+                    baseline_analysis = analysis.get('baseline_analysis', {})
+                    if baseline_analysis:
                         vulnerability_text_parts.extend([
-                            f"Impact: {structured_analysis.get('impact', '')}",
-                            f"Remediation: {structured_analysis.get('remediation', '')}",
-                            f"Prevention: {structured_analysis.get('prevention', '')}"
+                            f"Impact: {baseline_analysis.get('impact', '')}",
+                            f"Remediation: {baseline_analysis.get('remediation', '')}",
+                            f"Prevention: {baseline_analysis.get('prevention', '')}"
                         ])
                 
                 # Combine into single text for embedding
@@ -208,13 +214,13 @@ class LocalSecurityKnowledgeBase:
                 batch_texts = texts[i:i + batch_size]
                 batch_embeddings = self.embeddings_model.encode(
                     batch_texts,
-                    show_progress_bar=True,
+                    show_progress_bar=False,  # Disable to avoid multiprocessing issues
                     batch_size=batch_size
                 )
                 all_embeddings.append(batch_embeddings)
-                
-                if i % (batch_size * 5) == 0:  # Progress update every 5 batches
-                    self.logger.info(f"🔄 Generated embeddings for {min(i + batch_size, len(texts))}/{len(texts)} texts")
+
+                # Log progress
+                self.logger.info(f"🔄 Generated embeddings for {min(i + batch_size, len(texts))}/{len(texts)} texts")
             
             # Combine all embeddings
             embeddings = np.vstack(all_embeddings)
@@ -318,25 +324,28 @@ class LocalSecurityKnowledgeBase:
             raise RuntimeError(f"Knowledge base loading failed - infrastructure issue requires investigation: {e}") from e
     
     def find_similar_vulnerabilities(
-        self, 
-        query_vulnerability: Dict[str, Any], 
+        self,
+        query_vulnerability: Dict[str, Any],
         top_k: int = 5
     ) -> List[Dict[str, Any]]:
         """
-        Find similar vulnerabilities using vector similarity search.
-        
+        Find similar vulnerabilities using vector similarity search with deduplication.
+
+        Retrieves diverse similar cases by filtering out duplicate vulnerability types
+        (e.g., same CVE appearing multiple times in different scan results).
+
         Args:
             query_vulnerability: Vulnerability to find similar cases for
-            top_k: Number of similar vulnerabilities to return
-            
+            top_k: Number of diverse similar vulnerabilities to return
+
         Returns:
-            List of similar vulnerabilities with similarity scores
+            List of similar vulnerabilities with similarity scores (deduplicated by type)
         """
-        
+
         if self.vector_index is None:
             if not self.load_knowledge_base():
                 raise RuntimeError("Knowledge base not available. Please build it first.")
-        
+
         try:
             # Create query text representation
             query_text_parts = [
@@ -345,35 +354,54 @@ class LocalSecurityKnowledgeBase:
                 f"Type: {query_vulnerability.get('type', query_vulnerability.get('id', 'unknown'))}",
                 f"Description: {query_vulnerability.get('description', query_vulnerability.get('message', ''))}",
             ]
-            
+
             query_text = " ".join(filter(None, query_text_parts))
-            
+
             if not query_text.strip():
                 self.logger.warning("Empty query text for similarity search")
                 return []
-            
+
             # Generate query embedding
             query_embedding = self.embeddings_model.encode([query_text])
-            
+
             # Normalize for cosine similarity
             query_embedding_normalized = query_embedding.astype('float32')
             faiss.normalize_L2(query_embedding_normalized)
-            
-            # Search for similar vectors
-            scores, indices = self.vector_index.search(query_embedding_normalized, top_k)
-            
-            # Format results
+
+            # Search for more candidates than needed (2x) to allow for deduplication
+            candidates_count = min(top_k * 2, self.vector_index.ntotal)
+            scores, indices = self.vector_index.search(query_embedding_normalized, candidates_count)
+
+            # Deduplicate results by vulnerability type
             similar_vulnerabilities = []
+            seen_types = set()
+
             for score, idx in zip(scores[0], indices[0]):
                 if idx < len(self.vulnerability_metadata):
+                    metadata = self.vulnerability_metadata[idx]
+
+                    # Get vulnerability type (prefer 'type' field, fallback to 'id')
+                    vuln_type = metadata.get('type', metadata.get('id', 'unknown'))
+
+                    # Skip if we've already seen this vulnerability type
+                    if vuln_type in seen_types:
+                        self.logger.debug(f"Skipping duplicate vulnerability type: {vuln_type}")
+                        continue
+
+                    # Add to seen set and results
+                    seen_types.add(vuln_type)
                     similar_vuln = {
-                        'metadata': self.vulnerability_metadata[idx],
+                        'metadata': metadata,
                         'similarity_score': float(score),
                         'similarity_percentage': f"{float(score) * 100:.1f}%"
                     }
                     similar_vulnerabilities.append(similar_vuln)
-            
-            self.logger.info(f"🔍 Found {len(similar_vulnerabilities)} similar vulnerabilities")
+
+                    # Stop when we have enough diverse examples
+                    if len(similar_vulnerabilities) >= top_k:
+                        break
+
+            self.logger.info(f"🔍 Found {len(similar_vulnerabilities)} diverse similar vulnerabilities (from {candidates_count} candidates)")
             return similar_vulnerabilities
             
         except Exception as e:

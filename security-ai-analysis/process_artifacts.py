@@ -1,1736 +1,811 @@
-#!/usr/bin/env python3
-"""
-Process downloaded GitHub Actions security artifacts with OLMo - Configurable Phase Architecture
-
-This version implements a flexible 8-phase architecture with configurable execution:
-1. Parsing - Extract vulnerabilities from security scan files
-2. Vulnerability Analysis - Initial AI analysis of vulnerabilities
-3. RAG Enhancement - Knowledge augmentation using RAG
-4. Analysis Summary - Combined final analysis results
-5. Narrativization - Create rich security narratives
-6. Datasets - Prepare training and validation datasets
-7. Training - Fine-tune models using datasets
-8. Upload - Upload models and datasets to HuggingFace Hub
-
-Individual phases can be executed using --only-* flags for isolated testing and development.
-"""
 import json
-import os
 import sys
 from pathlib import Path
-from datetime import datetime
-
-# Fix HuggingFace tokenizers parallelism warning
-os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-import zipfile
-import shutil
-import subprocess
-import random
-from typing import List, Dict, Tuple, Any
-
-# Add parent directory to path for imports
-sys.path.append(str(Path(__file__).parent.parent))
-
-from parsers.trivy_parser import parse_trivy_json
-from parsers.checkov_parser import parse_checkov_json
-from parsers.sarif_parser import parse_sarif_json
-from parsers.semgrep_parser import parse_semgrep_sarif
-from parsers.osv_parser import parse_osv_json
-from parsers.zap_parser import parse_zap_json
-from config_manager import OLMoSecurityConfig
-from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is_sequential_fine_tuning_available
 import argparse
 import logging
+import subprocess
+from typing import Any, Dict, List, Optional
+from datetime import datetime
 
+from config_manager import OLMoSecurityConfig
+from parsers.sarif_trivy_parser import parse_trivy_sarif
+from parsers.sarif_checkov_parser import parse_checkov_sarif
+from parsers.semgrep_parser import parse_semgrep_json
+from parsers.osv_parser import parse_osv_json_enhanced
+from parsers.zap_parser import parse_zap_json
+import random
+
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
-
 
 # Phase constants to avoid string repetition and typos
 class Phases:
     PARSING = "parsing"
-    VULNERABILITY_ANALYSIS = "vulnerability-analysis"
-    RAG_ENHANCEMENT = "rag-enhancement"
-    ANALYSIS_SUMMARY = "analysis-summary"
-    NARRATIVIZATION = "narrativization"
     DATASETS = "datasets"
-    TRAINING = "training"
     UPLOAD = "upload"
 
     # List for validation
     ALL_PHASES = [
-        PARSING, VULNERABILITY_ANALYSIS, RAG_ENHANCEMENT, ANALYSIS_SUMMARY,
-        NARRATIVIZATION, DATASETS, TRAINING, UPLOAD
+        PARSING, DATASETS, UPLOAD
     ]
 
     # Input requirements mapping
     PHASE_INPUTS = {
         PARSING: [],  # Uses --artifacts-dir
-        VULNERABILITY_ANALYSIS: ['parsed_input'],
-        RAG_ENHANCEMENT: ['vulnerability_analysis_input'],
-        ANALYSIS_SUMMARY: ['rag_enhanced_input'],
-        NARRATIVIZATION: ['analyzed_input'],
-        DATASETS: ['narrativized_input', 'analyzed_input'],  # Needs narrativized data + analysis results with categorized vulnerabilities
-        TRAINING: ['train_input', 'validation_input', 'narrativized_input'],
-        UPLOAD: ['dataset_files']  # model_dir automatically resolved via TrainingRunManager
+        DATASETS: ['parsed_vulnerabilities_input'],
+        UPLOAD: ['adapter_input', 'train_dataset_input', 'validation_dataset_input', 'test_dataset_input'],
     }
 
-
-def extract_artifacts(zip_dir: str, output_dir: str):
+def find_security_files(directory: str) -> dict:
     """
-    Extract all zip files from GitHub Actions artifacts
-    """
-    zip_path = Path(zip_dir)
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    print(f"📦 Extracting artifacts from {zip_dir}...")
-
-    extracted_files = []
-    for zip_file in zip_path.glob("*.zip"):
-        print(f"  Extracting {zip_file.name}...")
-
-        # Create subdirectory for this artifact
-        artifact_dir = output_path / zip_file.stem
-        artifact_dir.mkdir(exist_ok=True)
-
-        try:
-            with zipfile.ZipFile(zip_file, 'r') as z:
-                z.extractall(artifact_dir)
-                extracted_files.extend([
-                    artifact_dir / name for name in z.namelist()
-                ])
-            print(f"    ✅ Extracted to {artifact_dir}")
-        except Exception as e:
-            logger.error(f"❌ CRITICAL: Artifact extraction failure for {zip_file}: {e}")
-            logger.error("🔍 Artifact extraction failure indicates corrupted downloads or infrastructure issues requiring investigation")
-            raise RuntimeError(f"Artifact extraction failure for {zip_file} requires investigation: {e}") from e
-
-    return extracted_files
-
-
-def find_security_files(directory: str):
-    """
-    Find all security scan result files in the extracted artifacts
+    Finds all security scan result files in the specified directory.
+    (Reused from the original script)
     """
     scan_files = {
-        'trivy': [],
-        'checkov': [],
-        'semgrep': [],
-        'osv': [],
-        'sarif': [],
-        'zap': []
+        'trivy': [], 'checkov': [], 'semgrep': [],
+        'osv': [], 'sarif': [], 'zap': []
     }
-
     dir_path = Path(directory)
+    logger.info(f"Searching for security files in: {dir_path.resolve()}")
 
-    # Search for security scan files
     for file_path in dir_path.rglob("*"):
         if not file_path.is_file():
             continue
 
-        file_name = file_path.name.lower()
         file_str = str(file_path).lower()
 
-        # Identify file type based on name and content
-        if 'trivy' in file_str:
-            if file_path.suffix in ['.json', '.sarif']:
-                scan_files['trivy'].append(str(file_path))
-        elif 'checkov' in file_str:
-            if file_path.suffix in ['.json', '.sarif']:
-                scan_files['checkov'].append(str(file_path))
-        elif 'semgrep' in file_str and file_path.suffix in ['.json', '.sarif']:
-            # Prefer SARIF over JSON for semgrep to avoid duplication
-            # Check if we already have a semgrep file from the same directory
-            file_dir = file_path.parent
-            existing_semgrep = [f for f in scan_files['semgrep'] if Path(f).parent == file_dir]
-
-            if not existing_semgrep:
-                # No existing file, add this one
-                scan_files['semgrep'].append(str(file_path))
-            elif file_path.suffix == '.sarif':
-                # Replace JSON with SARIF (prefer SARIF)
-                scan_files['semgrep'] = [f for f in scan_files['semgrep'] if Path(f).parent != file_dir]
-                scan_files['semgrep'].append(str(file_path))
-            # If existing is SARIF and current is JSON, skip current (keep SARIF)
+        if 'trivy' in file_str and file_path.suffix in ['.sarif']:
+            scan_files['trivy'].append(str(file_path))
+        elif 'checkov' in file_str and file_path.suffix in ['.sarif']:
+            scan_files['checkov'].append(str(file_path))
+        elif 'semgrep' in file_str and file_path.suffix in ['.json']:
+            scan_files['semgrep'].append(str(file_path))
         elif 'osv' in file_str and file_path.suffix == '.json':
             scan_files['osv'].append(str(file_path))
-        elif file_path.suffix == '.sarif' and 'semgrep' not in file_str:
-            # Only add SARIF files that are NOT semgrep (to avoid duplication)
-            scan_files['sarif'].append(str(file_path))
         elif 'zap' in file_str and file_path.suffix == '.json':
             scan_files['zap'].append(str(file_path))
 
-    # Report findings
-    print("\n📁 Found security scan files:")
+    logger.info("Found security scan files:")
     for scan_type, files in scan_files.items():
         if files:
-            print(f"  {scan_type}: {len(files)} file(s)")
-            for f in files[:3]:  # Show first 3
-                print(f"    - {Path(f).name}")
-
+            logger.info(f"  - {scan_type}: {len(files)} file(s)")
     return scan_files
 
-
-def parse_vulnerabilities_phase(scan_files: dict, output_dir: str) -> Tuple[List, Path, Path]:
+def parse_vulnerabilities_phase(artifacts_dir: str, output_dir: Path) -> Path:
     """
-    Phase 1: Parse security scan files and extract vulnerabilities
-
-    Input:
-        - scan_files: dict with scan tool files
-        - output_dir: Output directory for results
-
-    Output Files:
-        - parsed_vulnerabilities_{timestamp}.json: Array of vulnerability objects
-        - parsing_summary_{timestamp}.json: Summary statistics
-
-    Returns:
-        (all_vulnerabilities: List, vulnerabilities_file: Path, summary_file: Path)
+    PHASE 1:
+    - Parses various security scan files to extract vulnerabilities.
+    - Saves the list to a single JSON file.
     """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    logger.info("🚀 Starting Phase 1: Parse Vulnerabilities")
+
+    # Find all security files in the provided artifacts directory
+    scan_files = find_security_files(artifacts_dir)
+    total_files = sum(len(files) for files in scan_files.values())
+    if total_files == 0:
+        logger.error(f"CRITICAL: No security files found in {artifacts_dir}. Aborting.")
+        sys.exit(1)
+
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     all_vulnerabilities = []
+    parser_map = {
+        'trivy': parse_trivy_sarif,
+        'checkov': parse_checkov_sarif,
+        'semgrep': parse_semgrep_json,
+        'osv': parse_osv_json_enhanced,
+        'zap': parse_zap_json,
+    }
 
-    # Process each scan type with enhanced logging
-    print(f"\n📂 Starting vulnerability parsing from {len(scan_files)} scan types...", flush=True)
+    # Step 1: Parse vulnerabilities from all files
     for scan_type, files in scan_files.items():
         if not files:
             continue
-
-        print(f"\n📊 Processing {scan_type} scans ({len(files)} files)...", flush=True)
-
-        for file_index, file_path in enumerate(files, 1):
-            print(f"  [{file_index}/{len(files)}] Processing {Path(file_path).name}...", flush=True)
-
+        logger.info(f"Determing parser for scan type: {scan_type}")
+        parser_func = parser_map.get(scan_type)
+        if not parser_func:
+            continue
+        logger.info(f"Parsing {len(files)} files for scan type: {scan_type}")
+        for file_path in files:
             try:
-                # Parse based on type
-                if scan_type == 'trivy':
-                    if file_path.endswith('.sarif'):
-                        vulns = parse_sarif_json(file_path)
-                    else:
-                        vulns = parse_trivy_json(file_path)
-                elif scan_type == 'checkov':
-                    if file_path.endswith('.sarif'):
-                        vulns = parse_sarif_json(file_path)
-                    else:
-                        vulns = parse_checkov_json(file_path)
-                elif scan_type == 'semgrep':
-                    vulns = parse_semgrep_sarif(file_path)
-                elif scan_type == 'osv':
-                    vulns = parse_osv_json(file_path)
-                elif scan_type == 'sarif':
-                    vulns = parse_sarif_json(file_path)
-                elif scan_type == 'zap':
-                    vulns = parse_zap_json(file_path)
-                else:
-                    continue
-
+                vulns = parser_func(file_path)
                 if vulns:
-                    print(f"    Found {len(vulns)} vulnerabilities")
                     all_vulnerabilities.extend(vulns)
-                else:
-                    print(f"    No vulnerabilities found")
-
-            except RuntimeError:
-                # Let RuntimeError bubble up - indicates corrupted scan data requiring investigation
-                raise
             except Exception as e:
-                logger.error(f"❌ CRITICAL: File processing failure for {file_path}: {e}")
-                logger.error("🔍 File processing failure indicates infrastructure issues or dependency problems requiring investigation")
-                raise RuntimeError(f"File processing failure for {file_path} requires investigation: {e}") from e
+                raise RuntimeError(f"Error parsing {file_path} with {scan_type} parser: {e}")
 
-    # Generate summary from real parsed vulnerabilities
-    summary = {
-        'total_analyzed': len(all_vulnerabilities),
-        'successful': len(all_vulnerabilities),
-        'failed': 0,
-        'by_tool': {},
-        'by_severity': {},
-        'analysis_timestamp': datetime.now().isoformat()
-    }
+    logger.info(f"Parsed a total of {len(all_vulnerabilities)} vulnerabilities.")
 
-    # Count by tool from real parsed data
-    for vuln in all_vulnerabilities:
-        tool = vuln.get('tool', 'unknown')
-        summary['by_tool'][tool] = summary['by_tool'].get(tool, 0) + 1
+    output_file = output_dir / "parsed_vulnerabilities.json"
+    with open(output_file, 'w') as f:
+        json.dump(all_vulnerabilities, f, indent=2)
 
-    # Create results from real parsed vulnerabilities
-    results = []
-    for vuln in all_vulnerabilities:
-        results.append({
-            'status': 'success',
-            'vulnerability': vuln,
-            'tool': vuln.get('tool', 'unknown'),
-            'id': vuln.get('id', 'unknown')
-        })
+    logger.info(f"✅ Parse vulnerabilities phase complete. Output saved to: {output_file}")
+    return output_file
 
-    # Save files with unique names for parsing phase
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # Save parsed vulnerabilities
-    vulnerabilities_file = output_path / f"parsed_vulnerabilities_{timestamp}.json"
-    with open(vulnerabilities_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    print(f"💾 Parsed vulnerabilities saved to: {vulnerabilities_file}")
-
-    # Save parsing summary
-    summary_file = output_path / f"parsing_summary_{timestamp}.json"
-    with open(summary_file, 'w') as f:
-        json.dump(summary, f, indent=2)
-    print(f"💾 Parsing summary saved to: {summary_file}")
-
-    print(f"📊 Parsed {len(all_vulnerabilities)} vulnerabilities successfully")
-    print(f"🎯 By tool: {summary['by_tool']}")
-
-    return all_vulnerabilities, vulnerabilities_file, summary_file
-
-
-def analysis_phase(vulnerabilities_file: Path, output_dir: str, args) -> Tuple[List, Path, Path]:
+def construct_datasets_phase(parsed_vulns_file: Path, output_dir: Path) -> tuple[Path, Path, Path]:
     """
-    Phase 2: AI analysis of parsed vulnerabilities
+    PHASE: Construct Datasets
+    - Loads public datasets (CVEfixes)
+    - Generates specific fixes for deterministic vulnerabilities
+    - Applies data augmentation (semantic variations, self-mixup, context blending)
+    - Processes narratives into training pairs
+    - Combines and splits into train/validation/test sets (80/10/10)
+    """
+    logger.info("🚀 Starting Phase: Construct Datasets")
 
-    Input:
-        - vulnerabilities_file: Path to parsed_vulnerabilities_*.json from Phase 1
-        - output_dir: Output directory for analysis results
-        - args: Command line arguments (model_name, branch, commit, etc.)
+    if not parsed_vulns_file.exists():
+        raise FileNotFoundError(f"Parsed vulnerabilities file not found: {parsed_vulns_file}")
 
-    Output Files:
-        - analyzed_vulnerabilities_{timestamp}.json: AI-analyzed vulnerability objects
-        - analysis_summary_{timestamp}.json: Analysis statistics and metadata
+    # Load parsed vulnerabilities
+    with open(parsed_vulns_file, 'r') as f:
+        parsed_vulns = json.load(f)
+
+    logger.info(f"Loaded {len(parsed_vulns)} parsed vulnerabilities")
+
+    all_training_pairs = []
+
+    # SOURCE 1: Load Public Data
+    #logger.info("📚 Source 1: Loading public datasets...")
+    #public_loader = PublicDatasetLoader()
+    #public_examples = public_loader.load_public_datasets()  # Load all available data
+    #all_training_pairs.extend(public_examples)
+    #logger.info(f"   Added {len(public_examples)} examples from public datasets")
+
+    # SOURCE 2: Generate Specific Fixes
+    logger.info("🔧 Source 2: Generating specific fixes...")
+    specific_fixes = _generate_specific_fixes(parsed_vulns)
+    logger.info(f"   Generated {len(specific_fixes)} specific fix examples")
+
+    # CRITICAL: Split BEFORE augmentation to keep test set pure (ground truth)
+    # Test set must contain only original examples for valid evaluation
+    # Using stratified split to ensure consistent test set across runs
+    logger.info("📊 Splitting original examples with stratified sampling by tool...")
+    original_train, original_val, test_pairs = _stratified_split_by_tool(specific_fixes)
+
+    logger.info(f"   Final split: {len(original_train)} train / {len(original_val)} val / {len(test_pairs)} test")
+
+    # SOURCE 3: Data Augmentation (ONLY for train/val sets)
+    # Test set remains pure original examples for valid evaluation
+    logger.info("🎨 Source 3: Applying data augmentation to train/val sets...")
+    augmented_train = _augment_training_pairs(original_train)
+    augmented_val = _augment_training_pairs(original_val)
+    logger.info(f"   Augmented: +{len(augmented_train)} train examples, +{len(augmented_val)} val examples")
+
+    # Combine original + augmented for train/val
+    train_pairs = original_train + augmented_train
+    val_pairs = original_val + augmented_val
+
+    # Shuffle each set independently
+    random.shuffle(train_pairs)
+    random.shuffle(val_pairs)
+
+    logger.info(f"📊 Final dataset sizes:")
+    logger.info(f"   Train set: {len(train_pairs)} examples ({len(original_train)} original + {len(augmented_train)} augmented)")
+    logger.info(f"   Validation set: {len(val_pairs)} examples ({len(original_val)} original + {len(augmented_val)} augmented)")
+    logger.info(f"   Test set: {len(test_pairs)} examples (100% original, no augmentation)")
+
+    # Save as JSONL
+    output_dir.mkdir(parents=True, exist_ok=True)
+    train_file = output_dir / "train_dataset.jsonl"
+    val_file = output_dir / "validation_dataset.jsonl"
+    test_file = output_dir / "test_dataset.jsonl"
+
+    with open(train_file, 'w') as f:
+        for pair in train_pairs:
+            f.write(json.dumps(pair) + '\n')
+
+    with open(val_file, 'w') as f:
+        for pair in val_pairs:
+            f.write(json.dumps(pair) + '\n')
+
+    with open(test_file, 'w') as f:
+        for pair in test_pairs:
+            f.write(json.dumps(pair) + '\n')
+
+    logger.info(f"✅ Phase complete.")
+    logger.info(f"   Train dataset: {train_file}")
+    logger.info(f"   Validation dataset: {val_file}")
+    logger.info(f"   Test dataset: {test_file}")
+
+    return train_file, val_file, test_file
+
+
+def _stratified_split_by_tool(training_pairs: List[Dict[str, Any]], random_seed: int = 42) -> tuple[List[Dict], List[Dict], List[Dict]]:
+    """
+    Split training pairs into train/val/test sets using stratified sampling by tool.
+
+    Ensures each tool (Trivy, Semgrep, OSV, ZAP, Checkov) is represented proportionally
+    in all three sets, providing consistent evaluation across runs.
+
+    Args:
+        training_pairs: List of training examples with metadata containing 'tool' field
+        random_seed: Fixed random seed for reproducibility (default: 42)
 
     Returns:
-        (analyzed_vulnerabilities: List, analysis_file: Path, summary_file: Path)
+        Tuple of (train_pairs, val_pairs, test_pairs)
     """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    # Group vulnerabilities by tool
+    tool_groups = {}
+    for pair in training_pairs:
+        tool = pair.get('metadata', {}).get('tool', 'unknown')
+        if tool not in tool_groups:
+            tool_groups[tool] = []
+        tool_groups[tool].append(pair)
 
-    # Load vulnerabilities from Phase 1 output
-    print(f"\n🔄 Loading vulnerabilities from Phase 1: {vulnerabilities_file}")
-    with open(vulnerabilities_file, 'r') as f:
-        parsed_results = json.load(f)
+    # Set fixed seed for reproducibility
+    random.seed(random_seed)
 
-    # Extract vulnerability objects from parsing results
-    all_vulnerabilities = []
-    for result in parsed_results:
-        if result.get('status') == 'success' and 'vulnerability' in result:
-            all_vulnerabilities.append(result['vulnerability'])
+    train_pairs = []
+    val_pairs = []
+    test_pairs = []
 
-    print(f"📊 Loaded {len(all_vulnerabilities)} vulnerabilities for analysis")
+    logger.info(f"📊 Stratified split by tool:")
 
-    # Initialize OLMo analyzer for analysis phase
-    print(f"\n🤖 Initializing {args.model_name} Security Analyzer...")
-    print(f"   Branch: {args.branch}")
-    print(f"   Commit: {args.commit}")
+    # Split each tool's vulnerabilities proportionally
+    for tool, pairs in tool_groups.items():
+        # Shuffle within tool group
+        random.shuffle(pairs)
+        count = len(pairs)
 
-    try:
-        # Import OLMoSecurityAnalyzer only when needed for analysis phase
-        from analysis.olmo_analyzer import OLMoSecurityAnalyzer
+        # Calculate split sizes
+        if count >= 10:
+            # Standard 80/10/10 split for tools with enough data
+            train_size = int(count * 0.8)
+            val_size = int(count * 0.1)
+            test_size = count - train_size - val_size  # Remainder goes to test
+        else:
+            # For small datasets, ensure at least 1 in test and val if possible
+            test_size = max(1, int(count * 0.1))
+            val_size = max(1, int(count * 0.1)) if count > test_size else 0
+            train_size = count - test_size - val_size
 
-        # Initialize baseline analyzer first (RAG will be added post-analysis)
-        print("🤖 Initializing baseline OLMo analyzer for initial vulnerability processing...")
-        analyzer = OLMoSecurityAnalyzer(
-            model_name=args.model_name
-        )
-        print("✅ Baseline OLMo analyzer initialized successfully", flush=True)
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: OLMo analyzer initialization failure: {e}")
-        logger.error("🔍 Analyzer initialization failure indicates model dependency issues or infrastructure problems requiring investigation")
-        raise RuntimeError(f"OLMo analyzer initialization failure requires investigation: {e}") from e
+            # Edge case: if only 1-2 examples, put in test for evaluation
+            if count <= 2:
+                test_size = count
+                val_size = 0
+                train_size = 0
 
-    # Enhanced analysis with OLMo-2-1B
-    if all_vulnerabilities:
-        print(f"\n🔍 Starting analysis of {len(all_vulnerabilities)} total vulnerabilities with {args.model_name}...", flush=True)
+        # Split the tool's pairs
+        tool_train = pairs[:train_size]
+        tool_val = pairs[train_size:train_size + val_size]
+        tool_test = pairs[train_size + val_size:]
 
-        # Process ALL vulnerabilities in batches with enhanced batch size for OLMo-2-1B
-        batch_size = 30 if "OLMo-2" in args.model_name else 20  # Larger batches for OLMo-2
-        results = []
+        train_pairs.extend(tool_train)
+        val_pairs.extend(tool_val)
+        test_pairs.extend(tool_test)
 
-        print(f"📊 Will process {len(all_vulnerabilities)} vulnerabilities in batches of {batch_size}", flush=True)
-        total_batches = (len(all_vulnerabilities) + batch_size - 1) // batch_size
-        print(f"📊 Total batches needed: {total_batches}", flush=True)
+        logger.info(f"   {tool}: {count} total → {len(tool_train)} train / {len(tool_val)} val / {len(tool_test)} test")
 
-        for i in range(0, len(all_vulnerabilities), batch_size):
-            batch = all_vulnerabilities[i:i+batch_size]
-            batch_end = min(i+batch_size, len(all_vulnerabilities))
-            batch_num = i//batch_size + 1
+    # Final shuffle of combined sets (but maintain tool distribution)
+    random.shuffle(train_pairs)
+    random.shuffle(val_pairs)
+    random.shuffle(test_pairs)
 
-            print(f"\n🔄 Starting batch {batch_num}/{total_batches}: vulnerabilities {i+1}-{batch_end} of {len(all_vulnerabilities)}", flush=True)
-            print(f"   Batch size: {len(batch)} vulnerabilities", flush=True)
-            print(f"   Using {args.model_name} with enhanced context length", flush=True)
+    return train_pairs, val_pairs, test_pairs
 
-            try:
-                batch_results = analyzer.batch_analyze(
-                    batch,
-                    max_items=len(batch)
-                )
-                print(f"   ✅ Batch {batch_num} completed, got {len(batch_results)} results", flush=True)
-                results.extend(batch_results)
-            except Exception as e:
-                logger.error(f"❌ CRITICAL: Enhanced analysis batch {batch_num} failure: {e}")
-                logger.error("🔍 Enhanced analysis batch failure indicates model processing issues or data corruption requiring investigation")
-                raise RuntimeError(f"Enhanced analysis batch {batch_num} failure requires investigation: {e}") from e
 
-            # Optional: Add a small delay between batches to avoid overloading
-            if i + batch_size < len(all_vulnerabilities):
-                print("  Preparing next batch...")
+def _create_system_prompt(category: str) -> str:
+    """
+    Create tool-specific system prompt based on security category.
 
-        # Generate enhanced summary report
-        summary = analyzer.generate_summary_report(results)
-        summary['model_used'] = args.model_name
-        summary['branch'] = args.branch
-        summary['commit'] = args.commit
-        summary['analysis_timestamp'] = datetime.now().isoformat()
+    Args:
+        category: Security category (dependency_vulnerabilities, code_vulnerability, etc.)
 
-        # Save results with enhanced metadata
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    Returns:
+        Specialized system prompt optimized for the category
+    """
+    if category in ['dependency_vulnerabilities', 'dependency_security']:
+        return """You are a dependency security specialist.
 
-        # Save detailed results (FIXED FILE NAME to match test expectations)
-        analysis_file = output_path / f"analyzed_vulnerabilities_{timestamp}.json"
-        with open(analysis_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"\n💾 Analysis results saved to: {analysis_file}")
+EXPERTISE: Version constraints, semver, Gradle/Maven/npm dependency management
 
-        # Save summary
-        summary_file = output_path / f"analysis_summary_{timestamp}.json"
-        with open(summary_file, 'w') as f:
-            json.dump(summary, f, indent=2)
-        print(f"💾 Analysis summary saved to: {summary_file}")
+TASK: Provide precise dependency upgrade instructions
+- Specify exact versions (no ranges)
+- Use correct build syntax (Gradle Kotlin DSL, package.json)
+- Include security rationale
 
-        # Post-analysis RAG enhancement (always enabled)
-        print("\n🧠 Building RAG knowledge base with fresh analysis results...")
-        try:
-            from build_knowledge_base import main as build_kb_main
-            import sys
-            from io import StringIO
+OUTPUT: implementation("group:artifact:VERSION")"""
 
-            # Capture build output to avoid cluttering the main process output
-            old_stdout = sys.stdout
-            sys.stdout = captured_output = StringIO()
+    elif category == 'code_vulnerability':
+        return """You are a secure code specialist.
 
-            try:
-                # Build knowledge base using the fresh analysis results
-                sys.argv = ['build_knowledge_base.py', '--results-file', str(analysis_file), '--verbose']
-                build_kb_main()
+EXPERTISE: OWASP patterns, Kotlin/Java security APIs, WebAuthn
 
-                # Restore stdout for our messages
-                sys.stdout = old_stdout
-                print("✅ RAG knowledge base built successfully with fresh analysis data", flush=True)
+TASK: Provide minimal code fixes that eliminate vulnerabilities
+- Preserve functionality
+- Use appropriate security libraries
+- Include security comments
 
-                # Initialize RAG-enhanced analyzer for verification
-                from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
-                rag_analyzer = RAGEnhancedOLMoAnalyzer(
-                    model_name=args.model_name,
-                    enable_rag=True
-                )
-                rag_status = rag_analyzer.get_rag_status()
+OUTPUT: Fixed code block with brief explanation"""
 
-                if rag_status['status'] == 'active':
-                    kb_stats = rag_status['knowledge_base']
-                    print(f"📊 RAG ready: {kb_stats['total_vectors']} vulnerability patterns available for enhanced analysis", flush=True)
-                    print("💡 Future runs will use RAG-enhanced analysis by default", flush=True)
-                else:
-                    print(f"⚠️ RAG status: {rag_status['status']} - knowledge base built but with limited functionality", flush=True)
+    elif category == 'web_security':
+        return """You are a web security specialist.
 
-            except Exception as inner_e:
-                sys.stdout = old_stdout
-                raise inner_e
+EXPERTISE: HTTP security headers, CORS, session security, KTor framework
 
-        except Exception as rag_error:
-            print(f"⚠️ RAG knowledge base building failed: {rag_error}")
-            print("💡 This doesn't affect current analysis but RAG won't be available for next runs")
+TASK: Provide framework-native security configurations
+- Use KTor install() syntax
+- Follow strict security policies
 
-        # Print enhanced summary
-        print("\n📈 Analysis Summary:")
-        print(f"  Model Used: {summary.get('model_used', 'Unknown')}")
-        print(f"  Total Analyzed: {summary['total_analyzed']}")
-        print(f"  Successful: {summary['successful']}")
-        print(f"  Failed: {summary['failed']}")
-        print(f"  Branch: {summary.get('branch', 'Unknown')}")
-        print(f"  Commit: {summary.get('commit', 'Unknown')[:8]}...")
+OUTPUT: KTor configuration code"""
 
-        if summary['by_severity']:
-            print("\n  By Severity:")
-            for sev, count in summary['by_severity'].items():
-                print(f"    {sev}: {count}")
+    elif category == 'configuration_security':
+        return """You are a DevOps security specialist.
 
-        if summary['by_tool']:
-            print("\n  By Tool:")
-            for tool, count in summary['by_tool'].items():
-                print(f"    {tool}: {count}")
+EXPERTISE: GitHub Actions, IaC security, least-privilege permissions
 
-        return results, analysis_file, summary_file
+TASK: Provide minimal security configuration fixes
+- Use platform-specific syntax (YAML, HCL)
+- Preserve functionality
+
+OUTPUT: Corrected configuration"""
+
     else:
-        print("\n⚠️ No vulnerabilities found to analyze")
-        return [], Path(), Path()
+        # Fallback for unknown categories
+        return """You are a cybersecurity analyst specializing in WebAuthn and FIDO2 security vulnerabilities.
+
+CRITICAL SECURITY GUIDELINES:
+- Always prioritize security in your analysis and recommendations
+- Provide actionable remediation steps for identified vulnerabilities
+- Consider the broader security implications of each finding
+- Maintain accuracy and precision in threat assessments
+- Follow responsible disclosure principles
+- Preserve safety guidelines and ethical analysis standards
+
+Your role is to analyze security vulnerabilities and provide comprehensive, actionable guidance for remediation."""
 
 
-def core_analysis_phase(vulnerabilities_file: Path, output_dir: str, args) -> Tuple[List, Path]:
+def _create_vulnerability_prompt(vuln: Dict) -> str:
     """
-    Phase 2A: Core AI analysis of parsed vulnerabilities (without RAG)
+    Create tool-specific user prompt based on vulnerability data.
 
-    Input:
-        - vulnerabilities_file: Path to parsed_vulnerabilities_*.json from Phase 1
-        - output_dir: Output directory for core analysis results
-        - args: Command line arguments (model_name, branch, commit, etc.)
-
-    Output Files:
-        - core_analysis_results_{timestamp}.json: Raw AI analysis results
+    Args:
+        vuln: Vulnerability dictionary with tool, security_category, and vulnerability details
 
     Returns:
-        (analysis_results: List, core_analysis_file: Path)
+        Formatted user prompt for the training pair
     """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    tool = vuln.get('tool', '')
+    category = vuln.get('security_category', 'unknown')
 
-    # Load vulnerabilities from Phase 1 output
-    print(f"\n🔄 Loading vulnerabilities for core analysis: {vulnerabilities_file}")
-    with open(vulnerabilities_file, 'r') as f:
-        parsed_results = json.load(f)
+    # Dependency vulnerabilities (OSV, Trivy)
+    if category in ['dependency_vulnerabilities', 'dependency_security']:
+        current_version = vuln.get('installed_version')
+        if not current_version:
+            raise ValueError(f"Installed version information missing in vulnerability data: ${vuln}")
+        fixed_version = vuln.get('fixed_version')
+        if not fixed_version:
+            raise ValueError(f"Fixed version information missing in vulnerability data: ${vuln}")
+        package = vuln.get('package_name', vuln.get('title', 'Unknown'))
+        return f"""Vulnerability: {vuln.get('id', 'Unknown')}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+Package: {package}
+Current Version: {current_version}
+Fixed Version: {fixed_version}
+Description: {vuln.get('summary', vuln.get('description', vuln.get('message', 'No description')))}
 
-    # Extract vulnerability objects from parsing results
-    all_vulnerabilities = []
-    for result in parsed_results:
-        if result.get('status') == 'success' and 'vulnerability' in result:
-            all_vulnerabilities.append(result['vulnerability'])
+STRICT CONSTRAINTS:
+- Do NOT add sections beyond what's specified above
+- Do NOT include "Alternative Approaches" or similar sections
+- Code blocks: ONLY the fix, no surrounding context
+- Explanations: EXACTLY 2-3 sentences, no more
+- Follow the markdown format exactly as shown"""
 
-    print(f"📊 Loaded {len(all_vulnerabilities)} vulnerabilities for core analysis")
+    # Code vulnerabilities (Semgrep)
+    elif category == 'code_vulnerability':
+        code_context = vuln.get('code_context', {})
+        vulnerable_code = code_context.get('vulnerable_code', 'N/A')
 
-    # Initialize OLMo analyzer for core analysis
-    print(f"\n🤖 Initializing {args.model_name} Security Analyzer for core analysis...")
+        return f"""Vulnerability: {vuln.get('id', 'Unknown')}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+File: {vuln.get('file_path', 'Unknown')}
+Line: {vuln.get('start', {}).get('line', 'Unknown')}
+Message: {vuln.get('message', 'No description')}
 
-    try:
-        # Import OLMoSecurityAnalyzer only when needed
-        from analysis.olmo_analyzer import OLMoSecurityAnalyzer
+Vulnerable Code:
+{vulnerable_code}
 
-        analyzer = OLMoSecurityAnalyzer(model_name=args.model_name)
-        print("✅ Core analyzer initialized successfully", flush=True)
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Core analyzer initialization failure: {e}")
-        logger.error("🔍 Core analyzer initialization failure indicates model dependency issues or infrastructure problems requiring investigation")
-        raise RuntimeError(f"Core analyzer initialization failure requires investigation: {e}") from e
+STRICT CONSTRAINTS:
+- Do NOT add sections beyond what's specified above
+- Do NOT include "Alternative Approaches" or similar sections
+- Code blocks: ONLY the fix, no surrounding context
+- Explanations: EXACTLY 2-3 sentences, no more
+- Follow the markdown format exactly as shown"""
 
-    # Core AI analysis processing
-    if all_vulnerabilities:
-        print(f"\n🔍 Starting core analysis of {len(all_vulnerabilities)} vulnerabilities...", flush=True)
+    # Web/HTTP security (ZAP)
+    elif category == 'web_security':
+        return f"""Alert: {vuln.get('alert', 'Unknown')}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+URL: {vuln.get('uri', 'Unknown')}
+Description: {vuln.get('description', 'No description')}
+Solution: {vuln.get('solution', 'No solution provided')}
 
-        # Process vulnerabilities in batches
-        batch_size = 30 if "OLMo-2" in args.model_name else 20
-        results = []
+STRICT CONSTRAINTS:
+- Do NOT add sections beyond what's specified above
+- Do NOT include "Alternative Approaches" or similar sections
+- Code blocks: ONLY the fix, no surrounding context
+- Explanations: EXACTLY 2-3 sentences, no more
+- Follow the markdown format exactly as shown"""
 
-        print(f"📊 Processing in batches of {batch_size}", flush=True)
-        total_batches = (len(all_vulnerabilities) + batch_size - 1) // batch_size
+    # Configuration security (Checkov)
+    elif category == 'configuration_security':
+        code_context = vuln.get('code_context', {})
+        vulnerable_code = code_context.get('vulnerable_code', 'N/A')
+        config_type = vuln.get('config_type', 'Unknown')
 
-        for i in range(0, len(all_vulnerabilities), batch_size):
-            batch = all_vulnerabilities[i:i+batch_size]
-            batch_end = min(i+batch_size, len(all_vulnerabilities))
-            batch_num = i//batch_size + 1
+        return f"""Rule: {vuln.get('rule_name', vuln.get('id', 'Unknown'))}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+File: {vuln.get('file_path', 'Unknown')}
+Config Type: {config_type}
+Message: {vuln.get('message', 'No description')}
 
-            print(f"\n🔄 Core analysis batch {batch_num}/{total_batches}: vulnerabilities {i+1}-{batch_end}", flush=True)
+Current Configuration:
+{vulnerable_code}
 
-            try:
-                batch_results = analyzer.batch_analyze(batch, max_items=len(batch))
-                print(f"   ✅ Batch {batch_num} completed, got {len(batch_results)} results", flush=True)
-                results.extend(batch_results)
-            except Exception as e:
-                logger.error(f"❌ CRITICAL: Core analysis batch {batch_num} failure: {e}")
-                logger.error("🔍 Core analysis batch failure indicates model processing issues or data corruption requiring investigation")
-                raise RuntimeError(f"Core analysis batch {batch_num} failure requires investigation: {e}") from e
+STRICT CONSTRAINTS:
+- Do NOT add sections beyond what's specified above
+- Do NOT include "Alternative Approaches" or similar sections
+- Code blocks: ONLY the fix, no surrounding context
+- Explanations: EXACTLY 2-3 sentences, no more
+- Follow the markdown format exactly as shown"""
 
-        # Save core analysis results
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        core_analysis_file = output_path / f"core_analysis_results_{timestamp}.json"
-
-        with open(core_analysis_file, 'w') as f:
-            json.dump(results, f, indent=2)
-        print(f"\n💾 Core analysis results saved to: {core_analysis_file}")
-
-        return results, core_analysis_file
+    # Fallback for unknown categories
     else:
-        print("\n⚠️ No vulnerabilities found for core analysis")
-        return [], Path()
+        return f"""Fix the following security issue:
+
+ID: {vuln.get('id', 'Unknown')}
+Severity: {vuln.get('severity', 'Unknown')}
+Tool: {tool}
+Category: {category}
+Description: {vuln.get('message', vuln.get('description', 'No description'))}"""
 
 
-def rag_enhancement_phase(core_analysis_file: Path, output_dir: str, args) -> Tuple[List, Path]:
+def _format_assistant_response(fix_data: Dict) -> str:
     """
-    Phase 2B: RAG enhancement of core analysis results
-
-    Input:
-        - core_analysis_file: Path to core_analysis_results_*.json from Phase 2A
-        - output_dir: Output directory for RAG-enhanced results
-        - args: Command line arguments
-
-    Output Files:
-        - rag_enhanced_analysis_{timestamp}.json: RAG-enhanced analysis results
-
-    Returns:
-        (enhanced_results: List, rag_enhanced_file: Path)
-    """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # Load core analysis results
-    print(f"\n🔄 Loading core analysis results for RAG enhancement: {core_analysis_file}")
-    with open(core_analysis_file, 'r') as f:
-        results = json.load(f)
-
-    print(f"📊 Loaded {len(results)} analysis results for RAG enhancement")
-
-    # RAG enhancement (always enabled)
-    print("\n🧠 Building RAG knowledge base with fresh analysis results...")
-    try:
-        from build_knowledge_base import main as build_kb_main
-        import sys
-        from io import StringIO
-
-        # Capture build output to avoid cluttering the main process output
-        old_stdout = sys.stdout
-        sys.stdout = captured_output = StringIO()
-
-        try:
-            # Build knowledge base using the fresh analysis results
-            sys.argv = ['build_knowledge_base.py', '--results-file', str(core_analysis_file), '--verbose']
-            build_kb_main()
-
-            # Restore stdout for our messages
-            sys.stdout = old_stdout
-            print("✅ RAG knowledge base built successfully with fresh analysis data", flush=True)
-
-            # Initialize RAG-enhanced analyzer for verification
-            from rag_enhanced_olmo_analyzer import RAGEnhancedOLMoAnalyzer
-            rag_analyzer = RAGEnhancedOLMoAnalyzer(
-                model_name=args.model_name,
-                enable_rag=True
-            )
-            rag_status = rag_analyzer.get_rag_status()
-
-            if rag_status['status'] == 'active':
-                kb_stats = rag_status['knowledge_base']
-                print(f"📊 RAG ready: {kb_stats['total_vectors']} vulnerability patterns available", flush=True)
-                print("💡 Future runs will use RAG-enhanced analysis by default", flush=True)
-            else:
-                print(f"⚠️ RAG status: {rag_status['status']} - knowledge base built but with limited functionality", flush=True)
-
-        except Exception as inner_e:
-            sys.stdout = old_stdout
-            raise inner_e
-
-    except Exception as rag_error:
-        logger.error(f"❌ CRITICAL: RAG knowledge base building failure: {rag_error}")
-        logger.error("🔍 RAG knowledge base building failure indicates data corruption or dependency issues requiring investigation")
-        raise RuntimeError(f"RAG knowledge base building failure requires investigation: {rag_error}") from rag_error
-
-    # Save RAG-enhanced results (same content, but indicates RAG processing completed)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rag_enhanced_file = output_path / f"rag_enhanced_analysis_{timestamp}.json"
-
-    with open(rag_enhanced_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    print(f"\n💾 RAG-enhanced analysis saved to: {rag_enhanced_file}")
-
-    return results, rag_enhanced_file
-
-
-def analysis_summary_phase(rag_enhanced_file: Path, output_dir: str, args) -> Tuple[List, Path, Path]:
-    """
-    Phase 2C: Generate analysis summary and final formatted results
-
-    Input:
-        - rag_enhanced_file: Path to rag_enhanced_analysis_*.json from Phase 2B
-        - output_dir: Output directory for final analysis results
-        - args: Command line arguments (model_name, branch, commit, etc.)
-
-    Output Files:
-        - analyzed_vulnerabilities_{timestamp}.json: Final analysis results (for integration tests)
-        - analysis_summary_{timestamp}.json: Analysis statistics and metadata
-
-    Returns:
-        (analysis_results: List, analysis_file: Path, summary_file: Path)
-    """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
-
-    # Load RAG-enhanced analysis results
-    print(f"\n🔄 Loading RAG-enhanced results for summary generation: {rag_enhanced_file}")
-    with open(rag_enhanced_file, 'r') as f:
-        results = json.load(f)
-
-    print(f"📊 Loaded {len(results)} enhanced results for summary generation")
-
-    # **URL-to-Code Mapping Enhancement**
-    print(f"🗺️ Applying URL-to-code mapping to enhance ZAP/DAST vulnerabilities...")
-    try:
-        from url_to_code_mapper import URLToCodeMapper, enhance_vulnerability_with_url_mapping
-
-        # Initialize URL mapper with project root
-        project_root = Path.cwd().parent  # Go up one level from security-ai-analysis to project root
-        url_mapper = URLToCodeMapper(project_root=project_root)
-        enhanced_count = 0
-
-        for result in results:
-            if result.get('status') == 'success' and 'vulnerability' in result:
-                vulnerability = result['vulnerability']
-
-                # Apply URL-to-code mapping for ZAP and other URL-based vulnerabilities
-                if enhance_vulnerability_with_url_mapping(vulnerability, url_mapper):
-                    enhanced_count += 1
-
-        print(f"✅ URL-to-code mapping completed: {enhanced_count} vulnerabilities enhanced")
-
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: URL-to-code mapping failure: {e}")
-        logger.error("🔍 URL-to-code mapping failure indicates infrastructure or dependency issues requiring investigation")
-        raise RuntimeError(f"URL-to-code mapping failure requires investigation: {e}") from e
-
-    # **Vulnerability Categorization**
-    print(f"🏷️ Applying security domain categorization to vulnerabilities...")
-    try:
-        from vulnerability_categorizer import VulnerabilityCategorizor
-
-        categorizer = VulnerabilityCategorizor()
-        categorized_count = 0
-        category_distribution = {}
-
-        for result in results:
-            if result.get('status') == 'success' and 'vulnerability' in result:
-                vulnerability = result['vulnerability']
-
-                # ✅ FAIL-FAST: Categorize vulnerability by security domain
-                category, confidence = categorizer.categorize_vulnerability(vulnerability)
-
-                # Add categorization metadata to vulnerability
-                vulnerability['security_category'] = category
-                vulnerability['category_confidence'] = confidence
-
-                categorized_count += 1
-                category_distribution[category] = category_distribution.get(category, 0) + 1
-
-        print(f"✅ Vulnerability categorization completed: {categorized_count} vulnerabilities categorized")
-        print(f"📊 Security domain distribution: {category_distribution}")
-
-        # ✅ FAIL-FAST: Validate expected security domains are present
-        expected_categories = {
-            'container_security', 'infrastructure_security', 'web_security',
-            'dependency_vulnerabilities', 'code_vulnerabilities', 'webauthn_security', 'mobile_security'
-        }
-        found_categories = set(category_distribution.keys())
-
-        if len(found_categories) < 3:  # Expect at least 3 domains in real projects
-            logger.warning(f"⚠️ Only {len(found_categories)} security domains found: {found_categories}")
-            logger.warning("🔍 Low domain diversity may indicate missing security tools or categorization issues")
-
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Vulnerability categorization failure: {e}")
-        logger.error("🔍 Categorization failure indicates tool mapping issues or missing vulnerability data requiring investigation")
-        raise RuntimeError(f"Vulnerability categorization failure requires investigation: {e}") from e
-
-    # Generate summary report (need to recreate analyzer for summary generation)
-    try:
-        from analysis.olmo_analyzer import OLMoSecurityAnalyzer
-        analyzer = OLMoSecurityAnalyzer(model_name=args.model_name)
-
-        summary = analyzer.generate_summary_report(results)
-        summary['model_used'] = args.model_name
-        summary['branch'] = args.branch
-        summary['commit'] = args.commit
-        summary['analysis_timestamp'] = datetime.now().isoformat()
-
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Analysis summary generation failure: {e}")
-        logger.error("🔍 Analysis summary generation failure indicates model dependency issues or data corruption requiring investigation")
-        raise RuntimeError(f"Analysis summary generation failure requires investigation: {e}") from e
-
-    # Save final results with timestamp
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    # Save final analysis results (CRITICAL: This file name is expected by integration tests)
-    analysis_file = output_path / f"analyzed_vulnerabilities_{timestamp}.json"
-    with open(analysis_file, 'w') as f:
-        json.dump(results, f, indent=2)
-    print(f"\n💾 Final analysis results saved to: {analysis_file}")
-
-    # Save analysis summary
-    summary_file = output_path / f"analysis_summary_{timestamp}.json"
-    with open(summary_file, 'w') as f:
-        json.dump(summary, f, indent=2)
-    print(f"💾 Analysis summary saved to: {summary_file}")
-
-    # Print enhanced summary
-    print("\n📈 Analysis Summary:")
-    print(f"  Model Used: {summary.get('model_used', 'Unknown')}")
-    print(f"  Total Analyzed: {summary['total_analyzed']}")
-    print(f"  Successful: {summary['successful']}")
-    print(f"  Failed: {summary['failed']}")
-    print(f"  Branch: {summary.get('branch', 'Unknown')}")
-    print(f"  Commit: {summary.get('commit', 'Unknown')[:8]}...")
-
-    if summary.get('by_severity'):
-        print("\n  By Severity:")
-        for sev, count in summary['by_severity'].items():
-            print(f"    {sev}: {count}")
-
-    if summary.get('by_tool'):
-        print("\n  By Tool:")
-        for tool, count in summary['by_tool'].items():
-            print(f"    {tool}: {count}")
-
-    return results, analysis_file, summary_file
-
-
-def _validate_narrativization_output(narrativized_results: List[Dict[str, Any]]) -> None:
-    """
-    Validate narrativization phase output structure - FAIL-FAST on missing required fields.
+    Format the fix data into a comprehensive assistant response.
 
     Args:
-        narrativized_results: Output from narrativization phase
-
-    Raises:
-        ValueError: If required fields are missing from narrativized output
-    """
-    required_fields = ['vulnerability_id', 'vulnerability', 'narrative', 'created_at']
-    required_vuln_fields = ['security_category', 'category_confidence']
-
-    missing_items = []
-    missing_vuln_fields = []
-    missing_categorization = []
-
-    for i, item in enumerate(narrativized_results):
-        item_id = item.get('vulnerability_id', f'item_{i}')
-
-        # Check top-level required fields
-        for field in required_fields:
-            if field not in item:
-                missing_items.append((item_id, field))
-
-        # Check vulnerability object has required categorization fields
-        if 'vulnerability' in item:
-            vuln_data = item['vulnerability']
-            for field in required_vuln_fields:
-                if field not in vuln_data:
-                    missing_vuln_fields.append((item_id, field))
-
-            # Check for unknown categorization
-            if vuln_data.get('security_category') == 'unknown':
-                missing_categorization.append(item_id)
-
-    # ✅ FAIL-FAST: Report all validation issues
-    if missing_items:
-        raise ValueError(f"❌ FAIL-FAST: Narrativization output missing required fields: {missing_items[:5]}")
-
-    if missing_vuln_fields:
-        raise ValueError(f"❌ FAIL-FAST: Narrativized vulnerabilities missing categorization fields: {missing_vuln_fields[:5]}")
-
-    if missing_categorization:
-        raise ValueError(f"❌ FAIL-FAST: {len(missing_categorization)} narrativized vulnerabilities have 'unknown' categorization: {missing_categorization[:5]}")
-
-
-def narrativization_phase(analyzed_vulnerabilities_file: Path, output_dir: str, args) -> Tuple[List, Path]:
-    """
-    Phase 3: Create rich security narratives from analyzed vulnerabilities
-
-    Args:
-        analyzed_vulnerabilities_file: Path to analyzed vulnerabilities JSON file
-        output_dir: Output directory for narrativized dataset
-        args: Command line arguments
+        fix_data: Fix dictionary with description, fixed_code, explanation, and alternatives
 
     Returns:
-        (narrativized_results: List, narrativized_file: Path)
+        Formatted assistant response for the training pair
     """
-    output_path = Path(output_dir)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    description = fix_data.get('description', '')
+    fixed_code = fix_data.get('fixed_code', '')
+    explanation = fix_data.get('explanation', '')
+    alternatives = fix_data.get('alternatives', [])
 
-    print(f"🔄 Loading analyzed vulnerabilities: {analyzed_vulnerabilities_file}")
-    with open(analyzed_vulnerabilities_file, 'r') as f:
-        analyzed_results = json.load(f)
+    # Build comprehensive response
+    response_parts = []
 
-    print(f"📊 Loaded {len(analyzed_results)} analyzed vulnerabilities for narrativization")
+    # Primary fix
+    if description:
+        response_parts.append(f"## Fix: {description}\n")
 
-    # Import narrativizer (only when needed)
-    try:
-        from create_narrativized_dataset import SecurityNarrativizer
-        narrativizer = SecurityNarrativizer()
-        print("✅ SecurityNarrativizer initialized successfully")
-    except ImportError as e:
-        logger.error(f"❌ CRITICAL: SecurityNarrativizer dependency missing: {e}")
-        logger.error("🔍 SecurityNarrativizer dependency missing indicates installation or environment issues requiring investigation")
-        raise RuntimeError(f"SecurityNarrativizer dependency missing - requires investigation: {e}") from e
+    if fixed_code:
+        response_parts.append(f"```\n{fixed_code}\n```\n")
 
-    narrativized_results = []
-    print(f"📝 Creating narratives for {len(analyzed_results)} analysis results...")
+    if explanation:
+        response_parts.append(f"### Explanation\n{explanation}\n")
 
-    for item in analyzed_results:
-        if item.get('status') == 'success':
-            vuln_data = item.get('vulnerability', {})
+    # Alternative approaches
+    if alternatives:
+        response_parts.append("### Alternative Approaches\n")
+        for i, alt in enumerate(alternatives, 1):
+            alt_desc = alt.get('description', '')
+            alt_code = alt.get('fixed_code', '')
+            alt_exp = alt.get('explanation', '')
 
-            # ✅ FAIL-FAST: Validate categorization is present before narrativization
-            vuln_id = vuln_data.get('id', 'unknown')
-            if 'security_category' not in vuln_data:
-                raise ValueError(f"❌ FAIL-FAST: Vulnerability {vuln_id} missing 'security_category' field from Phase 2C. "
-                               f"Cannot proceed with narrativization until categorization is fixed.")
+            if alt_desc:
+                response_parts.append(f"\n**Alternative {i}: {alt_desc}**\n")
+            if alt_code:
+                response_parts.append(f"```\n{alt_code}\n```\n")
+            if alt_exp:
+                response_parts.append(f"{alt_exp}\n")
 
-            if vuln_data.get('security_category') == 'unknown':
-                raise ValueError(f"❌ FAIL-FAST: Vulnerability {vuln_id} has 'unknown' security_category from Phase 2C. "
-                               f"Cannot proceed with narrativization until categorization is fixed.")
-
-            # Create narrativized version
-            try:
-                narrative = narrativizer.narrativize_vulnerability(vuln_data)
-
-                # ✅ PRESERVE: Complete vulnerability data with categorization for downstream phases
-                narrativized_item = {
-                    'vulnerability_id': vuln_id,
-                    'vulnerability': vuln_data,  # ✅ PRESERVE: Complete vulnerability with categorization
-                    'original_analysis': item.get('analysis', ''),
-                    'narrative': narrative,
-                    'created_at': timestamp
-                }
-
-                narrativized_results.append(narrativized_item)
-
-            except Exception as e:
-                logger.error(f"❌ CRITICAL: Narrativization failure for vulnerability {vuln_data.get('id', 'unknown')}: {e}")
-                logger.error("🔍 Narrativization failure indicates model processing issues or data corruption requiring investigation")
-                raise RuntimeError(f"Narrativization failure for vulnerability {vuln_data.get('id', 'unknown')} requires investigation: {e}") from e
-
-    # Save narrativized dataset
-    narrativized_file = output_path / f"narrativized_dataset_{timestamp}.json"
-    with open(narrativized_file, 'w') as f:
-        json.dump(narrativized_results, f, indent=2)
-
-    print(f"💾 Narrativized dataset saved to: {narrativized_file}")
-    print(f"📊 Created {len(narrativized_results)} narratives")
-
-    # ✅ PHASE BOUNDARY VALIDATION: Ensure narrativized output has required structure
-    _validate_narrativization_output(narrativized_results)
-    print(f"✅ Narrativization phase output validation passed")
-
-    return narrativized_results, narrativized_file
+    return '\n'.join(response_parts).strip()
 
 
-def datasets_phase(narrativized_file: Path, analysis_file: Path, output_dir: str, args) -> Tuple[List, Path, Path]:
+def _generate_specific_fixes(parsed_vulns: List[Dict]) -> List[Dict[str, Any]]:
     """
-    Phase 4: Prepare training and validation datasets with enhanced code-aware examples
+    Generate training pairs from parsed vulnerabilities with pre-generated fixes.
+
+    Uses the enhanced parsing architecture where all tools (OSV, Trivy, Semgrep, ZAP, Checkov)
+    generate fixes during parsing. This function creates tool-specific prompts and formats
+    the pre-generated fixes into MLX-compatible training pairs.
 
     Args:
-        narrativized_file: Path to narrativized dataset JSON file
-        analysis_file: Path to analysis results containing categorized vulnerabilities + analysis data
-        output_dir: Output directory for dataset files
-        args: Command line arguments
+        parsed_vulns: List of flat vulnerability dictionaries with 'fix' field containing:
+            - description: Fix description
+            - fixed_code: The fixed code/configuration
+            - explanation: Detailed explanation
+            - alternatives: List of alternative fixes (optional)
 
     Returns:
-        (training_pairs: List, train_file: Path, validation_file: Path)
-    """
-    output_path = Path(output_dir)
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    print(f"🔄 Loading narrativized results: {narrativized_file}")
-    with open(narrativized_file, 'r') as f:
-        narrativized_results = json.load(f)
-
-    print(f"📚 Preparing fine-tuning dataset from {len(narrativized_results)} narratives...")
-
-    # **Standard Training Pairs (Original)**
-    training_pairs = []
-
-    for item in narrativized_results:
-        # Create training pair
-        vulnerability_info = f"Vulnerability ID: {item['vulnerability_id']}"
-
-        training_pair = {
-            'instruction': f"Analyze this security vulnerability and provide remediation guidance:\\n\\n{vulnerability_info}",
-            'response': item['narrative'],
-            'metadata': {
-                'vulnerability_id': item['vulnerability_id'],
-                'created_at': timestamp
+        List of training pairs in MLX-compatible chat format:
+        {
+            "messages": [
+                {"role": "system", "content": "..."},
+                {"role": "user", "content": "..."},
+                {"role": "assistant", "content": "..."}
+            ],
+            "metadata": {
+                "quality": "high",
+                "source": "generated",
+                "vulnerability_id": "...",
+                "tool": "osv|trivy|semgrep|zap|checkov",
+                "security_category": "...",
+                "confidence": 0.0-1.0,
+                ...
             }
         }
+    """
+    specific_fixes = []
 
-        training_pairs.append(training_pair)
+    for vuln in parsed_vulns:
+        # Vulnerabilities are now flat objects with pre-generated fixes
+        tool = vuln.get('tool')
+        vuln_id = vuln.get('id')
+        fix_data = vuln.get('fix')
 
-    # **Enhanced Training Pairs (Code-Aware)**
-    print(f"🚀 Creating enhanced code-aware training dataset...")
-    try:
-        from enhanced_dataset_creator import EnhancedDatasetCreator, EnumJSONEncoder
+        if not vuln_id:
+            logger.error(f"Missing vulnerability ID in entry: {vuln}")
+            raise ValueError("Each vulnerability must have an 'id' field")
 
-        # Load analysis results (contains both categorized vulnerability data + analysis results)
-        print(f"🔄 Loading analysis results with categorized vulnerabilities: {analysis_file}")
-        with open(analysis_file, 'r') as f:
-            analysis_results_with_categorized_vulns = json.load(f)
+        if not tool:
+            logger.error(f"Missing tool information for vulnerability {vuln_id}")
+            raise ValueError(f"Missing tool information for vulnerability {vuln_id}")
 
-        # Extract categorized vulnerabilities from analysis results
-        categorized_vulnerabilities = []
-        for analysis_result in analysis_results_with_categorized_vulns:
-            if analysis_result.get('status') == 'success' and 'vulnerability' in analysis_result:
-                categorized_vulnerability = analysis_result['vulnerability']
-                categorized_vulnerabilities.append(categorized_vulnerability)
+        if not fix_data:
+            logger.error(f"No fix data found for {vuln_id} from {tool}")
+            raise ValueError(f"Missing fix data for vulnerability {vuln_id} from {tool}")
 
-        print(f"📊 Extracted {len(categorized_vulnerabilities)} categorized vulnerabilities from analysis results")
+        try:
+            # Get security category for tool-specific prompt generation
+            security_category = vuln.get('security_category', 'unknown')
 
-        # Validate that vulnerabilities are properly categorized
-        missing_categories = [v.get('id', 'unknown') for v in categorized_vulnerabilities if 'security_category' not in v]
-        if missing_categories:
-            raise ValueError(f"❌ Found {len(missing_categories)} vulnerabilities missing categorization in analysis results: {missing_categories[:5]}...")
+            # Generate tool-specific system prompt based on category
+            system_content = _create_system_prompt(security_category)
 
-        print(f"✅ All {len(categorized_vulnerabilities)} vulnerabilities have security categorization from Phase 2C")
+            # Generate tool-specific user prompt based on vulnerability category
+            user_content = _create_vulnerability_prompt(vuln)
 
-        # Get dataset name for enhanced creation
-        dataset_name = f"webauthn-security-vulnerabilities-{timestamp}"
+            # Use the pre-generated fix from parsing phase
+            # Primary fix has description, fixed_code, and explanation
+            assistant_content = _format_assistant_response(fix_data)
 
-        creator = EnhancedDatasetCreator()
-        enhanced_result = creator.create_enhanced_dataset(
-            categorized_vulnerabilities,  # ✅ FIXED: Now using categorized vulnerability data from Phase 2C
-            dataset_name=dataset_name
-        )
-
-        if enhanced_result.success:
-            print(f"✅ Enhanced dataset creation successful!")
-            print(f"  📊 Original examples: {enhanced_result.creation_metadata.get('original_count', 0)}")
-            print(f"  🚀 Enhanced examples: {enhanced_result.creation_metadata.get('enhanced_count', 0)}")
-            print(f"  🎯 Enhancement ratio: {enhanced_result.creation_metadata.get('enhancement_ratio', 0):.1f}x")
-
-            # Multi-domain categorization results
-            if hasattr(enhanced_result, 'category_distribution') and enhanced_result.category_distribution:
-                print(f"  🎯 Multi-domain categorization: {enhanced_result.category_distribution}")
-                total_categorized = sum(enhanced_result.category_distribution.values())
-                print(f"  📈 Categories identified: {len(enhanced_result.category_distribution)} domains, {total_categorized} vulnerabilities")
-
-            # Convert enhanced examples to training pairs format
-            enhanced_training_pairs = []
-            for example in enhanced_result.enhanced_examples:
-                enhanced_training_pairs.append({
-                    'instruction': example.instruction,
-                    'response': example.response,
-                    'metadata': example.metadata
+            if assistant_content:
+                specific_fixes.append({
+                    "messages": [
+                        {"role": "system", "content": system_content},
+                        {"role": "user", "content": user_content},
+                        {"role": "assistant", "content": assistant_content}
+                    ],
+                    "metadata": {
+                        "quality": "high",
+                        "source": "generated",
+                        "vulnerability_id": vuln_id,
+                        "tool": tool,
+                        "security_category": vuln.get('security_category', 'unknown'),
+                        "confidence": fix_data.get('confidence', 0.7),
+                        "chat_template": "chatml",
+                        "security_framework": "webauthn-security-analysis"
+                    }
                 })
-
-            if dataset_name:
-                enhanced_result.creation_metadata['dataset_name'] = dataset_name
-            print(f"💾 Enhanced dataset saved to: enhanced_datasets/code-aware-training/")
-
-            # Combine with standard training pairs for comprehensive dataset
-            combined_training_pairs = training_pairs + enhanced_training_pairs
-            print(f"🔗 Combined dataset: {len(training_pairs)} standard + {len(enhanced_training_pairs)} enhanced = {len(combined_training_pairs)} total")
-
-            # Use combined dataset for training
-            training_pairs = combined_training_pairs
-
-        else:
-            print(f"⚠️ Enhanced dataset creation failed: {enhanced_result.error_message}")
-
-    except ImportError as e:
-        print(f"⚠️ Enhanced dataset creator not available: {e}")
-        print(f"   Continuing with standard narrativized dataset only...")
-
-    # Split into training and validation sets (80/20)
-    random.shuffle(training_pairs)
-    split_point = int(len(training_pairs) * 0.8)
-    train_data = training_pairs[:split_point]
-    val_data = training_pairs[split_point:]
-
-    # Determine which JSON encoder to use
-    try:
-        from enhanced_dataset_creator import EnumJSONEncoder
-        json_encoder = EnumJSONEncoder
-        print("✅ Using EnumJSONEncoder for proper enum serialization")
-    except ImportError:
-        json_encoder = None
-        print("⚠️ EnumJSONEncoder not available, using default JSON encoder")
-
-    # Save training set
-    train_file = output_path / f"train_{timestamp}.jsonl"
-    with open(train_file, 'w') as f:
-        for item in train_data:
-            f.write(json.dumps(item, cls=json_encoder) + '\n')
-
-    # Save validation set
-    validation_file = output_path / f"validation_{timestamp}.jsonl"
-    with open(validation_file, 'w') as f:
-        for item in val_data:
-            f.write(json.dumps(item, cls=json_encoder) + '\n')
-
-    print(f"💾 Training dataset saved to: {train_file}")
-    print(f"💾 Validation dataset saved to: {validation_file}")
-    print(f"📊 Dataset split: {len(train_data)} training, {len(val_data)} validation examples")
-
-    # Save dataset metadata
-    dataset_info = {
-        'created_at': timestamp,
-        'total_examples': len(training_pairs),
-        'train_examples': len(train_data),
-        'validation_examples': len(val_data),
-        'source_vulnerabilities': len(narrativized_results)
-    }
-
-    dataset_info_file = output_path / f"dataset_info_{timestamp}.json"
-    with open(dataset_info_file, 'w') as f:
-        json.dump(dataset_info, f, indent=2)
-
-    print(f"💾 Dataset info saved to: {dataset_info_file}")
-
-    # Store metadata for upload phase instead of uploading directly
-    print(f"💾 Storing dataset metadata for upload phase...")
-
-    # Check if enhanced dataset creator is available for proper enum serialization
-    json_encoder_available = False
-    try:
-        from enhanced_dataset_creator import EnumJSONEncoder
-        json_encoder_available = True
-        print("✅ EnumJSONEncoder available for upload phase")
-    except ImportError:
-        print("⚠️ EnumJSONEncoder not available, will use default JSON encoder")
-
-    # Store upload metadata on args object for upload phase to use
-    args.dataset_upload_metadata = {
-        'training_pairs': training_pairs,
-        'json_encoder_available': json_encoder_available,
-        'dataset_name': 'hitoshura25/webauthn-security-vulnerabilities-olmo',
-        'repo_type': 'dataset',
-        'private': False,
-        'created_at': timestamp,
-        'local_files': {
-            'train_file': str(train_file),
-            'validation_file': str(validation_file)
-        }
-    }
-
-    print(f"✅ Dataset metadata stored for upload phase")
-    print(f"📊 {len(training_pairs)} training examples ready for upload")
-    print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
-    print(f"📁 Upload will be handled by upload phase (use --only-upload to upload separately)")
-
-    return training_pairs, train_file, validation_file
-
-
-def training_phase(train_file: Path, train_data: List, narrativized_results: List, summary: Dict, args) -> Tuple[Dict, Path]:
-    """
-    Phase 5: Fine-tune models using prepared training datasets
-
-    Args:
-        train_file: Path to training JSONL file
-        train_data: List of training examples
-        narrativized_results: List of narrativized vulnerabilities for sequential training
-        summary: Current analysis summary dict
-        args: Command line arguments
-
-    Returns:
-        (updated_summary: Dict, model_artifacts_path: Path)
-    """
-    print(f"🔄 Starting model fine-tuning phase...")
-
-    # **Sequential Fine-Tuning (Always Enabled)**
-    # Progressive specialization: Stage 1 (Analysis) → Stage 2 (Code Fixes)
-    # Training phase never uploads - always save locally only
-
-    # Use configuration-based path management
-    config = OLMoSecurityConfig()
-    model_artifacts_path = Path(config.fine_tuned_models_dir).expanduser()
-    print(f"📁 Using configured fine-tuned models directory: {model_artifacts_path}")
-
-    # Sequential fine-tuning (mandatory - fail if not available)
-    from sequential_pipeline_integration import run_sequential_fine_tuning_phase, is_sequential_fine_tuning_available
-
-    if not is_sequential_fine_tuning_available():
-        raise RuntimeError("Sequential fine-tuning is not available but is required. Please check your environment setup.")
-
-    print("🎯 Sequential Fine-Tuning (Always Enabled)")
-    print("📁 Training phase: Saving models locally only (uploads handled by separate phase)")
-    updated_summary = run_sequential_fine_tuning_phase(
-        vulnerabilities=narrativized_results,  # Use full vulnerability data with narratives
-        summary=summary
-    )
-    print("✅ Sequential fine-tuning completed successfully")
-    return updated_summary, model_artifacts_path
-
-
-def upload_phase(model_artifacts_path: Path, summary: Dict, args) -> Dict:
-    """
-    Phase 6: Upload models and datasets to HuggingFace Hub
-
-    Args:
-        model_artifacts_path: Path to model artifacts (can be string or Path)
-        summary: Current summary dict
-        args: Command line arguments
-
-    Returns:
-        updated_summary: Dict with upload status
-    """
-    skip_upload = getattr(args, 'skip_model_upload', False)
-
-    if skip_upload:
-        print("🛑 Upload skipped (--skip-model-upload flag)")
-        summary['upload_status'] = 'skipped'
-        return summary
-
-    print(f"📤 Starting upload phase...")
-    print(f"🔄 This phase handles both model and dataset uploads to HuggingFace Hub")
-
-    # Convert to Path object if string
-    if isinstance(model_artifacts_path, str):
-        model_artifacts_path = Path(model_artifacts_path)
-
-    upload_results = {
-        'models_uploaded': 0,
-        'datasets_uploaded': 0,
-        'errors': []
-    }
-
-    try:
-        # 1. Upload Models
-        print(f"📦 Uploading models from: {model_artifacts_path}")
-        models_uploaded = _upload_models(model_artifacts_path, upload_results, args)
-
-        # 2. Upload Datasets
-        print(f"📊 Uploading datasets...")
-        datasets_uploaded = _upload_datasets(args, upload_results)
-
-        # Update summary with results
-        summary['upload_status'] = 'completed'
-        summary['upload_results'] = {
-            'models_uploaded': models_uploaded,
-            'datasets_uploaded': datasets_uploaded,
-            'total_uploads': models_uploaded + datasets_uploaded
-        }
-
-        if upload_results['errors']:
-            summary['upload_results']['errors'] = upload_results['errors']
-            print(f"⚠️  Upload completed with {len(upload_results['errors'])} warnings/errors")
-
-        print(f"✅ Upload phase completed successfully")
-        print(f"   Models uploaded: {models_uploaded}")
-        print(f"   Datasets uploaded: {datasets_uploaded}")
-
-    except ValueError as e:
-        # Re-raise validation errors to fail fast at the top level
-        if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
-            print(f"❌ FAIL FAST: Upload phase failed due to validation error: {e}")
-            summary['upload_status'] = 'failed'
-            summary['upload_error'] = str(e)
-            raise  # Re-raise to fail the entire process
-        else:
-            print(f"❌ Upload phase failed: {e}")
-            summary['upload_status'] = 'failed'
-            summary['upload_error'] = str(e)
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Upload phase failure: {e}")
-        logger.error("🔍 Upload phase failure indicates dependency issues or infrastructure problems requiring investigation")
-        raise RuntimeError(f"Upload phase failure requires investigation: {e}") from e
-
-    return summary
-
-
-
-def _get_latest_structured_model() -> Path:
-    """
-    Get the latest trained model using structured TrainingRunManager.
-
-    Returns the Stage 2 final model from the most recently completed training run.
-
-    Returns:
-        Path to the final model directory
-    """
-    from config_manager import OLMoSecurityConfig
-    from training_run_manager import TrainingRunManager
-
-    try:
-        config = OLMoSecurityConfig()
-        training_run_manager = TrainingRunManager(config)
-
-        # Get the latest completed training run
-        latest_run = training_run_manager.get_latest_run()
-
-        print(f"🎯 Found latest training run: {latest_run.run_id}")
-
-        # Get the Stage 2 final model (complete model for upload)
-        stage2_final_model = latest_run.stage2_final_model_path
-
-        print(f"📋 Selected Stage 2 final model: {stage2_final_model}")
-        return stage2_final_model
-
-    except FileNotFoundError as e:
-        raise RuntimeError(f"No completed training runs found. {e}")
-    except Exception as e:
-        raise RuntimeError(f"Failed to find latest model using structured discovery: {e}")
-
-
-def _upload_models(model_artifacts_path: Path, upload_results: dict, args) -> int:
-    """
-    Upload trained models to HuggingFace Hub
-
-    Returns:
-        Number of models uploaded
-    """
-    models_uploaded = 0
-
-    try:
-        print(f"📤 Uploading models to HuggingFace Hub...")
-
-        if not model_artifacts_path or not model_artifacts_path.exists():
-            print(f"⚠️  Model artifacts path not found: {model_artifacts_path}")
-            upload_results['errors'].append(f"Model artifacts path not found: {model_artifacts_path}")
-            return models_uploaded
-
-        print(f"🔍 Scanning for models in: {model_artifacts_path}")
-
-        # Import model uploader for upload functionality
-        from model_uploader import ModelUploader
-        from datetime import datetime
-
-        # Initialize model uploader with skip flag support
-        skip_upload = getattr(args, 'skip_model_upload', False)
-        uploader = ModelUploader(skip_upload=skip_upload)
-
-        # Use structured TrainingRunManager to find the latest model
-        try:
-            actual_model_path = _get_latest_structured_model()
-            print(f"🎯 Found structured model directory: {actual_model_path}")
-        except RuntimeError as e:
-            raise RuntimeError(f"Failed to find trained model using structured discovery: {e}. "
-                             "Legacy discovery has been removed - ensure training creates structured output.")
-
-        if not actual_model_path.exists():
-            print(f"⚠️  Model path not found: {actual_model_path}")
-            upload_results['errors'].append(f"Model path not found: {actual_model_path}")
-            return models_uploaded
-
-        print(f"📁 Using model artifacts: {actual_model_path}")
-
-        # Upload the entire fine-tuned model directory
-        # This handles MLX adapters, safetensors files, and complete model structures
-        try:
-            print(f"📦 Uploading fine-tuned model: {actual_model_path}")
-
-            # Generate a model name based on the directory if it has a timestamp, otherwise use current timestamp
-            if actual_model_path.name.startswith('webauthn-security-sequential_'):
-                # Use the existing timestamp from the directory name
-                model_name = actual_model_path.name
-            else:
-                # Generate a new timestamp
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-                model_name = f"webauthn-security-model_{timestamp}"
-
-            # Upload using ModelUploader
-            hub_url = uploader.upload_to_huggingface(
-                model_path=actual_model_path,
-                custom_repo_name=model_name
-            )
-
-            if hub_url:
-                print(f"✅ Model uploaded successfully: {hub_url}")
-                models_uploaded += 1
-            else:
-                error_msg = f"Model upload failed for: {actual_model_path}"
-                print(f"❌ {error_msg}")
-                upload_results['errors'].append(error_msg)
-
-        except ValueError as e:
-            # Re-raise validation errors to fail fast (don't convert to warnings)
-            if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
-                print(f"❌ FAIL FAST: {e}")
-                raise  # Re-raise to fail the entire process
-            else:
-                # Other ValueError types can be handled as errors
-                error_msg = f"Model upload failed for {actual_model_path}: {e}"
-                print(f"❌ {error_msg}")
-                upload_results['errors'].append(error_msg)
         except Exception as e:
-            logger.error(f"❌ CRITICAL: Model upload failure for {actual_model_path}: {e}")
-            logger.error("🔍 Model upload failure indicates dependency issues or infrastructure problems requiring investigation")
-            raise RuntimeError(f"Model upload failure for {actual_model_path} requires investigation: {e}") from e
+            # FAIL FAST - don't suppress exceptions
+            logger.error(f"Could not generate training pair for {vuln_id}: {e}")
+            raise RuntimeError(f"Error generating training pair for vulnerability {vuln_id}: {e}")
 
-        if models_uploaded > 0:
-            print(f"✅ Successfully uploaded {models_uploaded} models")
-        else:
-            print(f"⚠️  No models were uploaded successfully")
-
-    except ImportError as e:
-        logger.error(f"❌ CRITICAL: MLX fine tuner dependency missing for model upload: {e}")
-        logger.error("🔍 MLX fine tuner dependency missing - check installation and environment setup")
-        raise RuntimeError(f"MLX fine tuner dependency missing - requires investigation: {e}") from e
-    except ValueError as e:
-        # Re-raise validation errors to fail fast at the top level
-        if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
-            print(f"❌ FAIL FAST (outer): {e}")
-            raise  # Re-raise to fail the entire process
-        else:
-            logger.error(f"❌ CRITICAL: Model upload failure (ValueError): {e}")
-            logger.error("🔍 Model upload ValueError indicates validation or configuration issues requiring investigation")
-            raise RuntimeError(f"Model upload failure (ValueError) requires investigation: {e}") from e
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Model upload failure (general): {e}")
-        logger.error("🔍 Model upload failure indicates dependency issues or infrastructure problems requiring investigation")
-        raise RuntimeError(f"Model upload failure requires investigation: {e}") from e
-
-    return models_uploaded
+    return specific_fixes
 
 
-def _upload_datasets(args, upload_results: dict) -> int:
+def _augment_training_pairs(training_pairs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """
-    Upload training datasets to HuggingFace Hub
+    Augment training pairs using research-backed data augmentation techniques.
 
-    Returns:
-        Number of datasets uploaded
-    """
-    datasets_uploaded = 0
-
-    try:
-        # Check for dataset metadata from datasets phase
-        dataset_metadata = getattr(args, 'dataset_upload_metadata', None)
-        if not dataset_metadata:
-            print(f"ℹ️  No dataset upload metadata found - datasets phase may not have run")
-            return datasets_uploaded
-
-        print(f"📤 Uploading datasets to HuggingFace Hub...")
-        print(f"🎯 Target: hitoshura25/webauthn-security-vulnerabilities-olmo")
-
-        # Import HuggingFace libraries
-        from datasets import Dataset
-        from huggingface_hub import HfApi
-
-        # Get training pairs and serialization info from metadata
-        training_pairs = dataset_metadata.get('training_pairs', [])
-        json_encoder_available = dataset_metadata.get('json_encoder_available', False)
-
-        if not training_pairs:
-            print(f"⚠️  No training pairs found in metadata")
-            return datasets_uploaded
-
-        print(f"📊 Processing {len(training_pairs)} training pairs for upload...")
-
-        # Determine JSON encoder (same logic as datasets phase)
-        json_encoder = None
-        if json_encoder_available:
-            try:
-                from enhanced_dataset_creator import EnumJSONEncoder
-                json_encoder = EnumJSONEncoder
-                print("✅ Using EnumJSONEncoder for proper enum serialization")
-            except ImportError:
-                print("⚠️ EnumJSONEncoder not available, using default JSON encoder")
-
-        # ✅ CRITICAL FIX: Serialize FixApproach enums before Dataset.from_list()
-        # This prevents Apache Arrow serialization errors with enum objects
-        serialized_training_pairs = []
-        for pair in training_pairs:
-            try:
-                # Test serialization to catch enum issues
-                serialized_pair = json.loads(json.dumps(pair, cls=json_encoder))
-                serialized_training_pairs.append(serialized_pair)
-            except Exception as e:
-                logger.error(f"❌ CRITICAL: Training pair serialization failure: {e}")
-                logger.error("🔍 Training pair serialization failure indicates data corruption or enum handling issues requiring investigation")
-                raise RuntimeError(f"Training pair serialization failure requires investigation: {e}") from e
-
-        print(f"✅ Serialized {len(serialized_training_pairs)} training pairs for upload")
-
-        # Create HuggingFace Dataset from serialized training pairs
-        dataset = Dataset.from_list(serialized_training_pairs)
-
-        # Upload to production dataset (PUBLIC)
-        dataset.push_to_hub(
-            "hitoshura25/webauthn-security-vulnerabilities-olmo",
-            token=True,  # Use default HF token
-            private=False  # Public dataset
-        )
-
-        print(f"✅ SUCCESS: Production dataset updated!")
-        print(f"🔗 Dataset URL: https://huggingface.co/datasets/hitoshura25/webauthn-security-vulnerabilities-olmo")
-        print(f"📊 Uploaded {len(training_pairs)} training examples")
-
-        datasets_uploaded = 1
-
-    except ImportError as e:
-        logger.error(f"❌ CRITICAL: HuggingFace libraries dependency missing for dataset upload: {e}")
-        logger.error("🔍 HuggingFace libraries dependency missing - install with: pip install datasets huggingface_hub")
-        raise RuntimeError(f"HuggingFace libraries dependency missing - requires investigation: {e}") from e
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Dataset upload failure: {e}")
-        logger.error("🔍 Dataset upload failure indicates dependency issues or infrastructure problems requiring investigation")
-        raise RuntimeError(f"Dataset upload failure requires investigation: {e}") from e
-
-    return datasets_uploaded
-
-
-def load_results_from_files(results_file: Path, summary_data) -> Tuple[List, Dict]:
-    """
-    Helper function to load results from file and return with summary
+    Applies semantic variations, self-mixup, and context blending to increase
+    dataset diversity and improve model generalization on small datasets.
 
     Args:
-        results_file: Path to results JSON file
-        summary_data: Either Path to summary file or Dict with summary data
+        training_pairs: Original training pairs in ChatML format
 
     Returns:
-        Tuple of (results_list, summary_dict)
+        List of augmented training pairs (target: 3x original count)
     """
-    # Load results from file
-    if results_file.exists():
-        with open(results_file, 'r') as f:
-            results = json.load(f)
-    else:
-        results = []
+    from dataset_augmentor import SecurityDataAugmentor, AugmentationConfig
+    import yaml
 
-    # Load summary from file or use provided dict
-    if isinstance(summary_data, Path) and summary_data.exists():
-        with open(summary_data, 'r') as f:
-            summary = json.load(f)
-    elif isinstance(summary_data, dict):
-        summary = summary_data
-    else:
-        summary = {}
+    # Load augmentation config from YAML
+    config = OLMoSecurityConfig()
+    config_file = Path(__file__).parent.parent / "config" / "olmo-security-config.yaml"
 
-    return results, summary
+    with open(config_file, 'r') as f:
+        raw_config = yaml.safe_load(f)
 
+    aug_config = AugmentationConfig.from_config(raw_config)
 
-def process_all_scans_enhanced(scan_files: dict, output_dir: str, args) -> Tuple[List, Dict]:
+    # Initialize augmentor
+    augmentor = SecurityDataAugmentor(aug_config)
+
+    # Generate augmented examples
+    augmented_pairs = augmentor.augment_training_data(training_pairs)
+
+    return augmented_pairs
+
+def _analyze_datasets(train_file: Path, val_file: Path, test_file: Path) -> Dict[str, Any]:
     """
-    Orchestrates security analysis phases with --stop-after support
+    Analyze datasets for statistics to include in model/dataset cards.
 
-    Complete 6-Phase Architecture:
-        1. Parsing - Extract vulnerabilities from security scan files
-        2A. Core Analysis - AI processing without RAG
-        2B. RAG Enhancement - Knowledge base building and enhancement
-        2C. Analysis Summary - Summary generation and formatting
-        3. Narrativization - Create rich security narratives
-        4. Datasets - Prepare training and validation datasets with enhanced examples
-        5. Training - Fine-tune models using sequential or single-stage approaches
-        6. Upload - Upload models and datasets to HuggingFace Hub
+    Args:
+        train_file: Path to training dataset
+        val_file: Path to validation dataset
+        test_file: Path to test dataset
 
-    Stop-After Options:
-        parsing, core-analysis, rag-enhancement, analysis, narrativization, datasets, training, upload
+    Returns:
+        Dictionary with dataset statistics
     """
-    output_path = Path(output_dir)
-    output_path.mkdir(parents=True, exist_ok=True)
+    stats = {
+        "train_count": 0,
+        "val_count": 0,
+        "test_count": 0,
+        "quality_distribution": {"high": 0, "medium": 0, "low": 0, "unknown": 0},
+        "source_distribution": {}
+    }
 
-    print(f"\n🚀 Starting complete security analysis pipeline")
-    print(f"📂 Output directory: {output_path}")
-
-    # Phase 1: Always run parsing
-    print(f"\n" + "="*60)
-    print(f"📋 PHASE 1: PARSING")
-    print(f"="*60)
-    all_vulnerabilities, vulnerabilities_file, parsing_summary_file = parse_vulnerabilities_phase(scan_files, output_dir)
-
-    # Phase 2A: Core AI Analysis
-    print(f"\n" + "="*60)
-    print(f"🤖 PHASE 2A: CORE AI ANALYSIS")
-    print(f"="*60)
-    core_analysis_results, core_analysis_file = core_analysis_phase(vulnerabilities_file, output_dir, args)
-
-    # Phase 2B: RAG Enhancement
-    print(f"\n" + "="*60)
-    print(f"🧠 PHASE 2B: RAG ENHANCEMENT")
-    print(f"="*60)
-    rag_enhanced_results, rag_enhanced_file = rag_enhancement_phase(core_analysis_file, output_dir, args)
-
-    # Phase 2C: Analysis Summary
-    print(f"\n" + "="*60)
-    print(f"📊 PHASE 2C: ANALYSIS SUMMARY")
-    print(f"="*60)
-    analyzed_vulnerabilities, analysis_file, analysis_summary_file = analysis_summary_phase(rag_enhanced_file, output_dir, args)
-
-    # Phase 3: Narrativization
-    print(f"\n" + "="*60)
-    print(f"🎯 PHASE 3: NARRATIVIZATION")
-    print(f"="*60)
-    narrativized_results, narrativized_file = narrativization_phase(analysis_file, output_dir, args)
-
-    # Phase 4: Datasets - Use analysis results (contains categorized vulnerabilities + analysis data)
-    print(f"\n" + "="*60)
-    print(f"🚀 PHASE 4: DATASETS")
-    print(f"="*60)
-    training_pairs, train_file, validation_file = datasets_phase(narrativized_file, analysis_file, output_dir, args)
-
-    # Phase 5: Training
-    print(f"\n" + "="*60)
-    print(f"🏋️ PHASE 5: TRAINING")
-    print(f"="*60)
-
-    # Load analysis summary for training phase
-    with open(analysis_summary_file, 'r') as f:
-        analysis_summary = json.load(f)
-
-    # Extract training data for compatibility with legacy integrations
-    train_data = []
+    # Analyze training dataset
     with open(train_file, 'r') as f:
         for line in f:
-            train_data.append(json.loads(line.strip()))
+            if line.strip():
+                stats["train_count"] += 1
+                try:
+                    example = json.loads(line)
+                    metadata = example.get('metadata')
+                    if not metadata:
+                        raise ValueError("Missing metadata field in training example")
 
-    updated_summary, model_artifacts_path = training_phase(
-        train_file, train_data, narrativized_results, analysis_summary, args
-    )
+                    # Track quality
+                    quality = metadata.get('quality')
+                    if not quality:
+                        raise ValueError("Missing quality field in metadata")
+                    stats["quality_distribution"][quality] = stats["quality_distribution"].get(quality, 0) + 1
 
-    # Phase 6: Upload
-    print(f"\n" + "="*60)
-    print(f"📤 PHASE 6: UPLOAD")
-    print(f"="*60)
-    final_summary = upload_phase(model_artifacts_path, updated_summary, args)
+                    # Track source
+                    source = metadata.get('source')
+                    if not source:
+                        raise ValueError("Missing source field in metadata")
+                    stats["source_distribution"][source] = stats["source_distribution"].get(source, 0) + 1
+                except json.JSONDecodeError:
+                    continue
 
-    print(f"\n✅ All 6 phases completed successfully")
-    return [], final_summary
+    # Analyze validation dataset
+    with open(val_file, 'r') as f:
+        for line in f:
+            if line.strip():
+                stats["val_count"] += 1
+
+    # Analyze test dataset if provided
+    if test_file and test_file.exists():
+        with open(test_file, 'r') as f:
+            for line in f:
+                if line.strip():
+                    stats["test_count"] += 1
+
+    return stats
 
 
-def artifact_download_phase(artifacts_dir: Path) -> str:
+def upload_artifacts_phase(
+    adapter_path: Path,
+    train_dataset: Path,
+    validation_dataset: Path,
+    test_dataset: Path,
+    skip_upload: bool = False
+) -> Dict[str, Any]:
     """
-    Phase 0: Artifact Download and Preparation
+    PHASE: Upload Artifacts to HuggingFace Hub
 
-    Handles artifact directory validation, downloading, and extraction.
-    Returns the search directory for security file scanning.
+    Uploads model, datasets, and training artifacts with comprehensive documentation.
 
     Args:
-        artifacts_dir: Path to artifacts directory from CLI arguments
+        adapter_path: Path to trained model adapter
+        train_dataset: Path to training dataset (train.jsonl)
+        validation_dataset: Path to validation dataset (valid.jsonl)
+        test_dataset: Path to test dataset (test.jsonl)
+        skip_upload: If True, skip actual upload operations
 
     Returns:
-        search_dir: String path to directory containing security scan files
-
-    Raises:
-        RuntimeError: If artifact download or extraction fails
+        Dictionary with upload status and URLs
     """
-    print(f"\n📦 Artifact Download and Preparation Phase")
-    print(f"="*60)
+    logger.info("=" * 60)
+    logger.info("📤 Phase 6: Upload Artifacts")
+    logger.info("=" * 60)
 
-    if artifacts_dir.exists() and any(artifacts_dir.iterdir()):
-        # Directory exists and has content - process existing artifacts
-        print(f"📂 Using existing artifacts directory: {artifacts_dir}")
-        downloaded_path = artifacts_dir
+    from artifact_uploader import ArtifactUploader
 
-    elif artifacts_dir.exists():
-        # Directory exists but is empty - check if it has any scan files first
-        print(f"📂 Using existing artifacts directory: {artifacts_dir}")
-        downloaded_path = artifacts_dir
+    # Initialize uploader
+    uploader = ArtifactUploader(skip_upload=skip_upload)
 
-    else:
-        # Directory doesn't exist - download latest artifacts there
-        print(f"📥 Downloading latest artifacts to: {artifacts_dir}")
-        downloaded_path = download_latest_artifacts(str(artifacts_dir))
+    results = {
+        "model_url": None,
+        "dataset_url": None,
+        "staging_dir": str(uploader.staging_dir),
+        "skipped": skip_upload
+    }
 
-        if not downloaded_path:
-            logger.error("❌ CRITICAL: Artifact download failed")
-            logger.error("🔍 Artifact download failure indicates GitHub CLI issues or network problems requiring investigation")
-            raise RuntimeError("Artifact download failed - requires investigation")
+    # Analyze datasets for metadata
+    logger.info("📊 Analyzing datasets for statistics...")
+    dataset_stats = _analyze_datasets(train_dataset, validation_dataset, test_dataset)
+    logger.info(f"   Dataset statistics: {dataset_stats}")
+    logger.info(f"   Train examples: {dataset_stats['train_count']}")
+    logger.info(f"   Validation examples: {dataset_stats['val_count']}")
+    if test_dataset:
+        logger.info(f"   Test examples: {dataset_stats['test_count']}")
+    logger.info(f"   Quality distribution: {dataset_stats['quality_distribution']}")
 
-        print(f"✅ Downloaded artifacts to: {downloaded_path}")
+    # Load training metadata if available
+    training_metadata = {}
+    metadata_file = adapter_path / "training_metadata.json"
+    if not metadata_file.exists():
+        raise FileNotFoundError(f"Training metadata file not found: {metadata_file}")
 
-    # Check for zip files (gh run download creates zips)
-    zip_files = list(downloaded_path.glob("*.zip"))
-    if zip_files:
-        print(f"\n📦 Found {len(zip_files)} zip file(s) to extract")
-        extract_dir = downloaded_path / "extracted"
-        extract_artifacts(str(downloaded_path), str(extract_dir))
-        search_dir = str(extract_dir)
-    else:
-        # If no zips, maybe artifacts were not zipped. Search the download dir directly.
-        print("\n⚠️ No .zip artifacts found. Searching for report files directly in download directory.")
-        search_dir = str(downloaded_path)
+    with open(metadata_file, 'r') as f:
+        training_metadata = json.load(f)
 
-    print(f"✅ Artifact preparation completed, search directory: {search_dir}")
-    return search_dir
+    # Combine metadata
+    upload_metadata = {
+        **training_metadata,
+        "dataset_stats": dataset_stats,
+        "upload_timestamp": datetime.now().isoformat()
+    }
 
-
-def download_latest_artifacts(output_dir: str) -> Path | None:
-    """
-    Downloads artifacts from the latest successful GitHub Actions run on the default branch.
-    """
-    output_path = Path(output_dir)
-
-    print("🔍 Setting up artifact download...")
-
-    # 2. Remove existing directory if it exists
-    if output_path.exists():
-        print(f"  Removing existing directory: {output_path}")
-        shutil.rmtree(output_path)
-
+    # Upload artifacts (both model and dataset with synchronized timestamps)
     try:
-        # 3. Get the current repo by running gh command from the project root
-        project_root = Path(__file__).parent.parent
-        print(f"  Finding current GitHub repository (from {project_root})...")
-        repo_proc = subprocess.run(
-            ["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"],
-            capture_output=True, text=True, check=True, cwd=project_root
+        logger.info("📤 Uploading artifacts to HuggingFace Hub...")
+        upload_results = uploader.upload_artifacts(
+            adapter_path,
+            train_dataset,
+            validation_dataset,
+            upload_metadata,
+            test_dataset
         )
-        repo = repo_proc.stdout.strip()
-        if not repo:
-            print("    ❌ Could not determine repository. Are you in a git repo with a GitHub remote?")
-            return None
-        print(f"    ✅ Found repository: {repo}")
 
-        # 4. Get the default branch
-        print("  Finding default branch...")
-        branch_proc = subprocess.run(
-            ["gh", "repo", "view", repo, "--json", "defaultBranchRef", "-q", ".defaultBranchRef.name"],
-            capture_output=True, text=True, check=True
-        )
-        default_branch = branch_proc.stdout.strip()
-        print(f"    ✅ Default branch is '{default_branch}'")
+        if skip_upload:
+            logger.info("   ⚠️ Upload skipped as per configuration.")
+            return results
 
-        # 5. Get the latest successful run ID on the default branch from Main CI/CD workflow
-        print(f"  Finding latest successful Main CI/CD run on branch '{default_branch}'...")
-        # Filter specifically for the Main CI/CD workflow that generates security artifacts
-        run_id_proc = subprocess.run(
-            ["gh", "run", "list", "-R", repo, "-b", default_branch, "--workflow", "main-ci-cd.yml", "--status", "success", "--limit", "1", "--json", "databaseId", "-q", ".[0].databaseId"],
-            capture_output=True, text=True, check=True
-        )
-        run_id = run_id_proc.stdout.strip()
-        if not run_id:
-            print(f"    ❌ No successful Main CI/CD runs found on branch '{default_branch}'.")
-            print(f"    💡 Make sure the Main CI/CD pipeline has run successfully on main branch.")
-            return None
-        print(f"    ✅ Found Main CI/CD run ID: {run_id}")
+        if not upload_results["model_url"]:
+            raise ValueError("Model upload returned empty URL")
+        if not upload_results["dataset_url"]:
+            raise ValueError("Dataset upload returned empty URL")
 
-        # 6. Download artifacts for that run
-        print(f"  Downloading artifacts for run {run_id} to {output_path}...")
-        # Define patterns for the security artifacts we care about
-        patterns = [
-            "*zap*",
-            "*trivy*",
-            "*sarif*",
-            "*osv*",
-            "*gitleaks*",
-            "*semgrep*",
-            "*checkov*",
-        ]
-        download_command = [
-            "gh", "run", "download", run_id,
-            "-R", repo,
-            "-D", str(output_path)
-        ]
-        for p in patterns:
-            download_command.extend(["--pattern", p])
-
-        print(f"    Filtering with patterns: {', '.join(patterns)}")
-        # The -D flag creates the directory.
-        subprocess.run(download_command, check=True, capture_output=True, text=True)
-
-        if not any(output_path.iterdir()):
-             print(f"    ⚠️ No artifacts were downloaded. The run may not have produced any matching artifacts.")
-        else:
-            print(f"    ✅ Artifacts downloaded to {output_path}")
-
-        return output_path
-
-    except subprocess.CalledProcessError as e:
-        # Fail fast on dependency issues
-        print(f"❌ CRITICAL: GitHub CLI dependency failure:")
-        print(f"      Command: {' '.join(e.cmd)}")
-        print(f"      Stderr: {e.stderr.strip()}")
-        print("🔍 GitHub CLI is required for artifact download - check installation and authentication")
-        raise RuntimeError(f"GitHub CLI dependency failure - requires investigation: {e}") from e
+        results["model_url"] = upload_results["model_url"]
+        results["dataset_url"] = upload_results["dataset_url"]
+        logger.info(f"   ✅ Model uploaded: {results['model_url']}")
+        logger.info(f"   ✅ Dataset uploaded: {results['dataset_url']}")
     except Exception as e:
-        # Fail fast on other infrastructure issues
-        print(f"❌ CRITICAL: Artifact download infrastructure failure: {e}")
-        print("🔍 Check system dependencies, network connectivity, and GitHub access")
-        raise RuntimeError(f"Artifact download infrastructure failure - requires investigation: {e}") from e
+        logger.error(f"   ❌ Upload failed: {e}")
+        raise RuntimeError(f"Artifact upload failed: {e}")
+
+    logger.info("✅ Phase complete.")
+    logger.info(f"   Model: {results['model_url']}")
+    logger.info(f"   Dataset: {results['dataset_url']}")
+    logger.info(f"   Staging: {results['staging_dir']}")
+
+    return results
 
 
 def get_active_only_phase(args) -> str:
     """Get the single active --only-* phase flag, or None for multi-phase"""
-    from typing import Optional
 
     only_flags = {
         Phases.PARSING: args.only_parsing,
-        Phases.VULNERABILITY_ANALYSIS: args.only_vulnerability_analysis,
-        Phases.RAG_ENHANCEMENT: args.only_rag_enhancement,
-        Phases.ANALYSIS_SUMMARY: args.only_analysis_summary,
-        Phases.NARRATIVIZATION: args.only_narrativization,
         Phases.DATASETS: args.only_datasets,
-        Phases.TRAINING: args.only_training,
-        Phases.UPLOAD: args.only_upload
+        Phases.UPLOAD: args.only_upload,
     }
 
     active_phases = [phase for phase, flag in only_flags.items() if flag]
@@ -1739,7 +814,6 @@ def get_active_only_phase(args) -> str:
         raise ValueError(f"Error: Cannot specify multiple --only-* flags: {', '.join(active_phases)}")
 
     return active_phases[0] if active_phases else None
-
 
 def validate_phase_inputs(phase: str, args):
     """Validate that required input files exist for the specified phase"""
@@ -1756,315 +830,434 @@ def validate_phase_inputs(phase: str, args):
     if missing_inputs:
         raise ValueError(f"Error: --only-{phase} requires: {', '.join(missing_inputs)}")
 
+def run_sequential_pipeline(artifacts_dir: str, output_dir: Path, skip_upload: bool = False):
+    """
+    Execute the 2-stage sequential fine-tuning pipeline.
 
-def load_phase_input(input_path: Path):
-    """Load JSON data from phase input file"""
-    if not input_path.exists():
-        raise ValueError(f"Input file not found: {input_path}")
+    Stage 1: General Security Education (Public Datasets)
+    - Load CrossVul + CVEfixes from HuggingFace (~22K examples)
+    - Train from base model
+    - Evaluate Stage 1 performance
 
-    with open(input_path, 'r') as f:
-        return json.load(f)
+    Stage 2: WebAuthn Domain Specialization
+    - Parse WebAuthn security tools (Trivy, Semgrep, OSV, ZAP, Checkov)
+    - Mix with 15% Stage 1 data (catastrophic forgetting prevention)
+    - Resume training from Stage 1 adapter
+    - Evaluate final model
+
+    Args:
+        artifacts_dir: Directory containing WebAuthn security scan artifacts
+        output_dir: Output directory for intermediate files
+        skip_upload: If True, skip HuggingFace upload
+    """
+    logger.info("=" * 80)
+    logger.info("🚀 SEQUENTIAL FINE-TUNING PIPELINE (2-STAGE)")
+    logger.info("=" * 80)
+
+    config = OLMoSecurityConfig()
+    from mlx_trainer import MLXTrainer
+    from training_run_manager import TrainingRunManager
+    from public_dataset_loader import PublicDatasetLoader
+
+    # Initialize managers
+    run_manager = TrainingRunManager(config)
+    public_loader = PublicDatasetLoader(config)
+
+    # Create sequential training run with stage1/stage2 structure
+    training_run = run_manager.create_sequential_run()
+
+    logger.info(f"Training run created: {training_run.run_id}")
+    logger.info(f"Run directory: {training_run.run_dir}")
+
+    # ====================================================================
+    # STAGE 1: General Security Education (Public Datasets)
+    # ====================================================================
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("STAGE 1: General Security Education (Public Datasets)")
+    logger.info("=" * 80)
+
+    # Load public datasets from HuggingFace
+    logger.info("📚 Loading public datasets from HuggingFace...")
+    stage1_examples = public_loader.load_all_public_datasets()
+    logger.info(f"   Loaded {len(stage1_examples)} examples (CrossVul + CVEfixes)")
+
+    # Split into train/validation/test (80/10/10)
+    logger.info("📊 Splitting Stage 1 dataset...")
+    stage1_train, stage1_val, stage1_test = _stratified_split_by_source(stage1_examples)
+
+    logger.info(f"   Train: {len(stage1_train)} examples")
+    logger.info(f"   Validation: {len(stage1_val)} examples")
+    logger.info(f"   Test: {len(stage1_test)} examples")
+
+    # Save Stage 1 datasets
+    stage1_data_dir = output_dir / "stage1_data"
+    stage1_data_dir.mkdir(parents=True, exist_ok=True)
+
+    stage1_train_file = stage1_data_dir / "train_dataset.jsonl"
+    stage1_val_file = stage1_data_dir / "validation_dataset.jsonl"
+    stage1_test_file = stage1_data_dir / "test_dataset.jsonl"
+
+    _save_jsonl(stage1_train, stage1_train_file)
+    _save_jsonl(stage1_val, stage1_val_file)
+    _save_jsonl(stage1_test, stage1_test_file)
+
+    logger.info(f"   Saved Stage 1 datasets to: {stage1_data_dir}")
+
+    # Train Stage 1
+    logger.info("🎓 Training Stage 1 model...")
+    trainer = MLXTrainer(config=config, output_dir=training_run.stage1_adapters_path)
+
+    stage1_adapter_path = trainer.train_stage1(
+        training_run,
+        stage1_train_file,
+        stage1_val_file
+    )
+
+    logger.info(f"   Stage 1 adapter saved: {stage1_adapter_path}")
+
+    # Evaluate Stage 1
+    logger.info("🔬 Evaluating Stage 1 model...")
+    stage1_eval_results = run_manager.evaluate(training_run, stage1_test_file, stage=1)
+
+    stage1_metrics = stage1_eval_results.get('metrics', {})
+    logger.info(f"   Stage 1 Exact Match: {stage1_metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"   Stage 1 Avg CodeBLEU: {stage1_metrics.get('avg_codebleu', 0):.4f}")
+
+    # Update manifest with Stage 1 statistics
+    training_run.manifest.stage1.dataset_stats = {
+        "train_count": len(stage1_train),
+        "val_count": len(stage1_val),
+        "test_count": len(stage1_test),
+        "sources": ["crossvul", "cvefixes"]
+    }
+    training_run.save_manifest()
+
+    # ====================================================================
+    # STAGE 2: WebAuthn Domain Specialization with 15% Replay
+    # ====================================================================
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("STAGE 2: WebAuthn Domain Specialization (15% Replay)")
+    logger.info("=" * 80)
+
+    # Parse WebAuthn security tools
+    logger.info("🔍 Parsing WebAuthn security tools...")
+    parsed_vulns_file = parse_vulnerabilities_phase(artifacts_dir, output_dir)
+
+    # Construct WebAuthn-specific datasets
+    logger.info("🛠️ Constructing WebAuthn datasets...")
+    stage2_train_base, stage2_val, stage2_test = construct_datasets_phase(parsed_vulns_file, output_dir)
+
+    # Load Stage 2 base examples
+    with open(stage2_train_base, 'r') as f:
+        stage2_webauthn_examples = [json.loads(line) for line in f if line.strip()]
+
+    logger.info(f"   WebAuthn examples: {len(stage2_webauthn_examples)}")
+
+    # Mix with 15% Stage 1 replay (catastrophic forgetting prevention)
+    logger.info("🔄 Mixing with 15% Stage 1 replay...")
+    replay_count = int(len(stage1_train) * 0.15)
+    stage1_replay = random.sample(stage1_train, min(replay_count, len(stage1_train)))
+
+    stage2_train_mixed = stage2_webauthn_examples + stage1_replay
+    random.shuffle(stage2_train_mixed)
+
+    logger.info(f"   Stage 2 training set: {len(stage2_train_mixed)} examples")
+    logger.info(f"     - WebAuthn: {len(stage2_webauthn_examples)} examples")
+    logger.info(f"     - Stage 1 replay: {len(stage1_replay)} examples ({len(stage1_replay)/len(stage2_train_mixed)*100:.1f}%)")
+
+    # Save Stage 2 mixed training set
+    stage2_data_dir = output_dir / "stage2_data"
+    stage2_data_dir.mkdir(parents=True, exist_ok=True)
+
+    stage2_train_file = stage2_data_dir / "train_dataset.jsonl"
+    _save_jsonl(stage2_train_mixed, stage2_train_file)
+
+    logger.info(f"   Saved Stage 2 training set to: {stage2_train_file}")
+
+    # Train Stage 2 (resume from Stage 1 adapter)
+    logger.info("🎯 Training Stage 2 model (resuming from Stage 1)...")
+
+    stage2_adapter_path = trainer.train_stage2(
+        training_run,
+        stage2_train_file,
+        stage2_val,
+        stage1_adapter_path
+    )
+
+    logger.info(f"   Stage 2 adapter saved: {stage2_adapter_path}")
+
+    # Evaluate Stage 2 (final model)
+    logger.info("🔬 Evaluating Stage 2 model (final model)...")
+    stage2_eval_results = run_manager.evaluate(training_run, stage2_test, stage=2)
+
+    stage2_metrics = stage2_eval_results.get('metrics', {})
+    logger.info(f"   Stage 2 Exact Match: {stage2_metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"   Stage 2 Avg CodeBLEU: {stage2_metrics.get('avg_codebleu', 0):.4f}")
+
+    # Update manifest with Stage 2 statistics
+    training_run.manifest.stage2.dataset_stats = {
+        "train_count": len(stage2_train_mixed),
+        "val_count": sum(1 for _ in open(stage2_val)),
+        "test_count": sum(1 for _ in open(stage2_test)),
+        "webauthn_examples": len(stage2_webauthn_examples),
+        "stage1_replay_examples": len(stage1_replay),
+        "replay_percentage": len(stage1_replay) / len(stage2_train_mixed) * 100
+    }
+    training_run.save_manifest()
+
+    # ====================================================================
+    # UPLOAD: Upload Final Model and Datasets
+    # ====================================================================
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("UPLOAD: Artifacts to HuggingFace Hub")
+    logger.info("=" * 80)
+
+    upload_results = upload_artifacts_phase(
+        stage2_adapter_path,
+        stage2_train_file,
+        stage2_val,
+        stage2_test,
+        skip_upload=skip_upload
+    )
+
+    # ====================================================================
+    # FINAL SUMMARY
+    # ====================================================================
+    logger.info("")
+    logger.info("=" * 80)
+    logger.info("✅ SEQUENTIAL FINE-TUNING PIPELINE COMPLETED")
+    logger.info("=" * 80)
+    logger.info(f"Training Run: {training_run.run_dir}")
+    logger.info("")
+    logger.info("STAGE 1 (General Security):")
+    logger.info(f"  Dataset: {len(stage1_train)} train / {len(stage1_val)} val / {len(stage1_test)} test")
+    logger.info(f"  Adapter: {stage1_adapter_path}")
+    logger.info(f"  Exact Match: {stage1_metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"  Avg CodeBLEU: {stage1_metrics.get('avg_codebleu', 0):.4f}")
+    logger.info("")
+    logger.info("STAGE 2 (WebAuthn Specialization):")
+    logger.info(f"  Dataset: {len(stage2_train_mixed)} train ({len(stage2_webauthn_examples)} WebAuthn + {len(stage1_replay)} replay)")
+    logger.info(f"  Adapter: {stage2_adapter_path}")
+    logger.info(f"  Exact Match: {stage2_metrics.get('exact_match_percentage', 0):.2f}%")
+    logger.info(f"  Avg CodeBLEU: {stage2_metrics.get('avg_codebleu', 0):.4f}")
+    logger.info("")
+    if upload_results.get("model_url"):
+        logger.info(f"Model URL: {upload_results['model_url']}")
+    if upload_results.get("dataset_url"):
+        logger.info(f"Dataset URL: {upload_results['dataset_url']}")
+    logger.info("=" * 80)
 
 
-def load_jsonl_input(input_path: Path):
-    """Load JSONL data from phase input file (one JSON object per line)"""
-    if not input_path.exists():
-        raise ValueError(f"Input file not found: {input_path}")
+def _stratified_split_by_source(examples: List[Dict[str, Any]],
+                                 train_ratio: float = 0.8,
+                                 val_ratio: float = 0.1) -> tuple[List[Dict], List[Dict], List[Dict]]:
+    """
+    Split public dataset examples by source (crossvul vs cvefixes) to ensure
+    balanced representation in train/val/test sets.
 
-    data = []
-    with open(input_path, 'r') as f:
-        for line in f:
-            if line.strip():  # Skip empty lines
-                data.append(json.loads(line.strip()))
-    return data
+    Args:
+        examples: List of training examples with metadata containing 'source' field
+        train_ratio: Proportion for training set (default: 0.8)
+        val_ratio: Proportion for validation set (default: 0.1)
 
+    Returns:
+        Tuple of (train_examples, val_examples, test_examples)
+    """
+    # Group by source
+    source_groups = {}
+    for example in examples:
+        source = example.get('metadata', {}).get('source', 'unknown')
+        if source not in source_groups:
+            source_groups[source] = []
+        source_groups[source].append(example)
+
+    train_examples = []
+    val_examples = []
+    test_examples = []
+
+    # Split each source proportionally
+    for source, source_examples in source_groups.items():
+        random.shuffle(source_examples)
+        count = len(source_examples)
+
+        train_size = int(count * train_ratio)
+        val_size = int(count * val_ratio)
+
+        train_examples.extend(source_examples[:train_size])
+        val_examples.extend(source_examples[train_size:train_size + val_size])
+        test_examples.extend(source_examples[train_size + val_size:])
+
+    # Shuffle combined sets
+    random.shuffle(train_examples)
+    random.shuffle(val_examples)
+    random.shuffle(test_examples)
+
+    return train_examples, val_examples, test_examples
+
+
+def _save_jsonl(examples: List[Dict[str, Any]], filepath: Path) -> None:
+    """Save examples to JSONL format."""
+    filepath.parent.mkdir(parents=True, exist_ok=True)
+    with open(filepath, 'w') as f:
+        for example in examples:
+            f.write(json.dumps(example) + '\n')
 
 def execute_single_phase(phase: str, args):
     """Execute a single phase with provided inputs"""
     print(f"\n🎯 Executing single phase: {phase}")
 
-    output_dir = str(args.output_dir)
+    output_dir = args.output_dir
 
     if phase == Phases.PARSING:
         # Extract scan files from artifacts directory
-        scan_files = find_security_files(args.artifacts_dir)
-        all_vulnerabilities, vulnerabilities_file, summary_file = parse_vulnerabilities_phase(scan_files, output_dir)
+        vulnerabilities_file = parse_vulnerabilities_phase(args.artifacts_dir, output_dir)
         print(f"✅ Parsing completed. Output files:")
         print(f"   Parsed vulnerabilities: {vulnerabilities_file}")
-        print(f"   Summary: {summary_file}")
-        return 0, {"phase": phase, "vulnerabilities_file": str(vulnerabilities_file), "vulnerabilities_count": len(all_vulnerabilities)}
-
-    elif phase == Phases.VULNERABILITY_ANALYSIS:
-        vulnerabilities_file = args.parsed_input
-        all_vulnerabilities, analysis_file = core_analysis_phase(vulnerabilities_file, output_dir, args)
-        print(f"✅ Vulnerability analysis completed. Output files:")
-        print(f"   Analysis results: {analysis_file}")
-        return 0, {"phase": phase, "analysis_file": str(analysis_file), "vulnerabilities_processed": len(all_vulnerabilities)}
-
-    elif phase == Phases.RAG_ENHANCEMENT:
-        vulnerability_analysis_file = args.vulnerability_analysis_input
-        enhanced_vulnerabilities, rag_file = rag_enhancement_phase(vulnerability_analysis_file, output_dir, args)
-        print(f"✅ RAG enhancement completed. Output file:")
-        print(f"   RAG enhanced results: {rag_file}")
-        return 0, {"phase": phase, "rag_file": str(rag_file), "vulnerabilities_processed": len(enhanced_vulnerabilities)}
-
-    elif phase == Phases.ANALYSIS_SUMMARY:
-        rag_enhanced_file = args.rag_enhanced_input
-        analyzed_vulnerabilities, analysis_file, summary_file = analysis_summary_phase(rag_enhanced_file, output_dir, args)
-        print(f"✅ Analysis summary completed. Output files:")
-        print(f"   Final analysis: {analysis_file}")
-        print(f"   Summary: {summary_file}")
-        return 0, {"phase": phase, "analysis_file": str(analysis_file), "vulnerabilities_processed": len(analyzed_vulnerabilities)}
-
-    elif phase == Phases.NARRATIVIZATION:
-        analyzed_file = args.analyzed_input
-        narrativized_results, narrativized_file = narrativization_phase(analyzed_file, output_dir, args)
-        print(f"✅ Narrativization completed. Output file:")
-        print(f"   Narrativized results: {narrativized_file}")
-        return 0, {"phase": phase, "narrativized_file": str(narrativized_file), "narratives_created": len(narrativized_results)}
+        return 0, {"phase": phase, "vulnerabilities_file": str(vulnerabilities_file)}
 
     elif phase == Phases.DATASETS:
-        narrativized_file = args.narrativized_input
-        analysis_file = args.analyzed_input  # Contains categorized vulnerabilities + analysis data
-        dataset_results, train_file, validation_file = datasets_phase(narrativized_file, analysis_file, output_dir, args)
-        print(f"✅ Datasets phase completed. Output files:")
-        print(f"   Training dataset: {train_file}")
-        print(f"   Validation dataset: {validation_file}")
-        return 0, {"phase": phase, "train_file": str(train_file), "validation_file": str(validation_file), "datasets_created": len(dataset_results) if dataset_results else 0}
-
-    elif phase == Phases.TRAINING:
-        train_file = args.train_input
-        validation_file = args.validation_input
-        narrativized_data = load_phase_input(args.narrativized_input)
-        train_data = load_jsonl_input(train_file)  # JSONL files need line-by-line loading
-
-        # Create dummy summary for compatibility
-        summary = {"phase": "training", "single_phase_execution": True}
-        training_summary, model_path = training_phase(train_file, train_data, narrativized_data, summary, args)
-        print(f"✅ Training completed. Model artifacts:")
-        print(f"   Model path: {model_path}")
-        return 0, {"phase": phase, "model_path": str(model_path) if model_path else 'none', "training_summary": training_summary}
+        parsed_vulnerabilities_file = args.parsed_vulnerabilities_input
+        train_file, val_file, test_file = construct_datasets_phase(parsed_vulnerabilities_file, output_dir)
+        print(f"✅ Dataset construction completed. Output files:")
+        print(f"   Train dataset: {train_file}")
+        print(f"   Validation dataset: {val_file}")
+        print(f"   Test dataset: {test_file}")
+        return 0, {"phase": phase, "train_file": str(train_file), "val_file": str(val_file), "test_file": str(test_file)}
 
     elif phase == Phases.UPLOAD:
-        # Use structured discovery to find latest trained model
-        try:
-            model_dir = _get_latest_structured_model()
-            print(f"🎯 Using structured discovery for upload: {model_dir}")
-        except RuntimeError as e:
-            print(f"❌ Structured model discovery failed: {e}")
-            return 1, {"phase": phase, "error": str(e)}
+        adapter_path = args.adapter_input
+        train_dataset = args.train_dataset_input
+        validation_dataset = args.validation_dataset_input
+        test_dataset = args.test_dataset_input
+        skip_upload = bool(args.skip_upload)
 
-        # Create dummy summary for compatibility
-        summary = {"phase": "upload", "single_phase_execution": True}
-        try:
-            upload_summary = upload_phase(model_dir, summary, args)
-            print(f"✅ Upload completed.")
-            return 0, {"phase": phase, "upload_summary": upload_summary}
-        except ValueError as e:
-            # Re-raise validation errors to fail fast in single-phase execution
-            if "Model validation failed" in str(e) or "Invalid model structure" in str(e):
-                print(f"❌ FAIL FAST: Upload phase failed due to validation error: {e}")
-                return 1, {"phase": phase, "error": str(e), "upload_summary": summary}
-            else:
-                raise  # Re-raise other ValueError types
+        upload_results = upload_artifacts_phase(
+            adapter_path,
+            train_dataset,
+            validation_dataset,
+            test_dataset,
+            skip_upload=skip_upload
+        )
+        print(f"✅ Upload completed.")
+        if upload_results.get("model_url"):
+            print(f"   Model: {upload_results['model_url']}")
+        if upload_results.get("dataset_url"):
+            print(f"   Dataset: {upload_results['dataset_url']}")
+        if upload_results.get("staging_dir"):
+            print(f"   Staging: {upload_results['staging_dir']}")
+        return 0, {"phase": phase, **upload_results}
 
     else:
         raise ValueError(f"Unknown phase: {phase}")
 
-
-def _display_completion_summary(results: List, summary: Dict):
+def ensure_base_model_ready(config: OLMoSecurityConfig) -> bool:
     """
-    Display contextually appropriate completion summary based on execution mode and results.
+    Ensure base model is downloaded and ready for training.
+    Automatically runs setup.py if model is missing.
 
     Args:
-        results: List of analysis results (empty for completed full pipeline)
-        summary: Summary dictionary with execution context and results
+        config: Configuration object
+
+    Returns:
+        True if model is ready, False if setup failed
     """
-    if not isinstance(summary, dict):
-        print(f"📋 Process Summary: Operations completed")
-        return
+    try:
+        # Check if base model exists
+        model_path = config.get_base_model_path()
+        logger.info(f"✅ Base model found: {model_path}")
+        return True
+    except FileNotFoundError:
+        # Model missing - run setup.py
+        logger.warning(f"⚠️  Base model not found: {config.default_base_model}")
+        logger.info("📥 Running setup.py to download and convert base model...")
+        logger.info("   This may take several minutes on first run...")
 
-    # Detect execution context from summary structure
-    is_full_pipeline = (summary.get('upload_status') and
-                       summary.get('sequential_fine_tuning') and
-                       summary.get('total_analyzed'))
+        setup_script = Path(__file__).parent / "setup.py"
 
-    is_single_upload = (summary.get('upload_status') and
-                       summary.get('single_phase_execution'))
+        if not setup_script.exists():
+            logger.error(f"❌ setup.py not found at {setup_script}")
+            logger.error("   Please run setup.py manually to download the base model")
+            return False
 
-    has_analysis_results = isinstance(results, list) and len(results) > 0
+        # Run setup.py
+        result = subprocess.run(
+            [sys.executable, str(setup_script)],
+            capture_output=True,
+            text=True
+        )
 
-    if is_full_pipeline:
-        # Complete 6-phase pipeline results
-        upload_results = summary.get('upload_results', {})
-        models_uploaded = upload_results.get('models_uploaded', 0)
-        datasets_uploaded = upload_results.get('datasets_uploaded', 0)
-        vulnerabilities_analyzed = summary.get('total_analyzed', 0)
-        sequential_training = summary.get('sequential_fine_tuning', {})
+        # Show setup output
+        if result.stdout:
+            for line in result.stdout.splitlines():
+                logger.info(f"   {line}")
 
-        print(f"🎯 Complete Pipeline Results:")
-        print(f"   📊 Vulnerabilities Analyzed: {vulnerabilities_analyzed}")
-        print(f"   🤖 Sequential Training: {sequential_training.get('stage1_score', 'N/A')}/{sequential_training.get('stage2_score', 'N/A')} scores")
-        print(f"   📦 Uploads: {models_uploaded} models, {datasets_uploaded} datasets")
-
-    elif is_single_upload:
-        # Single upload phase results
-        upload_results = summary.get('upload_results', {})
-        models_uploaded = upload_results.get('models_uploaded', 0)
-        datasets_uploaded = upload_results.get('datasets_uploaded', 0)
-        print(f"📦 Upload Results: {models_uploaded} models, {datasets_uploaded} datasets uploaded")
-
-    elif has_analysis_results:
-        # Analysis-focused phases
-        print(f"📊 Analysis Results: {len(results)} vulnerability analyses completed")
-
-    else:
-        # Generic completion for other phases
-        phase_info = summary.get('phase', 'operations')
-        print(f"📋 Process Summary: {phase_info.title()} completed successfully")
-
+        if result.returncode == 0:
+            logger.info("✅ Base model setup completed successfully")
+            return True
+        else:
+            logger.error("❌ Base model setup failed")
+            if result.stderr:
+                logger.error("Setup errors:")
+                for line in result.stderr.splitlines():
+                    logger.error(f"   {line}")
+            return False
 
 def main():
     """
-    Main entry point for processing security artifacts
+    Main orchestrator for the security analysis pipeline.
     """
-    # Initialize configuration for default model path
-    config = OLMoSecurityConfig()
-
-    # Get default model path from configuration, with fallback
-    try:
-        default_model = str(config.get_base_model_path())
-    except FileNotFoundError:
-        default_model = None
-        print(f"⚠️  Default model not found at {config.base_models_dir}/{config.default_base_model}")
-        print("🔄 Will use fallback mode if no model specified")
-
-    parser = argparse.ArgumentParser(
-        description="Process security artifacts with OLMo analysis - Refactored Phase Architecture",
-        formatter_class=argparse.RawDescriptionHelpFormatter
+    parser = argparse.ArgumentParser(description="Refactored Security Analysis Pipeline")
+    parser.add_argument("--artifacts-dir", type=Path, required=True, help="Directory containing security scan artifacts (e.g., extracted zip files).")
+    parser.add_argument("--output-dir", type=Path, default=Path("results"), help="Directory to save phase outputs.")
+    parser.add_argument(
+        "--verbose", "-v",
+        action="store_true",
+        help="Enable verbose debug output"
     )
-
-    # Directory configuration
-    parser.add_argument("--artifacts-dir", type=Path, default="data/security_artifacts",
-                       help="Directory for security artifacts (default: data/security_artifacts)")
-    parser.add_argument("--output-dir", type=Path, default="results",
-                       help="Output directory for analysis results (default: results)")
-    parser.add_argument("--model-name", type=str, default=default_model,
-                       help="OLMo-2-1B model to use for analysis (defaults to configured model)")
-    # Auto-detect git information
-    try:
-        import subprocess
-        git_branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
-                                           cwd=Path(__file__).parent.parent,
-                                           stderr=subprocess.DEVNULL).decode().strip()
-        git_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD'],
-                                           cwd=Path(__file__).parent.parent,
-                                           stderr=subprocess.DEVNULL).decode().strip()
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        git_branch = "unknown"
-        git_commit = "unknown"
-
-    parser.add_argument("--branch", type=str, default=git_branch,
-                       help=f"Git branch being analyzed (auto-detected: {git_branch})")
-    parser.add_argument("--commit", type=str, default=git_commit,
-                       help=f"Git commit SHA being analyzed (auto-detected: {git_commit[:8]}...)")
-
-    # Upload control
-    parser.add_argument("--skip-model-upload", action="store_true",
-                       help="Skip all uploads to HuggingFace Hub (models and datasets) - only affects upload phase")
 
     # Single-phase execution flags
     phase_group = parser.add_argument_group('Single Phase Execution')
-    phase_group.add_argument("--only-parsing", action="store_true",
-                            help="Execute only parsing phase")
-    phase_group.add_argument("--only-vulnerability-analysis", action="store_true",
-                            help="Execute only vulnerability analysis phase")
-    phase_group.add_argument("--only-rag-enhancement", action="store_true",
-                            help="Execute only RAG enhancement phase")
-    phase_group.add_argument("--only-analysis-summary", action="store_true",
-                            help="Execute only analysis summary phase")
-    phase_group.add_argument("--only-narrativization", action="store_true",
-                            help="Execute only narrativization phase")
-    phase_group.add_argument("--only-datasets", action="store_true",
-                            help="Execute only datasets phase")
-    phase_group.add_argument("--only-training", action="store_true",
-                            help="Execute only training phase")
-    phase_group.add_argument("--only-upload", action="store_true",
-                            help="Execute only upload phase")
+    phase_group.add_argument("--only-parsing", action="store_true", help="Execute only parsing phase")
+    phase_group.add_argument("--only-datasets", action="store_true", help="Execute only dataset construction phase")
+    phase_group.add_argument("--only-upload", action="store_true", help="Execute only artifact upload phase")
+
+    # Upload control flags
+    upload_group = parser.add_argument_group('Upload Options')
+    upload_group.add_argument("--skip-upload", action="store_true", help="Skip artifact upload in full pipeline (default: False)")
 
     # Input file arguments
     input_group = parser.add_argument_group('Phase Input Files')
     input_group.add_argument("--parsed-input", type=Path,
-                            help="Parsed vulnerabilities file (for vulnerability-analysis+)")
-    input_group.add_argument("--vulnerability-analysis-input", type=Path,
-                            help="Vulnerability analysis results file (for rag-enhancement+)")
-    input_group.add_argument("--rag-enhanced-input", type=Path,
-                            help="RAG enhanced results file (for analysis-summary+)")
-    input_group.add_argument("--analyzed-input", type=Path,
-                            help="Analyzed vulnerabilities file (for narrativization+)")
-    input_group.add_argument("--narrativized-input", type=Path,
-                            help="Narrativized vulnerabilities file (for datasets+)")
-    input_group.add_argument("--train-input", type=Path,
-                            help="Training dataset file (for training)")
-    input_group.add_argument("--validation-input", type=Path,
-                            help="Validation dataset file (for training)")
-    input_group.add_argument("--dataset-files", type=str,
-                            help="Comma-separated dataset files (for upload)")
+                            help="Parsed vulnerabilities file (for categorization)")
+    input_group.add_argument("--parsed-vulnerabilities-input", type=Path,
+                            help="Parsed vulnerabilities file (for dataset construction)")
+    input_group.add_argument("--train-dataset-input", type=Path,
+                            help="Training dataset file (for model training and upload)")
+    input_group.add_argument("--validation-dataset-input", type=Path,
+                            help="Validation dataset file (for model training and upload)")
+    input_group.add_argument("--test-dataset-input", type=Path,
+                            help="Test dataset file (for automatic evaluation during training and upload)")
+    input_group.add_argument("--adapter-input", type=Path,
+                            help="Trained adapter directory (for upload)")
 
     args = parser.parse_args()
 
-    # ===== SHARED SETUP LOGIC =====
-    # Setup logging (shared by both single-phase and multi-phase)
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s'
-    )
+    if args.verbose:
+        logging.getLogger().setLevel(logging.DEBUG)
+        logging.debug("🐛 Debug logging enabled")
 
-    # Log comprehensive configuration (shared by both execution modes)
-    print("\n🔧 Configuration Summary:")
+    config = OLMoSecurityConfig()
+    if not ensure_base_model_ready(config):
+        logger.error("❌ Cannot proceed: Base model setup failed")
+        logger.error("   Please ensure:")
+        logger.error("   1. Virtual environment is activated: source ./venv/bin/activate")
+        logger.error("   2. mlx-lm is installed: pip install mlx-lm")
+        logger.error("   3. Internet connection is available")
+        return 1
 
-    # Fine-tuning configuration
-    try:
-        config = OLMoSecurityConfig()
-
-        def get_config_source(env_var, env_value):
-            if env_value is not None:
-                return "(env override)"
-            return "(yaml config)"
-
-        print(f"  workspace_dir: {config.fine_tuning.workspace_dir} {get_config_source('OLMO_WORKSPACE_DIR', os.getenv('OLMO_WORKSPACE_DIR'))}")
-        print(f"  base_models_dir: {config.base_models_dir} {get_config_source('OLMO_BASE_MODELS_DIR', os.getenv('OLMO_BASE_MODELS_DIR'))}")
-        print(f"  fine_tuned_models_dir: {config.fine_tuned_models_dir} {get_config_source('OLMO_FINE_TUNED_MODELS_DIR', os.getenv('OLMO_FINE_TUNED_MODELS_DIR'))}")
-        print(f"  max_epochs: {config.fine_tuning.max_epochs} {get_config_source('OLMO_MAX_EPOCHS', os.getenv('OLMO_MAX_EPOCHS'))}")
-        print(f"  save_steps: {config.fine_tuning.save_steps} {get_config_source('OLMO_SAVE_STEPS', os.getenv('OLMO_SAVE_STEPS'))}")
-        print(f"  eval_steps: {config.fine_tuning.eval_steps} {get_config_source('OLMO_EVAL_STEPS', os.getenv('OLMO_EVAL_STEPS'))}")
-        print(f"  learning_rate: {config.fine_tuning.learning_rate} {get_config_source('OLMO_LEARNING_RATE', os.getenv('OLMO_LEARNING_RATE'))}")
-        print(f"  batch_size: {config.fine_tuning.batch_size} {get_config_source('OLMO_BATCH_SIZE', os.getenv('OLMO_BATCH_SIZE'))}")
-        print(f"  max_stage1_iters: {config.fine_tuning.max_stage1_iters} {get_config_source('OLMO_MAX_STAGE1_ITERS', os.getenv('OLMO_MAX_STAGE1_ITERS'))}")
-        print(f"  max_stage2_iters: {config.fine_tuning.max_stage2_iters} {get_config_source('OLMO_MAX_STAGE2_ITERS', os.getenv('OLMO_MAX_STAGE2_ITERS'))}")
-
-        # Multi-domain configuration display (always enabled)
-        print("\n🎯 Multi-Domain Security Specialization (Always Enabled):")
-        print(f"  target_categories: {config.multi_domain.target_categories}")
-        print(f"  category_weights: {dict(list(config.multi_domain.category_weights.items())[:3])}...")
-        print(f"  overall_threshold: {config.multi_domain.validation.overall_threshold}")
-        print(f"  high_specialization: {config.multi_domain.validation.high_specialization}")
-        print(f"  medium_specialization: {config.multi_domain.validation.medium_specialization}")
-
-    except Exception as e:
-        logger.error(f"❌ CRITICAL: Fine-tuning configuration loading failure: {e}")
-        logger.error("🔍 Fine-tuning configuration loading failure indicates configuration corruption or dependency issues requiring investigation")
-        raise RuntimeError(f"Fine-tuning configuration loading failure requires investigation: {e}") from e
-
-    # Knowledge base configuration
-    kb_dir = os.getenv('OLMO_KNOWLEDGE_BASE_DIR')
-    if kb_dir:
-        print(f"  knowledge_base_dir: {kb_dir} (env override)")
-    else:
-        print(f"  knowledge_base_dir: security-ai-analysis/knowledge_base (default)")
-
-    # ===== EXECUTION MODE SELECTION =====
-    # Check for single-phase execution
     single_phase = get_active_only_phase(args)
 
     if single_phase:
@@ -2084,44 +1277,7 @@ def main():
         print(f"Summary: {summary}")
         return result
 
-    # Multi-phase execution
-    print("=" * 60)
-    print(f"🔒 WebAuthn Security Analysis with {args.model_name}")
-    print(f"Artifacts: {args.artifacts_dir}")
-    print(f"Output: {args.output_dir}")
-    print("=" * 60)
-
-    # Artifact download and preparation phase
-    artifacts_dir = Path(args.artifacts_dir)
-    search_dir = artifact_download_phase(artifacts_dir)
-
-    # Find security scan files
-    scan_files = find_security_files(search_dir)
-
-    # Check if any files were found (fail-fast validation)
-    total_files = sum(len(files) for files in scan_files.values())
-    if total_files == 0:
-        logger.error(f"❌ CRITICAL: No security files found in {search_dir}")
-        logger.error("🔍 No security files found indicates missing CI pipeline output or incorrect directory - requires investigation")
-        logger.error("Expected file types: .sarif, .json files from trivy, checkov, semgrep, osv-scanner, zap")
-        raise RuntimeError(f"No security files found in {search_dir} - requires investigation")
-
-    # Process all scans with new phase-based architecture
-    output_dir = str(args.output_dir)
-
-    # Run the phase-based processing pipeline
-    results, summary = process_all_scans_enhanced(scan_files, output_dir, args)
-
-    print("\n" + "=" * 60)
-    print("✅ Processing complete!")
-
-    # Display contextually appropriate completion summary
-    _display_completion_summary(results, summary)
-
-    print(f"📈 Summary Keys: {list(summary.keys()) if isinstance(summary, dict) else 'N/A'}")
-    print("=" * 60)
-
-    return 0
+    run_sequential_pipeline(str(args.artifacts_dir), args.output_dir, skip_upload=args.skip_upload)
 
 if __name__ == "__main__":
-    exit(main())
+    main()

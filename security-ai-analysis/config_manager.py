@@ -14,7 +14,6 @@ from pathlib import Path
 from typing import Optional, Dict, Any, List
 from dataclasses import dataclass
 
-
 @dataclass
 class LoRASection:
     """LoRA-specific configuration for parameter-efficient fine-tuning"""
@@ -33,6 +32,7 @@ class FineTuningSection:
 
     # Training parameters
     learning_rate: float
+    stage2_learning_rate: float
     batch_size: int
     max_epochs: int
     warmup_steps: int
@@ -40,6 +40,7 @@ class FineTuningSection:
     eval_steps: int
     max_stage1_iters: int
     max_stage2_iters: int
+    stage1_replay_ratio: float
 
     # LoRA settings
     lora: LoRASection
@@ -54,6 +55,7 @@ class FineTuningSection:
     default_repo_prefix: str
     private_repos: bool
     skip_in_daemon: bool
+    upload_staging_dir: Path
 
 
 @dataclass
@@ -132,13 +134,17 @@ class OLMoSecurityConfig:
         # Configure project directories (fixed within project structure)
         # These are NOT configurable - they follow standard project layout
         project_root = Path(__file__).parent.parent
-        self.venv_dir = project_root / "security-ai-analysis" / "venv"
         self.data_dir = project_root / "security-ai-analysis" / "data"
         self.results_dir = project_root / "security-ai-analysis" / "results"
         
         # Model configuration with environment variable override
         self.default_base_model = os.getenv('OLMO_DEFAULT_BASE_MODEL',
                                           config.get('default_base_model', 'OLMo-2-1B-mlx-q4'))
+
+        # HuggingFace model ID for the base model (for reproducibility in uploads)
+        # This is the publicly accessible model identifier on HuggingFace Hub
+        self.base_model_hf_id = os.getenv('OLMO_BASE_MODEL_HF_ID',
+                                         config.get('base_model_hf_id', 'allenai/OLMo-2-0425-1B-Instruct'))
 
         # Load nested configuration sections
         self.fine_tuning = self._load_fine_tuning_section(config, project_root)
@@ -201,7 +207,6 @@ class OLMoSecurityConfig:
         return {
             'base_models_dir': str(self.base_models_dir),
             'fine_tuned_models_dir': str(self.fine_tuned_models_dir),
-            'venv_dir': str(self.venv_dir),
             'data_dir': str(self.data_dir),
             'results_dir': str(self.results_dir),
             'default_base_model': self.default_base_model,
@@ -235,11 +240,17 @@ class OLMoSecurityConfig:
         # HuggingFace settings
         hf_config = ft_config.get('huggingface', {})
 
+        # Resolve upload staging directory
+        upload_staging_dir = Path(
+            os.getenv('OLMO_UPLOAD_STAGING_DIR', str(workspace_dir / hf_config.get('upload_staging_dir', 'upload_staging')))
+        ).expanduser()
+
         return FineTuningSection(
             workspace_dir=workspace_dir,
             default_output_name=ft_config['default_output_name'],
             # Training parameters with environment overrides
             learning_rate=float(os.getenv('OLMO_LEARNING_RATE', train_config.get('learning_rate', 2e-5))),
+            stage2_learning_rate=float(os.getenv('OLMO_STAGE2_LEARNING_RATE', train_config.get('stage2_learning_rate', 1e-6))),
             batch_size=int(os.getenv('OLMO_BATCH_SIZE', train_config.get('batch_size', 1))),
             max_epochs=int(os.getenv('OLMO_MAX_EPOCHS', train_config.get('max_epochs', 3))),
             warmup_steps=int(os.getenv('OLMO_WARMUP_STEPS', train_config.get('warmup_steps', 100))),
@@ -247,6 +258,7 @@ class OLMoSecurityConfig:
             eval_steps=int(os.getenv('OLMO_EVAL_STEPS', train_config.get('eval_steps', 250))),
             max_stage1_iters=int(os.getenv('OLMO_MAX_STAGE1_ITERS', train_config.get('max_stage1_iters', 100))),
             max_stage2_iters=int(os.getenv('OLMO_MAX_STAGE2_ITERS', train_config.get('max_stage2_iters', 150))),
+            stage1_replay_ratio=float(os.getenv('OLMO_STAGE1_REPLAY_RATIO', train_config.get('stage1_replay_ratio', 0.15))),
             # LoRA settings
             lora=LoRASection(
                 rank=int(os.getenv('OLMO_LORA_RANK', lora_config.get('rank', 8))),
@@ -262,7 +274,8 @@ class OLMoSecurityConfig:
             upload_enabled=hf_config.get('upload_enabled', True),
             default_repo_prefix=hf_config.get('default_repo_prefix', 'hitoshura25'),
             private_repos=hf_config.get('private_repos', False),
-            skip_in_daemon=ft_config.get('skip_in_daemon', False)
+            skip_in_daemon=ft_config.get('skip_in_daemon', False),
+            upload_staging_dir=upload_staging_dir
         )
 
     def _load_knowledge_base_section(self, config: Dict[str, Any], project_root: Path) -> KnowledgeBaseSection:

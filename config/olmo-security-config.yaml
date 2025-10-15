@@ -10,7 +10,7 @@ base_models_dir: "~/shared-olmo-models/base"
 fine_tuned_models_dir: "~/shared-olmo-models/fine-tuned"
 
 # Default model optimized for Apple Silicon with MLX
-default_base_model: "OLMo-2-1B-mlx-q4"
+default_base_model: "OLMo-2-1B-Instruct-mlx-q4"
 
 # Fine-tuning configuration
 fine_tuning:
@@ -21,6 +21,7 @@ fine_tuning:
   # Sources: Databricks LoRA Guide, Sebastian Raschka's Practical Tips, MLPerf LoRA Study
   training:
     learning_rate: 5e-6    # 2e-5→5e-6: Conservative for CF prevention (Raschka 2024)
+    stage2_learning_rate: 1e-6  # Stage 2: 0.2x Stage 1 LR for fine specialization
     batch_size: 1          # KEEP: Optimal for Metal GPU memory efficiency
     max_epochs: 5          # 3→5: More passes over limited dataset
     warmup_steps: 150      # 100→150: Longer warmup for stability
@@ -28,6 +29,7 @@ fine_tuning:
     eval_steps: 100        # 250→100: Continuous validation monitoring
     max_stage1_iters: 800  # 100→800: 8x increase for deep specialization (Databricks)
     max_stage2_iters: 1200 # 150→1200: 8x increase for complex code generation
+    stage1_replay_ratio: 0.15  # Stage 2: 15% Stage 1 data replay for catastrophic forgetting prevention
 
   # Advanced LoRA configuration - 2024-2025 research optimizations
   # Sources: LoRA original paper, Databricks LoRA Guide, Sebastian Raschka's Practical Tips
@@ -50,6 +52,14 @@ fine_tuning:
     default_repo_prefix: "hitoshura25"
     private_repos: false
     skip_in_daemon: false
+
+# Data augmentation configuration - research-backed techniques for small datasets
+# Sources: IEEE 2024 (self-mixup), MIT TACL, Theodo Research
+augmentation:
+  enabled: true                 # Default enabled for quality improvements
+  multiplier: 4                 # Target 4x total examples (200 → 800)
+  mixup_alpha: 0.3             # Self-mixup blending ratio (IEEE 2024 optimal)
+  semantic_variations: 3        # Number of semantic variation types
 
 # Knowledge base configuration
 knowledge_base:

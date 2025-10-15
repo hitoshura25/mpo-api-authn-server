@@ -1,0 +1,19 @@
+[tool.pytest.ini_options]
+env = [
+    "OLMO_MAX_EPOCHS=1",
+    "OLMO_SAVE_STEPS=3",
+    "OLMO_EVAL_STEPS=2",
+    "OLMO_LEARNING_RATE=2e-4",
+    "OLMO_BATCH_SIZE=1",
+    "OLMO_MAX_STAGE1_ITERS=0",  # No maximum = use calculated value (30)
+    "OLMO_MAX_STAGE2_ITERS=0",   # No maximum = use calculated value (48)
+    # Test-friendly validation thresholds (fixture data regression testing)
+    "OLMO_STAGE1_VALIDATION_THRESHOLD=0.2",
+    "OLMO_STAGE2_VALIDATION_THRESHOLD=0.2",
+    "OLMO_SEQUENTIAL_VALIDATION_THRESHOLD=0.15",
+    # Multi-domain configuration for testing (always enabled)
+    "OLMO_MULTI_DOMAIN_OVERALL_THRESHOLD=0.75",
+    "OLMO_MULTI_DOMAIN_CATEGORY_MIN=0.40",
+    "OLMO_MULTI_DOMAIN_HIGH_THRESHOLD=0.75",
+    "OLMO_MULTI_DOMAIN_MEDIUM_THRESHOLD=0.60"
+]

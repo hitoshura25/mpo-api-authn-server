@@ -5,7 +5,8 @@
 This guide provides comprehensive instructions for installing and configuring MLX (Machine Learning for Apple Silicon) to enable Phase 5 fine-tuning in the AI Security Dataset Research Initiative.
 
 📖 **Quick Links:**
-- [← Back to Main README](../../security-ai-analysis/README.md) - System overview and basic setup  
+
+- [← Back to Main README](../../security-ai-analysis-old/README.md) - System overview and basic setup
 - [📚 Fine-Tuning Usage Guide](ai-security-fine-tuning-usage.md) - How to use MLX fine-tuning after installation
 
 ---
@@ -17,16 +18,19 @@ This guide provides comprehensive instructions for installing and configuring ML
 ## Prerequisites
 
 ### ✅ Hardware Requirements
+
 - **Apple Silicon Mac**: M1, M2, M3, or newer chip required
 - **Memory**: Minimum 16GB RAM recommended (32GB+ for larger models)
 - **Storage**: At least 10GB free space for models and fine-tuning workspace
 
 ### ✅ Software Requirements
+
 - **macOS**: 12.0 (Monterey) or newer
 - **Python**: 3.9+ (Python 3.11+ recommended)
 - **Xcode Command Line Tools**: Required for compilation
 
 ### ✅ Verify Apple Silicon
+
 ```bash
 # Verify you're running on Apple Silicon
 uname -m
@@ -40,6 +44,7 @@ sw_vers
 ## Installation Steps
 
 ### Step 1: Install Xcode Command Line Tools
+
 ```bash
 # Install Xcode Command Line Tools (required for MLX compilation)
 xcode-select --install
@@ -50,6 +55,7 @@ xcode-select -p
 ```
 
 ### Step 2: Set Up Python Environment
+
 ```bash
 # Navigate to the security analysis directory
 cd /path/to/mpo-api-authn-server/security-ai-analysis
@@ -63,6 +69,7 @@ python3 --version
 ```
 
 ### Step 3: Install MLX Framework
+
 ```bash
 # Install MLX core framework
 pip install mlx
@@ -75,6 +82,7 @@ python3 -c "import mlx.core as mx; print(f'MLX version: {mx.__version__}')"
 ```
 
 ### Step 4: Install Additional Dependencies
+
 ```bash
 # Install fine-tuning specific dependencies
 pip install transformers>=4.30.0
@@ -91,6 +99,7 @@ pip freeze > requirements.txt
 ```
 
 ### Step 5: Verify MLX Installation
+
 ```bash
 # Test MLX functionality
 python3 -c "
@@ -116,6 +125,7 @@ except ImportError as e:
 ## Configuration Setup
 
 ### Step 1: Validate Fine-Tuning Configuration
+
 ```bash
 # Navigate to security analysis directory
 cd security-ai-analysis
@@ -131,6 +141,7 @@ print(f'Workspace: {config.workspace_dir}')
 ```
 
 ### Step 2: Test MLX Fine-Tuning Integration
+
 ```bash
 # Test the MLX fine-tuning engine
 python3 -c "
@@ -147,6 +158,7 @@ except Exception as e:
 ```
 
 ### Step 3: Validate Pipeline Integration
+
 ```bash
 # Test pipeline integration
 python3 -c "
@@ -168,6 +180,7 @@ else:
 ## Model Setup
 
 ### Step 1: Verify Base Model Availability
+
 ```bash
 # Check if OLMo-2-1B-Instruct model is available
 ls -la ~/shared-olmo-models/base/OLMo-2-1B-*
@@ -178,6 +191,7 @@ ls -la ~/shared-olmo-models/base/OLMo-2-1B-*
 ```
 
 ### Step 2: Set Up Fine-Tuning Workspace
+
 ```bash
 # Create fine-tuning workspace directories
 python3 -c "
@@ -192,14 +206,16 @@ print(f'Workspace location: {config.workspace_dir}')
 ## Testing Installation
 
 ### Quick Test: Run Phase 3 Integration Tests
+
 ```bash
 # Run the comprehensive integration tests
 bash scripts/tests/test-fine-tuning-phase3.sh
 ```
 
 **Expected Output**: All 7/7 tests should pass:
+
 - ✅ Pipeline integration module working
-- ✅ Process artifacts integration successful  
+- ✅ Process artifacts integration successful
 - ✅ Mock integration test passed
 - ✅ Configuration consistency validated
 - ✅ Daemon integration ready
@@ -207,6 +223,7 @@ bash scripts/tests/test-fine-tuning-phase3.sh
 - ✅ Fail-fast behavior validated
 
 ### Advanced Test: Mock Fine-Tuning Run
+
 ```bash
 # Test with sample data (without actual fine-tuning)
 python3 -c "
@@ -242,6 +259,7 @@ test_file.unlink()  # Clean up
 ### Common Issues
 
 #### Issue: "MLX not available" Error
+
 ```bash
 # Verify Apple Silicon
 uname -m  # Should be arm64
@@ -255,6 +273,7 @@ pip list | grep mlx
 ```
 
 #### Issue: Import Errors
+
 ```bash
 # Check Python path
 python3 -c "import sys; print('\n'.join(sys.path))"
@@ -272,6 +291,7 @@ pip install -r requirements.txt
 ```
 
 #### Issue: Memory Errors During Fine-Tuning
+
 ```bash
 # Check available memory
 memory_pressure
@@ -282,6 +302,7 @@ memory_pressure
 ```
 
 #### Issue: Model Download Failures
+
 ```bash
 # Check internet connectivity
 curl -I https://huggingface.co
@@ -303,12 +324,14 @@ python3 -c "from huggingface_hub import whoami; print(whoami())"
 ## Performance Expectations
 
 ### Typical Performance (Apple Silicon)
+
 - **Model Loading**: 2-5 seconds for OLMo-2-1B-Instruct
 - **Fine-Tuning Speed**: 20-30X faster than CPU
 - **Memory Usage**: 2-4GB for OLMo-2-1B-Instruct fine-tuning
 - **Fine-Tuning Duration**: 5-15 minutes for typical security datasets (100-500 examples)
 
 ### Optimization Tips
+
 1. **Use larger batch sizes** if you have sufficient memory (16GB+)
 2. **Enable gradient checkpointing** for memory efficiency
 3. **Use mixed precision** (enabled by default in MLX)

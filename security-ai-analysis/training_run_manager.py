@@ -1,62 +1,72 @@
 #!/usr/bin/env python3
 """
-Training Run Manager - Structured Model Output Architecture
+Training Run Manager - Simplified for Phase 4 Single-Stage Training
 
-Implements manifest-driven training run management to replace timestamp-based
-discovery with explicit contracts and artifact type validation.
-
-Based on: docs/improvements/in-progress/structured-model-output-architecture.md
+Manages structured training run directories with manifest-based artifact tracking.
+Handles MLX data format requirements (train.jsonl/valid.jsonl).
 """
 
 import json
 import logging
+import shutil
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Union, TYPE_CHECKING
+from typing import Dict, Any, Optional
 from datetime import datetime
-from dataclasses import dataclass, asdict
-
-if TYPE_CHECKING:
-    from config_manager import OLMoSecurityConfig
+from dataclasses import dataclass
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
-class StageMetadata:
-    """Metadata for a training stage - pure path contract without status tracking"""
-    adapters_path: str
-    training_data_path: str
+class SequentialStageManifest:
+    """Sequential stage manifest for Stage 1 and Stage 2"""
+    adapters_path: str = ""
+    training_data_path: str = ""
+    evaluation_results_path: str = ""
+    training_params: Dict[str, Any] = None
+    dataset_stats: Dict[str, Any] = None
 
-    # Stage-specific optional fields
-    final_model_path: Optional[str] = None
-    merged_model_path: Optional[str] = None
-    training_data_paths: Optional[Dict[str, str]] = None
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for JSON serialization"""
+        return {
+            "adapters_path": self.adapters_path,
+            "training_data_path": self.training_data_path,
+            "evaluation_results_path": self.evaluation_results_path,
+            "training_params": self.training_params or {},
+            "dataset_stats": self.dataset_stats or {},
+        }
 
 
 @dataclass
 class RunManifest:
-    """Training run manifest schema"""
-    version: str = "1.0"
-    run_metadata: Dict[str, Any] = None
-    stage1: Optional[StageMetadata] = None
-    stage2: Optional[StageMetadata] = None
-    validation: Optional[Dict[str, Any]] = None
+    """Training run manifest schema v2.0 for sequential fine-tuning"""
+    version: str = "2.0"
+    run_id: str = ""
+    timestamp: str = ""
+    base_model: str = ""
+    pipeline_type: str = "sequential"
+    stage1: Optional[SequentialStageManifest] = None
+    stage2: Optional[SequentialStageManifest] = None
+    final_model_path: str = "./final-model"
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for JSON serialization"""
-        result = {
+        manifest_dict = {
             "version": self.version,
-            "run_metadata": self.run_metadata or {},
+            "run_id": self.run_id,
+            "timestamp": self.timestamp,
+            "base_model": self.base_model,
+            "pipeline_type": self.pipeline_type,
+            "final_model_path": self.final_model_path,
         }
 
+        # Add stage manifests if present
         if self.stage1:
-            result["stage1"] = asdict(self.stage1)
+            manifest_dict["stage1"] = self.stage1.to_dict()
         if self.stage2:
-            result["stage2"] = asdict(self.stage2)
-        if self.validation:
-            result["validation"] = self.validation
+            manifest_dict["stage2"] = self.stage2.to_dict()
 
-        return result
+        return manifest_dict
 
 
 class TrainingRun:
@@ -78,7 +88,7 @@ class TrainingRun:
         return self._manifest
 
     def _load_manifest(self) -> RunManifest:
-        """Load manifest from JSON file"""
+        """Load manifest from JSON file (v2.0 format only)"""
         if not self.manifest_path.exists():
             raise FileNotFoundError(f"Run manifest not found: {self.manifest_path}")
 
@@ -86,22 +96,42 @@ class TrainingRun:
             with open(self.manifest_path, 'r') as f:
                 manifest_data = json.load(f)
 
-            logger.info(f"📋 Loaded manifest for run: {manifest_data.get('run_metadata', {}).get('run_id', 'unknown')}")
+            logger.info(f"📋 Loaded manifest for run: {manifest_data.get('run_id', 'unknown')}")
 
-            # Convert to dataclass structure
-            manifest = RunManifest()
-            manifest.version = manifest_data.get("version", "1.0")
-            manifest.run_metadata = manifest_data.get("run_metadata", {})
-            manifest.validation = manifest_data.get("validation")
+            # Load v2.0 manifest with sequential stages
+            stage1_data = manifest_data.get("stage1")
+            stage2_data = manifest_data.get("stage2")
 
-            # Load stage metadata
-            if "stage1" in manifest_data:
-                stage1_data = manifest_data["stage1"]
-                manifest.stage1 = StageMetadata(**stage1_data)
+            stage1 = None
+            if stage1_data:
+                stage1 = SequentialStageManifest(
+                    adapters_path=stage1_data.get("adapters_path", ""),
+                    training_data_path=stage1_data.get("training_data_path", ""),
+                    evaluation_results_path=stage1_data.get("evaluation_results_path", ""),
+                    training_params=stage1_data.get("training_params", {}),
+                    dataset_stats=stage1_data.get("dataset_stats", {}),
+                )
 
-            if "stage2" in manifest_data:
-                stage2_data = manifest_data["stage2"]
-                manifest.stage2 = StageMetadata(**stage2_data)
+            stage2 = None
+            if stage2_data:
+                stage2 = SequentialStageManifest(
+                    adapters_path=stage2_data.get("adapters_path", ""),
+                    training_data_path=stage2_data.get("training_data_path", ""),
+                    evaluation_results_path=stage2_data.get("evaluation_results_path", ""),
+                    training_params=stage2_data.get("training_params", {}),
+                    dataset_stats=stage2_data.get("dataset_stats", {}),
+                )
+
+            manifest = RunManifest(
+                version=manifest_data.get("version", "2.0"),
+                run_id=manifest_data.get("run_id", ""),
+                timestamp=manifest_data.get("timestamp", ""),
+                base_model=manifest_data.get("base_model", ""),
+                pipeline_type=manifest_data.get("pipeline_type", "sequential"),
+                stage1=stage1,
+                stage2=stage2,
+                final_model_path=manifest_data.get("final_model_path", "./final-model"),
+            )
 
             return manifest
 
@@ -111,7 +141,7 @@ class TrainingRun:
     def save_manifest(self) -> None:
         """Save manifest to JSON file"""
         if self._manifest is None:
-            raise RuntimeError("No manifest to save - call create_manifest() first")
+            raise RuntimeError("No manifest to save - create manifest first")
 
         # Ensure run directory exists
         self.run_dir.mkdir(parents=True, exist_ok=True)
@@ -124,210 +154,212 @@ class TrainingRun:
     @property
     def run_id(self) -> str:
         """Get run ID from manifest"""
-        return self.manifest.run_metadata.get("run_id", "unknown")
+        return self.manifest.run_id
 
-
-    # Stage 1 properties
     @property
     def stage1_adapters_path(self) -> Path:
-        """Get validated Stage 1 LoRA adapters path"""
+        """Get path to Stage 1 adapter artifacts"""
         if not self.manifest.stage1:
-            raise ValueError("Stage 1 not found in manifest")
-
-        adapters_path = self.run_dir / self.manifest.stage1.adapters_path
-
-        # Validate LoRA adapter structure
-        if not self._validate_lora_adapters(adapters_path):
-            raise ValueError(f"Invalid LoRA adapter structure: {adapters_path}")
-
-        return adapters_path
-
-    @property
-    def stage1_merged_model_path(self) -> Path:
-        """Get validated Stage 1 merged model path"""
-        if not self.manifest.stage1 or not self.manifest.stage1.merged_model_path:
-            raise ValueError("Stage 1 merged model not found in manifest")
-
-        model_path = self.run_dir / self.manifest.stage1.merged_model_path
-
-        # Validate full model structure
-        if not self._validate_full_model(model_path):
-            raise ValueError(f"Invalid full model structure: {model_path}")
-
-        return model_path
+            raise ValueError("Stage 1 not configured in manifest")
+        return self.run_dir / self.manifest.stage1.adapters_path
 
     @property
     def stage1_training_data_path(self) -> Path:
-        """Get Stage 1 training dataset path"""
+        """Get path to Stage 1 training data directory"""
         if not self.manifest.stage1:
-            raise ValueError("Stage 1 not found in manifest")
-
+            raise ValueError("Stage 1 not configured in manifest")
         return self.run_dir / self.manifest.stage1.training_data_path
 
-    # Stage 2 properties
     @property
-    def stage2_final_model_path(self) -> Path:
-        """Get validated Stage 2 complete model path"""
-        if not self.manifest.stage2 or not self.manifest.stage2.final_model_path:
-            raise ValueError("Stage 2 final model not found in manifest")
-
-        model_path = self.run_dir / self.manifest.stage2.final_model_path
-
-        # Validate full model structure
-        if not self._validate_full_model(model_path):
-            raise ValueError(f"Invalid full model structure: {model_path}")
-
-        return model_path
+    def stage1_evaluation_path(self) -> Path:
+        """Get path to Stage 1 evaluation results"""
+        if not self.manifest.stage1:
+            raise ValueError("Stage 1 not configured in manifest")
+        return self.run_dir / self.manifest.stage1.evaluation_results_path
 
     @property
     def stage2_adapters_path(self) -> Path:
-        """Get validated Stage 2 LoRA adapters path"""
+        """Get path to Stage 2 adapter artifacts"""
         if not self.manifest.stage2:
-            raise ValueError("Stage 2 not found in manifest")
+            raise ValueError("Stage 2 not configured in manifest")
+        return self.run_dir / self.manifest.stage2.adapters_path
 
-        adapters_path = self.run_dir / self.manifest.stage2.adapters_path
+    @property
+    def stage2_training_data_path(self) -> Path:
+        """Get path to Stage 2 training data directory"""
+        if not self.manifest.stage2:
+            raise ValueError("Stage 2 not configured in manifest")
+        return self.run_dir / self.manifest.stage2.training_data_path
 
-        # Validate LoRA adapter structure
-        if not self._validate_lora_adapters(adapters_path):
-            raise ValueError(f"Invalid LoRA adapter structure: {adapters_path}")
+    @property
+    def stage2_evaluation_path(self) -> Path:
+        """Get path to Stage 2 evaluation results"""
+        if not self.manifest.stage2:
+            raise ValueError("Stage 2 not configured in manifest")
+        return self.run_dir / self.manifest.stage2.evaluation_results_path
 
-        return adapters_path
+    @property
+    def final_model_path(self) -> Path:
+        """Get path to final merged model"""
+        return self.run_dir / self.manifest.final_model_path
 
-    def get_stage1_training_data(self) -> Path:
-        """Get Stage 1 training dataset for mixing in Stage 2"""
-        return self.stage1_training_data_path
+    def prepare_stage_training_data(
+        self,
+        stage_training_data_path: Path,
+        train_dataset: Path,
+        validation_dataset: Path
+    ) -> Path:
+        """
+        Copy and rename datasets to MLX-required format for a specific stage.
 
-    def get_stage2_training_data(self, dataset_type: str = "mixed") -> Path:
-        """Get Stage 2 training dataset"""
-        if not self.manifest.stage2 or not self.manifest.stage2.training_data_paths:
-            raise ValueError("Stage 2 training data not found in manifest")
+        MLX LoRA expects train.jsonl and valid.jsonl in the training data directory.
 
-        if dataset_type not in self.manifest.stage2.training_data_paths:
-            available = list(self.manifest.stage2.training_data_paths.keys())
-            raise ValueError(f"Stage 2 dataset type '{dataset_type}' not found. Available: {available}")
+        Args:
+            stage_training_data_path: Path to stage's training data directory
+            train_dataset: Path to original train_dataset.jsonl
+            validation_dataset: Path to original validation_dataset.jsonl
 
-        return self.run_dir / self.manifest.stage2.training_data_paths[dataset_type]
+        Returns:
+            Path to training data directory containing train.jsonl and valid.jsonl
+        """
+        logger.info(f"📂 Preparing stage training data: {stage_training_data_path}")
 
-    # Validation methods
-    def _validate_lora_adapters(self, adapter_path: Path) -> bool:
-        """Validate LoRA adapter directory structure"""
-        if not adapter_path.exists():
-            logger.warning(f"LoRA adapter path does not exist: {adapter_path}")
-            return False
+        # Create training data directory
+        stage_training_data_path.mkdir(parents=True, exist_ok=True)
 
-        required_files = ['adapters.safetensors', 'adapter_config.json']
-        for file in required_files:
-            file_path = adapter_path / file
-            if not file_path.exists() or file_path.stat().st_size == 0:
-                logger.warning(f"Missing or empty LoRA file: {file_path}")
-                return False
+        # Copy and rename to MLX-required names
+        train_target = stage_training_data_path / "train.jsonl"
+        valid_target = stage_training_data_path / "valid.jsonl"
 
-        logger.debug(f"✅ LoRA adapter validation passed: {adapter_path}")
-        return True
+        logger.info(f"   Copying {train_dataset.name} → train.jsonl")
+        shutil.copy2(train_dataset, train_target)
 
-    def _validate_full_model(self, model_path: Path) -> bool:
-        """Validate full model directory structure"""
-        if not model_path.exists():
-            logger.warning(f"Model path does not exist: {model_path}")
-            return False
+        logger.info(f"   Copying {validation_dataset.name} → valid.jsonl")
+        shutil.copy2(validation_dataset, valid_target)
 
-        required_files = ['config.json', 'model.safetensors', 'tokenizer.json']
-        for file in required_files:
-            file_path = model_path / file
-            if not file_path.exists() or file_path.stat().st_size == 0:
-                logger.warning(f"Missing or empty model file: {file_path}")
-                return False
+        logger.info(f"   ✅ Training data prepared: {stage_training_data_path}")
+        logger.info(f"      - train.jsonl: {train_target.stat().st_size} bytes")
+        logger.info(f"      - valid.jsonl: {valid_target.stat().st_size} bytes")
 
-        logger.debug(f"✅ Full model validation passed: {model_path}")
-        return True
-
+        return stage_training_data_path
 
 
 class TrainingRunManager:
     """Manager for training runs with structured output"""
 
-    def __init__(self, config: 'OLMoSecurityConfig'):
-        """Initialize training run manager with configuration"""
+    def __init__(self, config):
+        """
+        Initialize training run manager with configuration
+
+        Args:
+            config: OLMoSecurityConfig instance
+        """
         self.config = config
-        self.training_runs_dir = config.get_training_runs_dir()
+        self.fine_tuned_models_dir = config.fine_tuned_models_dir
 
-        # Ensure training runs directory exists
-        self.training_runs_dir.mkdir(parents=True, exist_ok=True)
+        # Ensure fine-tuned models directory exists
+        self.fine_tuned_models_dir.mkdir(parents=True, exist_ok=True)
 
-        logger.info(f"🏗️ TrainingRunManager initialized: {self.training_runs_dir}")
+        logger.info(f"🏗️ TrainingRunManager initialized: {self.fine_tuned_models_dir}")
 
-    def create_run(self, run_id: str, base_model: str = "OLMo-2-1B-mlx-q4") -> TrainingRun:
-        """Create new training run with complete manifest containing all predefined paths"""
-        run_dir = self.training_runs_dir / f"webauthn-security-{run_id}"
+    def create_sequential_run(self, run_id: Optional[str] = None) -> TrainingRun:
+        """
+        Create new sequential training run with stage1/stage2 directory structure.
+
+        Creates directory structure:
+        webauthn-security-sequential-YYYYMMDD_HHMMSS/
+        ├── run-manifest.json (v2.0)
+        ├── stage1/
+        │   ├── adapters/
+        │   ├── training-data/
+        │   └── evaluation/
+        ├── stage2/
+        │   ├── adapters/
+        │   ├── training-data/
+        │   └── evaluation/
+        └── final-model/
+
+        Args:
+            run_id: Optional run ID (defaults to timestamp)
+
+        Returns:
+            TrainingRun instance with sequential structure
+        """
+        # Generate run ID if not provided
+        if run_id is None:
+            run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+        run_dir = self.fine_tuned_models_dir / f"webauthn-security-sequential-{run_id}"
 
         if run_dir.exists():
             logger.warning(f"Training run directory already exists: {run_dir}")
 
-        # Create training run instance (but don't create directories yet - lazy creation)
+        # Create training run instance
         training_run = TrainingRun(run_dir)
 
-        # Generate complete manifest with all predefined paths
-        manifest = RunManifest()
-        manifest.run_metadata = {
-            "run_id": f"webauthn-security-{run_id}",
-            "timestamp": datetime.now().isoformat(),
-            "base_model": base_model,
-            "training_type": "sequential_fine_tuning"
-        }
-
-        # Define all Stage 1 paths
-        manifest.stage1 = StageMetadata(
+        # Create v2.0 manifest with stage1 and stage2
+        stage1_manifest = SequentialStageManifest(
             adapters_path="./stage1/adapters",
-            merged_model_path="./stage1/merged-model",
-            training_data_path="./stage1/training-data/analysis-dataset.jsonl"
+            training_data_path="./stage1/training-data",
+            evaluation_results_path="./stage1/evaluation",
+            training_params={},
+            dataset_stats={},
         )
 
-        # Define all Stage 2 paths
-        manifest.stage2 = StageMetadata(
+        stage2_manifest = SequentialStageManifest(
             adapters_path="./stage2/adapters",
-            final_model_path="./stage2/final-model",
-            training_data_path="./stage2/training-data/codefix-dataset.jsonl",
-            training_data_paths={
-                "codefix_dataset": "./stage2/training-data/codefix-dataset.jsonl",
-                "mixed_dataset": "./stage2/training-data/mixed-dataset.jsonl"
-            }
+            training_data_path="./stage2/training-data",
+            evaluation_results_path="./stage2/evaluation",
+            training_params={},
+            dataset_stats={},
+        )
+
+        manifest = RunManifest(
+            version="2.0",
+            run_id=f"webauthn-security-sequential-{run_id}",
+            timestamp=datetime.now().isoformat(),
+            base_model=self.config.default_base_model,
+            pipeline_type="sequential",
+            stage1=stage1_manifest,
+            stage2=stage2_manifest,
+            final_model_path="./final-model",
         )
 
         training_run._manifest = manifest
         training_run.save_manifest()
 
-        logger.info(f"🚀 Created new training run with complete path manifest: {run_id}")
+        # Create stage directories
+        training_run.stage1_adapters_path.mkdir(parents=True, exist_ok=True)
+        training_run.stage1_training_data_path.mkdir(parents=True, exist_ok=True)
+        training_run.stage1_evaluation_path.mkdir(parents=True, exist_ok=True)
+
+        training_run.stage2_adapters_path.mkdir(parents=True, exist_ok=True)
+        training_run.stage2_training_data_path.mkdir(parents=True, exist_ok=True)
+        training_run.stage2_evaluation_path.mkdir(parents=True, exist_ok=True)
+
+        training_run.final_model_path.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"🚀 Created new sequential training run: {run_id}")
+        logger.info(f"   Directory: {run_dir}")
+        logger.info(f"   Stage 1: {training_run.stage1_training_data_path}")
+        logger.info(f"   Stage 2: {training_run.stage2_training_data_path}")
+        logger.info(f"   Final model: {training_run.final_model_path}")
+
         return training_run
 
     def get_latest_run(self) -> TrainingRun:
-        """Get most recent run with Stage 2 final model (indicating completion)"""
-        completed_runs = []
+        """Get most recent training run"""
+        run_dirs = list(self.fine_tuned_models_dir.glob("webauthn-security-*"))
 
-        for run_dir in self.training_runs_dir.glob("webauthn-security-*"):
-            if not run_dir.is_dir():
-                continue
+        if not run_dirs:
+            raise FileNotFoundError("No training runs found")
 
-            try:
-                training_run = TrainingRun(run_dir)
-                # Check if Stage 2 final model exists (indicates completed training)
-                if training_run.manifest.stage2 and training_run.manifest.stage2.final_model_path:
-                    stage2_final_path = training_run.run_dir / training_run.manifest.stage2.final_model_path
-                    if (stage2_final_path / "model.safetensors").exists():
-                        timestamp_str = training_run.manifest.run_metadata.get("timestamp", "")
-                        completed_runs.append((timestamp_str, training_run))
-            except (FileNotFoundError, ValueError) as e:
-                logger.warning(f"Skipping invalid run directory {run_dir}: {e}")
-                continue
+        # Sort by directory name (which includes timestamp)
+        run_dirs.sort()
+        latest_dir = run_dirs[-1]
 
-        if not completed_runs:
-            raise FileNotFoundError("No completed training runs found")
-
-        # Sort by timestamp and return latest
-        completed_runs.sort(key=lambda x: x[0])
-        latest_run = completed_runs[-1][1]
-
-        logger.info(f"📋 Found latest completed run: {latest_run.run_id}")
-        return latest_run
+        logger.info(f"📋 Found latest run: {latest_dir.name}")
+        return TrainingRun(latest_dir)
 
     def get_run_by_id(self, run_id: str) -> TrainingRun:
         """Get specific run by ID"""
@@ -335,99 +367,55 @@ class TrainingRunManager:
         if not run_id.startswith("webauthn-security-"):
             run_id = f"webauthn-security-{run_id}"
 
-        run_dir = self.training_runs_dir / run_id
+        run_dir = self.fine_tuned_models_dir / run_id
 
         if not run_dir.exists():
             raise FileNotFoundError(f"Training run not found: {run_id}")
 
         return TrainingRun(run_dir)
 
-    def list_runs(self, status_filter: Optional[str] = None) -> List[TrainingRun]:
-        """List all training runs, optionally filtered by status"""
-        runs = []
+    def evaluate(self, training_run: TrainingRun, test_dataset: Path, stage: int = 1) -> Dict[str, Any]:
+        """
+        Evaluate the trained model and save results to run directory.
 
-        for run_dir in self.training_runs_dir.glob("webauthn-security-*"):
-            if not run_dir.is_dir():
-                continue
+        Creates {run_dir}/stageN/evaluation/ with:
+        - evaluation_results.json (metrics, detailed results)
+        - model_evaluation/ (debug files per test case)
 
-            try:
-                training_run = TrainingRun(run_dir)
-                if status_filter is None or training_run.status == status_filter:
-                    runs.append(training_run)
-            except (FileNotFoundError, ValueError) as e:
-                logger.warning(f"Skipping invalid run directory {run_dir}: {e}")
-                continue
+        Args:
+            training_run: TrainingRun instance with trained adapters
+            test_dataset: Path to test dataset JSONL file
+            stage: Stage number (1 or 2) for sequential training runs
 
-        # Sort by timestamp
-        runs.sort(key=lambda r: r.manifest.run_metadata.get("timestamp", ""))
+        Returns:
+            Dictionary with evaluation results and metrics
+        """
+        from evaluate_model import evaluate_model
 
-        logger.info(f"📋 Found {len(runs)} training runs (filter: {status_filter})")
-        return runs
+        # Determine adapter path based on stage
+        if stage == 1:
+            adapter_path = training_run.stage1_adapters_path
+            eval_dir = training_run.stage1_evaluation_path
+        elif stage == 2:
+            adapter_path = training_run.stage2_adapters_path
+            eval_dir = training_run.stage2_evaluation_path
+        else:
+            raise ValueError(f"Invalid stage: {stage}. Must be 1 or 2.")
 
-    def cleanup_failed_runs(self) -> int:
-        """Remove failed or incomplete training runs"""
-        failed_runs = self.list_runs(status_filter="failed")
-        incomplete_runs = self.list_runs(status_filter="in_progress")
+        # Create evaluation directory in training run
+        eval_dir.mkdir(parents=True, exist_ok=True)
 
-        cleanup_count = 0
-        for run in failed_runs + incomplete_runs:
-            try:
-                import shutil
-                shutil.rmtree(run.run_dir)
-                cleanup_count += 1
-                logger.info(f"🗑️ Cleaned up run: {run.run_id}")
-            except Exception as e:
-                logger.warning(f"Failed to clean up {run.run_id}: {e}")
+        logger.info(f"🔬 Evaluating Stage {stage} model...")
+        logger.info(f"   Adapter path: {adapter_path}")
+        logger.info(f"   Evaluation output: {eval_dir}")
 
-        logger.info(f"🧹 Cleaned up {cleanup_count} failed/incomplete runs")
-        return cleanup_count
+        # Run evaluation with output in training run directory
+        results = evaluate_model(
+            model_path=adapter_path,
+            test_dataset=test_dataset,
+            output_file=eval_dir / "evaluation_results.json"
+        )
 
+        logger.info(f"✅ Stage {stage} evaluation complete. Results saved to: {eval_dir}")
 
-def validate_training_run_structure(run_dir: Path) -> Dict[str, Any]:
-    """Standalone validation function for training run structure"""
-    try:
-        training_run = TrainingRun(run_dir)
-
-        result = {
-            "valid": True,
-            "run_id": training_run.run_id,
-            "status": training_run.status,
-            "checks": {
-                "manifest_exists": True,
-                "manifest_valid": True,
-                "stage1_present": training_run.manifest.stage1 is not None,
-                "stage2_present": training_run.manifest.stage2 is not None
-            },
-            "errors": []
-        }
-
-        # Validate stage artifacts if present
-        if training_run.manifest.stage1:
-            try:
-                training_run.stage1_adapters_path
-                result["checks"]["stage1_adapters_valid"] = True
-            except ValueError as e:
-                result["checks"]["stage1_adapters_valid"] = False
-                result["errors"].append(f"Stage 1 adapters: {e}")
-
-        if training_run.manifest.stage2:
-            try:
-                training_run.stage2_final_model_path
-                result["checks"]["stage2_model_valid"] = True
-            except ValueError as e:
-                result["checks"]["stage2_model_valid"] = False
-                result["errors"].append(f"Stage 2 model: {e}")
-
-        # Overall validation
-        result["valid"] = len(result["errors"]) == 0
-
-        return result
-
-    except Exception as e:
-        return {
-            "valid": False,
-            "run_id": "unknown",
-            "status": "error",
-            "checks": {"manifest_exists": False},
-            "errors": [str(e)]
-        }
+        return results

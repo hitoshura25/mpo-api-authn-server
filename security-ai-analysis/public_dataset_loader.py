@@ -318,15 +318,16 @@ class PublicDatasetLoader:
         logger.info("=" * 80)
         logger.info("🔍 Filtering sequences exceeding token limit")
         logger.info("=" * 80)
-        filtered_examples, filter_stats = self._filter_long_sequences(all_examples)
+        filtered_examples, token_filter_stats = self._filter_long_sequences(all_examples)
 
         # Shuffle to mix sources
         logger.info("Shuffling combined dataset")
         random.shuffle(filtered_examples)
 
-        logger.info(f"✅ Total public dataset examples: {len(filtered_examples)} "
-                   f"(CrossVul: {len(crossvul_examples)}, CVEfixes: {len(cvefixes_examples)}, "
-                   f"Filtered: {filter_stats['filtered_examples']})")
+        logger.info(f"✅ Total public dataset examples: {len(filtered_examples)}")
+        logger.info(f"   CrossVul: {len(crossvul_examples)}, CVEfixes: {len(cvefixes_examples)}")
+        logger.info(f"   Token filtered: {token_filter_stats['filtered_examples']} examples")
+        logger.info(f"   Final training set: {len(filtered_examples)} examples")
 
         return filtered_examples
 
@@ -544,20 +545,25 @@ class PublicDatasetLoader:
         logger.info(f"   Using tokenizer: {model_id}")
 
         # Load tokenizer using pattern from old implementation
+        logger.debug(f"Loading tokenizer for model {model_id}...")
         tokenizer = AutoTokenizer.from_pretrained(
             model_id,
             trust_remote_code=True
         )
+        logger.debug("Tokenizer loaded successfully.")
 
         filtered_examples = []
         too_long_examples = []
         token_length_distribution = []
+        examples_length = len(examples)
 
         for idx, example in enumerate(examples):
+            logger.debug(f"Generating chatml text for example {idx + 1}/{examples_length}")
             # Convert ChatML messages to text for tokenization
             text = self._chatml_to_text(example)
 
             # Count tokens using exact same tokenizer as MLX
+            logger.debug(f"Encoding example")
             tokens = tokenizer.encode(text, add_special_tokens=True)
             token_count = len(tokens)
             token_length_distribution.append(token_count)

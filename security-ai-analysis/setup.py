@@ -209,6 +209,7 @@ def main():
             'OLMo-2-1B-mlx-q4': 'allenai/OLMo-2-0425-1B',
             'OLMo-2-1B-Instruct-mlx-q4': 'allenai/OLMo-2-0425-1B-Instruct',
             'OLMo-2-1B-mlx': 'allenai/OLMo-2-0425-1B-Instruct',
+            'OLMo-2-7B-Instruct-mlx-q4': 'allenai/OLMo-2-1124-7B-Instruct',
         }
 
         # Get HuggingFace model ID

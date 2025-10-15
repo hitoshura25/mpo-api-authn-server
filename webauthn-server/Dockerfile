@@ -14,6 +14,66 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Stage 2: Application layer
 FROM base AS app
 
+# OCI Image Labels for Docker Hub MCP and metadata discovery
+# Standard OCI annotations (https://github.com/opencontainers/image-spec/blob/main/annotations.md)
+LABEL org.opencontainers.image.title="MPO WebAuthn Server" \
+      org.opencontainers.image.description="WebAuthn (FIDO2/Passkeys) authentication server built with Ktor and comprehensive security testing" \
+      org.opencontainers.image.version="1.0.0" \
+      org.opencontainers.image.authors="Vinayak Menon <hitoshura25@users.noreply.github.com>" \
+      org.opencontainers.image.url="https://github.com/hitoshura25/mpo-api-authn-server" \
+      org.opencontainers.image.documentation="https://github.com/hitoshura25/mpo-api-authn-server/blob/main/README.md" \
+      org.opencontainers.image.source="https://github.com/hitoshura25/mpo-api-authn-server" \
+      org.opencontainers.image.licenses="Apache-2.0" \
+      org.opencontainers.image.vendor="hitoshura25"
+
+# AI Agent Discovery Labels - Point to structured configuration
+LABEL com.mpo.ai-agents.config.url="https://raw.githubusercontent.com/hitoshura25/mpo-api-authn-server/main/.ai-agents.json" \
+      com.mpo.ai-agents.config.format="json" \
+      com.mpo.ai-agents.quick-start="https://github.com/hitoshura25/mpo-api-authn-server#-for-ai-agents--developers"
+
+# Environment Variable Documentation Labels
+LABEL com.mpo.env.database.host="MPO_AUTHN_DB_HOST" \
+      com.mpo.env.database.host.default="postgres" \
+      com.mpo.env.database.port="MPO_AUTHN_DB_PORT" \
+      com.mpo.env.database.port.default="5432" \
+      com.mpo.env.database.name="MPO_AUTHN_DB_NAME" \
+      com.mpo.env.database.name.default="webauthn_db" \
+      com.mpo.env.database.username="MPO_AUTHN_DB_USERNAME" \
+      com.mpo.env.database.username.default="webauthn_user" \
+      com.mpo.env.database.password="MPO_AUTHN_DB_PASSWORD" \
+      com.mpo.env.database.password.required="true" \
+      com.mpo.env.database.password.sensitive="true"
+
+LABEL com.mpo.env.redis.host="MPO_AUTHN_REDIS_HOST" \
+      com.mpo.env.redis.host.default="redis" \
+      com.mpo.env.redis.port="MPO_AUTHN_REDIS_PORT" \
+      com.mpo.env.redis.port.default="6379" \
+      com.mpo.env.redis.password="MPO_AUTHN_REDIS_PASSWORD" \
+      com.mpo.env.redis.password.required="true" \
+      com.mpo.env.redis.password.sensitive="true"
+
+LABEL com.mpo.env.app.relying-party-id="MPO_AUTHN_APP_RELYING_PARTY_ID" \
+      com.mpo.env.app.relying-party-id.default="localhost" \
+      com.mpo.env.app.relying-party-id.description="Must match your frontend domain" \
+      com.mpo.env.app.relying-party-name="MPO_AUTHN_APP_RELYING_PARTY_NAME" \
+      com.mpo.env.app.relying-party-name.default="MPO Api Authn"
+
+# Dependency Labels
+LABEL com.mpo.dependencies.postgres.image="postgres:15-alpine" \
+      com.mpo.dependencies.postgres.required="true" \
+      com.mpo.dependencies.redis.image="redis:7-alpine" \
+      com.mpo.dependencies.redis.required="true" \
+      com.mpo.dependencies.jaeger.image="jaegertracing/all-in-one:1.53" \
+      com.mpo.dependencies.jaeger.required="false"
+
+# Port Exposure Labels
+LABEL com.mpo.ports.http="8080" \
+      com.mpo.ports.http.description="Main HTTP API endpoint"
+
+# Security Feature Labels
+LABEL com.mpo.security.webauthn.version="2.0" \
+      com.mpo.security.features="username-enumeration-protection,replay-attack-prevention,poisonseed-protection,fido2-compliance"
+
 # Create non-root user for security
 RUN groupadd -g 1001 appgroup && \
     useradd -u 1001 -g appgroup -s /bin/bash -m appuser

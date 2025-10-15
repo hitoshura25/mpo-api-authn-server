@@ -51,6 +51,7 @@ import json
 import sqlite3
 import hashlib
 import zipfile
+import gzip
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -1029,14 +1030,16 @@ def create_sqlite_database_if_needed(db_path: Path) -> bool:
         logging.info(f"   This is a one-time operation and will take ~10 minutes.")
 
         try:
-            # Decompress and import in one pipeline: gzcat file.sql.gz | sqlite3 db
-            subprocess.run(
-                f'gzcat "{sql_gz_file}" | sqlite3 "{db_path}"',
-                shell=True,
-                check=True,
-                capture_output=True,
-                timeout=900  # 15 minute timeout
-            )
+            # Decompress and import using Python gzip module (more secure than shell pipeline)
+            # Opens gzipped SQL file and pipes to sqlite3 stdin
+            with gzip.open(sql_gz_file, 'rt') as gz_file:
+                subprocess.run(
+                    ['sqlite3', str(db_path)],
+                    stdin=gz_file,
+                    check=True,
+                    capture_output=True,
+                    timeout=900  # 15 minute timeout
+                )
 
             logging.info(f"✅ Successfully created SQLite database: {db_path}")
             db_size_mb = db_path.stat().st_size / (1024 * 1024)

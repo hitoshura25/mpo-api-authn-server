@@ -328,7 +328,7 @@ def _generate_prevention_guidance(rule_id: str, file_path: str) -> str:
             return """
 # Before (Insecure)
 env:
-  API_KEY: sk_live_abc123def456
+  API_KEY: <api key in plain text>
 
 # After (Secure)
 env:
@@ -348,7 +348,7 @@ environment:
     elif file_path.endswith('.py'):
         return """
 # Before (Insecure)
-API_KEY = "sk_live_abc123def456"
+API_KEY = "<api key in plain text>"
 
 # After (Secure)
 import os

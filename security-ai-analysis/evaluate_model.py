@@ -26,7 +26,6 @@ import shutil
 import sys
 
 # MLX imports
-import mlx.core as mx
 from mlx_lm import load, generate
 from mlx_lm.sample_utils import make_sampler
 

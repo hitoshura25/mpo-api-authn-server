@@ -56,8 +56,6 @@ from pathlib import Path
 from datetime import datetime
 import pandas as pd
 import pyarrow as pa
-import pyarrow.parquet as pq
-import numpy as np
 import argparse
 import os
 import fcntl

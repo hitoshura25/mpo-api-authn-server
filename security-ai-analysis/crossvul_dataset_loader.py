@@ -46,7 +46,6 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Set, Optional, Tuple
 from enum import Enum
-import pandas as pd
 from collections import defaultdict
 
 # Configure logging

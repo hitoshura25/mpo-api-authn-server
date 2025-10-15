@@ -1,0 +1,14 @@
+# Gitleaks Configuration for WebAuthn Security AI Analysis Project
+#
+# This project includes AI training datasets with security vulnerability examples
+# These are intentional teaching materials for training security analysis models,
+# not actual secrets or credentials.
+#
+# Documentation: https://github.com/gitleaks/gitleaks
+
+[[allowlists]]
+description = "AI training datasets with security examples - not actual secrets"
+paths = [
+  '''security-ai-analysis/tests/fixtures/.*\.jsonl$''',
+  '''security-ai-analysis/tests/fixtures/.*\.json$'''
+]

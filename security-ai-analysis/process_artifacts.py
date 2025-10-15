@@ -22,19 +22,17 @@ logger = logging.getLogger(__name__)
 class Phases:
     PARSING = "parsing"
     DATASETS = "datasets"
-    TRAINING = "training"
     UPLOAD = "upload"
 
     # List for validation
     ALL_PHASES = [
-        PARSING, DATASETS, TRAINING, UPLOAD
+        PARSING, DATASETS, UPLOAD
     ]
 
     # Input requirements mapping
     PHASE_INPUTS = {
         PARSING: [],  # Uses --artifacts-dir
         DATASETS: ['parsed_vulnerabilities_input'],
-        TRAINING: ['train_dataset_input', 'validation_dataset_input', 'test_dataset_input'],
         UPLOAD: ['adapter_input', 'train_dataset_input', 'validation_dataset_input', 'test_dataset_input'],
     }
 
@@ -640,89 +638,6 @@ def _augment_training_pairs(training_pairs: List[Dict[str, Any]]) -> List[Dict[s
 
     return augmented_pairs
 
-
-def train_model_phase(train_dataset: Path, validation_dataset: Path, test_dataset: Path):
-    """
-    PHASE: Train Model (with automatic evaluation)
-    - Creates structured training run directory with manifest
-    - Applies quality-weighted sampling to prioritize high-quality examples
-    - Fine-tunes model using MLX LoRA
-    - Automatically evaluates model on test dataset
-    - Saves all artifacts and results to run directory
-
-    Args:
-        train_dataset: Path to train_dataset.jsonl
-        validation_dataset: Path to validation_dataset.jsonl
-        test_dataset: Path to test_dataset.jsonl
-
-    Returns:
-        TrainingRun instance with trained model and evaluation results
-    """
-    logger.info("🚀 Starting Phase: Train Model")
-    config = OLMoSecurityConfig()
-
-    if not train_dataset.exists():
-        raise FileNotFoundError(f"Train dataset not found: {train_dataset}")
-    if not validation_dataset.exists():
-        raise FileNotFoundError(f"Validation dataset not found: {validation_dataset}")
-    if not test_dataset.exists():
-        raise FileNotFoundError(f"Test dataset not found: {test_dataset}")
-
-    # Import managers
-    from mlx_trainer import MLXTrainer
-    from training_run_manager import TrainingRunManager
-
-    # Create training run with structured directory
-    run_manager = TrainingRunManager(config)
-
-    training_params = {
-        "learning_rate": config.fine_tuning.learning_rate,
-        "batch_size": config.fine_tuning.batch_size,
-        "num_iters": config.fine_tuning.max_stage1_iters,
-        "quality_weight_multiplier": 2.5
-    }
-
-    # Create run (this copies datasets to train.jsonl/valid.jsonl)
-    training_run = run_manager.create_run(
-        train_dataset=train_dataset,
-        validation_dataset=validation_dataset,
-        training_params=training_params
-    )
-
-    logger.info(f"Train dataset: {train_dataset}")
-    logger.info(f"Validation dataset: {validation_dataset}")
-    logger.info(f"Test dataset: {test_dataset}")
-    logger.info(f"Training run: {training_run.run_id}")
-    logger.info(f"Training data directory: {training_run.training_data_path}")
-
-    # Initialize trainer with config
-    trainer = MLXTrainer(
-        config=config,
-        output_dir=training_run.adapters_path
-    )
-
-    # Run training (uses training_run.training_data_path with train.jsonl/valid.jsonl)
-    adapter_path = trainer.train(
-        training_data_dir=training_run.training_data_path
-    )
-
-    logger.info(f"✅ Training complete.")
-    logger.info(f"   Training run: {training_run.run_dir}")
-    logger.info(f"   Adapter artifacts: {adapter_path}")
-
-    logger.info("🔬 Running evaluation...")
-    eval_results = run_manager.evaluate(training_run, test_dataset)
-
-    metrics = eval_results.get('metrics', {})
-    logger.info(f"✅ Evaluation complete.")
-    logger.info(f"   Exact Match: {metrics.get('exact_match_percentage', 0):.2f}%")
-    logger.info(f"   Avg CodeBLEU: {metrics.get('avg_codebleu', 0):.4f}")
-    logger.info(f"   Test Examples: {eval_results.get('total_examples', 0)}")
-
-    return training_run
-
-
-
 def _analyze_datasets(train_file: Path, val_file: Path, test_file: Path) -> Dict[str, Any]:
     """
     Analyze datasets for statistics to include in model/dataset cards.
@@ -890,7 +805,6 @@ def get_active_only_phase(args) -> str:
     only_flags = {
         Phases.PARSING: args.only_parsing,
         Phases.DATASETS: args.only_datasets,
-        Phases.TRAINING: args.only_training,
         Phases.UPLOAD: args.only_upload,
     }
 
@@ -1213,22 +1127,6 @@ def execute_single_phase(phase: str, args):
         print(f"   Test dataset: {test_file}")
         return 0, {"phase": phase, "train_file": str(train_file), "val_file": str(val_file), "test_file": str(test_file)}
 
-    elif phase == Phases.TRAINING:
-        train_dataset = args.train_dataset_input
-        validation_dataset = args.validation_dataset_input
-        test_dataset = args.test_dataset_input
-
-        training_run = train_model_phase(
-            train_dataset,
-            validation_dataset,
-            test_dataset
-        )
-        print(f"✅ Model training and evaluation completed. Output files:")
-        print(f"   Training run: {training_run.run_dir}")
-        print(f"   Adapter artifacts: {training_run.adapters_path}")
-        print(f"   Evaluation results: {training_run.run_dir / 'evaluation'}")
-        return 0, {"phase": phase, "training_run": str(training_run.run_dir)}
-
     elif phase == Phases.UPLOAD:
         adapter_path = args.adapter_input
         train_dataset = args.train_dataset_input
@@ -1324,7 +1222,6 @@ def main():
     phase_group = parser.add_argument_group('Single Phase Execution')
     phase_group.add_argument("--only-parsing", action="store_true", help="Execute only parsing phase")
     phase_group.add_argument("--only-datasets", action="store_true", help="Execute only dataset construction phase")
-    phase_group.add_argument("--only-training", action="store_true", help="Execute only model training phase (includes automatic evaluation)")
     phase_group.add_argument("--only-upload", action="store_true", help="Execute only artifact upload phase")
 
     # Upload control flags

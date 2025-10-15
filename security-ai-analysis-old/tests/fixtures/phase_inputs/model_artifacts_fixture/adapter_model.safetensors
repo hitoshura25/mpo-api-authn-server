@@ -1,1 +1,0 @@
-Mock adapter model file - This is a placeholder for the actual LoRA adapter weights file that would be generated during model fine-tuning. In real implementation, this would be a binary safetensors file containing the trained adapter parameters.

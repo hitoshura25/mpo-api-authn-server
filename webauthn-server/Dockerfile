@@ -105,4 +105,5 @@ ENV JAVA_OPTS="-XX:+UseContainerSupport \
                -Djava.security.egd=file:/dev/./urandom"
 
 # Run the application with optimized JVM settings
-ENTRYPOINT ["sh", "-c", "java $JAVA_OPTS -jar app.jar"]
+# Using exec form with shell to expand JAVA_OPTS, but with unbuffered output
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar app.jar"]

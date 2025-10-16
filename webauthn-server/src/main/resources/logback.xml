@@ -24,7 +24,7 @@
     <logger name="io.ktor.application" level="INFO"/>
 
     <!-- HTTP request/response logging (from CallLogging plugin) -->
-    <logger name="io.ktor.server.plugins.callloging" level="INFO"/>
+    <logger name="io.ktor.server.plugins.calllogging" level="INFO"/>
 
     <!-- Netty server logging (reduce noise) -->
     <logger name="io.netty" level="WARN"/>

@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <!-- Console appender for Docker stdout/stderr -->
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+        <!-- Immediately flush output to ensure logs appear in Docker -->
+        <immediateFlush>true</immediateFlush>
+
+        <encoder>
+            <!-- Docker-friendly log pattern with timestamps -->
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+
+        <!-- Target stdout for container logs -->
+        <target>System.out</target>
+    </appender>
+
+    <!-- Application loggers -->
+    <logger name="com.vmenon.mpo.api.authn" level="INFO"/>
+
+    <!-- Ktor framework logging -->
+    <logger name="io.ktor" level="INFO"/>
+    <logger name="io.ktor.server.engine" level="INFO"/>
+    <logger name="io.ktor.application" level="INFO"/>
+
+    <!-- HTTP request/response logging (from CallLogging plugin) -->
+    <logger name="io.ktor.server.plugins.callloging" level="INFO"/>
+
+    <!-- Netty server logging (reduce noise) -->
+    <logger name="io.netty" level="WARN"/>
+
+    <!-- Database connection logging -->
+    <logger name="com.zaxxer.hikari" level="INFO"/>
+    <logger name="org.postgresql" level="WARN"/>
+
+    <!-- Redis client logging -->
+    <logger name="redis.clients" level="WARN"/>
+
+    <!-- Koin dependency injection -->
+    <logger name="org.koin" level="INFO"/>
+
+    <!-- OpenTelemetry tracing (reduce noise) -->
+    <logger name="io.opentelemetry" level="WARN"/>
+
+    <!-- Yubico WebAuthn library -->
+    <logger name="com.yubico" level="WARN"/>
+
+    <!-- Root logger configuration -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+    </root>
+</configuration>

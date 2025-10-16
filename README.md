@@ -20,7 +20,7 @@ This project follows a multi-module architecture for clear separation of concern
 
 **Quick Integration**: Looking to add WebAuthn authentication to your project? Check out [`.ai-agents.json`](./.ai-agents.json) for complete Docker setup configuration.
 
-**Docker Image**: `hitoshura25/webauthn-server:latest` (Docker Hub)
+**Docker Image**: `hitoshura25/webauthn-server:latest` (Docker Hub - Multi-platform: linux/amd64, linux/arm64)
 
 ### Example AI Agent Prompt
 
@@ -428,7 +428,7 @@ cd web-test-client && npm test
 
 ```bash
 # Start all dependencies
-cd webauthn-server  
+cd webauthn-server
 ./start-dev.sh
 
 # View logs
@@ -436,6 +436,21 @@ docker-compose logs -f
 
 # Stop services
 docker-compose down
+```
+
+### Multi-Platform Docker Support
+
+All Docker images are built for multiple architectures:
+
+- **linux/amd64** - x86_64 systems (GitHub Actions runners, Intel/AMD servers)
+- **linux/arm64** - ARM64 systems (Apple Silicon, ARM servers, Raspberry Pi)
+
+Docker will automatically pull the correct architecture for your platform. No special configuration needed!
+
+```bash
+# Works on any platform - Docker handles architecture selection
+docker pull hitoshura25/webauthn-server:latest
+docker run -p 8080:8080 hitoshura25/webauthn-server:latest
 ```
 
 ## 🤝 Contributing

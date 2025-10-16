@@ -276,26 +276,29 @@ jobs:
         id: build-status
         run: echo "images-built=true" >> $GITHUB_OUTPUT
 
-      # STEP 4: Push to registry (security scanning moved to parallel workflow)
+      # STEP 4: Push to registry (multi-platform: linux/amd64, linux/arm64)
+      # Security scanning moved to parallel workflow for optimal performance
 
-      - name: Push WebAuthn Server to registry
+      - name: Push WebAuthn Server to registry (multi-platform)
         id: docker-push
         uses: docker/build-push-action@v6
         with:
           context: ./webauthn-server
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.docker-meta.outputs.tags }}
           labels: ${{ steps.docker-meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: false
 
-      - name: Push Test Credentials Service to registry
+      - name: Push Test Credentials Service to registry (multi-platform)
         id: docker-test-credentials-push
         uses: docker/build-push-action@v6
         with:
           context: ./webauthn-test-credentials-service
           push: true
+          platforms: linux/amd64,linux/arm64
           tags: ${{ steps.docker-test-credentials-meta.outputs.tags }}
           labels: ${{ steps.docker-test-credentials-meta.outputs.labels }}
           cache-from: type=gha
@@ -334,6 +337,7 @@ jobs:
         run: |
           echo "🎯 Docker Build and Push Summary:"
           echo "  🔧 Single Job Execution: Eliminated 3x redundant builds"
+          echo "  🌍 Multi-Platform: linux/amd64, linux/arm64 support"
           echo "  📦 WebAuthn Server: ${{ steps.docker-meta.outputs.tags }}"
           if [[ "${{ steps.docker-push.outputs.digest }}" != "" ]]; then
             echo "    🔍 Digest: ${{ steps.docker-push.outputs.digest }}"

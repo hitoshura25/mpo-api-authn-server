@@ -22,6 +22,8 @@ import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 import org.slf4j.LoggerFactory
 
+const val PORT = 8080
+
 fun Application.module(storageModule: Module) {
     configureDependencyInjection(storageModule)
     configurePlugins()
@@ -52,16 +54,15 @@ private fun Application.configureRouting() {
 }
 
 fun main() {
-    val port = 8080
     val logger = LoggerFactory.getLogger("com.vmenon.mpo.api.authn.Application")
 
     logger.info("========================================")
     logger.info("MPO WebAuthn Server Starting")
-    logger.info("Port: $port")
+    logger.info("Port: $PORT")
     logger.info("WebAuthn Version: 2.0/FIDO2")
     logger.info("========================================")
 
-    embeddedServer(Netty, port = port) {
+    embeddedServer(Netty, port = PORT) {
         module(storageModule)
     }.start(wait = true)
 }

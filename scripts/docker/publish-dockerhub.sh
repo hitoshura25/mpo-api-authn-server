@@ -32,36 +32,30 @@ log() {
     echo "$(date '+%Y-%m-%d %H:%M:%S') - $*"
 }
 
-# Function to publish WebAuthn Server to DockerHub
+# Function to publish WebAuthn Server to DockerHub (multi-platform)
 publish_webauthn_server() {
-    log "🚀 Publishing WebAuthn Server to DockerHub..."
-    
-    # Pull from GHCR
-    docker pull "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
-    
-    # Tag for DockerHub
-    docker tag "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest" "${DOCKERHUB_SERVER_REPO}:latest"
-    
-    # Push to DockerHub
-    docker push "${DOCKERHUB_SERVER_REPO}:latest"
-    
-    log "✅ WebAuthn Server successfully published to DockerHub"
+    log "🚀 Publishing WebAuthn Server to DockerHub (multi-platform: linux/amd64, linux/arm64)..."
+
+    # Use buildx imagetools to create multi-platform manifest
+    # This preserves all platform variants from the source image
+    docker buildx imagetools create \
+        --tag "${DOCKERHUB_SERVER_REPO}:latest" \
+        "${DOCKER_REGISTRY}/${DOCKER_IMAGE_NAME}:latest"
+
+    log "✅ WebAuthn Server successfully published to DockerHub with multi-platform support"
 }
 
-# Function to publish Test Credentials Service to DockerHub
+# Function to publish Test Credentials Service to DockerHub (multi-platform)
 publish_test_credentials() {
-    log "🚀 Publishing Test Credentials Service to DockerHub..."
-    
-    # Pull from GHCR
-    docker pull "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
-    
-    # Tag for DockerHub
-    docker tag "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest" "${DOCKERHUB_TEST_CREDENTIALS_REPO}:latest"
-    
-    # Push to DockerHub
-    docker push "${DOCKERHUB_TEST_CREDENTIALS_REPO}:latest"
-    
-    log "✅ Test Credentials Service successfully published to DockerHub"
+    log "🚀 Publishing Test Credentials Service to DockerHub (multi-platform: linux/amd64, linux/arm64)..."
+
+    # Use buildx imagetools to create multi-platform manifest
+    # This preserves all platform variants from the source image
+    docker buildx imagetools create \
+        --tag "${DOCKERHUB_TEST_CREDENTIALS_REPO}:latest" \
+        "${DOCKER_REGISTRY}/${DOCKER_TEST_CREDENTIALS_IMAGE_NAME}:latest"
+
+    log "✅ Test Credentials Service successfully published to DockerHub with multi-platform support"
 }
 
 # Function to update DockerHub repository description

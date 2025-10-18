@@ -16,7 +16,7 @@
 # - Auto-increments patch version from highest existing tag
 # - Independent from npm-client-v* and android-client-v* tags
 # - PR builds: Publishes RC version to npm, no git tag/release creation
-# - Draft PRs: Excluded from workflow trigger, not published
+# - Draft PRs: Skipped at job level (workflow triggers but job doesn't run)
 #
 # SECURITY:
 # - npm publishing: Uses NPM_PUBLISH_TOKEN secret
@@ -46,6 +46,7 @@ permissions:
 
 jobs:
   publish-mcp-server:
+    if: github.event.pull_request.draft == false || github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -152,8 +153,7 @@ jobs:
 
           echo "✅ All required entry points exist"
 
-      - name: Publish to npm (main branch only)
-        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
+      - name: Publish to npm
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: |
@@ -291,23 +291,13 @@ jobs:
           echo "  Event: ${{ github.event_name }}"
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            if [[ "${{ github.event.pull_request.draft }}" == "true" ]]; then
-              echo "  Type: Draft PR (PR #${{ github.event.pull_request.number }})"
-              echo "  Published to npm: No (draft PR)"
-              echo "  Git tag: Not created (draft PR)"
-              echo "  GitHub Release: Not created (draft PR)"
-              echo ""
-              echo "ℹ️ Draft PRs are not published"
-              echo "ℹ️ Mark PR as ready for review to trigger publishing"
-            else
-              echo "  Type: Release Candidate (PR #${{ github.event.pull_request.number }})"
-              echo "  Published to npm: Yes (with RC version)"
-              echo "  Git tag: Not created (PR build)"
-              echo "  GitHub Release: Not created (PR build)"
-              echo ""
-              echo "✅ MCP server release candidate published successfully!"
-              echo "ℹ️ Production version will be published when merged to main"
-            fi
+            echo "  Type: Release Candidate (PR #${{ github.event.pull_request.number }})"
+            echo "  Published to npm: Yes (with RC version)"
+            echo "  Git tag: Not created (PR build)"
+            echo "  GitHub Release: Not created (PR build)"
+            echo ""
+            echo "✅ MCP server release candidate published successfully!"
+            echo "ℹ️ Production version will be published when merged to main"
           else
             echo "  Type: Production Release"
             echo "  Published to npm: Yes"

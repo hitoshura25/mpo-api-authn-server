@@ -83,6 +83,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
 
   // Template files to generate
   const template_files = [
+    { template: '.gitignore.hbs', output: '.gitignore' },
     { template: 'package.json.hbs', output: 'package.json' },
     { template: 'index.ts.hbs', output: 'src/index.ts' },
     { template: 'webauthn-client.ts.hbs', output: 'src/webauthn-client.ts' },

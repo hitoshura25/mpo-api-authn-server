@@ -168,6 +168,7 @@ The tool accepts these parameters:
 
 ```
 web-client/
+├── .gitignore                   # 🆕 Comprehensive gitignore for Node/TypeScript
 ├── package.json                 # All required dependencies
 ├── src/
 │   ├── index.ts                # Entry point

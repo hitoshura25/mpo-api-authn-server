@@ -5,25 +5,26 @@
 #
 # DESIGN PATTERN:
 # - Self-contained versioning (independent from other client libraries)
-# - Production-only publishing (no staging required for MCP server)
-# - Git tag-based version tracking (mcp-server-v*)
+# - Dual publishing: RC versions for PRs, production versions for main branch
+# - Git tag-based version tracking (mcp-server-v*) - main branch only
 # - Automatic patch version increment
-# - GitHub release creation with installation instructions
+# - GitHub release creation with installation instructions - main branch only
 #
 # VERSIONING:
 # - Main branch format: mcp-server-v{major}.{minor}.{patch} (e.g., mcp-server-v1.0.5)
 # - PR branch format: mcp-server-v{major}.{minor}.{patch}-rc.{pr}.{run} (e.g., mcp-server-v1.0.6-rc.42.123)
 # - Auto-increments patch version from highest existing tag
 # - Independent from npm-client-v* and android-client-v* tags
-# - PR builds: Version includes release candidate suffix, no npm publish/tag/release
+# - PR builds: Publishes RC version to npm, no git tag/release creation
+# - Draft PRs: Excluded from workflow trigger, not published
 #
 # SECURITY:
 # - npm publishing: Uses NPM_PUBLISH_TOKEN secret
 # - Minimal permissions: contents:write (for tags/releases), id-token:write (for provenance)
 #
 # TRIGGER:
-# - Push to main branch
-# - Pull requests (for testing)
+# - Push to main branch (production release)
+# - Pull requests - non-draft only (RC release)
 # - Path filter: mcp-server-webauthn-client/**
 
 name: Publish MCP Server
@@ -35,6 +36,7 @@ on:
       - 'mcp-server-webauthn-client/**'
       - .github/workflows/publish-mcp-server.yml
   pull_request:
+    types: [opened]
     paths:
       - 'mcp-server-webauthn-client/**'
       - .github/workflows/publish-mcp-server.yml
@@ -152,7 +154,7 @@ jobs:
           echo "✅ All required entry points exist"
 
       - name: Publish to npm (main branch only)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.event.pull_request.draft == false)
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: |
@@ -172,13 +174,6 @@ jobs:
 
           echo "✅ MCP server published to npm successfully"
           echo "📦 Package: @vmenon25/mcp-server-webauthn-client@${{ steps.version.outputs.version }}"
-
-      - name: Skip npm publishing (PR build)
-        if: github.event_name == 'pull_request'
-        run: |
-          echo "⏭️ Skipping npm publishing for PR build"
-          echo "📦 PR version: @vmenon25/mcp-server-webauthn-client@${{ steps.version.outputs.version }}"
-          echo "ℹ️ This version would be published on main branch merge"
 
       - name: Create Git tag (main branch only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -297,13 +292,23 @@ jobs:
           echo "  Event: ${{ github.event_name }}"
 
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            echo "  Type: Release Candidate (PR #${{ github.event.pull_request.number }})"
-            echo "  Published to npm: No (PR build)"
-            echo "  Git tag: Not created (PR build)"
-            echo "  GitHub Release: Not created (PR build)"
-            echo ""
-            echo "ℹ️ This is a PR build with release candidate version"
-            echo "ℹ️ The package will be published to npm when merged to main"
+            if [[ "${{ github.event.pull_request.draft }}" == "true" ]]; then
+              echo "  Type: Draft PR (PR #${{ github.event.pull_request.number }})"
+              echo "  Published to npm: No (draft PR)"
+              echo "  Git tag: Not created (draft PR)"
+              echo "  GitHub Release: Not created (draft PR)"
+              echo ""
+              echo "ℹ️ Draft PRs are not published"
+              echo "ℹ️ Mark PR as ready for review to trigger publishing"
+            else
+              echo "  Type: Release Candidate (PR #${{ github.event.pull_request.number }})"
+              echo "  Published to npm: Yes (with RC version)"
+              echo "  Git tag: Not created (PR build)"
+              echo "  GitHub Release: Not created (PR build)"
+              echo ""
+              echo "✅ MCP server release candidate published successfully!"
+              echo "ℹ️ Production version will be published when merged to main"
+            fi
           else
             echo "  Type: Production Release"
             echo "  Published to npm: Yes"

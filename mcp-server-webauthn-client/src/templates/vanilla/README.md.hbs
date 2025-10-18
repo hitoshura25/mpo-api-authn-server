@@ -212,11 +212,52 @@ WebAuthn is supported in modern browsers:
 
 ## Security Notes
 
+### WebAuthn Security
 - Passkeys are stored securely on your device
 - Private keys never leave your device
 - Server validates all credentials
 - Replay attacks are prevented
 - Username enumeration is protected
+
+### Docker Secrets Management
+
+This project uses **Docker Compose secrets** for secure credential management:
+
+#### How It Works
+- Passwords are auto-generated using cryptographically secure random bytes
+- Secrets are stored in `docker/secrets/` directory (gitignored)
+- Secrets are mounted as read-only files at `/run/secrets/` in containers
+- No hardcoded passwords in docker-compose.yml or source code
+
+#### Secret Files
+```
+docker/secrets/
+├── .gitignore          # Prevents accidental commits
+├── postgres_password   # PostgreSQL password (auto-generated)
+└── redis_password      # Redis password (auto-generated)
+```
+
+#### Secret Rotation
+To rotate secrets (change passwords):
+
+1. Generate new passwords:
+```bash
+openssl rand -base64 32 | cut -c1-32 > docker/secrets/postgres_password
+openssl rand -base64 32 | cut -c1-32 > docker/secrets/redis_password
+```
+
+2. Restart services:
+```bash
+cd docker && docker compose restart
+```
+
+#### Verification
+Run the setup script to verify secrets:
+```bash
+cd docker && bash setup-secrets.sh
+```
+
+**Important**: The `docker/secrets/` directory is automatically excluded from git via `.gitignore` to prevent accidental exposure of credentials.
 
 ## Integration with Your WebAuthn Server
 

@@ -1,10 +1,19 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { randomBytes } from 'crypto';
 import Handlebars from 'handlebars';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Generate a secure random password for Docker secrets
+ * Uses crypto.randomBytes for cryptographically secure randomness
+ */
+function generateSecurePassword(): string {
+  return randomBytes(32).toString('base64').slice(0, 32);
+}
 
 interface GenerateWebClientArgs {
   project_path: string;
@@ -62,6 +71,16 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     );
   }
 
+  // Extract server port from server_url for docker-compose
+  let server_port = '8080'; // default
+  try {
+    const url_parts = new URL(server_url);
+    server_port = url_parts.port || '8080';
+  } catch (error) {
+    // If URL parsing fails, use default port
+    console.error('Warning: Could not parse server_url, using default port 8080');
+  }
+
   // Template files to generate
   const template_files = [
     { template: 'package.json.hbs', output: 'package.json' },
@@ -78,21 +97,33 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     { template: 'playwright.config.js.hbs', output: 'playwright.config.js' },
     { template: 'global-setup.js.hbs', output: 'global-setup.js' },
     { template: 'global-teardown.js.hbs', output: 'global-teardown.js' },
-    { template: 'tests/webauthn.spec.js.hbs', output: 'tests/webauthn.spec.js' }
+    { template: 'tests/webauthn.spec.js.hbs', output: 'tests/webauthn.spec.js' },
+    // Docker setup for WebAuthn server
+    { template: 'docker/docker-compose.yml.hbs', output: 'docker/docker-compose.yml' },
+    { template: 'docker/init-db.sql.hbs', output: 'docker/init-db.sql' },
+    { template: 'docker/secrets/.gitignore.hbs', output: 'docker/secrets/.gitignore' },
+    { template: 'docker/setup-secrets.sh.hbs', output: 'docker/setup-secrets.sh' }
   ];
 
   // Template variables
   const template_vars = {
     server_url,
-    client_port
+    client_port,
+    server_port
   };
 
   try {
+    // Generate secure passwords for Docker secrets
+    const postgres_password = generateSecurePassword();
+    const redis_password = generateSecurePassword();
+
     // Create project directory structure
     mkdirSync(project_path, { recursive: true });
     mkdirSync(join(project_path, 'src'), { recursive: true });
     mkdirSync(join(project_path, 'public'), { recursive: true });
     mkdirSync(join(project_path, 'tests'), { recursive: true });
+    mkdirSync(join(project_path, 'docker'), { recursive: true });
+    mkdirSync(join(project_path, 'docker', 'secrets'), { recursive: true });
 
     // Generate files from templates
     for (const { template, output } of template_files) {
@@ -124,11 +155,44 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
       files_created.push(output_path);
     }
 
+    // Generate Docker secret files with auto-generated passwords
+    const postgres_password_path = join(project_path, 'docker', 'secrets', 'postgres_password');
+    const redis_password_path = join(project_path, 'docker', 'secrets', 'redis_password');
+
+    writeFileSync(postgres_password_path, postgres_password, 'utf8');
+    writeFileSync(redis_password_path, redis_password, 'utf8');
+    files_created.push(postgres_password_path);
+    files_created.push(redis_password_path);
+
     return {
       content: [
         {
           type: 'text',
-          text: `✅ Web client generated successfully!\n\nFiles created:\n${files_created.map(f => `  - ${f}`).join('\n')}\n\nNext steps:\n1. cd ${project_path}\n2. npm install\n3. npm run build\n4. npm start (in terminal 1)\n5. npm test (in terminal 2 - validates WebAuthn integration with E2E tests)\n6. If tests pass ✅, open http://localhost:${client_port} for manual testing`,
+          text: `✅ Web client generated successfully!
+
+Files created:
+${files_created.map(f => `  - ${f}`).join('\n')}
+
+🚀 Quick Start (Complete Setup):
+1. cd ${project_path}/docker && docker compose up -d
+   (Starts WebAuthn server + PostgreSQL + Redis)
+2. cd .. && npm install
+3. npm run build
+4. npm start &
+5. npm test
+   (Validates complete WebAuthn setup with E2E tests)
+6. If tests pass ✅, open http://localhost:${client_port}
+
+🔐 Security:
+  - Unique passwords auto-generated in docker/secrets/
+  - Secrets mounted as read-only files in containers
+  - .gitignore prevents accidental commits
+  - To rotate: regenerate secrets, restart docker compose
+
+📋 Server Management:
+  - View logs:    cd docker && docker compose logs -f
+  - Stop server:  cd docker && docker compose down
+  - Restart:      cd docker && docker compose restart`,
         },
       ],
     };

@@ -1,10 +1,40 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
 import Handlebars from 'handlebars';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+/**
+ * Validates that a resolved path is contained within a base directory.
+ * Prevents path traversal attacks by ensuring the final path doesn't escape the base.
+ *
+ * @param basePath - The base directory that should contain the result
+ * @param userPath - The user-provided path (potentially malicious)
+ * @returns The validated absolute path
+ * @throws Error if path traversal is detected
+ */
+function validatePathContainment(basePath: string, userPath: string): string {
+  // Resolve both paths to absolute, normalized forms
+  const resolvedBase = resolve(basePath);
+  const resolvedPath = resolve(basePath, userPath);
+
+  // Add path separator to base to prevent false matches with similar directory names
+  // Example: /var/www should not match /var/www-backup
+  const normalizedBase = resolvedBase + sep;
+  const normalizedPath = resolvedPath + sep;
+
+  // Verify the resolved path is within the base directory
+  if (!normalizedPath.startsWith(normalizedBase) && resolvedPath !== resolvedBase) {
+    throw new Error(
+      `Path traversal detected: '${userPath}' resolves outside allowed directory. ` +
+      `Resolved to: ${resolvedPath}, Expected within: ${resolvedBase}`
+    );
+  }
+
+  return resolvedPath;
+}
 
 interface GenerateWebClientArgs {
   project_path: string;
@@ -21,18 +51,36 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     client_port = 8082
   } = args;
 
-  // Validate framework
+  // Validate framework against whitelist
   if (!['vanilla', 'react', 'vue'].includes(framework)) {
     throw new Error(`Unsupported framework: ${framework}. Use 'vanilla', 'react', or 'vue'.`);
   }
 
-  // Check if directory exists
-  if (existsSync(project_path)) {
+  // Security: Validate project_path to prevent path traversal attacks
+  // Get current working directory as the base for allowed operations
+  const cwd = process.cwd();
+  let validatedProjectPath: string;
+
+  try {
+    // Validate that project_path resolves within current working directory
+    validatedProjectPath = validatePathContainment(cwd, project_path);
+  } catch (error: any) {
+    throw new Error(
+      `Invalid project path: ${error.message}\n` +
+      `Path must be relative to current directory and cannot contain '..' traversals.`
+    );
+  }
+
+  // Check if directory exists (using validated path)
+  if (existsSync(validatedProjectPath)) {
     throw new Error(`Directory already exists: ${project_path}. Please choose a different path or remove the existing directory.`);
   }
 
   const files_created: string[] = [];
-  const template_dir = join(__dirname, '..', 'templates', framework);
+
+  // Security: Validate framework path to prevent traversal in template directory
+  const templatesBase = join(__dirname, '..', 'templates');
+  const template_dir = validatePathContainment(templatesBase, framework);
 
   // Template files to generate
   const template_files = [
@@ -55,15 +103,17 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
   };
 
   try {
-    // Create project directory structure
-    mkdirSync(project_path, { recursive: true });
-    mkdirSync(join(project_path, 'src'), { recursive: true });
-    mkdirSync(join(project_path, 'public'), { recursive: true });
+    // Create project directory structure (using validated path)
+    mkdirSync(validatedProjectPath, { recursive: true });
+    mkdirSync(join(validatedProjectPath, 'src'), { recursive: true });
+    mkdirSync(join(validatedProjectPath, 'public'), { recursive: true });
 
     // Generate files from templates
     for (const { template, output } of template_files) {
       const template_path = join(template_dir, template);
-      const output_path = join(project_path, output);
+
+      // Security: Validate output path stays within project directory
+      const output_path = validatePathContainment(validatedProjectPath, output);
 
       // Read template
       const template_content = readFileSync(template_path, 'utf8');

@@ -34,6 +34,9 @@ android-client-library/docs/
 typescript-client-library/src/
 typescript-client-library/dist/
 
+# MCP Server built files (regenerated on npm install via prepare script)
+mcp-server-webauthn-client/dist/
+
 # Generated OpenAPI client files that conflict with our publishing setup
 # (These are cleaned up during generation, but ignore any existing ones)
 android-client-library/git_push.sh

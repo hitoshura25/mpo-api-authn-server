@@ -1,6 +1,6 @@
 {
   "name": "@vmenon25/mcp-server-webauthn-client",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "MCP server and CLI tool for generating WebAuthn TypeScript web clients",
   "type": "module",
   "main": "dist/index.js",

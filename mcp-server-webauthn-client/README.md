@@ -4,7 +4,7 @@ A Model Context Protocol (MCP) server that helps AI agents automatically generat
 
 ## Overview
 
-This MCP server provides AI agents with the ability to generate fully-functional WebAuthn web clients that connect to existing webauthn-server instances. Perfect for users who already have the server running in docker-compose and need a web client to test registration and authentication flows.
+This MCP server provides AI agents with the ability to generate fully-functional WebAuthn web clients that connect to webauthn-server instances.
 
 ## What is MCP?
 
@@ -44,8 +44,13 @@ The generated code automatically includes all critical patterns documented in th
 
 ```bash
 cd mcp-server-webauthn-client
-npm install
-npm run build
+npm install  # Automatically builds dist/ via prepare script
+```
+
+**Note**: The `dist/` directory is automatically built during `npm install` via the `prepare` script in `package.json`. For manual builds:
+```bash
+npm run build  # Build once
+npm run dev    # Watch mode
 ```
 
 ### Global Installation (For AI Agent Discovery)
@@ -354,10 +359,20 @@ The MCP server is automatically published to npm when changes are pushed to the 
 
 **Published Package**: [@vmenon25/mcp-server-webauthn-client](https://www.npmjs.com/package/@vmenon25/mcp-server-webauthn-client)
 
+## Security
+
+This MCP server implements comprehensive security controls to prevent path traversal and other file-system attacks. See [SECURITY.md](SECURITY.md) for:
+- Path traversal prevention measures
+- Attack vectors mitigated
+- Security testing procedures
+- Vulnerability disclosure policy
+
 ## Links
 
 - **Main Project**: [mpo-api-authn-server](https://github.com/hitoshura25/mpo-api-authn-server)
+- **Security Documentation**: [SECURITY.md](SECURITY.md)
 - **Publishing Guide**: [PUBLISHING.md](PUBLISHING.md)
+- **Template Fixes**: [TEMPLATE-FIXES.md](TEMPLATE-FIXES.md)
 - **Token Cost Analysis**: [TOKEN-COST-ANALYSIS.md](TOKEN-COST-ANALYSIS.md)
 - **Multi-Language Integration**: [HYBRID-INTEGRATION-STRATEGIES.md](HYBRID-INTEGRATION-STRATEGIES.md)
 - **Implementation Plan**: [docs/improvements/in-progress/mcp-web-client-generator-implementation.md](../docs/improvements/in-progress/mcp-web-client-generator-implementation.md)

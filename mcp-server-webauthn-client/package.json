@@ -1,0 +1,63 @@
+{
+  "name": "@vmenon25/mcp-server-webauthn-client",
+  "version": "0.0.1",
+  "description": "MCP server and CLI tool for generating WebAuthn TypeScript web clients",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "webauthn-client-gen": "dist/cli.js",
+    "mcp-server-webauthn-client": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "mcp-server",
+    "model-context-protocol",
+    "webauthn",
+    "client-generator",
+    "typescript",
+    "passkeys",
+    "fido2",
+    "cli",
+    "code-generator"
+  ],
+  "mcp": {
+    "server": "dist/index.js",
+    "protocol": "stdio",
+    "capabilities": ["tools"],
+    "tools": {
+      "generate_web_client": {
+        "description": "Generate complete WebAuthn web client with TypeScript, Express server, and WebAuthn integration",
+        "frameworks": ["vanilla", "react", "vue"]
+      }
+    },
+    "documentation": "https://raw.githubusercontent.com/hitoshura25/mpo-api-authn-server/main/.ai-agents.json",
+    "repository": "https://github.com/hitoshura25/mpo-api-authn-server/tree/main/mcp-server-webauthn-client"
+  },
+  "author": "Vinayak Menon",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/hitoshura25/mpo-api-authn-server.git",
+    "directory": "mcp-server-webauthn-client"
+  },
+  "homepage": "https://github.com/hitoshura25/mpo-api-authn-server/tree/main/mcp-server-webauthn-client",
+  "bugs": {
+    "url": "https://github.com/hitoshura25/mpo-api-authn-server/issues"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4",
+    "handlebars": "^4.7.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

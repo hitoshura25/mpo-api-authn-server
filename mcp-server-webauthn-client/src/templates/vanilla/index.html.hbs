@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebAuthn Test Client</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .section h2 {
+            margin-top: 0;
+            color: #555;
+        }
+        .form-group {
+            margin: 15px 0;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        button:disabled {
+            background-color: #6c757d;
+            cursor: not-allowed;
+        }
+        .success {
+            color: #28a745;
+            background-color: #d4edda;
+            border: 1px solid #c3e6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .error {
+            color: #dc3545;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .info {
+            color: #0c5460;
+            background-color: #d1ecf1;
+            border: 1px solid #bee5eb;
+            padding: 10px;
+            border-radius: 4px;
+            margin: 10px 0;
+        }
+        .status {
+            margin: 15px 0;
+            padding: 10px;
+            border-radius: 4px;
+        }
+        #serverUrl {
+            font-family: monospace;
+        }
+        .app-info {
+            background-color: #f8f9fa;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🔐 WebAuthn Passkey Test Client</h1>
+    <p class="subtitle">Test your WebAuthn implementation with real passkey authentication</p>
+
+    <div class="app-info">
+        <strong>📱 Instructions:</strong>
+        <ol>
+            <li>Make sure your WebAuthn server is running at the configured URL</li>
+            <li>Register a new passkey by entering a username and display name</li>
+            <li>Use the passkey to authenticate (with or without username)</li>
+            <li>Test both registration and authentication flows end-to-end</li>
+        </ol>
+    </div>
+
+    <div class="section">
+        <h2>🔧 Server Configuration</h2>
+        <div class="form-group">
+            <label for="serverUrl">Server URL:</label>
+            <input type="text" id="serverUrl" value="{{server_url}}" placeholder="{{server_url}}">
+        </div>
+        <button onclick="testServerConnection()">Test Connection</button>
+        <div id="connectionStatus" class="status"></div>
+    </div>
+
+    <div class="section">
+        <h2>📝 Registration (Create Passkey)</h2>
+        <div class="form-group">
+            <label for="regUsername">Username:</label>
+            <input type="text" id="regUsername" placeholder="Enter username" value="">
+        </div>
+        <div class="form-group">
+            <label for="regDisplayName">Display Name:</label>
+            <input type="text" id="regDisplayName" placeholder="Enter display name" value="">
+        </div>
+        <button onclick="registerPasskey()">🔑 Register Passkey</button>
+        <div id="registrationStatus" class="status"></div>
+    </div>
+
+    <div class="section">
+        <h2>🔓 Authentication (Use Passkey)</h2>
+        <div class="form-group">
+            <label for="authUsername">Username (optional for usernameless flow):</label>
+            <input type="text" id="authUsername"
+                   placeholder="Enter username or leave blank for usernameless authentication">
+        </div>
+        <button onclick="authenticatePasskey()">🛡️ Authenticate with Passkey</button>
+        <div id="authenticationStatus" class="status"></div>
+    </div>
+</div>
+
+<script src="https://unpkg.com/@simplewebauthn/browser@10.0.0/dist/bundle/index.umd.min.js"></script>
+<script src="umd/webauthn-client.umd.js"></script>
+</body>
+</html>

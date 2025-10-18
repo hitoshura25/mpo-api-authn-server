@@ -1,0 +1,303 @@
+// Import published API client library
+import { Configuration, RegistrationApi, AuthenticationApi, HealthApi } from '@vmenon25/mpo-webauthn-client';
+import type {
+    RegistrationRequest,
+    RegistrationCompleteRequest,
+    AuthenticationRequest,
+    AuthenticationCompleteRequest,
+    WebAuthnClientOptions,
+    WebAuthnResult,
+    ConnectionTestResult
+} from './types';
+
+export class WebAuthnClient {
+    private registrationApi: RegistrationApi;
+    private authenticationApi: AuthenticationApi;
+    private healthApi: HealthApi;
+
+    constructor(options: WebAuthnClientOptions | string = {}) {
+        // Support both string URL and options object for backward compatibility
+        const serverUrl = typeof options === 'string' ? options : (options.serverUrl || '{{server_url}}');
+        const configuration = new Configuration({
+            basePath: serverUrl
+        });
+
+        this.registrationApi = new RegistrationApi(configuration);
+        this.authenticationApi = new AuthenticationApi(configuration);
+        this.healthApi = new HealthApi(configuration);
+    }
+
+    /**
+     * Test server connection
+     */
+    async testConnection(): Promise<ConnectionTestResult> {
+        try {
+            const response = await this.healthApi.getHealth();
+            return {
+                success: true,
+                message: '✅ Server connection successful!'
+            };
+        } catch (error: any) {
+            return {
+                success: false,
+                message: `❌ Connection failed: ${error.message}`
+            };
+        }
+    }
+
+    /**
+     * Register a new passkey
+     * This preserves the critical WebAuthn integration pattern documented in CLAUDE.md
+     */
+    async registerPasskey(username: string, displayName: string): Promise<WebAuthnResult> {
+        try {
+            // Step 1: Start registration using generated client
+            const registrationRequest: RegistrationRequest = {
+                username,
+                displayName
+            };
+
+            const startResponse = await this.registrationApi.startRegistration(registrationRequest);
+
+            console.log('Registration options received:', startResponse);
+
+            // CRITICAL: Parse the JSON string as documented in CLAUDE.md
+            let publicKeyOptions: any;
+            if (typeof startResponse.publicKeyCredentialCreationOptions === 'string') {
+                publicKeyOptions = JSON.parse(startResponse.publicKeyCredentialCreationOptions);
+            } else {
+                publicKeyOptions = startResponse.publicKeyCredentialCreationOptions;
+            }
+
+            // Step 2: Create credential using SimpleWebAuthn (preserving critical pattern)
+            const credential = await window.SimpleWebAuthnBrowser.startRegistration(publicKeyOptions.publicKey);
+
+            // Step 3: Complete registration using generated client
+            const completeRequest: RegistrationCompleteRequest = {
+                requestId: startResponse.requestId,
+                credential: JSON.stringify(credential)  // CRITICAL: Must stringify as per CLAUDE.md
+            };
+
+            const completeResponse = await this.registrationApi.completeRegistration(completeRequest);
+
+            if (completeResponse.success) {
+                return {
+                    success: true,
+                    message: '✅ Registration successful! You can now authenticate.',
+                    username
+                };
+            } else {
+                return {
+                    success: false,
+                    message: `❌ Registration failed: ${completeResponse.message || 'Unknown error'}`
+                };
+            }
+
+        } catch (error: any) {
+            console.error('Registration error:', error);
+
+            // Handle specific WebAuthn errors
+            if (error.name === 'InvalidStateError') {
+                return {
+                    success: false,
+                    message: '⚠️ A passkey for this account already exists on this device'
+                };
+            } else if (error.name === 'NotAllowedError') {
+                return {
+                    success: false,
+                    message: '❌ Registration was cancelled or timed out'
+                };
+            } else if (error.name === 'NotSupportedError') {
+                return {
+                    success: false,
+                    message: '❌ WebAuthn is not supported on this device/browser'
+                };
+            } else {
+                return {
+                    success: false,
+                    message: `❌ Registration failed: ${error.message}`
+                };
+            }
+        }
+    }
+
+    /**
+     * Authenticate with a passkey
+     * This preserves the critical WebAuthn integration pattern documented in CLAUDE.md
+     */
+    async authenticatePasskey(username?: string): Promise<WebAuthnResult> {
+        try {
+            // Step 1: Start authentication using generated client
+            const authenticationRequest: AuthenticationRequest = {
+                username: username || null  // null for usernameless authentication
+            };
+
+            const startResponse = await this.authenticationApi.startAuthentication(authenticationRequest);
+
+            console.log('Authentication options received:', startResponse);
+
+            // CRITICAL: Parse the JSON string as documented in CLAUDE.md
+            let publicKeyOptions: any;
+            if (typeof startResponse.publicKeyCredentialRequestOptions === 'string') {
+                publicKeyOptions = JSON.parse(startResponse.publicKeyCredentialRequestOptions);
+            } else {
+                publicKeyOptions = startResponse.publicKeyCredentialRequestOptions;
+            }
+
+            // Step 2: Get authentication assertion using SimpleWebAuthn (preserving critical pattern)
+            const assertion = await window.SimpleWebAuthnBrowser.startAuthentication(publicKeyOptions.publicKey);
+
+            // Step 3: Complete authentication using generated client
+            const completeRequest: AuthenticationCompleteRequest = {
+                requestId: startResponse.requestId,
+                credential: JSON.stringify(assertion)  // CRITICAL: Must stringify as per CLAUDE.md
+            };
+
+            const completeResponse = await this.authenticationApi.completeAuthentication(completeRequest);
+
+            if (completeResponse.success) {
+                return {
+                    success: true,
+                    message: `✅ Authentication successful! Welcome, ${completeResponse.username || 'user'}!`,
+                    username: completeResponse.username
+                };
+            } else {
+                return {
+                    success: false,
+                    message: `❌ Authentication failed: ${completeResponse.message || 'Unknown error'}`
+                };
+            }
+
+        } catch (error: any) {
+            console.error('Authentication error:', error);
+
+            // Handle specific WebAuthn errors
+            if (error.name === 'InvalidStateError') {
+                return {
+                    success: false,
+                    message: '⚠️ No passkey found for this account on this device'
+                };
+            } else if (error.name === 'NotAllowedError') {
+                return {
+                    success: false,
+                    message: '❌ Authentication was cancelled or timed out'
+                };
+            } else if (error.name === 'NotSupportedError') {
+                return {
+                    success: false,
+                    message: '❌ WebAuthn is not supported on this device/browser'
+                };
+            } else {
+                return {
+                    success: false,
+                    message: `❌ Authentication failed: ${error.message}`
+                };
+            }
+        }
+    }
+}
+
+// Global functions for UI compatibility
+export function initializeWebAuthnClient(): void {
+    const client = new WebAuthnClient();
+
+    // Status display function
+    (window as any).showStatus = function(elementId: string, message: string, type: string = 'info') {
+        const element = document.getElementById(elementId);
+        if (element) {
+            element.className = `status ${type}`;
+            element.textContent = message;
+            console.log(`[${type.toUpperCase()}] ${elementId}: ${message}`);
+        }
+    };
+
+    // Get server URL function
+    (window as any).getServerUrl = function(): string {
+        const serverUrlElement = document.getElementById('serverUrl') as HTMLInputElement;
+        return serverUrlElement ? serverUrlElement.value.trim() : '{{server_url}}';
+    };
+
+    // Test server connection
+    (window as any).testServerConnection = async function() {
+        const showStatus = (window as any).showStatus;
+        const serverUrl = (window as any).getServerUrl();
+
+        showStatus('connectionStatus', 'Testing server connection...', 'info');
+
+        const testClient = new WebAuthnClient(serverUrl);
+        const result = await testClient.testConnection();
+
+        showStatus('connectionStatus', result.message, result.success ? 'success' : 'error');
+    };
+
+    // Registration function
+    (window as any).registerPasskey = async function() {
+        const showStatus = (window as any).showStatus;
+        const serverUrl = (window as any).getServerUrl();
+
+        const usernameElement = document.getElementById('regUsername') as HTMLInputElement;
+        const displayNameElement = document.getElementById('regDisplayName') as HTMLInputElement;
+
+        const username = usernameElement?.value.trim() || '';
+        const displayName = displayNameElement?.value.trim() || '';
+
+        if (!username || !displayName) {
+            showStatus('registrationStatus', '⚠️ Please enter both username and display name', 'error');
+            return;
+        }
+
+        showStatus('registrationStatus', '🔄 Starting registration...', 'info');
+
+        const registrationClient = new WebAuthnClient(serverUrl);
+
+        showStatus('registrationStatus', '🔑 Creating passkey...', 'info');
+        const result = await registrationClient.registerPasskey(username, displayName);
+
+        if (result.success) {
+            showStatus('registrationStatus', result.message, 'success');
+            // Pre-fill authentication username field
+            const authUsernameElement = document.getElementById('authUsername') as HTMLInputElement;
+            if (authUsernameElement && result.username) {
+                authUsernameElement.value = result.username;
+            }
+        } else {
+            showStatus('registrationStatus', result.message, 'error');
+        }
+    };
+
+    // Authentication function
+    (window as any).authenticatePasskey = async function() {
+        const showStatus = (window as any).showStatus;
+        const serverUrl = (window as any).getServerUrl();
+
+        const usernameElement = document.getElementById('authUsername') as HTMLInputElement;
+        const username = usernameElement?.value.trim() || undefined;
+
+        showStatus('authenticationStatus', '🔄 Starting authentication...', 'info');
+
+        const authenticationClient = new WebAuthnClient(serverUrl);
+
+        showStatus('authenticationStatus', '🔐 Please use your passkey...', 'info');
+        const result = await authenticationClient.authenticatePasskey(username);
+
+        showStatus('authenticationStatus', result.message, result.success ? 'success' : 'error');
+    };
+}
+
+// Initialize when DOM is loaded
+if (typeof window !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', () => {
+        console.log('🚀 WebAuthn Test Client (TypeScript) loaded');
+        console.log('📋 SimpleWebAuthn library:', window.SimpleWebAuthnBrowser ? 'loaded' : 'not loaded');
+
+        initializeWebAuthnClient();
+
+        // Auto-test server connection
+        setTimeout(() => {
+            const testServerConnection = (window as any).testServerConnection;
+            if (testServerConnection) {
+                testServerConnection();
+            }
+        }, 1000);
+    });
+}

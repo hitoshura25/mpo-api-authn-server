@@ -237,11 +237,186 @@
     "openapi": "https://raw.githubusercontent.com/hitoshura25/mpo-api-authn-server/main/webauthn-server/openapi/webauthn-api.yaml",
     "swagger-ui": "http://localhost:8080/swagger"
   },
+  "client_libraries": {
+    "typescript_npm": {
+      "package": "@vmenon25/mpo-webauthn-client",
+      "description": "Type-safe TypeScript client library for browser-based WebAuthn integration",
+      "installation": "npm install @vmenon25/mpo-webauthn-client @simplewebauthn/browser",
+      "documentation": {
+        "complete_guide": "https://github.com/hitoshura25/mpo-api-authn-server/blob/main/docs/setup/library-usage.md#typescript-npm-library-usage",
+        "working_example": "https://github.com/hitoshura25/mpo-api-authn-server/tree/main/web-test-client",
+        "source_code": "https://github.com/hitoshura25/mpo-api-authn-server/blob/main/web-test-client/src/webauthn-client.ts"
+      },
+      "critical_integration_patterns": {
+        "json_parsing": {
+          "description": "CRITICAL: Server responses contain JSON strings that must be parsed before passing to SimpleWebAuthn",
+          "example": "const publicKeyOptions = JSON.parse(startResponse.publicKeyCredentialCreationOptions).publicKey;"
+        },
+        "simplewebauthn_integration": {
+          "description": "Use SimpleWebAuthn browser library for actual WebAuthn API calls",
+          "dependencies": ["@simplewebauthn/browser"],
+          "example": "const credential = await startRegistration(publicKeyOptions);"
+        },
+        "credential_serialization": {
+          "description": "CRITICAL: Credentials must be stringified before sending to server",
+          "example": "completeRequest.credential = JSON.stringify(credential);"
+        }
+      },
+      "quick_start": {
+        "registration_flow": "import { RegistrationApi, Configuration } from '@vmenon25/mpo-webauthn-client';\nimport { startRegistration } from '@simplewebauthn/browser';\n\nconst config = new Configuration({ basePath: 'http://localhost:8080' });\nconst api = new RegistrationApi(config);\n\n// 1. Start registration\nconst startResponse = await api.startRegistration({ registrationRequest: { username: 'user@example.com' } });\n\n// 2. Parse for SimpleWebAuthn (CRITICAL)\nconst publicKeyOptions = JSON.parse(startResponse.publicKeyCredentialCreationOptions).publicKey;\n\n// 3. Get credential from browser\nconst credential = await startRegistration(publicKeyOptions);\n\n// 4. Complete registration (CRITICAL: stringify credential)\nawait api.completeRegistration({\n  registrationCompleteRequest: {\n    requestId: startResponse.requestId,\n    credential: JSON.stringify(credential)\n  }\n});",
+        "authentication_flow": "import { AuthenticationApi, Configuration } from '@vmenon25/mpo-webauthn-client';\nimport { startAuthentication } from '@simplewebauthn/browser';\n\nconst config = new Configuration({ basePath: 'http://localhost:8080' });\nconst api = new AuthenticationApi(config);\n\n// 1. Start authentication\nconst startResponse = await api.startAuthentication({ authenticationRequest: { username: 'user@example.com' } });\n\n// 2. Parse for SimpleWebAuthn (CRITICAL)\nconst publicKeyOptions = JSON.parse(startResponse.publicKeyCredentialRequestOptions).publicKey;\n\n// 3. Get assertion from browser\nconst assertion = await startAuthentication(publicKeyOptions);\n\n// 4. Complete authentication (CRITICAL: stringify assertion)\nawait api.completeAuthentication({\n  authenticationCompleteRequest: {\n    requestId: startResponse.requestId,\n    credential: JSON.stringify(assertion)\n  }\n});"
+      },
+      "docker_compose_web_client": {
+        "description": "Example docker-compose service for web client that connects to webauthn-server",
+        "yaml": "version: '3.8'\nservices:\n  # Add to existing webauthn-server docker-compose setup\n  web-client:\n    image: node:18-alpine\n    working_dir: /app\n    ports:\n      - \"8082:8082\"\n    environment:\n      - PORT=8082\n      - API_BASE_URL=http://webauthn-server:8080\n    volumes:\n      - ./web-client:/app\n      - /app/node_modules\n    command: sh -c \"npm install && npm run build && npm start\"\n    depends_on:\n      webauthn-server:\n        condition: service_started\n    networks:\n      - webauthn-network\n\nnetworks:\n  webauthn-network:\n    driver: bridge",
+        "notes": [
+          "Ensure webauthn-server is on same Docker network for connectivity",
+          "Set CORS configuration on webauthn-server to allow web-client origin",
+          "Mount your web client code to /app volume",
+          "Install @vmenon25/mpo-webauthn-client and @simplewebauthn/browser in package.json"
+        ]
+      },
+      "cors_configuration": {
+        "description": "WebAuthn server must be configured to accept browser requests",
+        "required_for": "Browser-based clients (web applications)",
+        "configuration": {
+          "allowed_origins": ["http://localhost:8082", "https://your-app.com"],
+          "allowed_methods": ["GET", "POST", "OPTIONS"],
+          "allowed_headers": ["Content-Type", "Authorization"]
+        },
+        "note": "Server already includes CORS support - verify MPO_AUTHN_APP_RELYING_PARTY_ID matches your frontend domain"
+      },
+      "common_pitfalls": {
+        "forgot_json_parsing": "Error: SimpleWebAuthn expects parsed object, not JSON string. Always parse publicKeyCredentialCreationOptions/publicKeyCredentialRequestOptions",
+        "forgot_credential_stringify": "Error: Server expects JSON string, not object. Always stringify credential/assertion before sending to server",
+        "cors_errors": "Error: Browser blocks request due to CORS. Ensure MPO_AUTHN_APP_RELYING_PARTY_ID matches your frontend domain",
+        "network_connectivity": "Error: Cannot connect to server. Ensure web client can reach webauthn-server (use Docker network or correct hostname)"
+      }
+    },
+    "android": {
+      "package": "io.github.hitoshura25:mpo-webauthn-android-client",
+      "documentation": "https://github.com/hitoshura25/mpo-api-authn-server/blob/main/docs/setup/library-usage.md#android-library-usage",
+      "note": "See documentation for Android client library setup and usage"
+    }
+  },
+  "mcp_servers": {
+    "webauthn_client_generator": {
+      "package": "@vmenon25/mcp-server-webauthn-client",
+      "description": "MCP server for generating WebAuthn web clients that connect to existing webauthn-server instances",
+      "source": "https://github.com/hitoshura25/mpo-api-authn-server/tree/main/mcp-server-webauthn-client",
+      "installation": {
+        "mcp": {
+          "local": "cd mcp-server-webauthn-client && npm install && npm run build",
+          "global": "npm install -g @vmenon25/mcp-server-webauthn-client",
+          "npx": "npx -y @vmenon25/mcp-server-webauthn-client"
+        },
+        "cli": {
+          "npx": "npx -y @vmenon25/mcp-server-webauthn-client --help",
+          "global": "npm install -g @vmenon25/mcp-server-webauthn-client && webauthn-client-gen --help"
+        }
+      },
+      "usage_modes": {
+        "mcp_mode": {
+          "description": "For MCP-compatible AI agents (Claude Code, Continue.dev, Cline)",
+          "setup": "Add to claude_config.json in project root",
+          "token_cost": "0 tokens - native MCP integration"
+        },
+        "cli_mode": {
+          "description": "For non-MCP agents (Cursor, Aider, Windsurf) or direct usage",
+          "command": "npx -y @vmenon25/mcp-server-webauthn-client [OPTIONS]",
+          "token_cost": "~1500 tokens (one-time discovery via .ai-agents.json)"
+        }
+      },
+      "tools": {
+        "generate_web_client": {
+          "description": "Generate complete web client with TypeScript, Express server, and WebAuthn integration",
+          "parameters": {
+            "project_path": "Where to create the web client directory (e.g., './web-client')",
+            "framework": "Web framework: 'vanilla', 'react', or 'vue' (default: 'vanilla')",
+            "server_url": "URL of webauthn-server instance (default: 'http://localhost:8080')",
+            "client_port": "Port for web client dev server (default: 8082)"
+          },
+          "frameworks_supported": ["vanilla", "react", "vue"],
+          "critical_features": [
+            "Preserves JSON parsing patterns for WebAuthn API",
+            "Includes SimpleWebAuthn browser library integration",
+            "Proper credential serialization",
+            "Comprehensive error handling",
+            "Working Express dev server",
+            "Complete build toolchain (Webpack, TypeScript, Babel)"
+          ],
+          "generated_files": [
+            "package.json - All required dependencies",
+            "src/webauthn-client.ts - Complete WebAuthn integration",
+            "src/types.ts - TypeScript type definitions",
+            "src/server.ts - Express dev server",
+            "src/index.ts - Entry point",
+            "public/index.html - Test UI",
+            "webpack.config.js - Build configuration",
+            "tsconfig.json - TypeScript configuration",
+            "tsconfig.build.json - Build-specific TypeScript config",
+            "README.md - Usage instructions"
+          ]
+        }
+      },
+      "example_usage": {
+        "mcp_agent_example": {
+          "scenario": "MCP-compatible agent (Claude Code)",
+          "user_prompt": "Create a web client to test my webauthn-server running on port 8080",
+          "ai_agent_action": "Calls generate_web_client MCP tool with project_path='./web-client', server_url='http://localhost:8080'",
+          "result": "Complete working web client generated with all critical patterns preserved",
+          "token_cost": "0 tokens"
+        },
+        "non_mcp_agent_example": {
+          "scenario": "Non-MCP agent (Cursor, Aider, Windsurf)",
+          "user_prompt": "Create a web client to test my webauthn-server running on port 8080",
+          "ai_agent_action": "Reads .ai-agents.json, suggests CLI command: npx -y @vmenon25/mcp-server-webauthn-client --path ./web-client --server http://localhost:8080",
+          "result": "User runs command, web client generated",
+          "token_cost": "~1500 tokens (one-time .ai-agents.json read)"
+        },
+        "cli_examples": {
+          "basic": "npx -y @vmenon25/mcp-server-webauthn-client",
+          "custom_path": "npx -y @vmenon25/mcp-server-webauthn-client --path ./auth-client",
+          "custom_server": "npx -y @vmenon25/mcp-server-webauthn-client --server http://localhost:9000 --port 3000",
+          "production_server": "npx -y @vmenon25/mcp-server-webauthn-client --server https://auth.example.com"
+        },
+        "next_steps": [
+          "cd web-client",
+          "npm install",
+          "npm run build",
+          "npm start",
+          "Open http://localhost:8082"
+        ]
+      },
+      "integration_with_claude_code": {
+        "configuration": "Add to claude_config.json in your project root",
+        "config_example": {
+          "mcpServers": {
+            "webauthn-client-generator": {
+              "command": "node",
+              "args": ["path/to/mcp-server-webauthn-client/dist/index.js"]
+            }
+          }
+        },
+        "usage": "Claude Code will automatically discover the MCP server and offer to generate web clients when appropriate"
+      },
+      "benefits_over_manual_setup": [
+        "Zero configuration - works out of the box",
+        "All critical WebAuthn patterns automatically included",
+        "Complete build toolchain pre-configured",
+        "Type-safe TypeScript implementation",
+        "Production-ready Express server",
+        "Comprehensive error handling",
+        "No need to study documentation - just generate and run"
+      ]
+    }
+  },
   "ai-agent-notes": {
     "relying-party-id": "CRITICAL: MPO_AUTHN_APP_RELYING_PARTY_ID must match the domain where your frontend is hosted. Use 'localhost' for local development only.",
     "passwords": "Generate secure random passwords for POSTGRES_PASSWORD and REDIS_PASSWORD. Do not use default values in production.",
     "health-checks": "The webauthn-server uses a distroless image without curl/wget. Use external health checks via HTTP GET to /health endpoint.",
     "jaeger-optional": "Jaeger is optional for observability. Omit if you don't need distributed tracing.",
-    "staging-images": "Never use ghcr.io staging images in production - they are for CI testing only."
+    "staging-images": "Never use ghcr.io staging images in production - they are for CI testing only.",
+    "mcp-server": "For AI agents: Use the generate_web_client MCP tool to automatically create complete web clients for users. This is faster and more reliable than manually guiding users through setup."
   }
 }

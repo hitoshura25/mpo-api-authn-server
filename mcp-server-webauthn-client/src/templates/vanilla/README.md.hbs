@@ -143,6 +143,48 @@ npm run dev  # Build dev bundle + start
 
 ## Testing
 
+### Automated End-to-End Tests
+
+The generated client includes Playwright tests to validate WebAuthn functionality end-to-end.
+
+**Prerequisites:**
+- WebAuthn server running at `{{server_url}}`
+- Client built and ready to start
+
+**Running Tests:**
+```bash
+# Ensure client is built
+npm run build
+
+# Run all E2E tests
+npm test
+
+# Run with interactive UI (great for debugging)
+npm run test:ui
+
+# Run in headed mode (see browser)
+npm run test:headed
+
+# View test report after run
+npm run test:report
+```
+
+**What the Tests Cover:**
+- ✅ Complete registration flow (create passkey)
+- ✅ Complete authentication flow (use passkey)
+- ✅ Uses Chromium virtual authenticator (no real device needed)
+- ✅ Validates both flows work end-to-end with your server
+
+**How It Works:**
+1. Playwright starts the web client automatically
+2. Sets up a virtual authenticator (simulates passkey device)
+3. Tests full registration and authentication flows
+4. Cleans up after tests complete
+
+**Note**: Tests use Chromium's virtual authenticator, so no physical security key or biometric device is required. The tests validate your WebAuthn server integration is working correctly.
+
+### Manual Testing
+
 1. **Test Connection**: Click "Test Connection" to verify server availability
 2. **Register**: Create a new passkey with username and display name
 3. **Authenticate**: Use your passkey to authenticate

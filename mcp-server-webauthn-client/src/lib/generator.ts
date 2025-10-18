@@ -73,7 +73,12 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     { template: 'webpack.config.js.hbs', output: 'webpack.config.js' },
     { template: 'tsconfig.json.hbs', output: 'tsconfig.json' },
     { template: 'tsconfig.build.json.hbs', output: 'tsconfig.build.json' },
-    { template: 'README.md.hbs', output: 'README.md' }
+    { template: 'README.md.hbs', output: 'README.md' },
+    // Playwright E2E tests
+    { template: 'playwright.config.js.hbs', output: 'playwright.config.js' },
+    { template: 'global-setup.js.hbs', output: 'global-setup.js' },
+    { template: 'global-teardown.js.hbs', output: 'global-teardown.js' },
+    { template: 'tests/webauthn.spec.js.hbs', output: 'tests/webauthn.spec.js' }
   ];
 
   // Template variables
@@ -87,6 +92,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     mkdirSync(project_path, { recursive: true });
     mkdirSync(join(project_path, 'src'), { recursive: true });
     mkdirSync(join(project_path, 'public'), { recursive: true });
+    mkdirSync(join(project_path, 'tests'), { recursive: true });
 
     // Generate files from templates
     for (const { template, output } of template_files) {
@@ -122,7 +128,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
       content: [
         {
           type: 'text',
-          text: `✅ Web client generated successfully!\n\nFiles created:\n${files_created.map(f => `  - ${f}`).join('\n')}\n\nNext steps:\n1. cd ${project_path}\n2. npm install\n3. npm run build\n4. npm start\n5. Open http://localhost:${client_port}`,
+          text: `✅ Web client generated successfully!\n\nFiles created:\n${files_created.map(f => `  - ${f}`).join('\n')}\n\nNext steps:\n1. cd ${project_path}\n2. npm install\n3. npm run build\n4. npm start (in terminal 1)\n5. npm test (in terminal 2 - validates WebAuthn integration with E2E tests)\n6. If tests pass ✅, open http://localhost:${client_port} for manual testing`,
         },
       ],
     };

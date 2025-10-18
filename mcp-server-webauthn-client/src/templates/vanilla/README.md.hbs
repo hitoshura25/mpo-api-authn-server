@@ -70,11 +70,25 @@ credential: JSON.stringify(credential)
 
 ## Architecture
 
+### Server Design: Express vs webpack-dev-server
+
+This project uses **Express server** (`src/server.ts`) instead of webpack-dev-server for serving the application. This design choice provides:
+
+1. **Production-like environment** - Same server code in dev and production
+2. **Custom middleware** - CORS, health checks, static file serving
+3. **Deployment-ready** - Express server can be deployed as-is
+4. **Flexibility** - Easy to add API endpoints, authentication, etc.
+
+The Express server serves:
+- Static files from `dist/` (webpack bundles)
+- HTML from source `public/` directory
+- Health check endpoint at `/health`
+
 ### Dependencies
 - **@vmenon25/mpo-webauthn-client** - Published npm client library for API communication
-- **@simplewebauthn/browser** - Browser WebAuthn implementation
-- **Express** - Development server
-- **Webpack** - Module bundling
+- **@simplewebauthn/browser** - Browser WebAuthn implementation (loaded via CDN)
+- **Express** - Development and production server
+- **Webpack** - Module bundling and optimization
 - **TypeScript** - Type-safe development
 
 ### File Structure
@@ -94,11 +108,38 @@ credential: JSON.stringify(credential)
 
 ## Development Scripts
 
-- `npm run build` - Production build
-- `npm run build:dev` - Development build
-- `npm start` - Start the server
-- `npm run dev` - Build and start in one command
-- `npm run dev:server` - Development server with hot reload
+### Production Workflow
+- `npm run build` - Full production build (webpack + TypeScript server compilation)
+- `npm start` - Start the Express server (requires prior build)
+
+### Development Workflow
+- `npm run dev` - Quick development build and start (webpack dev mode + TypeScript server compilation)
+- `npm run dev:watch` - Hot-reload development server using ts-node (no build required, watches for changes)
+
+### Individual Build Steps
+- `npm run build:dev` - Development webpack build + server compilation
+- `npm run build:server` - Compile TypeScript server only
+
+### Recommended Workflows
+
+**Production deployment:**
+```bash
+npm install
+npm run build
+npm start
+```
+
+**Development (quick iteration):**
+```bash
+npm install
+npm run dev:watch  # Hot-reload with ts-node
+```
+
+**Development (test production-like build):**
+```bash
+npm install
+npm run dev  # Build dev bundle + start
+```
 
 ## Testing
 
@@ -119,11 +160,13 @@ credential: JSON.stringify(credential)
 - **NotSupportedError**: WebAuthn not supported in this browser
 
 ### Browser Support
-WebAuthn is supported in:
+WebAuthn is supported in modern browsers:
 - Chrome/Edge 67+
 - Firefox 60+
 - Safari 13+
 - Opera 54+
+
+**Note**: This project excludes IE 11 from transpilation targets since WebAuthn is not supported on IE 11.
 
 ## Security Notes
 

@@ -1,6 +1,5 @@
 const path = require('path');
 const HtmlWebpackPlugin = require('html-webpack-plugin');
-const { CleanWebpackPlugin } = require('clean-webpack-plugin');
 const TerserPlugin = require('terser-webpack-plugin');
 
 const isDevelopment = process.env.NODE_ENV !== 'production';
@@ -9,12 +8,6 @@ module.exports = {
   mode: isDevelopment ? 'development' : 'production',
   entry: './src/index.ts',
   devtool: isDevelopment ? 'inline-source-map' : 'source-map',
-  devServer: {
-    static: './dist',
-    port: {{client_port}},
-    hot: true,
-    open: true
-  },
   module: {
     rules: [
       {
@@ -26,7 +19,7 @@ module.exports = {
               presets: [
                 ['@babel/preset-env', {
                   targets: {
-                    browsers: ['> 1%', 'last 2 versions', 'ie >= 11']
+                    browsers: ['> 1%', 'last 2 versions', 'not dead', 'not ie 11']
                   },
                   modules: false
                 }]
@@ -43,7 +36,7 @@ module.exports = {
     extensions: ['.tsx', '.ts', '.js'],
   },
   output: {
-    filename: isDevelopment ? 'webauthn-client.dev.js' : 'umd/webauthn-client.umd.js',
+    filename: 'umd/webauthn-client.umd.js',
     path: path.resolve(__dirname, 'dist'),
     clean: true,
     library: {
@@ -67,7 +60,6 @@ module.exports = {
     })] : [],
   },
   plugins: [
-    new CleanWebpackPlugin(),
     ...(isDevelopment ? [
       new HtmlWebpackPlugin({
         template: './public/index.html',

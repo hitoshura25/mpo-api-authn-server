@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname, resolve, sep } from 'path';
+import { join, dirname, resolve, relative, isAbsolute, sep } from 'path';
 import { fileURLToPath } from 'url';
 import Handlebars from 'handlebars';
 
@@ -7,29 +7,103 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * Validates that a resolved path is contained within a base directory.
- * Prevents path traversal attacks by ensuring the final path doesn't escape the base.
+ * Validates that a user-provided path is safe and contained within a base directory.
+ * Implements industry-standard path traversal prevention with multiple validation layers.
+ *
+ * Security Approach:
+ * 1. Pre-Resolution Validation: Sanitize and validate input BEFORE path.resolve()
+ * 2. Post-Resolution Containment: Verify resolved path stays within base directory
+ * 3. Defense in Depth: Multiple independent checks for maximum security
  *
  * @param basePath - The base directory that should contain the result
  * @param userPath - The user-provided path (potentially malicious)
  * @returns The validated absolute path
  * @throws Error if path traversal is detected
+ *
+ * @see https://github.com/googleapis/nodejs-storage/pull/2654
+ * @see https://owasp.org/www-community/attacks/Path_Traversal
  */
 function validatePathContainment(basePath: string, userPath: string): string {
-  // Resolve both paths to absolute, normalized forms
-  const resolvedBase = resolve(basePath);
-  const resolvedPath = resolve(basePath, userPath);
+  // ========================================
+  // PRE-RESOLUTION VALIDATION
+  // Validate input BEFORE calling path.resolve()
+  // ========================================
 
-  // Add path separator to base to prevent false matches with similar directory names
-  // Example: /var/www should not match /var/www-backup
+  // 1. URL decode to prevent encoding-based bypass attacks
+  //    Example: %2e%2e%2f%2e%2e%2f encodes ../../
+  let decodedPath: string;
+  try {
+    decodedPath = decodeURIComponent(userPath);
+  } catch (error) {
+    // Invalid URI encoding - likely malicious
+    throw new Error(
+      `Path traversal detected: Invalid URI encoding in path '${userPath}'`
+    );
+  }
+
+  // 2. Reject absolute paths immediately (before path.resolve)
+  //    Example: /etc/passwd, C:\Windows\System32
+  if (isAbsolute(decodedPath)) {
+    throw new Error(
+      `Path traversal detected: Absolute paths not allowed.\n` +
+      `Received: '${userPath}'\n` +
+      `Decoded: '${decodedPath}'`
+    );
+  }
+
+  // 3. Early detection of obvious traversal markers (defense in depth)
+  //    Note: Main defense is post-resolution check, but this provides early warning
+  if (decodedPath.includes('..')) {
+    // Don't reject yet - path.relative() check is authoritative
+    // But log for security monitoring
+    console.warn(
+      `[Security] Path contains '..' marker: ${userPath} (will validate post-resolution)`
+    );
+  }
+
+  // ========================================
+  // RESOLUTION
+  // Now safe to call path.resolve() with pre-validated input
+  // ========================================
+
+  const resolvedBase = resolve(basePath);
+  const resolvedPath = resolve(basePath, decodedPath);
+
+  // ========================================
+  // POST-RESOLUTION CONTAINMENT CHECKS
+  // Verify resolved path stays within base directory
+  // ========================================
+
+  // 4. PRIMARY CHECK: Use path.relative() to detect directory escape
+  //    Industry standard pattern (Google Cloud, enterprise security)
+  //    Example:
+  //      relative('/base', '/base/sub')    → 'sub'       ✅ Safe
+  //      relative('/base', '/etc/passwd')  → '../../etc' ❌ Escaped
+  const relativePath = relative(resolvedBase, resolvedPath);
+
+  if (relativePath.startsWith('..') || isAbsolute(relativePath)) {
+    throw new Error(
+      `Path traversal detected: '${userPath}' resolves outside allowed directory.\n` +
+      `Base directory: ${resolvedBase}\n` +
+      `Attempted path: ${resolvedPath}\n` +
+      `Relative path: ${relativePath}\n` +
+      `Reason: ${relativePath.startsWith('..') ? 'Escapes base with ..' : 'Results in absolute path'}`
+    );
+  }
+
+  // 5. SECONDARY CHECK: Prefix validation with path separator (defense in depth)
+  //    Prevents false matches with similar directory names
+  //    Example: /var/www should not match /var/www-backup
   const normalizedBase = resolvedBase + sep;
   const normalizedPath = resolvedPath + sep;
 
-  // Verify the resolved path is within the base directory
   if (!normalizedPath.startsWith(normalizedBase) && resolvedPath !== resolvedBase) {
     throw new Error(
-      `Path traversal detected: '${userPath}' resolves outside allowed directory. ` +
-      `Resolved to: ${resolvedPath}, Expected within: ${resolvedBase}`
+      `Path traversal detected: Resolved path does not start with base directory.\n` +
+      `Base directory: ${resolvedBase}\n` +
+      `Resolved path: ${resolvedPath}\n` +
+      `Normalized base: ${normalizedBase}\n` +
+      `Normalized path: ${normalizedPath}`
     );
   }
 

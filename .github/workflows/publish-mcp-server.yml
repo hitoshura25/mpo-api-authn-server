@@ -36,7 +36,6 @@ on:
       - 'mcp-server-webauthn-client/**'
       - .github/workflows/publish-mcp-server.yml
   pull_request:
-    types: [opened]
     paths:
       - 'mcp-server-webauthn-client/**'
       - .github/workflows/publish-mcp-server.yml

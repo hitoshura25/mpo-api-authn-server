@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
-import { join, dirname } from 'path';
+import { join, dirname, normalize } from 'path';
 import { fileURLToPath } from 'url';
 import Handlebars from 'handlebars';
 
@@ -31,6 +31,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     throw new Error(`Directory already exists: ${project_path}. Please choose a different path or remove the existing directory.`);
   }
 
+  const project_path_normalized = normalize(project_path);
   const files_created: string[] = [];
   const template_dir = join(__dirname, '..', 'templates', framework);
 
@@ -56,14 +57,14 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
 
   try {
     // Create project directory structure
-    mkdirSync(project_path, { recursive: true });
-    mkdirSync(join(project_path, 'src'), { recursive: true });
-    mkdirSync(join(project_path, 'public'), { recursive: true });
+    mkdirSync(project_path_normalized, { recursive: true });
+    mkdirSync(join(project_path_normalized, 'src'), { recursive: true });
+    mkdirSync(join(project_path_normalized, 'public'), { recursive: true });
 
     // Generate files from templates
     for (const { template, output } of template_files) {
       const template_path = join(template_dir, template);
-      const output_path = join(project_path, output);
+      const output_path = join(project_path_normalized, output);
 
       // Read template
       const template_content = readFileSync(template_path, 'utf8');
@@ -84,7 +85,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
       content: [
         {
           type: 'text',
-          text: `✅ Web client generated successfully!\n\nFiles created:\n${files_created.map(f => `  - ${f}`).join('\n')}\n\nNext steps:\n1. cd ${project_path}\n2. npm install\n3. npm run build\n4. npm start\n5. Open http://localhost:${client_port}`,
+          text: `✅ Web client generated successfully!\n\nFiles created:\n${files_created.map(f => `  - ${f}`).join('\n')}\n\nNext steps:\n1. cd ${project_path_normalized}\n2. npm install\n3. npm run build\n4. npm start\n5. Open http://localhost:${client_port}`,
         },
       ],
     };

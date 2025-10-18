@@ -11,9 +11,11 @@
 # - GitHub release creation with installation instructions
 #
 # VERSIONING:
-# - Format: mcp-server-v{major}.{minor}.{patch} (e.g., mcp-server-v1.0.5)
+# - Main branch format: mcp-server-v{major}.{minor}.{patch} (e.g., mcp-server-v1.0.5)
+# - PR branch format: mcp-server-v{major}.{minor}.{patch}-rc.{pr}.{run} (e.g., mcp-server-v1.0.6-rc.42.123)
 # - Auto-increments patch version from highest existing tag
 # - Independent from npm-client-v* and android-client-v* tags
+# - PR builds: Version includes release candidate suffix, no npm publish/tag/release
 #
 # SECURITY:
 # - npm publishing: Uses NPM_PUBLISH_TOKEN secret
@@ -21,6 +23,7 @@
 #
 # TRIGGER:
 # - Push to main branch
+# - Pull requests (for testing)
 # - Path filter: mcp-server-webauthn-client/**
 
 name: Publish MCP Server
@@ -28,6 +31,9 @@ name: Publish MCP Server
 on:
   push:
     branches: [main]
+    paths:
+      - 'mcp-server-webauthn-client/**'
+  pull_request:
     paths:
       - 'mcp-server-webauthn-client/**'
 
@@ -54,7 +60,7 @@ jobs:
 
           if [[ -z "$HIGHEST_TAG" ]]; then
             # No existing tags, start with 0.0.1
-            NEW_VERSION="0.0.1"
+            BASE_VERSION="0.0.1"
             echo "📋 No existing tags found, starting with version 0.0.1"
           else
             # Extract patch number and increment
@@ -62,9 +68,22 @@ jobs:
             MINOR=$(echo "$HIGHEST_TAG" | cut -d. -f2)
             PATCH=$(echo "$HIGHEST_TAG" | cut -d. -f3)
             NEW_PATCH=$((PATCH + 1))
-            NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+            BASE_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
             echo "📋 Latest version: $HIGHEST_TAG"
-            echo "📋 New version: $NEW_VERSION"
+            echo "📋 Next base version: $BASE_VERSION"
+          fi
+
+          # Determine final version based on event type
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # PR: Add release candidate suffix with PR number and run number
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+            RUN_NUMBER="${{ github.run_number }}"
+            NEW_VERSION="${BASE_VERSION}-rc.${PR_NUMBER}.${RUN_NUMBER}"
+            echo "🔄 PR release candidate version: $NEW_VERSION (PR #${PR_NUMBER}, run ${RUN_NUMBER})"
+          else
+            # Main branch: Use base version
+            NEW_VERSION="${BASE_VERSION}"
+            echo "📦 Main branch release: $NEW_VERSION"
           fi
 
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
@@ -74,7 +93,10 @@ jobs:
         run: |
           echo "📝 Updating package.json to version ${{ steps.version.outputs.version }}..."
           cd mcp-server-webauthn-client
-          npm version ${{ steps.version.outputs.version }} --no-git-tag-version
+
+          # Use jq to update version directly (avoids npm version "not changed" error)
+          jq --arg version "${{ steps.version.outputs.version }}" '.version = $version' package.json > package.json.tmp
+          mv package.json.tmp package.json
 
           echo "✅ package.json updated"
           echo "📋 Current package.json version:"
@@ -127,7 +149,8 @@ jobs:
 
           echo "✅ All required entry points exist"
 
-      - name: Publish to npm
+      - name: Publish to npm (main branch only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_PUBLISH_TOKEN }}
         run: |
@@ -148,7 +171,15 @@ jobs:
           echo "✅ MCP server published to npm successfully"
           echo "📦 Package: @vmenon25/mcp-server-webauthn-client@${{ steps.version.outputs.version }}"
 
-      - name: Create Git tag
+      - name: Skip npm publishing (PR build)
+        if: github.event_name == 'pull_request'
+        run: |
+          echo "⏭️ Skipping npm publishing for PR build"
+          echo "📦 PR version: @vmenon25/mcp-server-webauthn-client@${{ steps.version.outputs.version }}"
+          echo "ℹ️ This version would be published on main branch merge"
+
+      - name: Create Git tag (main branch only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           echo "🏷️ Creating Git tag ${{ steps.version.outputs.tag }}..."
           git config user.name "github-actions[bot]"
@@ -157,7 +188,8 @@ jobs:
           git push origin ${{ steps.version.outputs.tag }}
           echo "✅ Git tag created and pushed"
 
-      - name: Create GitHub Release
+      - name: Create GitHub Release (main branch only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ steps.version.outputs.tag }}
@@ -258,10 +290,24 @@ jobs:
 
       - name: Publishing summary
         run: |
-          echo "🎯 MCP Server Publishing Results:"
+          echo "🎯 MCP Server Build Results:"
           echo "  Package: @vmenon25/mcp-server-webauthn-client@${{ steps.version.outputs.version }}"
-          echo "  Git tag: ${{ steps.version.outputs.tag }}"
-          echo "  Registry: https://registry.npmjs.org"
-          echo "  GitHub Release: Created"
-          echo ""
-          echo "✅ MCP server published successfully!"
+          echo "  Event: ${{ github.event_name }}"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "  Type: Release Candidate (PR #${{ github.event.pull_request.number }})"
+            echo "  Published to npm: No (PR build)"
+            echo "  Git tag: Not created (PR build)"
+            echo "  GitHub Release: Not created (PR build)"
+            echo ""
+            echo "ℹ️ This is a PR build with release candidate version"
+            echo "ℹ️ The package will be published to npm when merged to main"
+          else
+            echo "  Type: Production Release"
+            echo "  Published to npm: Yes"
+            echo "  Git tag: ${{ steps.version.outputs.tag }}"
+            echo "  Registry: https://registry.npmjs.org"
+            echo "  GitHub Release: Created"
+            echo ""
+            echo "✅ MCP server published successfully!"
+          fi

@@ -44,7 +44,23 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
   }
 
   const files_created: string[] = [];
-  const template_dir = join(__dirname, '..', 'templates', framework);
+
+  // Template directory resolution with fallback paths:
+  // 1. dist/templates (when published via npm and built)
+  // 2. src/templates (during development)
+  const distTemplateDir = join(__dirname, '..', 'templates', framework);
+  const srcTemplateDir = join(__dirname, '..', '..', 'src', 'templates', framework);
+
+  const template_dir = existsSync(distTemplateDir) ? distTemplateDir : srcTemplateDir;
+
+  // Verify template directory exists
+  if (!existsSync(template_dir)) {
+    throw new Error(
+      `Template directory not found for framework '${framework}'. ` +
+      `Tried:\n  - ${distTemplateDir}\n  - ${srcTemplateDir}\n` +
+      `Templates may not be implemented yet for this framework.`
+    );
+  }
 
   // Template files to generate
   const template_files = [

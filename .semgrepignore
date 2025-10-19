@@ -40,6 +40,11 @@
 **/CHANGELOG*
 **/CONTRIBUTING*
 
+# OpenAPI specifications contain example values, not real secrets
+**/openapi/
+**/*openapi.yaml
+**/*openapi.yml
+
 # Docker and DevOps Files that don't contain security-critical code
 **/Dockerfile
 **/docker-compose*.yml

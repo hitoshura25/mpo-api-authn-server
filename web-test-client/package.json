@@ -54,7 +54,7 @@
   "dependencies": {
     "@simplewebauthn/browser": "^9.0.1",
     "@vmenon25/mpo-webauthn-client": "latest",
-    "axios": "^1.6.1",
+    "axios": "^1.12.0",
     "cors": "^2.8.5",
     "express": "^4.18.2"
   }

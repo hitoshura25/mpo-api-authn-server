@@ -148,21 +148,27 @@ rules:
     languages: [kotlin, java]
     patterns:
       - pattern-either:
+          # Debug mode bypasses returning WebAuthn success results
           - pattern: |
               if ($DEBUG) {
-                return $SUCCESS_RESULT
+                return AssertionResult.successful($CREDENTIAL)
               }
           - pattern: |
+              if ($DEBUG) {
+                return RegistrationResult.success($CREDENTIAL)
+              }
+          # TODO stubs returning WebAuthn success results
+          - pattern: |
               // TODO: implement proper validation
-              return $SUCCESS_RESULT
+              return AssertionResult.successful($CREDENTIAL)
+          - pattern: |
+              // TODO: implement proper validation
+              return RegistrationResult.success($CREDENTIAL)
+          # Direct WebAuthn success returns without validation
           - pattern: |
               return AssertionResult.successful($CREDENTIAL)
           - pattern: |
               return RegistrationResult.success($CREDENTIAL)
-      # Exclude legitimate control flow patterns
-      - pattern-not: return true
-      - pattern-not: return false
-      - pattern-not: return null
       # Exclude functions that properly call Yubico library validation
       - pattern-not-inside: |
           ...
@@ -172,6 +178,20 @@ rules:
           ...
           relyingParty.finishRegistration(...)
           ...
+      # Exclude JWT service functions (not WebAuthn validation)
+      - pattern-not-inside: |
+          class JwtService {
+            ...
+          }
+      - pattern-not-inside: |
+          fun createToken(...): $RESULT {
+            ...
+          }
+      - pattern-not-inside: |
+          fun verifyToken(...): $RESULT {
+            ...
+          }
+      # Only match within WebAuthn validation functions
       - pattern-inside:
           pattern-either:
             - pattern: |

@@ -316,17 +316,29 @@ components:
       type: object
       required:
         - success
-        - message
+        - access_token
+        - token_type
+        - expires_in
         - username
       properties:
         success:
           type: boolean
           description: Whether authentication was successful
           example: true
-        message:
+        access_token:
           type: string
-          description: Success message confirming authentication
-          example: "Authentication successful"
+          description: JWT access token for authenticated session (RS256-signed)
+          example: "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJtcG8td2ViYXV0aG4iLCJzdWIiOiJqb2huLmRvZSIsImlhdCI6MTYxNjIzOTAyMiwiZXhwIjoxNjE2MjM5OTIyfQ.signature"
+        token_type:
+          type: string
+          description: OAuth 2.0 token type
+          enum: [Bearer]
+          example: "Bearer"
+        expires_in:
+          type: integer
+          format: int32
+          description: Token expiration time in seconds (15 minutes)
+          example: 900
         username:
           type: string
           description: The authenticated username

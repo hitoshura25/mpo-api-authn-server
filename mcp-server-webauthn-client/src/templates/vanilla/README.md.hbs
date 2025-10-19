@@ -26,11 +26,20 @@ The client will be available at: **http://localhost:{{client_port}}**
 
 ## Configuration
 
-The client is configured to connect to your WebAuthn server at:
-- **Server URL**: `{{server_url}}`
+The client is configured to connect to the zero-trust stack at:
+- **Gateway URL**: `http://localhost:8000` (Envoy Gateway - entry point)
 - **Client Port**: `{{client_port}}`
+- **WebAuthn Server**: `{{server_url}}` (internal, accessed via gateway)
 
 You can change the server URL in the web UI or by modifying the configuration.
+
+### Port Assignments
+- **8000** - Envoy Gateway (main entry point for all API calls)
+- **{{client_port}}** - Web client development server
+- **9000** - Example Service (accessed via `/api/*` through gateway)
+- **5432** - PostgreSQL database
+- **6379** - Redis cache
+- **9901** - Envoy admin interface
 
 ## Features
 
@@ -69,6 +78,57 @@ credential: JSON.stringify(credential)
 ```
 
 ## Architecture
+
+### Zero-Trust Architecture Overview
+
+This project implements a **complete zero-trust architecture** with JWT-based authentication:
+
+```
+┌─────────────┐
+│   Client    │
+│  (Browser)  │
+└──────┬──────┘
+       │
+       ▼
+┌──────────────────────────────────────────┐
+│        Envoy Gateway (Port 8000)         │
+│  - JWT Verification for /api/* routes   │
+│  - Public routes: /register, /authen... │
+└──────┬───────────────────────────────────┘
+       │
+       ├─────────────────┬─────────────────┐
+       ▼                 ▼                 ▼
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│  WebAuthn   │   │  Example    │   │  Your       │
+│  Server     │   │  Service    │   │  Services   │
+│  (JWT       │   │  (Protected │   │  (Add       │
+│   Issuer)   │   │   APIs)     │   │   More)     │
+└─────────────┘   └─────────────┘   └─────────────┘
+```
+
+**Key Components**:
+
+1. **Envoy Gateway** - Entry point for all traffic
+   - Validates JWT signatures using WebAuthn server's public key
+   - Routes public endpoints (registration, authentication) without JWT
+   - Requires JWT for all `/api/*` protected endpoints
+
+2. **WebAuthn Server** - FIDO2 authentication + JWT issuer
+   - Issues RS256-signed JWT tokens on successful authentication
+   - Exports public key at `/public-key` endpoint
+   - 15-minute token expiration for security
+
+3. **Example Service** - Python FastAPI demonstrating JWT integration
+   - Verifies JWT tokens using public key from WebAuthn server
+   - Provides protected `/api/*` endpoints
+   - Template for adding your own services
+
+**Security Benefits**:
+- ✅ No session state (stateless authentication)
+- ✅ Short-lived tokens (15 minutes)
+- ✅ Public key cryptography (RS256)
+- ✅ Gateway-level JWT validation
+- ✅ Zero-trust principle (verify every request)
 
 ### Server Design: Express vs webpack-dev-server
 
@@ -143,9 +203,153 @@ npm run dev  # Build dev bundle + start
 
 ## Testing
 
+### Automated End-to-End Tests
+
+The generated client includes Playwright tests to validate WebAuthn functionality end-to-end.
+
+**Prerequisites:**
+- WebAuthn server running at `{{server_url}}`
+- Client built and ready to start
+
+**Running Tests:**
+```bash
+# Ensure client is built
+npm run build
+
+# Run all E2E tests
+npm test
+
+# Run with interactive UI (great for debugging)
+npm run test:ui
+
+# Run in headed mode (see browser)
+npm run test:headed
+
+# View test report after run
+npm run test:report
+```
+
+**What the Tests Cover:**
+- ✅ Complete registration flow (create passkey)
+- ✅ Complete authentication flow (use passkey)
+- ✅ Uses Chromium virtual authenticator (no real device needed)
+- ✅ Validates both flows work end-to-end with your server
+
+**How It Works:**
+1. Playwright starts the web client automatically
+2. Sets up a virtual authenticator (simulates passkey device)
+3. Tests full registration and authentication flows
+4. Cleans up after tests complete
+
+**Note**: Tests use Chromium's virtual authenticator, so no physical security key or biometric device is required. The tests validate your WebAuthn server integration is working correctly.
+
+### Manual Testing
+
 1. **Test Connection**: Click "Test Connection" to verify server availability
 2. **Register**: Create a new passkey with username and display name
 3. **Authenticate**: Use your passkey to authenticate
+
+## JWT Authentication Flow
+
+After successfully completing WebAuthn authentication, you receive a JWT token that can be used to access protected API endpoints.
+
+### Obtaining a JWT Token
+
+1. **Authenticate with WebAuthn**:
+```bash
+# 1. Start authentication
+curl -X POST http://localhost:8000/authenticate/start \
+  -H "Content-Type: application/json" \
+  -d '{"username": "user@example.com"}'
+
+# 2. Complete authentication (with WebAuthn credential)
+curl -X POST http://localhost:8000/authenticate/complete \
+  -H "Content-Type: application/json" \
+  -d '{"requestId": "...", "credential": "..."}'
+```
+
+2. **Extract JWT from Response**:
+```json
+{
+  "success": true,
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "username": "user@example.com"
+}
+```
+
+### Using JWT to Access Protected Endpoints
+
+All `/api/*` routes require a valid JWT token in the Authorization header:
+
+```bash
+# Store the token
+TOKEN="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+# Call protected endpoint
+curl http://localhost:8000/api/user/profile \
+  -H "Authorization: Bearer $TOKEN"
+
+# Response
+{
+  "username": "user@example.com",
+  "message": "This is protected data from the example service",
+  "authenticated_at": 1234567890,
+  "expires_at": 1234568790
+}
+```
+
+### Token Expiration
+
+- **Lifetime**: 15 minutes (900 seconds)
+- **Handling Expiration**: Re-authenticate with WebAuthn to get a new token
+- **No Refresh Tokens**: For security, you must re-authenticate (passwordless is fast!)
+
+## Protected API Endpoints
+
+The generated project includes an example service with protected endpoints demonstrating JWT integration:
+
+### Available Endpoints
+
+#### Public Endpoints (No JWT Required)
+- `GET /health` - Health check
+- `POST /register/start` - Start WebAuthn registration
+- `POST /register/complete` - Complete WebAuthn registration
+- `POST /authenticate/start` - Start WebAuthn authentication
+- `POST /authenticate/complete` - Complete WebAuthn authentication (returns JWT)
+- `GET /public-key` - Get RSA public key for JWT verification
+
+#### Protected Endpoints (JWT Required)
+- `GET /api/user/profile` - Get authenticated user profile
+- `GET /api/example/data` - Get example protected data
+
+### Example: Calling Protected Endpoints
+
+```bash
+# 1. Authenticate and get token (via web UI or API)
+TOKEN=$(curl -s http://localhost:8000/authenticate/complete \
+  -H "Content-Type: application/json" \
+  -d '{"requestId":"...","credential":"..."}' \
+  | jq -r '.access_token')
+
+# 2. Call protected endpoint with JWT
+curl http://localhost:8000/api/user/profile \
+  -H "Authorization: Bearer $TOKEN"
+
+# 3. Try without JWT (will fail with 401)
+curl http://localhost:8000/api/user/profile
+# Response: 401 Unauthorized
+```
+
+### Adding Custom Protected Endpoints
+
+See `example-service/README.md` for detailed instructions on:
+- Adding new protected endpoints to the example service
+- Creating additional services in the stack
+- JWT verification patterns in Python/TypeScript/etc.
+
+All endpoints under `/api/*` are automatically protected by Envoy Gateway's JWT filter - no additional code needed!
 
 ## Troubleshooting
 
@@ -170,26 +374,96 @@ WebAuthn is supported in modern browsers:
 
 ## Security Notes
 
+### WebAuthn Security
 - Passkeys are stored securely on your device
 - Private keys never leave your device
 - Server validates all credentials
 - Replay attacks are prevented
 - Username enumeration is protected
 
-## Integration with Your WebAuthn Server
+### Docker Secrets Management
 
-This client connects to a WebAuthn server that implements the following endpoints:
+This project uses **Docker Compose secrets** for secure credential management:
 
-### Registration
-- `POST /register/start` - Start passkey registration
-- `POST /register/finish` - Complete passkey registration
+#### How It Works
+- Passwords are auto-generated using cryptographically secure random bytes
+- Secrets are stored in `docker/secrets/` directory (gitignored)
+- Secrets are mounted as read-only files at `/run/secrets/` in containers
+- No hardcoded passwords in docker-compose.yml or source code
 
-### Authentication
-- `POST /authenticate/start` - Start passkey authentication
-- `POST /authenticate/finish` - Complete passkey authentication
+#### Secret Files
+```
+docker/secrets/
+├── .gitignore          # Prevents accidental commits
+├── postgres_password   # PostgreSQL password (auto-generated)
+└── redis_password      # Redis password (auto-generated)
+```
+
+#### Secret Rotation
+To rotate secrets (change passwords):
+
+1. Generate new passwords:
+```bash
+openssl rand -base64 32 | cut -c1-32 > docker/secrets/postgres_password
+openssl rand -base64 32 | cut -c1-32 > docker/secrets/redis_password
+```
+
+2. Restart services:
+```bash
+cd docker && docker compose restart
+```
+
+#### Verification
+Run the setup script to verify secrets:
+```bash
+cd docker && bash setup-secrets.sh
+```
+
+**Important**: The `docker/secrets/` directory is automatically excluded from git via `.gitignore` to prevent accidental exposure of credentials.
+
+## Integration with Zero-Trust Stack
+
+This client connects to a complete zero-trust architecture stack via Envoy Gateway at `http://localhost:8000`.
+
+### Docker Stack Components
+
+The generated `docker/docker-compose.yml` includes:
+
+1. **Envoy Gateway** (port 8000) - Entry point with JWT verification
+2. **WebAuthn Server** (internal) - FIDO2 authentication + JWT issuer
+3. **Example Service** (internal) - Python FastAPI with JWT verification
+4. **PostgreSQL** (port 5432) - Credential storage
+5. **Redis** (port 6379) - Session cache
+
+### Starting the Stack
+
+```bash
+cd docker
+docker compose up -d
+
+# Verify all services are healthy
+docker compose ps
+
+# View logs
+docker compose logs -f
+```
+
+### WebAuthn Endpoints (via Gateway)
+
+#### Registration
+- `POST http://localhost:8000/register/start` - Start passkey registration
+- `POST http://localhost:8000/register/complete` - Complete passkey registration
+
+#### Authentication
+- `POST http://localhost:8000/authenticate/start` - Start passkey authentication
+- `POST http://localhost:8000/authenticate/complete` - Complete passkey authentication (returns JWT)
+
+#### Zero-Trust Endpoints
+- `GET http://localhost:8000/public-key` - Get RSA public key for JWT verification
+- `GET http://localhost:8000/api/user/profile` - Protected endpoint (requires JWT)
 
 ### Health Check
-- `GET /health` - Server health status
+- `GET http://localhost:8000/health` - Server health status
 
 ## License
 

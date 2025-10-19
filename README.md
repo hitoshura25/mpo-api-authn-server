@@ -95,6 +95,72 @@ cd typescript-client-library && npm test
 - **Cross-origin protection** - Proper RP ID validation
 - **Comprehensive vulnerability testing** - 7 security test categories
 
+### Zero-Trust JWT Authentication
+
+After successful WebAuthn authentication, the server issues JWT tokens for zero-trust architecture:
+
+- **RS256 Asymmetric Signing** - 2048-bit RSA key pairs for secure token signing
+- **15-Minute Token Expiration** - Short-lived tokens (900 seconds) for enhanced security
+- **Public Key Export** - `/public-key` endpoint for downstream service verification
+- **Bearer Token Format** - Standard OAuth2-compatible JWT tokens
+- **No Session State** - Stateless authentication for distributed systems
+
+#### JWT Token Response
+
+```json
+{
+  "success": true,
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "token_type": "Bearer",
+  "expires_in": 900,
+  "username": "user@example.com"
+}
+```
+
+#### Downstream Service Verification
+
+Downstream services can verify JWT signatures using the public key:
+
+```bash
+# Get the public key
+curl http://webauthn-server:8080/public-key
+```
+
+**Example verification (Python)**:
+```python
+import httpx
+import base64
+from cryptography.hazmat.primitives.serialization import load_der_public_key
+import jwt
+
+# Fetch and cache public key
+response = httpx.get("http://webauthn-server:8080/public-key")
+public_key = load_der_public_key(base64.b64decode(response.text))
+
+# Verify JWT token
+decoded = jwt.decode(token, public_key, algorithms=["RS256"], issuer="mpo-webauthn")
+username = decoded["sub"]
+```
+
+**Example verification (TypeScript)**:
+```typescript
+import * as jose from 'jose'
+
+// Fetch and cache public key
+const response = await fetch('http://webauthn-server:8080/public-key')
+const publicKeyDer = await response.text()
+const publicKey = await jose.importSPKI(
+  `-----BEGIN PUBLIC KEY-----\n${publicKeyDer}\n-----END PUBLIC KEY-----`,
+  'RS256'
+)
+
+// Verify JWT token
+const { payload } = await jose.jwtVerify(token, publicKey, {
+  issuer: 'mpo-webauthn'
+})
+const username = payload.sub
+```
+
 ### 🛡️ Professional FOSS Security Implementation
 
 Comprehensive security analysis using 8 professional FOSS tools with GitHub Security integration:

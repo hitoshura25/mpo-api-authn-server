@@ -18,7 +18,8 @@ class InMemoryAssertionRequestStorage : AssertionRequestStorage {
     )
 
     private val storage = ConcurrentHashMap<String, StoredItem<AssertionRequest>>()
-    private val cleanupExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+    private val cleanupExecutor: ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor()
 
     init {
         // Clean up expired entries every minute

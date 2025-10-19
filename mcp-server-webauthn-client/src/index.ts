@@ -26,13 +26,13 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: 'generate_web_client',
-        description: 'Generate a complete WebAuthn web client using the @vmenon25/mpo-webauthn-client npm library. Connects to existing webauthn-server in docker-compose.',
+        description: 'Generate a complete WebAuthn web client with Docker Compose stack (PostgreSQL, Redis, WebAuthn Server) using auto-generated secure passwords. Includes Playwright E2E tests and production-ready Express server using @vmenon25/mpo-webauthn-client library.',
         inputSchema: {
           type: 'object',
           properties: {
             project_path: {
               type: 'string',
-              description: "Where to create the web client directory (e.g., './web-client')",
+              description: "Where to create the web client directory with complete Docker stack (e.g., './web-client')",
               default: './web-client'
             },
             framework: {
@@ -43,13 +43,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             server_url: {
               type: 'string',
-              description: 'URL of the webauthn-server instance',
-              default: 'http://localhost:8080'
+              description: 'Envoy Gateway URL (entry point for zero-trust stack) - default: http://localhost:8000',
+              default: 'http://localhost:8000'
             },
             client_port: {
               type: 'number',
               description: 'Port for the web client dev server',
               default: 8082
+            },
+            relying_party_id: {
+              type: 'string',
+              description: 'Relying Party ID for WebAuthn (default: localhost)',
+              default: 'localhost'
+            },
+            relying_party_name: {
+              type: 'string',
+              description: 'Relying Party Name for WebAuthn (default: WebAuthn Demo)',
+              default: 'WebAuthn Demo'
             }
           },
           required: ['project_path'],

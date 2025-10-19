@@ -21,6 +21,9 @@ export interface WebAuthnResult {
     success: boolean;
     message: string;
     username?: string;
+    accessToken?: string;
+    tokenType?: string;
+    expiresIn?: number;
 }
 
 export interface ConnectionTestResult {

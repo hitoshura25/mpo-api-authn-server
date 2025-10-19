@@ -22,6 +22,11 @@ Generates a complete, production-ready web client with:
 - ✅ **Test UI** with registration and authentication flows
 - ✅ **Proper error handling** for WebAuthn-specific errors
 - ✅ **Type-safe** implementation using published npm client library
+- ✅ **Complete Docker stack** (PostgreSQL + Redis + WebAuthn Server)
+- ✅ **Secure password generation** using crypto.randomBytes
+- ✅ **Docker Compose secrets** (no hardcoded credentials)
+- ✅ **Playwright E2E tests** with Chromium virtual authenticator
+- ✅ **Auto-initialized database** schema on first startup
 
 ### Critical WebAuthn Patterns Preserved
 
@@ -163,6 +168,7 @@ The tool accepts these parameters:
 
 ```
 web-client/
+├── .gitignore                   # 🆕 Comprehensive gitignore for Node/TypeScript
 ├── package.json                 # All required dependencies
 ├── src/
 │   ├── index.ts                # Entry point
@@ -171,10 +177,23 @@ web-client/
 │   └── server.ts               # Express development server
 ├── public/
 │   └── index.html              # Test UI
+├── docker/                      # 🆕 Complete Docker stack
+│   ├── docker-compose.yml      # PostgreSQL + Redis + WebAuthn Server
+│   ├── init-db.sql             # Database schema initialization
+│   ├── setup-secrets.sh        # Secret verification script
+│   └── secrets/                # 🔐 Auto-generated passwords (gitignored)
+│       ├── .gitignore          # Prevents accidental commits
+│       ├── postgres_password   # Auto-generated 32-char password
+│       └── redis_password      # Auto-generated 32-char password
+├── tests/                       # 🆕 Playwright E2E tests
+│   └── webauthn.spec.js        # Registration + Authentication tests
+├── playwright.config.js         # Playwright configuration
+├── global-setup.js              # Test setup (starts client server)
+├── global-teardown.js           # Test cleanup
 ├── webpack.config.js            # Build configuration
 ├── tsconfig.json                # TypeScript configuration
 ├── tsconfig.build.json          # Build-specific TypeScript config
-└── README.md                    # Usage instructions
+└── README.md                    # Usage instructions + security docs
 ```
 
 ## Example Scenarios
@@ -218,6 +237,59 @@ web-client/
   "client_port": 8082
 }
 ```
+
+## Complete Workflow (Docker + Tests)
+
+### What Gets Generated
+
+When you call `generate_web_client`, the MCP server:
+
+1. **Creates complete directory structure** with all files
+2. **Generates unique secure passwords** using crypto.randomBytes(32)
+3. **Writes passwords to docker/secrets/** (auto-gitignored)
+4. **Configures docker-compose.yml** to use Docker secrets (no hardcoded passwords)
+5. **Sets up Playwright E2E tests** with virtual authenticator
+
+### Recommended Usage Flow for AI Agents
+
+```bash
+# 1. Generate the client (MCP does this)
+# Creates: web-client/ with docker/, tests/, src/, etc.
+
+# 2. Start Docker stack FIRST (before running client)
+cd web-client/docker
+docker compose up -d
+# This starts: PostgreSQL + Redis + WebAuthn Server
+# Database schema auto-initializes from init-db.sql
+
+# 3. Install and build client
+cd ..
+npm install
+npm run build
+
+# 4. Start client server (in background)
+npm start &
+# Client runs on port 8082
+
+# 5. Run E2E tests to validate setup
+npm test
+# Tests: Registration + Authentication flows
+# Uses Chromium virtual authenticator (no real device needed)
+
+# 6. If tests pass ✅, client is ready
+# Open http://localhost:8082 to use interactively
+```
+
+### Security Notes for AI Agents
+
+**Docker Secrets Implementation:**
+- Passwords are auto-generated using Node.js `crypto.randomBytes(32)`
+- Each generated client gets **unique passwords**
+- Secrets stored in `docker/secrets/` (gitignored)
+- docker-compose.yml uses Docker secrets feature (read-only mounts at `/run/secrets/`)
+- **No hardcoded passwords** in any generated files
+
+**Important**: Always run `docker compose up -d` BEFORE running tests or client server.
 
 ## Benefits Over Manual Setup
 

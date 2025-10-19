@@ -302,8 +302,10 @@ class ApplicationTest : KoinTest {
     @Test
     fun testMetricsEndpointExceptionHandling() =
         testApplication {
-            // Create a mock PrometheusMeterRegistry that throws an exception when scrape() is called
-            every { mockPrometheusRegistry.scrape() } throws RuntimeException("Metrics collection failed")
+            // Create a mock PrometheusMeterRegistry that throws an exception
+            // when scrape() is called
+            every { mockPrometheusRegistry.scrape() } throws
+                RuntimeException("Metrics collection failed")
 
             application {
                 module(testStorageModule)

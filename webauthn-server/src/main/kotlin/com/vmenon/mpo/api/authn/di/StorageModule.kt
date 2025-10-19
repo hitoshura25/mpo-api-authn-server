@@ -53,7 +53,8 @@ val storageModule =
                 val port =
                     portString.toIntOrNull()
                         ?: throw IllegalArgumentException(
-                            "${EnvironmentVariables.MPO_AUTHN_REDIS_PORT} must be a valid integer, got: '$portString'",
+                            "${EnvironmentVariables.MPO_AUTHN_REDIS_PORT} " +
+                                "must be a valid integer, got: '$portString'",
                         )
                 require(
                     port in MIN_PORT..MAX_PORT,
@@ -93,15 +94,17 @@ val storageModule =
                 val database =
                     databaseString.toIntOrNull()
                         ?: throw IllegalArgumentException(
-                            "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be a valid integer, " +
-                                "got: '$databaseString'",
+                            "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} " +
+                                "must be a valid integer, got: '$databaseString'",
                         )
                 require(database >= DEFAULT_REDIS_DATABASE) {
-                    "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be non-negative, got: $database"
+                    "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} " +
+                        "must be non-negative, got: $database"
                 }
                 require(database <= REDIS_DATABASE_MAX) {
                     "${EnvironmentVariables.MPO_AUTHN_REDIS_DATABASE} must be between " +
-                        "$DEFAULT_REDIS_DATABASE-$REDIS_DATABASE_MAX (standard Redis database range), got: $database"
+                        "$DEFAULT_REDIS_DATABASE-$REDIS_DATABASE_MAX " +
+                        "(standard Redis database range), got: $database"
                 }
                 database
             } else {
@@ -111,17 +114,17 @@ val storageModule =
 
         single(named("redisMaxConnections")) {
             val connectionsString =
-                System.getProperty(EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS) ?: System.getenv(
-                    EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS,
-                )
+                System.getProperty(EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS)
+                    ?: System.getenv(EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS)
             if (connectionsString != null) {
                 require(connectionsString.isNotBlank()) {
-                    "${EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS} cannot be blank"
+                    "${EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS} " +
+                        "cannot be blank"
                 }
                 connectionsString.toIntOrNull()
                     ?: throw IllegalArgumentException(
-                        "${EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS} must be a valid integer, " +
-                            "got: '$connectionsString'",
+                        "${EnvironmentVariables.MPO_AUTHN_REDIS_MAX_CONNECTIONS} " +
+                            "must be a valid integer, got: '$connectionsString'",
                     )
             } else {
                 DEFAULT_REDIS_MAX_CONNECTIONS
@@ -153,7 +156,8 @@ val storageModule =
                 val port =
                     portString.toIntOrNull()
                         ?: throw IllegalArgumentException(
-                            "${EnvironmentVariables.MPO_AUTHN_DB_PORT} must be a valid integer, got: '$portString'",
+                            "${EnvironmentVariables.MPO_AUTHN_DB_PORT} " +
+                                "must be a valid integer, got: '$portString'",
                         )
                 require(port in MIN_PORT..MAX_PORT) {
                     "${EnvironmentVariables.MPO_AUTHN_DB_PORT} must be a valid port number " +
@@ -203,17 +207,17 @@ val storageModule =
 
         single(named("dbMaxPoolSize")) {
             val poolSizeString =
-                System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE) ?: System.getenv(
-                    EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE,
-                )
+                System.getProperty(EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE)
+                    ?: System.getenv(EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE)
             if (poolSizeString != null) {
                 require(poolSizeString.isNotBlank()) {
-                    "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} cannot be blank"
+                    "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} " +
+                        "cannot be blank"
                 }
                 poolSizeString.toIntOrNull()
                     ?: throw IllegalArgumentException(
-                        "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} must be a valid integer, " +
-                            "got: '$poolSizeString'",
+                        "${EnvironmentVariables.MPO_AUTHN_DB_MAX_POOL_SIZE} " +
+                            "must be a valid integer, got: '$poolSizeString'",
                     )
             } else {
                 DEFAULT_DB_MAX_POOL_SIZE

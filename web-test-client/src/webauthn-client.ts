@@ -89,7 +89,7 @@ export class WebAuthnClient {
             } else {
                 return {
                     success: false,
-                    message: `❌ Registration failed: ${completeResponse.message || 'Unknown error'}`
+                    message: `❌ Registration failed: Server returned success=false`
                 };
             }
 
@@ -159,12 +159,15 @@ export class WebAuthnClient {
                 return {
                     success: true,
                     message: `✅ Authentication successful! Welcome, ${completeResponse.username || 'user'}!`,
-                    username: completeResponse.username
+                    username: completeResponse.username,
+                    accessToken: completeResponse.accessToken,
+                    tokenType: completeResponse.tokenType,
+                    expiresIn: completeResponse.expiresIn
                 };
             } else {
                 return {
                     success: false,
-                    message: `❌ Authentication failed: ${completeResponse.message || 'Unknown error'}`
+                    message: `❌ Authentication failed: Server returned success=false`
                 };
             }
 

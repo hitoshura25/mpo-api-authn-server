@@ -82,7 +82,7 @@ class AppModuleTest : KoinTest {
     }
 
     @Test
-    fun `Relying Party Name should fallback to environment variable when system property not set`() {
+    fun `Relying Party Name should fallback to env var when sysprop not set`() {
         startKoin {
             modules(appModule)
         }
@@ -117,7 +117,7 @@ class AppModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw InstanceCreationException when Relying Party Name is whitespace-only spaces`() {
+    fun `Should throw InstanceCreationException when RP Name is whitespace only`() {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME, "   ")
 
         startKoin {

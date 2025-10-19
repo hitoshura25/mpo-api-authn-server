@@ -8,8 +8,15 @@
     "webauthn-client-gen": "dist/cli.js",
     "mcp-server-webauthn-client": "dist/index.js"
   },
+  "files": [
+    "dist/**/*",
+    "src/templates/**/*.hbs",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && npm run copy-templates",
+    "copy-templates": "cp -r src/templates dist/ 2>/dev/null || echo 'No templates to copy (will be created later)'",
     "dev": "tsc --watch",
     "prepare": "npm run build"
   },

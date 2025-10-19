@@ -93,7 +93,11 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
             assertEquals(HttpStatusCode.OK, completeAuthResponse.status)
             val completeAuthBody = objectMapper.readTree(completeAuthResponse.bodyAsText())
             assertTrue(completeAuthBody.get("success").asBoolean())
-            assertEquals("Authentication successful", completeAuthBody.get("message").asText())
+
+            // Verify JWT token response for zero-trust architecture
+            assertNotNull(completeAuthBody.get("access_token"), "Should return JWT access token")
+            assertEquals("Bearer", completeAuthBody.get("token_type").asText())
+            assertEquals(900, completeAuthBody.get("expires_in").asInt())
             assertEquals(username, completeAuthBody.get("username").asText())
         }
 
@@ -274,8 +278,10 @@ class EndToEndIntegrationTest : BaseIntegrationTest() {
                 val statement = connection.createStatement()
                 val resultSet =
                     statement.executeQuery(
-                        "SELECT encrypted_user_data, encrypted_credential_data FROM webauthn_users_secure u " +
-                            "JOIN webauthn_credentials_secure c ON u.user_handle_hash = c.user_handle_hash " +
+                        "SELECT encrypted_user_data, encrypted_credential_data " +
+                            "FROM webauthn_users_secure u " +
+                            "JOIN webauthn_credentials_secure c " +
+                            "ON u.user_handle_hash = c.user_handle_hash " +
                             "WHERE u.username_hash = encode(sha256('$username'::bytea), 'hex')",
                     )
 

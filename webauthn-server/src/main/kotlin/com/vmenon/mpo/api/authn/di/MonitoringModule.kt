@@ -38,7 +38,8 @@ val monitoringModule =
                     ?: System.getenv(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT)
             if (value != null) {
                 require(value.isNotBlank()) {
-                    "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT} cannot be blank"
+                    "${EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT} " +
+                        "cannot be blank"
                 }
             }
             Optional.ofNullable(value)

@@ -12,6 +12,7 @@ import com.vmenon.mpo.api.authn.plugins.configureStatusPages
 import com.vmenon.mpo.api.authn.routes.configureAuthenticationRoutes
 import com.vmenon.mpo.api.authn.routes.configureHealthRoutes
 import com.vmenon.mpo.api.authn.routes.configureOpenAPIRoutes
+import com.vmenon.mpo.api.authn.routes.configurePublicKeyRoutes
 import com.vmenon.mpo.api.authn.routes.configureRegistrationRoutes
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
@@ -51,6 +52,7 @@ private fun Application.configureRouting() {
     configureHealthRoutes()
     configureRegistrationRoutes()
     configureAuthenticationRoutes()
+    configurePublicKeyRoutes()
 }
 
 fun main() {

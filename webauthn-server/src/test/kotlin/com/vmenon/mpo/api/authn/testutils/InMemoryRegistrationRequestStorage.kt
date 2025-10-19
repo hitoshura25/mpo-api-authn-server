@@ -19,7 +19,8 @@ class InMemoryRegistrationRequestStorage : RegistrationRequestStorage {
 
     private val storage =
         ConcurrentHashMap<String, StoredItem<PublicKeyCredentialCreationOptions>>()
-    private val cleanupExecutor: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor()
+    private val cleanupExecutor: ScheduledExecutorService =
+        Executors.newSingleThreadScheduledExecutor()
 
     init {
         // Clean up expired entries every minute

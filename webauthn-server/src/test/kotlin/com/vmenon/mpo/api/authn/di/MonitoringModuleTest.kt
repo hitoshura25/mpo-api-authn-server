@@ -26,7 +26,7 @@ class MonitoringModuleTest : KoinTest {
 
     // OpenTelemetry Service Name Tests
     @Test
-    fun `OpenTelemetry service name should work through Koin DI when configured via system property`() {
+    fun `OpenTelemetry service name works via Koin when configured in sysprop`() {
         System.setProperty(
             EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME,
             "test-service",
@@ -41,7 +41,7 @@ class MonitoringModuleTest : KoinTest {
     }
 
     @Test
-    fun `OpenTelemetry service name should use default value when not configured through Koin DI`() {
+    fun `OpenTelemetry service name uses default when not configured in Koin`() {
         startKoin {
             modules(monitoringModule)
         }
@@ -64,7 +64,7 @@ class MonitoringModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw InstanceCreationException when OpenTelemetry service name is whitespace only`() {
+    fun `Should throw InstanceCreationException when OTel name is whitespace`() {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME, "   ")
 
         startKoin {
@@ -78,7 +78,7 @@ class MonitoringModuleTest : KoinTest {
 
     // OpenTelemetry Jaeger Endpoint Tests
     @Test
-    fun `OpenTelemetry Jaeger endpoint should work through Koin DI when configured via system property`() {
+    fun `OpenTelemetry Jaeger endpoint works via Koin when in sysprop`() {
         System.setProperty(
             EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
             "http://jaeger:14250",
@@ -94,7 +94,7 @@ class MonitoringModuleTest : KoinTest {
     }
 
     @Test
-    fun `OpenTelemetry Jaeger endpoint should be empty Optional when not configured through Koin DI`() {
+    fun `OpenTelemetry Jaeger endpoint is empty Optional when not configured`() {
         startKoin {
             modules(monitoringModule)
         }
@@ -104,7 +104,7 @@ class MonitoringModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw InstanceCreationException when OpenTelemetry Jaeger endpoint is blank`() {
+    fun `Should throw InstanceCreationException when Jaeger endpoint is blank`() {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT, "")
 
         startKoin {
@@ -117,7 +117,7 @@ class MonitoringModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw InstanceCreationException when OpenTelemetry Jaeger endpoint is whitespace only`() {
+    fun `Should throw InstanceCreationException when Jaeger endpoint is whitespace`() {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT, "   ")
 
         startKoin {

@@ -145,7 +145,7 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw InstanceCreationException when Redis password not configured through Koin DI`() {
+    fun `Should throw InstanceCreationException when Redis password not configured`() {
         startKoin {
             modules(storageModule)
         }
@@ -438,7 +438,7 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw InstanceCreationException when Database username not configured through Koin DI`() {
+    fun `Should throw InstanceCreationException when DB username not configured`() {
         startKoin {
             modules(storageModule)
         }
@@ -474,7 +474,7 @@ class StorageModuleTest : KoinTest {
     }
 
     @Test
-    fun `Should throw InstanceCreationException when Database password not configured through Koin DI`() {
+    fun `Should throw InstanceCreationException when DB password not configured`() {
         startKoin {
             modules(storageModule)
         }

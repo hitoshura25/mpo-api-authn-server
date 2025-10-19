@@ -43,13 +43,23 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             server_url: {
               type: 'string',
-              description: 'WebAuthn server URL - port is extracted for docker-compose configuration (default: http://localhost:8080)',
-              default: 'http://localhost:8080'
+              description: 'Envoy Gateway URL (entry point for zero-trust stack) - default: http://localhost:8000',
+              default: 'http://localhost:8000'
             },
             client_port: {
               type: 'number',
               description: 'Port for the web client dev server',
               default: 8082
+            },
+            relying_party_id: {
+              type: 'string',
+              description: 'Relying Party ID for WebAuthn (default: localhost)',
+              default: 'localhost'
+            },
+            relying_party_name: {
+              type: 'string',
+              description: 'Relying Party Name for WebAuthn (default: WebAuthn Demo)',
+              default: 'WebAuthn Demo'
             }
           },
           required: ['project_path'],

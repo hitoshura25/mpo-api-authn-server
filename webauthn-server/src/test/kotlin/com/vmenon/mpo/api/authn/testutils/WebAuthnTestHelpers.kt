@@ -237,7 +237,8 @@ object WebAuthnTestHelpers {
         val credentialNode = objectMapper.readTree(credentialJson) as ObjectNode
 
         // Create malicious client data JSON
-        val maliciousClientData = """{"type":"webauthn.get","challenge":"$challenge","origin":"$maliciousOrigin"}"""
+        val maliciousClientData =
+            """{"type":"webauthn.get","challenge":"$challenge","origin":"$maliciousOrigin"}"""
         val maliciousClientDataB64 =
             java.util.Base64.getEncoder().encodeToString(
                 maliciousClientData.toByteArray(),

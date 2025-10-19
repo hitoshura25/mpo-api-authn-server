@@ -20,6 +20,8 @@ interface GenerateWebClientArgs {
   framework?: 'vanilla' | 'react' | 'vue';
   server_url?: string;
   client_port?: number;
+  relying_party_id?: string;
+  relying_party_name?: string;
 }
 
 export async function generateWebClient(args: GenerateWebClientArgs) {
@@ -27,7 +29,9 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     project_path,
     framework = 'vanilla',
     server_url = 'http://localhost:8080',
-    client_port = 8082
+    client_port = 8082,
+    relying_party_id = 'localhost',
+    relying_party_name = 'WebAuthn Demo'
   } = args;
 
   // Validate framework
@@ -99,18 +103,27 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     { template: 'global-setup.js.hbs', output: 'global-setup.js' },
     { template: 'global-teardown.js.hbs', output: 'global-teardown.js' },
     { template: 'tests/webauthn.spec.js.hbs', output: 'tests/webauthn.spec.js' },
-    // Docker setup for WebAuthn server
+    { template: 'tests/jwt-verification.spec.js.hbs', output: 'tests/jwt-verification.spec.js' },
+    // Docker setup for WebAuthn server + Zero-Trust stack
     { template: 'docker/docker-compose.yml.hbs', output: 'docker/docker-compose.yml' },
+    { template: 'docker/envoy-gateway.yaml.hbs', output: 'docker/envoy-gateway.yaml' },
     { template: 'docker/init-db.sql.hbs', output: 'docker/init-db.sql' },
     { template: 'docker/secrets/.gitignore.hbs', output: 'docker/secrets/.gitignore' },
-    { template: 'docker/setup-secrets.sh.hbs', output: 'docker/setup-secrets.sh' }
+    { template: 'docker/setup-secrets.sh.hbs', output: 'docker/setup-secrets.sh' },
+    // Example service (Python FastAPI)
+    { template: 'example-service/main.py.hbs', output: 'example-service/main.py' },
+    { template: 'example-service/requirements.txt.hbs', output: 'example-service/requirements.txt' },
+    { template: 'example-service/Dockerfile.hbs', output: 'example-service/Dockerfile' },
+    { template: 'example-service/README.md.hbs', output: 'example-service/README.md' }
   ];
 
   // Template variables
   const template_vars = {
     server_url,
     client_port,
-    server_port
+    server_port,
+    relying_party_id,
+    relying_party_name
   };
 
   try {
@@ -125,6 +138,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     mkdirSync(join(project_path, 'tests'), { recursive: true });
     mkdirSync(join(project_path, 'docker'), { recursive: true });
     mkdirSync(join(project_path, 'docker', 'secrets'), { recursive: true });
+    mkdirSync(join(project_path, 'example-service'), { recursive: true });
 
     // Generate files from templates
     for (const { template, output } of template_files) {

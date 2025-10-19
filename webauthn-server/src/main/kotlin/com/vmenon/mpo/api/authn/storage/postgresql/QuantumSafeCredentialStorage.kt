@@ -289,7 +289,9 @@ class QuantumSafeCredentialStorage(
 
     override fun lookupAll(credentialId: ByteArray): Set<RegisteredCredential> {
         val credentialIdHash = cryptoHelper.hash(credentialId.base64Url)
-        val sql = "SELECT encrypted_credential_data FROM webauthn_credentials_secure WHERE credential_id_hash = ?"
+        val sql =
+            "SELECT encrypted_credential_data FROM webauthn_credentials_secure " +
+                "WHERE credential_id_hash = ?"
 
         return dataSource.connection.use { connection ->
             connection.prepareStatement(sql).use { statement ->
@@ -334,7 +336,9 @@ private const val LEAK_DETECTION_THRESHOLD_MS = 60000L // 1 minute
 fun createQuantumSafeCredentialStorage(config: DatabaseConfig): QuantumSafeCredentialStorage {
     val hikariConfig =
         HikariConfig().apply {
-            jdbcUrl = "jdbc:postgresql://${config.host}:${config.port}/${config.database}?sslmode=disable"
+            jdbcUrl =
+                "jdbc:postgresql://${config.host}:${config.port}/" +
+                "${config.database}?sslmode=disable"
             this.username = config.username
             this.password = config.password
             maximumPoolSize = config.maxPoolSize

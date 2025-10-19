@@ -1,6 +1,7 @@
 package com.vmenon.mpo.api.authn.di
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
+import com.vmenon.mpo.api.authn.security.JwtService
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.yubico.CredentialRepositoryImpl
 import com.yubico.webauthn.CredentialRepository
@@ -56,5 +57,10 @@ val appModule =
                 .credentialRepository(credentialRepository)
                 .allowOriginPort(true)
                 .build()
+        }
+
+        // JWT Service for zero-trust architecture
+        single {
+            JwtService()
         }
     }

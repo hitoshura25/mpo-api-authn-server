@@ -4,6 +4,7 @@ import com.vmenon.mpo.api.authn.AuthenticationCompleteRequest
 import com.vmenon.mpo.api.authn.AuthenticationRequest
 import com.vmenon.mpo.api.authn.AuthenticationResponse
 import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
+import com.vmenon.mpo.api.authn.security.JwtService
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.yubico.webauthn.FinishAssertionOptions
 import com.yubico.webauthn.RelyingParty
@@ -30,13 +31,14 @@ fun Application.configureAuthenticationRoutes() {
         val assertionStorage: AssertionRequestStorage by inject()
         val relyingParty: RelyingParty by inject()
         val openTelemetryTracer: OpenTelemetryTracer by inject()
+        val jwtService: JwtService by inject()
 
         post("/authenticate/start") {
             handleAuthenticationStart(assertionStorage, relyingParty, openTelemetryTracer, logger)
         }
 
         post("/authenticate/complete") {
-            handleAuthenticationComplete(assertionStorage, relyingParty, logger)
+            handleAuthenticationComplete(assertionStorage, relyingParty, jwtService, logger)
         }
     }
 }
@@ -72,6 +74,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationS
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationComplete(
     assertionStorage: AssertionRequestStorage,
     relyingParty: RelyingParty,
+    jwtService: JwtService,
     logger: Logger,
 ) {
     runCatching {
@@ -84,7 +87,7 @@ private suspend fun PipelineContext<Unit, ApplicationCall>.handleAuthenticationC
             processAssertionFinish(startAssertionOptions, request, relyingParty)
 
         if (finishAssertionResult.isSuccess) {
-            handleSuccessfulAuthentication(finishAssertionResult.username, logger)
+            handleSuccessfulAuthentication(finishAssertionResult.username, jwtService, logger)
         } else {
             handleFailedAuthentication(logger)
         }
@@ -171,17 +174,27 @@ private fun processAssertionFinish(
 
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleSuccessfulAuthentication(
     username: String,
+    jwtService: JwtService,
     logger: Logger,
 ) {
     logger.info("Successfully authenticated user: $username")
+
+    // Create JWT token for zero-trust architecture
+    val accessToken = jwtService.createToken(username)
+
     call.respond(
         mapOf(
             "success" to true,
-            "message" to "Authentication successful",
+            "access_token" to accessToken,
+            "token_type" to "Bearer",
+            // 15 minutes in seconds
+            "expires_in" to TOKEN_EXPIRY_SECONDS,
             "username" to username,
         ),
     )
 }
+
+private const val TOKEN_EXPIRY_SECONDS = 900
 
 private suspend fun PipelineContext<Unit, ApplicationCall>.handleFailedAuthentication(
     logger: Logger,

@@ -7,7 +7,9 @@ import com.yubico.webauthn.data.ByteArray
 import com.yubico.webauthn.data.PublicKeyCredentialDescriptor
 import java.util.Optional
 
-class CredentialRepositoryImpl(private val credentialStorage: CredentialStorage) : CredentialRepository {
+class CredentialRepositoryImpl(
+    private val credentialStorage: CredentialStorage,
+) : CredentialRepository {
     override fun getCredentialIdsForUsername(
         username: String,
     ): Set<PublicKeyCredentialDescriptor?>? {

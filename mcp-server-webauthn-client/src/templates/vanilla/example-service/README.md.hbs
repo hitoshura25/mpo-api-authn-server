@@ -1,0 +1,137 @@
+# Example Service - WebAuthn Zero-Trust Architecture
+
+This is a minimal Python FastAPI service demonstrating JWT-based zero-trust architecture integration with the WebAuthn authentication server.
+
+## Architecture
+
+```
+┌─────────┐     ┌──────────────┐     ┌──────────────┐     ┌─────────────┐
+│ Client  │────▶│ Envoy Gateway│────▶│ Example      │────▶│ WebAuthn    │
+│         │     │ (JWT check)  │     │ Service      │     │ Server      │
+└─────────┘     └──────────────┘     └──────────────┘     └─────────────┘
+                       │                    │                     │
+                       │                    └─────────────────────┘
+                       │                    Fetches public key
+                       │                    (cached 5 min)
+                       └──────────────────────────────────────────┘
+                       Validates JWT signature
+```
+
+## Features
+
+- **JWT Verification**: Validates RS256-signed JWT tokens from WebAuthn server
+- **Public Key Caching**: Fetches and caches public key for performance
+- **Protected Endpoints**: All `/api/*` routes require valid JWT
+- **Health Check**: `/health` endpoint without authentication
+- **Error Handling**: Proper HTTP 401 responses for invalid/expired tokens
+
+## Endpoints
+
+### Public Endpoints (No Authentication)
+
+- `GET /health` - Health check
+
+### Protected Endpoints (JWT Required)
+
+- `GET /api/user/profile` - Get authenticated user profile
+- `GET /api/example/data` - Get example protected data
+
+## JWT Verification Process
+
+1. **Extract Token**: Parse Bearer token from Authorization header
+2. **Fetch Public Key**: Get RSA public key from WebAuthn server (cached)
+3. **Verify Signature**: Validate RS256 signature using public key
+4. **Check Claims**: Verify issuer (`mpo-webauthn`) and expiration
+5. **Return User Data**: Extract username from `sub` claim
+
+## Testing
+
+### Test with curl
+
+```bash
+# 1. Authenticate and get JWT token
+TOKEN=$(curl -s http://localhost:8000/authenticate/complete \
+  -H "Content-Type: application/json" \
+  -d '{"requestId":"...","credential":"..."}' \
+  | jq -r '.access_token')
+
+# 2. Call protected endpoint
+curl http://localhost:8000/api/user/profile \
+  -H "Authorization: Bearer $TOKEN"
+
+# Expected response:
+# {
+#   "username": "user@example.com",
+#   "message": "This is protected data from the example service",
+#   "authenticated_at": 1234567890,
+#   "expires_at": 1234568790,
+#   "issuer": "mpo-webauthn"
+# }
+```
+
+### Test without JWT (should fail)
+
+```bash
+curl http://localhost:8000/api/user/profile
+
+# Expected response (HTTP 401):
+# {
+#   "detail": "Missing Authorization header"
+# }
+```
+
+## Development
+
+### Run Locally (without Docker)
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Set environment variables
+export WEBAUTHN_PUBLIC_KEY_URL=http://localhost:8080/public-key
+export APP_PORT=9000
+
+# Run server
+python main.py
+```
+
+### Run with Docker
+
+```bash
+# Build image
+docker build -t example-service .
+
+# Run container
+docker run -p 9000:9000 \
+  -e WEBAUTHN_PUBLIC_KEY_URL=http://webauthn-server:8080/public-key \
+  example-service
+```
+
+## Environment Variables
+
+- `WEBAUTHN_PUBLIC_KEY_URL` - URL to fetch public key (default: `http://webauthn-server:8080/public-key`)
+- `APP_PORT` - Port to listen on (default: `9000`)
+
+## Security Notes
+
+- **No Private Key**: Service only has public key (can verify, not sign)
+- **Short-Lived Tokens**: JWT tokens expire after 15 minutes
+- **Stateless**: No session storage, fully stateless authentication
+- **Zero-Trust**: Every request verified independently
+- **Non-Root User**: Runs as non-root user in Docker for security
+
+## Adding More Endpoints
+
+All endpoints under `/api/*` are automatically protected by Envoy Gateway's JWT filter. To add a new protected endpoint:
+
+```python
+@app.get("/api/my-endpoint")
+def my_endpoint(user: dict = Depends(verify_jwt_token)):
+    return {
+        "user": user["sub"],
+        "data": "your protected data"
+    }
+```
+
+No additional JWT verification code needed - Envoy handles it at the gateway level!

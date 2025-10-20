@@ -9,7 +9,7 @@
  * All certificates valid for 365 days.
  */
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { sanitizePathComponent } from './path-utils.js';
@@ -25,7 +25,7 @@ export interface CertificateGenerationResult {
 export function generateMTLSCertificates(projectPath: string): CertificateGenerationResult {
   // Check if OpenSSL is installed
   try {
-    execSync('openssl version', { stdio: 'pipe' });
+    execFileSync('openssl', ['version'], { stdio: 'pipe' });
   } catch (error) {
     throw new Error(
       'OpenSSL is not installed or not available in PATH.\n\n' +
@@ -61,14 +61,13 @@ export function generateMTLSCertificates(projectPath: string): CertificateGenera
 
   // 1. Generate CA (Certificate Authority)
   console.log('   Generating CA certificate...');
-  execSync(
-    `openssl req -x509 -newkey rsa:2048 -nodes \\
-      -keyout "${caKeyPath}" \\
-      -out "${caCertPath}" \\
-      -days 365 \\
-      -subj "/CN=WebAuthn-Mesh-CA/O=WebAuthn/OU=Zero-Trust"`,
-    { stdio: 'inherit' }
-  );
+  execFileSync('openssl', [
+    'req', '-x509', '-newkey', 'rsa:2048', '-nodes',
+    '-keyout', caKeyPath,
+    '-out', caCertPath,
+    '-days', '365',
+    '-subj', '/CN=WebAuthn-Mesh-CA/O=WebAuthn/OU=Zero-Trust'
+  ], { stdio: 'inherit' });
   filesCreated.push(caKeyPath);
   filesCreated.push(caCertPath);
 
@@ -76,25 +75,23 @@ export function generateMTLSCertificates(projectPath: string): CertificateGenera
   console.log('   Generating Envoy Gateway certificate...');
 
   // Generate key and CSR
-  execSync(
-    `openssl req -newkey rsa:2048 -nodes \\
-      -keyout "${gatewayKeyPath}" \\
-      -out "${gatewayCSRPath}" \\
-      -subj "/CN=envoy-gateway/O=WebAuthn/OU=Gateway"`,
-    { stdio: 'inherit' }
-  );
+  execFileSync('openssl', [
+    'req', '-newkey', 'rsa:2048', '-nodes',
+    '-keyout', gatewayKeyPath,
+    '-out', gatewayCSRPath,
+    '-subj', '/CN=envoy-gateway/O=WebAuthn/OU=Gateway'
+  ], { stdio: 'inherit' });
 
   // Sign with CA
-  execSync(
-    `openssl x509 -req \\
-      -in "${gatewayCSRPath}" \\
-      -CA "${caCertPath}" \\
-      -CAkey "${caKeyPath}" \\
-      -CAcreateserial \\
-      -out "${gatewayCertPath}" \\
-      -days 365`,
-    { stdio: 'inherit' }
-  );
+  execFileSync('openssl', [
+    'x509', '-req',
+    '-in', gatewayCSRPath,
+    '-CA', caCertPath,
+    '-CAkey', caKeyPath,
+    '-CAcreateserial',
+    '-out', gatewayCertPath,
+    '-days', '365'
+  ], { stdio: 'inherit' });
 
   filesCreated.push(gatewayKeyPath);
   filesCreated.push(gatewayCertPath);
@@ -103,25 +100,23 @@ export function generateMTLSCertificates(projectPath: string): CertificateGenera
   console.log('   Generating Example Service certificate...');
 
   // Generate key and CSR
-  execSync(
-    `openssl req -newkey rsa:2048 -nodes \\
-      -keyout "${serviceKeyPath}" \\
-      -out "${serviceCSRPath}" \\
-      -subj "/CN=example-service/O=WebAuthn/OU=Services"`,
-    { stdio: 'inherit' }
-  );
+  execFileSync('openssl', [
+    'req', '-newkey', 'rsa:2048', '-nodes',
+    '-keyout', serviceKeyPath,
+    '-out', serviceCSRPath,
+    '-subj', '/CN=example-service/O=WebAuthn/OU=Services'
+  ], { stdio: 'inherit' });
 
   // Sign with CA
-  execSync(
-    `openssl x509 -req \\
-      -in "${serviceCSRPath}" \\
-      -CA "${caCertPath}" \\
-      -CAkey "${caKeyPath}" \\
-      -CAcreateserial \\
-      -out "${serviceCertPath}" \\
-      -days 365`,
-    { stdio: 'inherit' }
-  );
+  execFileSync('openssl', [
+    'x509', '-req',
+    '-in', serviceCSRPath,
+    '-CA', caCertPath,
+    '-CAkey', caKeyPath,
+    '-CAcreateserial',
+    '-out', serviceCertPath,
+    '-days', '365'
+  ], { stdio: 'inherit' });
 
   filesCreated.push(serviceKeyPath);
   filesCreated.push(serviceCertPath);

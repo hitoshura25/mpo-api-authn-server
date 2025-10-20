@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, chmodSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
@@ -117,7 +117,10 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     { template: 'example-service/main.py.hbs', output: 'example-service/main.py' },
     { template: 'example-service/requirements.txt.hbs', output: 'example-service/requirements.txt' },
     { template: 'example-service/Dockerfile.hbs', output: 'example-service/Dockerfile' },
-    { template: 'example-service/README.md.hbs', output: 'example-service/README.md' }
+    { template: 'example-service/README.md.hbs', output: 'example-service/README.md' },
+    // Phase 6-7: Documentation and helper scripts
+    { template: 'docs/INTEGRATION.md.hbs', output: 'docs/INTEGRATION.md' },
+    { template: 'scripts/add-service.sh.hbs', output: 'scripts/add-service.sh' }
   ];
 
   // Template variables
@@ -143,6 +146,8 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     mkdirSync(join(project_path, 'docker', 'secrets'), { recursive: true });
     mkdirSync(join(project_path, 'docker', 'istio'), { recursive: true });  // Phase 2: Istio sidecar configs
     mkdirSync(join(project_path, 'example-service'), { recursive: true });
+    mkdirSync(join(project_path, 'docs'), { recursive: true });  // Phase 6-7: Documentation
+    mkdirSync(join(project_path, 'scripts'), { recursive: true });  // Phase 6-7: Helper scripts
 
     // Generate files from templates
     for (const { template, output } of template_files) {
@@ -186,6 +191,10 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     // Phase 2: Generate mTLS certificates for zero-trust service mesh
     const cert_result = generateMTLSCertificates(project_path);
     files_created.push(...cert_result.filesCreated);
+
+    // Phase 6-7: Make add-service.sh executable
+    const add_service_script = join(project_path, 'scripts', 'add-service.sh');
+    chmodSync(add_service_script, 0o755);  // rwxr-xr-x
 
     return {
       content: [

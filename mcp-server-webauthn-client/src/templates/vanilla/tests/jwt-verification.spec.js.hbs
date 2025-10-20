@@ -1,8 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
-// Base URLs
-const GATEWAY_URL = 'http://localhost:8000';
-const SERVER_URL = '{{server_url}}';
+// Base URL - All traffic goes through Envoy Gateway in zero-trust architecture
+const GATEWAY_URL = '{{server_url}}';
 
 /**
  * JWT Verification E2E Tests
@@ -19,7 +18,7 @@ async function registerAndAuthenticate(request, username) {
   const displayName = `Test User ${Date.now()}`;
 
   // 1. Start registration
-  const regStartResponse = await request.post(`${SERVER_URL}/register/start`, {
+  const regStartResponse = await request.post(`${GATEWAY_URL}/register/start`, {
     data: { username, displayName }
   });
   expect(regStartResponse.ok()).toBeTruthy();
@@ -43,7 +42,7 @@ async function registerAndAuthenticate(request, username) {
     }
   });
 
-  const regCompleteResponse = await request.post(`${SERVER_URL}/register/complete`, {
+  const regCompleteResponse = await request.post(`${GATEWAY_URL}/register/complete`, {
     data: { requestId, credential: mockCredential }
   });
 
@@ -51,7 +50,7 @@ async function registerAndAuthenticate(request, username) {
   // In real E2E tests with actual WebAuthn, this would succeed
 
   // 3. Start authentication
-  const authStartResponse = await request.post(`${SERVER_URL}/authenticate/start`, {
+  const authStartResponse = await request.post(`${GATEWAY_URL}/authenticate/start`, {
     data: { username }
   });
   expect(authStartResponse.ok()).toBeTruthy();
@@ -75,7 +74,7 @@ async function registerAndAuthenticate(request, username) {
     }
   });
 
-  const authCompleteResponse = await request.post(`${SERVER_URL}/authenticate/complete`, {
+  const authCompleteResponse = await request.post(`${GATEWAY_URL}/authenticate/complete`, {
     data: { requestId: authRequestId, credential: mockAssertion }
   });
 
@@ -186,7 +185,7 @@ test.describe('Protected Endpoint Access', () => {
 
 test.describe('Public Key Endpoint', () => {
   test('should fetch public key from WebAuthn server', async ({ request }) => {
-    const response = await request.get(`${SERVER_URL}/public-key`);
+    const response = await request.get(`${GATEWAY_URL}/public-key`);
 
     expect(response.ok()).toBeTruthy();
 

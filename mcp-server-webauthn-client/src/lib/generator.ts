@@ -28,7 +28,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
   const {
     project_path,
     framework = 'vanilla',
-    server_url = 'http://localhost:8080',
+    server_url = 'http://localhost:8000',  // Envoy Gateway (zero-trust entry point)
     client_port = 8082,
     relying_party_id = 'localhost',
     relying_party_name = 'WebAuthn Demo'

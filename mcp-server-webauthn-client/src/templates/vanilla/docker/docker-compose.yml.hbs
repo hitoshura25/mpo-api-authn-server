@@ -81,8 +81,10 @@ services:
       - |
         export MPO_AUTHN_DB_PASSWORD=$$(cat /run/secrets/postgres_password)
         export MPO_AUTHN_REDIS_PASSWORD=$$(cat /run/secrets/redis_password)
-        exec java -jar /app/app.jar
+        exec java $$JAVA_OPTS -jar /app/app.jar
     environment:
+      # JVM optimization for containerized environments (from Dockerfile)
+      JAVA_OPTS: "-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+UseG1GC -XX:+UseStringDeduplication -XX:+OptimizeStringConcat -XX:+UnlockExperimentalVMOptions -XX:+EnableJVMCI -Djava.security.egd=file:/dev/./urandom"
       # Database configuration
       MPO_AUTHN_DB_HOST: postgres
       MPO_AUTHN_DB_PORT: 5432

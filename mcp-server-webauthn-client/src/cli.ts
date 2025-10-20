@@ -14,7 +14,7 @@ const { values } = parseArgs({
     server: {
       type: 'string',
       short: 's',
-      default: 'http://localhost:8080'
+      default: 'http://localhost:8000'
     },
     port: {
       type: 'string',
@@ -47,7 +47,7 @@ USAGE:
 
 OPTIONS:
   -p, --path <path>         Directory to create web client (default: ./web-client)
-  -s, --server <url>        WebAuthn server URL (default: http://localhost:8080)
+  -s, --server <url>        Envoy Gateway URL (zero-trust entry point, default: http://localhost:8000)
   -P, --port <port>         Client dev server port (default: 8082)
   -f, --framework <name>    Framework: vanilla|react|vue (default: vanilla)
   -h, --help               Show this help message

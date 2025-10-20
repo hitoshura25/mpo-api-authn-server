@@ -17,6 +17,7 @@ export class WebAuthnClient {
 
     constructor(options: WebAuthnClientOptions | string = {}) {
         // Support both string URL and options object for backward compatibility
+        // Default to Envoy Gateway for zero-trust architecture
         const serverUrl = typeof options === 'string' ? options : (options.serverUrl || '{{server_url}}');
         const configuration = new Configuration({
             basePath: serverUrl
@@ -159,12 +160,15 @@ export class WebAuthnClient {
                 return {
                     success: true,
                     message: `✅ Authentication successful! Welcome, ${completeResponse.username || 'user'}!`,
-                    username: completeResponse.username
+                    username: completeResponse.username,
+                    accessToken: completeResponse.accessToken,
+                    tokenType: completeResponse.tokenType,
+                    expiresIn: completeResponse.expiresIn
                 };
             } else {
                 return {
                     success: false,
-                    message: `❌ Authentication failed: ${completeResponse.message || 'Unknown error'}`
+                    message: `❌ Authentication failed: Server returned success=false`
                 };
             }
 

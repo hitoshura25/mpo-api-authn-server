@@ -3,6 +3,7 @@ import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
 import Handlebars from 'handlebars';
+import { generateMTLSCertificates } from './certificates.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -110,6 +111,8 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     { template: 'docker/init-db.sql.hbs', output: 'docker/init-db.sql' },
     { template: 'docker/secrets/.gitignore.hbs', output: 'docker/secrets/.gitignore' },
     { template: 'docker/setup-secrets.sh.hbs', output: 'docker/setup-secrets.sh' },
+    // Istio service mesh (Phase 2: mTLS sidecars)
+    { template: 'docker/istio/example-service-envoy.yaml.hbs', output: 'docker/istio/example-service-envoy.yaml' },
     // Example service (Python FastAPI)
     { template: 'example-service/main.py.hbs', output: 'example-service/main.py' },
     { template: 'example-service/requirements.txt.hbs', output: 'example-service/requirements.txt' },
@@ -138,6 +141,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     mkdirSync(join(project_path, 'tests'), { recursive: true });
     mkdirSync(join(project_path, 'docker'), { recursive: true });
     mkdirSync(join(project_path, 'docker', 'secrets'), { recursive: true });
+    mkdirSync(join(project_path, 'docker', 'istio'), { recursive: true });  // Phase 2: Istio sidecar configs
     mkdirSync(join(project_path, 'example-service'), { recursive: true });
 
     // Generate files from templates
@@ -178,6 +182,10 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     writeFileSync(redis_password_path, redis_password, 'utf8');
     files_created.push(postgres_password_path);
     files_created.push(redis_password_path);
+
+    // Phase 2: Generate mTLS certificates for zero-trust service mesh
+    const cert_result = generateMTLSCertificates(project_path);
+    files_created.push(...cert_result.filesCreated);
 
     return {
       content: [

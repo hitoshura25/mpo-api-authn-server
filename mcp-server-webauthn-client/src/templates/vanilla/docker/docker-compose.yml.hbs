@@ -25,10 +25,11 @@ services:
       - "9901:9901"  # Admin interface
     volumes:
       - ./envoy-gateway.yaml:/etc/envoy/envoy.yaml:ro
+      - ./certs:/etc/envoy/certs:ro  # mTLS certificates
     command: ["-c", "/etc/envoy/envoy.yaml", "--service-cluster", "gateway"]
     depends_on:
       - webauthn-server
-      - example-service
+      - example-service-sidecar
     restart: unless-stopped
   postgres:
     image: postgres:15-alpine
@@ -106,17 +107,29 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # Example Service - Demonstrates JWT verification
+  # Example Service Sidecar - Envoy proxy with mTLS termination
+  example-service-sidecar:
+    image: envoyproxy/envoy:v1.29-latest
+    container_name: example-service-sidecar
+    volumes:
+      - ./istio/example-service-envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./certs:/etc/certs:ro  # mTLS certificates
+    command: ["-c", "/etc/envoy/envoy.yaml", "--service-cluster", "example-service"]
+    restart: unless-stopped
+
+  # Example Service - Demonstrates JWT verification (runs behind mTLS sidecar)
   example-service:
     build:
       context: ../example-service
       dockerfile: Dockerfile
     container_name: example-service
+    network_mode: "service:example-service-sidecar"  # Share network with sidecar
     environment:
-      APP_PORT: 9000
+      APP_PORT: 9001  # App listens on 9001, Envoy sidecar exposes 9000
       WEBAUTHN_PUBLIC_KEY_URL: "http://webauthn-server:8080/public-key"
     depends_on:
       - webauthn-server
+      - example-service-sidecar
     restart: unless-stopped
 
 volumes:

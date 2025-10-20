@@ -13,8 +13,10 @@ COPY main.py .
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Expose port
-EXPOSE 9000
+# Expose port (Envoy sidecar exposes 9000, app listens on 9001)
+EXPOSE 9001
 
 # Run application
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9000"]
+# Note: In production, port is set via APP_PORT environment variable (9001)
+# Envoy sidecar handles mTLS and exposes service on port 9000
+CMD ["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "9001"]

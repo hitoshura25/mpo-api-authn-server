@@ -123,20 +123,22 @@ static_resources:
                       address: example-service
                       port_value: 9000
       # mTLS configuration (connects to Istio sidecar)
-      # NOTE: Commented out for Phase 1 testing. Uncomment for Phase 2 (Istio Service Mesh)
-      # transport_socket:
-      #   name: envoy.transport_sockets.tls
-      #   typed_config:
-      #     "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-      #     common_tls_context:
-      #       tls_certificates:
-      #         - certificate_chain:
-      #             filename: /etc/envoy/certs/cert.pem
-      #           private_key:
-      #             filename: /etc/envoy/certs/key.pem
-      #       validation_context:
-      #         trusted_ca:
-      #             filename: /etc/envoy/certs/ca.pem
+      # Phase 2: Envoy Gateway uses mTLS to connect to example-service sidecar
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          common_tls_context:
+            # Gateway's client certificate (for mTLS)
+            tls_certificates:
+              - certificate_chain:
+                  filename: /etc/envoy/certs/gateway-cert.pem
+                private_key:
+                  filename: /etc/envoy/certs/gateway-key.pem
+            # Trusted CA (validates service certificates)
+            validation_context:
+              trusted_ca:
+                filename: /etc/envoy/certs/ca-cert.pem
 
 admin:
   address:

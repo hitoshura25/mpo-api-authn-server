@@ -97,10 +97,10 @@ echo "⚙️  Step 3: Creating Envoy sidecar configuration..."
 SIDECAR_CONFIG="docker/istio/${SERVICE_NAME}-envoy.yaml"
 cp docker/istio/example-service-envoy.yaml "$SIDECAR_CONFIG"
 
-# Update certificate paths in sidecar config
-sed -i.bak "s|service-cert.pem|${SERVICE_NAME}-cert.pem|g" "$SIDECAR_CONFIG"
-sed -i.bak "s|service-key.pem|${SERVICE_NAME}-key.pem|g" "$SIDECAR_CONFIG"
-rm "${SIDECAR_CONFIG}.bak" 2>/dev/null || true
+# Update certificate paths in sidecar config (portable across all platforms)
+sed "s|service-cert.pem|${SERVICE_NAME}-cert.pem|g; s|service-key.pem|${SERVICE_NAME}-key.pem|g" \
+  "$SIDECAR_CONFIG" > "${SIDECAR_CONFIG}.tmp"
+mv "${SIDECAR_CONFIG}.tmp" "$SIDECAR_CONFIG"
 
 echo "   ✅ Created $SIDECAR_CONFIG"
 echo ""

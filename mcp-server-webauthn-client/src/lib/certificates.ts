@@ -22,6 +22,19 @@ export interface CertificateGenerationResult {
  * Generate all mTLS certificates for the zero-trust stack
  */
 export function generateMTLSCertificates(projectPath: string): CertificateGenerationResult {
+  // Check if OpenSSL is installed
+  try {
+    execSync('openssl version', { stdio: 'pipe' });
+  } catch (error) {
+    throw new Error(
+      'OpenSSL is not installed or not available in PATH.\n\n' +
+      'Please install OpenSSL:\n' +
+      '  - macOS:         brew install openssl\n' +
+      '  - Ubuntu/Debian: sudo apt-get install openssl\n' +
+      '  - Windows:       https://slproweb.com/products/Win32OpenSSL.html'
+    );
+  }
+
   const certsDir = join(projectPath, 'docker', 'certs');
   mkdirSync(certsDir, { recursive: true });
 

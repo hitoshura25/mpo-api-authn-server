@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { randomBytes } from 'crypto';
 import Handlebars from 'handlebars';
 import { generateMTLSCertificates } from './certificates.js';
+import { sanitizePathComponent } from './path-utils.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -40,21 +41,13 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     throw new Error(`Unsupported framework: ${framework}. Use 'vanilla', 'react', or 'vue'.`);
   }
 
-  // Path traversal protection: validate framework parameter
-  // Using .indexOf() which Semgrep recognizes as a sanitizer
-  if (framework.indexOf('..') !== -1 || framework.indexOf('\0') !== -1) {
-    throw new Error('Invalid framework path component');
-  }
-
-  // Path traversal protection: validate project_path parameter
-  // Using .indexOf() which Semgrep recognizes as a sanitizer
-  if (project_path.indexOf('..') !== -1 || project_path.indexOf('\0') !== -1) {
-    throw new Error('Invalid project path: path traversal detected');
-  }
+  // Path traversal protection: validate parameters
+  sanitizePathComponent(framework, 'framework');
+  const sanitizedProjectPath = sanitizePathComponent(project_path, 'project path');
 
   // Check if directory exists
-  if (existsSync(project_path)) {
-    throw new Error(`Directory already exists: ${project_path}. Please choose a different path or remove the existing directory.`);
+  if (existsSync(sanitizedProjectPath)) {
+    throw new Error(`Directory already exists: ${sanitizedProjectPath}. Please choose a different path or remove the existing directory.`);
   }
 
   const files_created: string[] = [];
@@ -138,31 +131,25 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     const redis_password = generateSecurePassword();
 
     // Create project directory structure
-    mkdirSync(project_path, { recursive: true });
-    mkdirSync(join(project_path, 'src'), { recursive: true });
-    mkdirSync(join(project_path, 'public'), { recursive: true });
-    mkdirSync(join(project_path, 'tests'), { recursive: true });
-    mkdirSync(join(project_path, 'docker'), { recursive: true });
-    mkdirSync(join(project_path, 'docker', 'secrets'), { recursive: true });
-    mkdirSync(join(project_path, 'docker', 'istio'), { recursive: true });  // Phase 2: Istio sidecar configs
-    mkdirSync(join(project_path, 'example-service'), { recursive: true });
-    mkdirSync(join(project_path, 'docs'), { recursive: true });  // Phase 6-7: Documentation
-    mkdirSync(join(project_path, 'scripts'), { recursive: true });  // Phase 6-7: Helper scripts
+    mkdirSync(sanitizedProjectPath, { recursive: true });
+    mkdirSync(join(sanitizedProjectPath, 'src'), { recursive: true });
+    mkdirSync(join(sanitizedProjectPath, 'public'), { recursive: true });
+    mkdirSync(join(sanitizedProjectPath, 'tests'), { recursive: true });
+    mkdirSync(join(sanitizedProjectPath, 'docker'), { recursive: true });
+    mkdirSync(join(sanitizedProjectPath, 'docker', 'secrets'), { recursive: true });
+    mkdirSync(join(sanitizedProjectPath, 'docker', 'istio'), { recursive: true });  // Phase 2: Istio sidecar configs
+    mkdirSync(join(sanitizedProjectPath, 'example-service'), { recursive: true });
+    mkdirSync(join(sanitizedProjectPath, 'docs'), { recursive: true });  // Phase 6-7: Documentation
+    mkdirSync(join(sanitizedProjectPath, 'scripts'), { recursive: true });  // Phase 6-7: Helper scripts
 
     // Generate files from templates
     for (const { template, output } of template_files) {
-      // Path traversal protection: validate template filename
-      if (template.indexOf('..') !== -1 || template.indexOf('\0') !== -1) {
-        throw new Error('Invalid template filename');
-      }
-
-      // Path traversal protection: validate output path
-      if (output.indexOf('..') !== -1 || output.indexOf('\0') !== -1) {
-        throw new Error('Invalid output path');
-      }
+      // Path traversal protection: validate template filename and output path
+      sanitizePathComponent(template, 'template filename');
+      sanitizePathComponent(output, 'output path');
 
       const template_path = join(template_dir, template);
-      const output_path = join(project_path, output);
+      const output_path = join(sanitizedProjectPath, output);
 
       // Read template
       const template_content = readFileSync(template_path, 'utf8');
@@ -180,8 +167,8 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     }
 
     // Generate Docker secret files with auto-generated passwords
-    const postgres_password_path = join(project_path, 'docker', 'secrets', 'postgres_password');
-    const redis_password_path = join(project_path, 'docker', 'secrets', 'redis_password');
+    const postgres_password_path = join(sanitizedProjectPath, 'docker', 'secrets', 'postgres_password');
+    const redis_password_path = join(sanitizedProjectPath, 'docker', 'secrets', 'redis_password');
 
     writeFileSync(postgres_password_path, postgres_password, 'utf8');
     writeFileSync(redis_password_path, redis_password, 'utf8');
@@ -189,11 +176,11 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     files_created.push(redis_password_path);
 
     // Phase 2: Generate mTLS certificates for zero-trust service mesh
-    const cert_result = generateMTLSCertificates(project_path);
+    const cert_result = generateMTLSCertificates(sanitizedProjectPath);
     files_created.push(...cert_result.filesCreated);
 
     // Phase 6-7: Make add-service.sh executable
-    const add_service_script = join(project_path, 'scripts', 'add-service.sh');
+    const add_service_script = join(sanitizedProjectPath, 'scripts', 'add-service.sh');
     chmodSync(add_service_script, 0o755);  // rwxr-xr-x
 
     return {
@@ -206,7 +193,7 @@ Files created:
 ${files_created.map(f => `  - ${f}`).join('\n')}
 
 🚀 Quick Start (Complete Setup):
-1. cd ${project_path}/docker && docker compose up -d
+1. cd ${sanitizedProjectPath}/docker && docker compose up -d
    (Starts WebAuthn server + PostgreSQL + Redis)
 2. cd .. && npm install
 3. npm run build

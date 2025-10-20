@@ -12,6 +12,7 @@
 import { execSync } from 'child_process';
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
+import { sanitizePathComponent } from './path-utils.js';
 
 export interface CertificateGenerationResult {
   certsDir: string;
@@ -35,7 +36,10 @@ export function generateMTLSCertificates(projectPath: string): CertificateGenera
     );
   }
 
-  const certsDir = join(projectPath, 'docker', 'certs');
+  // Path traversal protection: validate projectPath
+  const sanitizedProjectPath = sanitizePathComponent(projectPath, 'project path');
+
+  const certsDir = join(sanitizedProjectPath, 'docker', 'certs');
   mkdirSync(certsDir, { recursive: true });
 
   const filesCreated: string[] = [];

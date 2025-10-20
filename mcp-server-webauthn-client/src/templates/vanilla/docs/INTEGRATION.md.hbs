@@ -298,6 +298,137 @@ app.listen(9001, '127.0.0.1');
 
 ---
 
+## Port Configuration
+
+### Architecture Overview
+
+The zero-trust stack uses two ports for each service:
+
+- **Port 9000**: Envoy sidecar (external port accessed by gateway) - **FIXED**
+- **APP_PORT**: Your application (internal port, default: 9001) - **CONFIGURABLE**
+
+```
+Envoy Gateway → mTLS → Envoy Sidecar (9000) → HTTP → Your App (APP_PORT)
+```
+
+### Default Behavior
+
+By default, services use:
+- **Envoy Sidecar**: Port 9000 (accessed by gateway via mTLS)
+- **Application**: Port 9001 (accessed by sidecar via HTTP)
+
+### Customizing Application Port
+
+Set `APP_PORT` environment variable in docker-compose.yml:
+
+```yaml
+environment:
+  APP_PORT: 8080  # Use port 8080 instead of default 9001
+  WEBAUTHN_PUBLIC_KEY_URL: "http://webauthn-server:8080/public-key"
+```
+
+The docker-entrypoint.sh script automatically exports `APP_PORT` with a default of 9001, which your application can reference.
+
+### Framework-Specific Examples
+
+#### **FastAPI/Uvicorn** (Python)
+
+**Dockerfile CMD:**
+```dockerfile
+CMD ["sh", "-c", "uvicorn main:app --host 127.0.0.1 --port $APP_PORT"]
+```
+
+**main.py** (if running directly with `python main.py`):
+```python
+import os
+import uvicorn
+
+if __name__ == "__main__":
+    port = int(os.getenv("APP_PORT", "9001"))
+    uvicorn.run(app, host="127.0.0.1", port=port)
+```
+
+#### **Spring Boot** (Java)
+
+**Dockerfile CMD:**
+```dockerfile
+CMD ["sh", "-c", "java -jar app.jar --server.port=$APP_PORT"]
+```
+
+**application.properties:**
+```properties
+server.port=${APP_PORT:9001}
+```
+
+#### **Express** (Node.js)
+
+**Dockerfile CMD:**
+```dockerfile
+CMD ["sh", "-c", "node server.js"]
+```
+
+**server.js:**
+```javascript
+const port = process.env.APP_PORT || 9001;
+app.listen(port, '127.0.0.1', () => {
+  console.log(`Server listening on 127.0.0.1:${port}`);
+});
+```
+
+#### **Flask** (Python)
+
+**Dockerfile CMD:**
+```dockerfile
+CMD ["sh", "-c", "flask run --host=127.0.0.1 --port=$APP_PORT"]
+```
+
+**app.py:**
+```python
+import os
+if __name__ == "__main__":
+    port = int(os.getenv("APP_PORT", "9001"))
+    app.run(host="127.0.0.1", port=port)
+```
+
+### Multi-Service Setup
+
+When running multiple services, assign different APP_PORT values to avoid conflicts:
+
+```yaml
+services:
+  service-1:
+    environment:
+      APP_PORT: 9001  # First service
+    # ... sidecar on port 9000
+
+  service-2:
+    environment:
+      APP_PORT: 9002  # Second service (different port)
+    # ... sidecar on port 9000 (no conflict, different network namespace)
+```
+
+**Note:** Each service's Envoy sidecar still uses port 9000 because services use **separate network namespaces** via `network_mode: "service:sidecar"`. Port 9000 is isolated per service.
+
+### Troubleshooting Port Issues
+
+**Problem:** `Address already in use` error
+
+**Solution:**
+1. Check if another service is using the same `APP_PORT`
+2. Verify you're listening on `127.0.0.1` (NOT `0.0.0.0`)
+3. Ensure `APP_PORT` is set in docker-compose.yml environment
+4. Check logs: `docker compose logs <service-name>`
+
+**Problem:** Gateway can't reach service
+
+**Solution:**
+1. Verify Envoy sidecar is running: `docker compose ps`
+2. Check sidecar connects to correct app port (matches `APP_PORT`)
+3. Update `docker/istio/<service>-envoy.yaml` port_value if needed
+4. Restart services: `docker compose restart <service>`
+
+---
+
 ## mTLS Configuration Checklist
 
 Ensure your service follows these requirements:

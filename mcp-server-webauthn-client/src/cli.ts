@@ -16,7 +16,7 @@ const { values } = parseArgs({
       short: 's',
       default: 'http://localhost:8000'
     },
-    port: {
+    'forward-port': {
       type: 'string',
       short: 'P',
       default: '8082'
@@ -46,11 +46,11 @@ USAGE:
   npx @vmenon25/mcp-server-webauthn-client [OPTIONS]
 
 OPTIONS:
-  -p, --path <path>         Directory to create web client (default: ./web-client)
-  -s, --server <url>        Envoy Gateway URL (zero-trust entry point, default: http://localhost:8000)
-  -P, --port <port>         Client dev server port (default: 8082)
-  -f, --framework <name>    Framework: vanilla|react|vue (default: vanilla)
-  -h, --help               Show this help message
+  -p, --path <path>            Directory to create web client (default: ./web-client)
+  -s, --server <url>           Envoy Gateway URL (zero-trust entry point, default: http://localhost:8000)
+  -P, --forward-port <port>    Port to forward for web client dev server (default: 8082)
+  -f, --framework <name>       Framework: vanilla|react|vue (default: vanilla)
+  -h, --help                   Show this help message
 
 EXAMPLES:
   # Generate vanilla TypeScript client
@@ -61,10 +61,10 @@ EXAMPLES:
     --path ./auth-client \\
     --server http://localhost:9000
 
-  # Custom client port
+  # Custom forward port
   npx @vmenon25/mcp-server-webauthn-client \\
     --path ./web-client \\
-    --port 3000
+    --forward-port 3000
 
 NEXT STEPS (after generation):
   1. cd <path>
@@ -87,10 +87,10 @@ if (values.framework && !validFrameworks.includes(values.framework)) {
   process.exit(1);
 }
 
-// Validate port
-const clientPort = parseInt(values.port || '8082', 10);
-if (isNaN(clientPort) || clientPort < 1 || clientPort > 65535) {
-  console.error(`❌ Error: Invalid port '${values.port}'`);
+// Validate forward port
+const forwardPort = parseInt(values['forward-port'] || '8082', 10);
+if (isNaN(forwardPort) || forwardPort < 1 || forwardPort > 65535) {
+  console.error(`❌ Error: Invalid forward port '${values['forward-port']}'`);
   console.error(`   Port must be a number between 1 and 65535`);
   process.exit(1);
 }
@@ -98,17 +98,17 @@ if (isNaN(clientPort) || clientPort < 1 || clientPort > 65535) {
 // Generate web client
 console.log('🚀 WebAuthn Client Generator');
 console.log('═══════════════════════════════════════');
-console.log(`📁 Path:      ${values.path}`);
-console.log(`🌐 Server:    ${values.server}`);
-console.log(`🔌 Port:      ${clientPort}`);
-console.log(`🎨 Framework: ${values.framework}`);
+console.log(`📁 Path:         ${values.path}`);
+console.log(`🌐 Server:       ${values.server}`);
+console.log(`🔌 Forward Port: ${forwardPort}`);
+console.log(`🎨 Framework:    ${values.framework}`);
 console.log('═══════════════════════════════════════\n');
 
 try {
   const result = await generateWebClient({
     project_path: values.path!,
     server_url: values.server,
-    client_port: clientPort,
+    forward_port: forwardPort,
     framework: values.framework as 'vanilla' | 'react' | 'vue'
   });
 

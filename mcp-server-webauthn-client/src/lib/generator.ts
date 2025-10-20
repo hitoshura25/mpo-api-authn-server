@@ -21,7 +21,7 @@ interface GenerateWebClientArgs {
   project_path: string;
   framework?: 'vanilla' | 'react' | 'vue';
   server_url?: string;
-  client_port?: number;
+  forward_port?: number;
   relying_party_id?: string;
   relying_party_name?: string;
 }
@@ -31,7 +31,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     project_path,
     framework = 'vanilla',
     server_url = 'http://localhost:8000',  // Envoy Gateway (zero-trust entry point)
-    client_port = 8082,
+    forward_port = 8082,
     relying_party_id = 'localhost',
     relying_party_name = 'WebAuthn Demo'
   } = args;
@@ -110,6 +110,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     { template: 'example-service/main.py.hbs', output: 'example-service/main.py' },
     { template: 'example-service/requirements.txt.hbs', output: 'example-service/requirements.txt' },
     { template: 'example-service/Dockerfile.hbs', output: 'example-service/Dockerfile' },
+    { template: 'example-service/docker-entrypoint.sh.hbs', output: 'example-service/docker-entrypoint.sh' },
     { template: 'example-service/README.md.hbs', output: 'example-service/README.md' },
     // Phase 6-7: Documentation and helper scripts
     { template: 'docs/INTEGRATION.md.hbs', output: 'docs/INTEGRATION.md' },
@@ -119,7 +120,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
   // Template variables
   const template_vars = {
     server_url,
-    client_port,
+    client_port: forward_port,  // Keep template variable as client_port for backward compatibility
     server_port,
     relying_party_id,
     relying_party_name
@@ -200,7 +201,7 @@ ${files_created.map(f => `  - ${f}`).join('\n')}
 4. npm start &
 5. npm test
    (Validates complete WebAuthn setup with E2E tests)
-6. If tests pass ✅, open http://localhost:${client_port}
+6. If tests pass ✅, open http://localhost:${forward_port}
 
 🔐 Security:
   - Unique passwords auto-generated in docker/secrets/

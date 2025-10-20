@@ -131,7 +131,8 @@ cat <<EOF
     container_name: ${SERVICE_NAME}
     network_mode: "service:${SERVICE_NAME}-sidecar"
     environment:
-      APP_PORT: 9001  # TODO: Change if you have multiple services
+      # Port configuration (sidecar uses 9000, app uses APP_PORT)
+      APP_PORT: 9001  # Change if you have multiple services (9002, 9003, etc.)
       WEBAUTHN_PUBLIC_KEY_URL: "http://webauthn-server:8080/public-key"
     depends_on:
       - webauthn-server
@@ -196,10 +197,15 @@ echo "   1. Update your service code:"
 echo "      cd ${SERVICE_NAME}"
 echo "      # Edit main.py (or create your own application)"
 echo "      # Keep JWT verification middleware intact"
+echo "      # Ensure your app listens on 127.0.0.1:\$APP_PORT (NOT 0.0.0.0)"
 echo ""
 echo "   2. Update docker/docker-compose.yml:"
 echo "      # Add the service configuration shown above"
-echo "      # Adjust APP_PORT if you have multiple services (9001, 9002, etc.)"
+echo "      # Adjust APP_PORT if you have multiple services:"
+echo "      #   - First service:  APP_PORT: 9001"
+echo "      #   - Second service: APP_PORT: 9002"
+echo "      #   - Third service:  APP_PORT: 9003"
+echo "      # Note: Envoy sidecars all use port 9000 (no conflict, separate networks)"
 echo ""
 echo "   3. Update docker/envoy-gateway.yaml:"
 echo "      # Add routing configuration shown above"

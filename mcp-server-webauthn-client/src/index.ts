@@ -46,9 +46,9 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               description: 'Envoy Gateway URL (entry point for zero-trust stack) - default: http://localhost:8000',
               default: 'http://localhost:8000'
             },
-            client_port: {
+            forward_port: {
               type: 'number',
-              description: 'Port for the web client dev server',
+              description: 'Port to forward for the web client dev server (local machine)',
               default: 8082
             },
             relying_party_id: {

@@ -21,8 +21,8 @@ services:
     image: envoyproxy/envoy:v1.29-latest
     container_name: envoy-gateway
     ports:
-      - "8000:8000"  # Main gateway proxy
-      - "9901:9901"  # Admin interface
+      - "{{gateway_host_port}}:8000"  # Main gateway proxy
+      - "{{gateway_admin_port}}:9901"  # Admin interface
     volumes:
       - ./envoy-gateway.yaml:/etc/envoy/envoy.yaml:ro
       - ./certs:/etc/envoy/certs:ro  # mTLS certificates
@@ -41,7 +41,7 @@ services:
     secrets:
       - postgres_password
     ports:
-      - "5432:5432"
+      - "{{postgres_host_port}}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       # Auto-run schema initialization on first startup
@@ -60,7 +60,7 @@ services:
     secrets:
       - redis_password
     ports:
-      - "6379:6379"
+      - "{{redis_host_port}}:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped
@@ -69,6 +69,23 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+  # Jaeger - Distributed tracing (always included)
+  jaeger:
+    image: jaegertracing/all-in-one:1.53
+    container_name: webauthn-jaeger
+    ports:
+      - "{{jaeger_ui_port}}:16686"                      # Jaeger UI
+      - "{{jaeger_collector_http_port}}:14268"          # Collector HTTP
+      - "{{jaeger_collector_grpc_port}}:14250"          # Collector gRPC
+      - "{{jaeger_otlp_grpc_port}}:4317"                # OTLP gRPC
+      - "{{jaeger_otlp_http_port}}:4318"                # OTLP HTTP
+      - "{{jaeger_agent_compact_port}}:6831/udp"        # Agent compact thrift
+      - "{{jaeger_agent_binary_port}}:6832/udp"         # Agent binary thrift
+      - "{{jaeger_agent_config_port}}:5778"             # Agent config
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
 
   # WebAuthn Server - JWT issuer and FIDO2 authentication
   webauthn-server:

@@ -51,16 +51,22 @@ The client is configured to connect to the zero-trust stack at:
 
 You can change the server URL in the web UI or by modifying the configuration.
 
-### Port Assignments
-- **8000** - Envoy Gateway (main entry point for all API calls)
-- **{{client_port}}** - Web client development server (this client)
-- **9000** - Service sidecars (mTLS termination, isolated per service)
-- **9001+** - Application ports (configurable, e.g., example-service: 9001)
-- **5432** - PostgreSQL database
-- **6379** - Redis cache
-- **9901** - Envoy admin interface
+### Port Assignments (Customizable)
+- **{{gateway_host_port}}** - Envoy Gateway (default: 8000)
+- **{{gateway_admin_port}}** - Envoy admin (default: 9901)
+- **{{client_port}}** - Web client dev server (default: 8082)
+- **{{postgres_host_port}}** - PostgreSQL (default: 5432)
+- **{{redis_host_port}}** - Redis (default: 6379)
+- **{{jaeger_ui_port}}** - Jaeger UI (default: 16686)
+- **{{jaeger_collector_http_port}}** - Jaeger collector HTTP (default: 14268)
+- **{{jaeger_otlp_grpc_port}}** - Jaeger OTLP gRPC (default: 4317)
+- **{{jaeger_otlp_http_port}}** - Jaeger OTLP HTTP (default: 4318)
+- **9000** - Service sidecars (mTLS, internal only)
+- **9001+** - Application ports (internal only)
 
-**Note:** Each service's Envoy sidecar uses port 9000 (no conflicts due to network isolation).
+**Avoiding Port Conflicts:**
+All host ports are customizable via CLI parameters to avoid conflicts with existing services.
+Use `npx @vmenon25/mcp-server-webauthn-client --help` to see all port options.
 
 ## Features
 

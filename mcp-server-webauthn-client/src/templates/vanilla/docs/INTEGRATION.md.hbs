@@ -137,6 +137,72 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 ---
 
+## Infrastructure Port Customization
+
+### Avoiding Port Conflicts with Existing Services
+
+The MCP-generated Docker stack includes several infrastructure services that may conflict with your existing setup:
+
+- **PostgreSQL** (default: 5432)
+- **Redis** (default: 6379)
+- **Envoy Gateway** (default: 8000, 9901)
+- **Jaeger** (default: 16686, 14268, 4317, 4318, and more)
+
+**All host ports are customizable** via CLI parameters to avoid conflicts.
+
+### CLI Port Customization
+
+```bash
+# Avoid conflicts with existing PostgreSQL and Redis
+npx @vmenon25/mcp-server-webauthn-client \
+  --path ./webauthn-client \
+  --postgres-host-port 5433 \
+  --redis-host-port 6380 \
+  --gateway-host-port 8001 \
+  --jaeger-ui-port 16687
+```
+
+### Available Port Parameters
+
+**Infrastructure Ports:**
+- `--postgres-host-port` - PostgreSQL (default: 5432)
+- `--redis-host-port` - Redis (default: 6379)
+- `--gateway-host-port` - Envoy Gateway (default: 8000)
+- `--gateway-admin-port` - Envoy admin (default: 9901)
+
+**Jaeger Tracing Ports:**
+- `--jaeger-ui-port` - Jaeger UI (default: 16686)
+- `--jaeger-collector-http-port` - Collector HTTP (default: 14268)
+- `--jaeger-collector-grpc-port` - Collector gRPC (default: 14250)
+- `--jaeger-otlp-grpc-port` - OTLP gRPC (default: 4317)
+- `--jaeger-otlp-http-port` - OTLP HTTP (default: 4318)
+- `--jaeger-agent-compact-port` - Agent compact thrift UDP (default: 6831)
+- `--jaeger-agent-binary-port` - Agent binary thrift UDP (default: 6832)
+- `--jaeger-agent-config-port` - Agent config HTTP (default: 5778)
+
+### Example: Health Data Project Integration
+
+```bash
+# Existing infrastructure uses default ports
+# WebAuthn stack uses custom ports to avoid conflicts
+npx @vmenon25/mcp-server-webauthn-client \
+  --path ./webauthn-client \
+  --postgres-host-port 5433 \
+  --redis-host-port 6380 \
+  --gateway-host-port 8001 \
+  --jaeger-ui-port 16687 \
+  --jaeger-otlp-grpc-port 4320
+
+# Result:
+# ✅ Existing services continue on ports 5432, 6379, 8000, 16686, 4317
+# ✅ WebAuthn stack runs on ports 5433, 6380, 8001, 16687, 4320
+# ✅ No port conflicts, no manual configuration needed
+```
+
+**Important:** Container internal ports remain standard (5432, 6379, etc.). Only **host-side ports** are customized.
+
+---
+
 ## Port Configuration
 
 ### Automated Port Management

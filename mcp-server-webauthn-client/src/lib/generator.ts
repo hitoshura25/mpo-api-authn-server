@@ -24,6 +24,20 @@ interface GenerateWebClientArgs {
   forward_port?: number;
   relying_party_id?: string;
   relying_party_name?: string;
+  // Infrastructure port customization
+  postgres_host_port?: number;
+  redis_host_port?: number;
+  gateway_host_port?: number;
+  gateway_admin_port?: number;
+  // Jaeger tracing ports
+  jaeger_ui_port?: number;
+  jaeger_collector_http_port?: number;
+  jaeger_collector_grpc_port?: number;
+  jaeger_otlp_grpc_port?: number;
+  jaeger_otlp_http_port?: number;
+  jaeger_agent_compact_port?: number;
+  jaeger_agent_binary_port?: number;
+  jaeger_agent_config_port?: number;
 }
 
 export async function generateWebClient(args: GenerateWebClientArgs) {
@@ -33,7 +47,21 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     server_url = 'http://localhost:8000',  // Envoy Gateway (zero-trust entry point)
     forward_port = 8082,
     relying_party_id = 'localhost',
-    relying_party_name = 'WebAuthn Demo'
+    relying_party_name = 'WebAuthn Demo',
+    // Infrastructure ports
+    postgres_host_port = 5432,
+    redis_host_port = 6379,
+    gateway_host_port = 8000,
+    gateway_admin_port = 9901,
+    // Jaeger ports
+    jaeger_ui_port = 16686,
+    jaeger_collector_http_port = 14268,
+    jaeger_collector_grpc_port = 14250,
+    jaeger_otlp_grpc_port = 4317,
+    jaeger_otlp_http_port = 4318,
+    jaeger_agent_compact_port = 6831,
+    jaeger_agent_binary_port = 6832,
+    jaeger_agent_config_port = 5778
   } = args;
 
   // Validate framework
@@ -123,7 +151,21 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     client_port: forward_port,  // Keep template variable as client_port for backward compatibility
     server_port,
     relying_party_id,
-    relying_party_name
+    relying_party_name,
+    // Infrastructure ports
+    postgres_host_port,
+    redis_host_port,
+    gateway_host_port,
+    gateway_admin_port,
+    // Jaeger ports
+    jaeger_ui_port,
+    jaeger_collector_http_port,
+    jaeger_collector_grpc_port,
+    jaeger_otlp_grpc_port,
+    jaeger_otlp_http_port,
+    jaeger_agent_compact_port,
+    jaeger_agent_binary_port,
+    jaeger_agent_config_port
   };
 
   try {

@@ -60,6 +60,68 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
               type: 'string',
               description: 'Relying Party Name for WebAuthn (default: WebAuthn Demo)',
               default: 'WebAuthn Demo'
+            },
+            // Infrastructure port customization
+            postgres_host_port: {
+              type: 'number',
+              description: 'Host port for PostgreSQL (default: 5432)',
+              default: 5432
+            },
+            redis_host_port: {
+              type: 'number',
+              description: 'Host port for Redis (default: 6379)',
+              default: 6379
+            },
+            gateway_host_port: {
+              type: 'number',
+              description: 'Host port for Envoy Gateway (default: 8000)',
+              default: 8000
+            },
+            gateway_admin_port: {
+              type: 'number',
+              description: 'Host port for Envoy admin interface (default: 9901)',
+              default: 9901
+            },
+            // Jaeger tracing ports (always included)
+            jaeger_ui_port: {
+              type: 'number',
+              description: 'Host port for Jaeger UI (default: 16686)',
+              default: 16686
+            },
+            jaeger_collector_http_port: {
+              type: 'number',
+              description: 'Host port for Jaeger collector HTTP (default: 14268)',
+              default: 14268
+            },
+            jaeger_collector_grpc_port: {
+              type: 'number',
+              description: 'Host port for Jaeger collector gRPC (default: 14250)',
+              default: 14250
+            },
+            jaeger_otlp_grpc_port: {
+              type: 'number',
+              description: 'Host port for Jaeger OTLP gRPC (default: 4317)',
+              default: 4317
+            },
+            jaeger_otlp_http_port: {
+              type: 'number',
+              description: 'Host port for Jaeger OTLP HTTP (default: 4318)',
+              default: 4318
+            },
+            jaeger_agent_compact_port: {
+              type: 'number',
+              description: 'Host port for Jaeger agent compact thrift UDP (default: 6831)',
+              default: 6831
+            },
+            jaeger_agent_binary_port: {
+              type: 'number',
+              description: 'Host port for Jaeger agent binary thrift UDP (default: 6832)',
+              default: 6832
+            },
+            jaeger_agent_config_port: {
+              type: 'number',
+              description: 'Host port for Jaeger agent config HTTP (default: 5778)',
+              default: 5778
             }
           },
           required: ['project_path'],

@@ -15,12 +15,23 @@ set -e
 if ! command -v yq &> /dev/null; then
     echo "❌ Error: yq is required but not installed"
     echo ""
-    echo "📦 Install yq:"
-    echo "   macOS:   brew install yq"
-    echo "   Linux:   wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq && chmod +x /usr/local/bin/yq"
-    echo "   Docker:  Available in generated Docker stack"
+    echo "📦 Install yq v4+:"
     echo ""
-    echo "📚 See: https://github.com/mikefarah/yq"
+    echo "   Using Homebrew:"
+    echo "     brew install yq"
+    echo ""
+    echo "   Using wget (Linux):"
+    echo "     wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /tmp/yq"
+    echo "     sudo mv /tmp/yq /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
+    echo ""
+    echo "   Using wget (macOS):"
+    echo "     wget https://github.com/mikefarah/yq/releases/latest/download/yq_darwin_amd64 -O /tmp/yq"
+    echo "     sudo mv /tmp/yq /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
+    echo ""
+    echo "   See all options:"
+    echo "     https://github.com/mikefarah/yq#install"
+    echo ""
+    echo "Then re-run this script: $0 $*"
     exit 1
 fi
 

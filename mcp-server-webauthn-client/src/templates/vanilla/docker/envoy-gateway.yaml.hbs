@@ -53,9 +53,9 @@ static_resources:
                           route:
                             cluster: webauthn_server
 
-                        # Protected routes (JWT required)
+                        # Protected routes (JWT required) - Explicit routes only
                         - match:
-                            prefix: "/api"
+                            prefix: "/api/example"
                           route:
                             cluster: example_service
 

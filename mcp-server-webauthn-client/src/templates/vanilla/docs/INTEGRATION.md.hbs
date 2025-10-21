@@ -1,6 +1,6 @@
 # Adding Your Service to Zero-Trust Stack
 
-This guide shows how to integrate your own services into the zero-trust WebAuthn architecture.
+This guide shows how to integrate your own services into the zero-trust WebAuthn architecture using **fully automated** service addition.
 
 ## Architecture Overview
 
@@ -20,162 +20,240 @@ Client → Envoy Gateway (port 8000) [JWT Auth]
 1. **JWT Authentication**: Envoy Gateway validates JWT tokens for all `/api/*` routes
 2. **mTLS Service Mesh**: All service-to-service communication uses mutual TLS
 3. **Zero-Trust**: Services never trust incoming requests without verification
+4. **Explicit Routing**: Only configured services are accessible (no catch-all routes)
 
 ---
 
-## Quick Start
+## Quick Start: Adding a Service
 
-### Option 1: Automated Setup (Recommended)
+The `add-service.sh` script **fully automates** service integration with **zero manual YAML editing**.
+
+### Prerequisites
+
+**yq v4+** (YAML processor) is required:
 
 ```bash
-# Use the helper script to scaffold a new service
-cd scripts
-./add-service.sh my-service
+# macOS
+brew install yq
 
-# Follow the printed instructions to:
-# 1. Update my-service/main.py with your logic
-# 2. Add service to docker-compose.yml
-# 3. Start your service
+# Linux
+wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+chmod +x /usr/local/bin/yq
+
+# Verify installation
+yq --version  # Should show v4.x.x
 ```
 
-### Option 2: Manual Setup
-
-Follow these steps to manually integrate a new service:
-
-#### Step 1: Copy Example Service Template
+### Automated Service Addition
 
 ```bash
-# Copy example-service as starting point
-cp -r example-service my-service
+# Auto-detect next available port (9002, 9003, etc.)
+./scripts/add-service.sh my-service
+
+# Specify custom port
+./scripts/add-service.sh my-service --app-port 9005
+
+# Custom API route prefix
+./scripts/add-service.sh billing-api --route /api/billing
+
+# Both custom port and route
+./scripts/add-service.sh payment-svc -p 9010 -r /api/payments
+
+# Show help
+./scripts/add-service.sh --help
+```
+
+**What it does automatically:**
+1. ✅ Copies `example-service` as template
+2. ✅ Generates mTLS certificates (CA-signed)
+3. ✅ Creates Envoy sidecar configuration
+4. ✅ Updates `docker-compose.yml` with service + sidecar
+5. ✅ Updates `envoy-gateway.yaml` with routing + cluster
+6. ✅ Validates port conflicts
+7. ✅ Creates backup files (`.backup`)
+
+**After generation:**
+
+```bash
+# 1. Customize service code
 cd my-service
+# Edit main.py - keep JWT verification, listen on 127.0.0.1:$APP_PORT
 
-# Update main.py with your business logic
-# Keep the JWT verification middleware intact
+# 2. Start service
+cd docker
+docker compose up -d my-service
+
+# 3. Test (after obtaining JWT token via web client)
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/my-service/data
 ```
 
-#### Step 2: Generate mTLS Certificates
+---
 
-```bash
-cd docker/certs
+## Security Model: Explicit Routing
 
-# Generate private key and CSR
-openssl req -newkey rsa:2048 -nodes \
-  -keyout my-service-key.pem \
-  -out my-service-csr.pem \
-  -subj "/CN=my-service/O=WebAuthn/OU=Services"
+**Zero-Trust Principle:** Services are **only** accessible via explicitly configured routes. There is no catch-all `/api` route.
 
-# Sign with CA
-openssl x509 -req \
-  -in my-service-csr.pem \
-  -CA ca-cert.pem \
-  -CAkey ca-key.pem \
-  -CAcreateserial \
-  -out my-service-cert.pem \
-  -days 365
+### How It Works
 
-# Cleanup CSR
-rm my-service-csr.pem
-
-cd ../..
-```
-
-#### Step 3: Create Envoy Sidecar Configuration
-
-Create `docker/istio/my-service-envoy.yaml`:
-
-```yaml
-# Copy from docker/istio/example-service-envoy.yaml
-# Update certificate paths:
-# - /etc/certs/service-cert.pem → /etc/certs/my-service-cert.pem
-# - /etc/certs/service-key.pem → /etc/certs/my-service-key.pem
-```
-
-#### Step 4: Add to docker-compose.yml
-
-```yaml
-services:
-  # ... existing services ...
-
-  # Your service sidecar (mTLS termination)
-  my-service-sidecar:
-    image: envoyproxy/envoy:v1.29-latest
-    container_name: my-service-sidecar
-    volumes:
-      - ./istio/my-service-envoy.yaml:/etc/envoy/envoy.yaml:ro
-      - ./certs:/etc/certs:ro
-    command: ["-c", "/etc/envoy/envoy.yaml", "--service-cluster", "my-service"]
-    restart: unless-stopped
-
-  # Your application (runs behind sidecar)
-  my-service:
-    build:
-      context: ../my-service
-      dockerfile: Dockerfile
-    container_name: my-service
-    network_mode: "service:my-service-sidecar"  # Share network with sidecar
-    environment:
-      APP_PORT: 9001  # Your app port (sidecar exposes 9000)
-      WEBAUTHN_PUBLIC_KEY_URL: "http://webauthn-server:8080/public-key"
-    depends_on:
-      - webauthn-server
-      - my-service-sidecar
-    restart: unless-stopped
-```
-
-#### Step 5: Update Envoy Gateway Routing
-
-Add routing to `docker/envoy-gateway.yaml`:
+**Envoy Gateway Routing (explicit allow-list):**
 
 ```yaml
 routes:
-  # ... existing routes ...
-
-  # Your service route (JWT required)
+  # Each service has an explicit route
   - match:
-      prefix: "/api/my-service"
+      prefix: "/api/example"
     route:
-      cluster: my_service
+      cluster: example_service
 
-# Add cluster configuration
-clusters:
-  # ... existing clusters ...
+  - match:
+      prefix: "/api/billing"
+    route:
+      cluster: billing_service
 
-  - name: my_service
-    connect_timeout: 0.25s
-    type: STRICT_DNS
-    lb_policy: ROUND_ROBIN
-    load_assignment:
-      cluster_name: my_service
-      endpoints:
-        - lb_endpoints:
-            - endpoint:
-                address:
-                  socket_address:
-                    address: my-service
-                    port_value: 9000  # Sidecar port
-    # mTLS configuration (same as example_service)
-    transport_socket:
-      name: envoy.transport_sockets.tls
-      typed_config:
-        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
-        common_tls_context:
-          tls_certificates:
-            - certificate_chain:
-                filename: /etc/envoy/certs/gateway-cert.pem
-              private_key:
-                filename: /etc/envoy/certs/gateway-key.pem
-          validation_context:
-            trusted_ca:
-              filename: /etc/envoy/certs/ca-cert.pem
+  # NO catch-all /api route
+  # Undefined routes return 401 (JWT required but no route configured)
 ```
 
-#### Step 6: Start Your Service
+**Security Benefits:**
+- ✅ **Fail-fast**: Misconfigured routes immediately return 401/404
+- ✅ **Attack surface reduction**: Only defined endpoints reachable
+- ✅ **Explicit allow-list**: Every service must be explicitly added
+- ✅ **No silent routing**: Requests never routed to wrong service
+- ✅ **Zero-trust enforcement**: No implicit trust of any `/api/*` path
+
+**Testing undefined routes:**
 
 ```bash
-cd docker
-docker compose up -d my-service
-docker compose logs -f my-service
+# Undefined route returns 401 (JWT filter applies, but no route exists)
+curl http://localhost:8000/api/undefined-service
+# Response: "Jwt is missing"
+
+# Explicit route works (with valid JWT)
+curl -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8000/api/example/data
+# Response: Service data
 ```
+
+---
+
+## Port Configuration
+
+### Automated Port Management
+
+The `add-service.sh` script **automatically detects** the next available `APP_PORT`:
+
+```bash
+# First service (example-service): APP_PORT=9001 (pre-configured)
+# Second service: APP_PORT=9002 (auto-detected)
+# Third service: APP_PORT=9003 (auto-detected)
+```
+
+**Port conflict detection:**
+
+```bash
+./scripts/add-service.sh duplicate --app-port 9002
+# ❌ Error: Port 9002 is already in use by another service
+#    Use --app-port to specify a different port
+```
+
+**Manual override:**
+
+```bash
+./scripts/add-service.sh my-service --app-port 9010
+# Uses port 9010 explicitly
+```
+
+### Architecture Overview
+
+The zero-trust stack uses **two ports** for each service:
+
+- **Port 9000**: Envoy sidecar (external port accessed by gateway) - **FIXED**
+- **APP_PORT**: Your application (internal port, default: 9001+) - **CONFIGURABLE**
+
+```
+Envoy Gateway → mTLS → Envoy Sidecar (9000) → HTTP → Your App (APP_PORT)
+```
+
+**Important:** Each service's Envoy sidecar uses port 9000, but there are **no conflicts** because services use **separate network namespaces** via `network_mode: "service:sidecar"`. Port 9000 is isolated per service.
+
+### Framework-Specific Examples
+
+#### **FastAPI/Uvicorn** (Python)
+
+**Dockerfile CMD:**
+```dockerfile
+CMD ["sh", "-c", "uvicorn main:app --host 127.0.0.1 --port $APP_PORT"]
+```
+
+**main.py** (if running directly):
+```python
+import os
+import uvicorn
+
+if __name__ == "__main__":
+    port = int(os.getenv("APP_PORT", "9001"))
+    uvicorn.run(app, host="127.0.0.1", port=port)
+```
+
+#### **Spring Boot** (Java)
+
+**Dockerfile CMD:**
+```dockerfile
+CMD ["sh", "-c", "java -jar app.jar --server.port=$APP_PORT"]
+```
+
+**application.properties:**
+```properties
+server.port=${APP_PORT:9001}
+```
+
+#### **Express** (Node.js)
+
+**Dockerfile CMD:**
+```dockerfile
+CMD ["sh", "-c", "node server.js"]
+```
+
+**server.js:**
+```javascript
+const port = process.env.APP_PORT || 9001;
+app.listen(port, '127.0.0.1', () => {
+  console.log(`Server listening on 127.0.0.1:${port}`);
+});
+```
+
+#### **Flask** (Python)
+
+**Dockerfile CMD:**
+```dockerfile
+CMD ["sh", "-c", "flask run --host=127.0.0.1 --port=$APP_PORT"]
+```
+
+**app.py:**
+```python
+import os
+if __name__ == "__main__":
+    port = int(os.getenv("APP_PORT", "9001"))
+    app.run(host="127.0.0.1", port=port)
+```
+
+### Troubleshooting Port Issues
+
+**Problem:** `Address already in use` error
+
+**Solution:**
+1. Check if another service is using the same `APP_PORT`
+2. Verify you're listening on `127.0.0.1` (NOT `0.0.0.0`)
+3. Ensure `APP_PORT` is set in docker-compose.yml environment
+4. Check logs: `docker compose logs <service-name>`
+
+**Problem:** Gateway can't reach service
+
+**Solution:**
+1. Verify Envoy sidecar is running: `docker compose ps`
+2. Check sidecar connects to correct app port (matches `APP_PORT`)
+3. Restart services: `docker compose restart <service>`
 
 ---
 
@@ -271,7 +349,7 @@ async function verifyJWT(req: express.Request, res: express.Response, next: expr
 
   const token = authHeader.split(' ')[1];
 
-  try {
+  try:
     const publicKey = await getPublicKey();
     const payload = jwt.verify(token, publicKey, {
       algorithms: ['RS256'],
@@ -293,139 +371,9 @@ app.get('/api/my-service/protected', verifyJWT, (req, res) => {
   });
 });
 
-app.listen(9001, '127.0.0.1');
-```
-
----
-
-## Port Configuration
-
-### Architecture Overview
-
-The zero-trust stack uses two ports for each service:
-
-- **Port 9000**: Envoy sidecar (external port accessed by gateway) - **FIXED**
-- **APP_PORT**: Your application (internal port, default: 9001) - **CONFIGURABLE**
-
-```
-Envoy Gateway → mTLS → Envoy Sidecar (9000) → HTTP → Your App (APP_PORT)
-```
-
-### Default Behavior
-
-By default, services use:
-- **Envoy Sidecar**: Port 9000 (accessed by gateway via mTLS)
-- **Application**: Port 9001 (accessed by sidecar via HTTP)
-
-### Customizing Application Port
-
-Set `APP_PORT` environment variable in docker-compose.yml:
-
-```yaml
-environment:
-  APP_PORT: 8080  # Use port 8080 instead of default 9001
-  WEBAUTHN_PUBLIC_KEY_URL: "http://webauthn-server:8080/public-key"
-```
-
-The docker-entrypoint.sh script automatically exports `APP_PORT` with a default of 9001, which your application can reference.
-
-### Framework-Specific Examples
-
-#### **FastAPI/Uvicorn** (Python)
-
-**Dockerfile CMD:**
-```dockerfile
-CMD ["sh", "-c", "uvicorn main:app --host 127.0.0.1 --port $APP_PORT"]
-```
-
-**main.py** (if running directly with `python main.py`):
-```python
-import os
-import uvicorn
-
-if __name__ == "__main__":
-    port = int(os.getenv("APP_PORT", "9001"))
-    uvicorn.run(app, host="127.0.0.1", port=port)
-```
-
-#### **Spring Boot** (Java)
-
-**Dockerfile CMD:**
-```dockerfile
-CMD ["sh", "-c", "java -jar app.jar --server.port=$APP_PORT"]
-```
-
-**application.properties:**
-```properties
-server.port=${APP_PORT:9001}
-```
-
-#### **Express** (Node.js)
-
-**Dockerfile CMD:**
-```dockerfile
-CMD ["sh", "-c", "node server.js"]
-```
-
-**server.js:**
-```javascript
 const port = process.env.APP_PORT || 9001;
-app.listen(port, '127.0.0.1', () => {
-  console.log(`Server listening on 127.0.0.1:${port}`);
-});
+app.listen(port, '127.0.0.1');
 ```
-
-#### **Flask** (Python)
-
-**Dockerfile CMD:**
-```dockerfile
-CMD ["sh", "-c", "flask run --host=127.0.0.1 --port=$APP_PORT"]
-```
-
-**app.py:**
-```python
-import os
-if __name__ == "__main__":
-    port = int(os.getenv("APP_PORT", "9001"))
-    app.run(host="127.0.0.1", port=port)
-```
-
-### Multi-Service Setup
-
-When running multiple services, assign different APP_PORT values to avoid conflicts:
-
-```yaml
-services:
-  service-1:
-    environment:
-      APP_PORT: 9001  # First service
-    # ... sidecar on port 9000
-
-  service-2:
-    environment:
-      APP_PORT: 9002  # Second service (different port)
-    # ... sidecar on port 9000 (no conflict, different network namespace)
-```
-
-**Note:** Each service's Envoy sidecar still uses port 9000 because services use **separate network namespaces** via `network_mode: "service:sidecar"`. Port 9000 is isolated per service.
-
-### Troubleshooting Port Issues
-
-**Problem:** `Address already in use` error
-
-**Solution:**
-1. Check if another service is using the same `APP_PORT`
-2. Verify you're listening on `127.0.0.1` (NOT `0.0.0.0`)
-3. Ensure `APP_PORT` is set in docker-compose.yml environment
-4. Check logs: `docker compose logs <service-name>`
-
-**Problem:** Gateway can't reach service
-
-**Solution:**
-1. Verify Envoy sidecar is running: `docker compose ps`
-2. Check sidecar connects to correct app port (matches `APP_PORT`)
-3. Update `docker/istio/<service>-envoy.yaml` port_value if needed
-4. Restart services: `docker compose restart <service>`
 
 ---
 
@@ -495,10 +443,10 @@ payload = jwt.decode(token, options={"verify_signature": False})  # NEVER DO THI
 
 ```dockerfile
 # ✅ CORRECT: Listen on localhost only
-CMD ["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "9001"]
+CMD ["uvicorn", "main:app", "--host", "127.0.0.1", "--port", "$APP_PORT"]
 
 # ❌ WRONG: Listening on all interfaces bypasses sidecar
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "$APP_PORT"]
 ```
 
 ---
@@ -512,7 +460,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001"]
 **Solutions**:
 1. Check JWT format: `curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/...`
 2. Verify token isn't expired: Decode JWT and check `exp` claim
-3. Ensure public key is accessible: `curl http://localhost:8080/public-key`
+3. Ensure public key is accessible: `curl http://webauthn-server:8080/public-key`
 4. Validate issuer matches: Token should have `"iss": "mpo-webauthn"`
 
 ### mTLS Connection Fails
@@ -543,6 +491,7 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001"]
 1. Ensure app listens on 9001+, NOT 9000 (sidecar uses 9000)
 2. Use `127.0.0.1`, NOT `0.0.0.0` (shares network with sidecar)
 3. Check port allocation: Each service needs unique port (9001, 9002, 9003...)
+4. Use `add-service.sh` which automatically detects conflicts
 
 ---
 
@@ -551,12 +500,8 @@ CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "9001"]
 ### 1. Test JWT Authentication
 
 ```bash
-# Get JWT token by authenticating
-TOKEN=$(curl -s http://localhost:8000/authenticate/complete \
-  -H "Content-Type: application/json" \
-  -d '{"..."}' | jq -r .access_token)
-
-# Test protected endpoint
+# Get JWT token by authenticating via web client
+# Then test protected endpoint
 curl -H "Authorization: Bearer $TOKEN" \
   http://localhost:8000/api/my-service/protected
 ```
@@ -581,83 +526,7 @@ docker compose ps my-service
 docker compose logs -f my-service
 
 # Test from within service container
-docker compose exec my-service curl http://127.0.0.1:9001/health
-```
-
----
-
-## Example: Adding a Node.js Service
-
-Complete example showing Node.js service integration:
-
-### 1. Create Service
-
-```bash
-mkdir my-node-service
-cd my-node-service
-
-# package.json
-cat > package.json <<EOF
-{
-  "name": "my-node-service",
-  "version": "1.0.0",
-  "dependencies": {
-    "express": "^4.18.0",
-    "jsonwebtoken": "^9.0.0",
-    "axios": "^1.6.0"
-  }
-}
-EOF
-
-# server.js (see TypeScript example above for full code)
-
-# Dockerfile
-cat > Dockerfile <<EOF
-FROM node:20-slim
-WORKDIR /app
-COPY package*.json ./
-RUN npm install --production
-COPY server.js .
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
-USER appuser
-EXPOSE 9002
-CMD ["node", "server.js"]
-EOF
-```
-
-### 2. Generate Certificates
-
-```bash
-cd ../docker/certs
-./scripts/add-service.sh my-node-service  # Or manual steps from above
-```
-
-### 3. Add to docker-compose.yml
-
-```yaml
-my-node-service-sidecar:
-  image: envoyproxy/envoy:v1.29-latest
-  volumes:
-    - ./istio/my-node-service-envoy.yaml:/etc/envoy/envoy.yaml:ro
-    - ./certs:/etc/certs:ro
-  command: ["-c", "/etc/envoy/envoy.yaml", "--service-cluster", "my-node-service"]
-
-my-node-service:
-  build: ../my-node-service
-  network_mode: "service:my-node-service-sidecar"
-  environment:
-    APP_PORT: 9002
-    WEBAUTHN_PUBLIC_KEY_URL: "http://webauthn-server:8080/public-key"
-  depends_on:
-    - my-node-service-sidecar
-```
-
-### 4. Start and Test
-
-```bash
-docker compose up -d my-node-service
-curl -H "Authorization: Bearer $TOKEN" \
-  http://localhost:8000/api/my-node-service/protected
+docker compose exec my-service curl http://127.0.0.1:$APP_PORT/health
 ```
 
 ---
@@ -674,7 +543,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 │  Envoy Gateway (port 8000)                                      │
 │  - JWT Validation (for /api/* routes)                          │
 │  - CORS handling                                                 │
-│  - Routing                                                       │
+│  - Explicit routing (no catch-all)                              │
 └────┬─────────────────────────┬──────────────────────────────────┘
      │ Public routes           │ Protected routes (/api/*)
      │ (no JWT)                │ (JWT required)
@@ -691,6 +560,148 @@ curl -H "Authorization: Bearer $TOKEN" \
                       │ Example Service  │    │ Your Application │
                       │ (Python FastAPI) │    │ (Any language)   │
                       └──────────────────┘    └──────────────────┘
+```
+
+---
+
+## Appendix: Manual Service Setup (Advanced)
+
+*Note: The `add-service.sh` script automates all these steps. Manual setup is only needed for advanced customization.*
+
+### Step 1: Copy Example Service Template
+
+```bash
+# Copy example-service as starting point
+cp -r example-service my-service
+cd my-service
+
+# Update main.py with your business logic
+# Keep the JWT verification middleware intact
+```
+
+### Step 2: Generate mTLS Certificates
+
+```bash
+cd docker/certs
+
+# Generate private key and CSR
+openssl req -newkey rsa:2048 -nodes \
+  -keyout my-service-key.pem \
+  -out my-service-csr.pem \
+  -subj "/CN=my-service/O=WebAuthn/OU=Services"
+
+# Sign with CA
+openssl x509 -req \
+  -in my-service-csr.pem \
+  -CA ca-cert.pem \
+  -CAkey ca-key.pem \
+  -CAcreateserial \
+  -out my-service-cert.pem \
+  -days 365
+
+# Cleanup CSR
+rm my-service-csr.pem
+
+cd ../..
+```
+
+### Step 3: Create Envoy Sidecar Configuration
+
+Create `docker/istio/my-service-envoy.yaml`:
+
+```yaml
+# Copy from docker/istio/example-service-envoy.yaml
+# Update certificate paths:
+# - /etc/certs/service-cert.pem → /etc/certs/my-service-cert.pem
+# - /etc/certs/service-key.pem → /etc/certs/my-service-key.pem
+```
+
+### Step 4: Add to docker-compose.yml
+
+```yaml
+services:
+  # ... existing services ...
+
+  # Your service sidecar (mTLS termination)
+  my-service-sidecar:
+    image: envoyproxy/envoy:v1.29-latest
+    container_name: my-service-sidecar
+    volumes:
+      - ./istio/my-service-envoy.yaml:/etc/envoy/envoy.yaml:ro
+      - ./certs:/etc/certs:ro
+    command: ["-c", "/etc/envoy/envoy.yaml", "--service-cluster", "my-service"]
+    restart: unless-stopped
+
+  # Your application (runs behind sidecar)
+  my-service:
+    build:
+      context: ../my-service
+      dockerfile: Dockerfile
+    container_name: my-service
+    network_mode: "service:my-service-sidecar"  # Share network with sidecar
+    environment:
+      APP_PORT: 9002  # Use next available port
+      WEBAUTHN_PUBLIC_KEY_URL: "http://webauthn-server:8080/public-key"
+    depends_on:
+      - webauthn-server
+      - my-service-sidecar
+    restart: unless-stopped
+```
+
+### Step 5: Update Envoy Gateway Routing
+
+Add routing to `docker/envoy-gateway.yaml`:
+
+```yaml
+# In routes section
+routes:
+  # ... existing routes ...
+
+  # Your service route (JWT required)
+  - match:
+      prefix: "/api/my-service"
+    route:
+      cluster: my_service
+
+# In clusters section
+clusters:
+  # ... existing clusters ...
+
+  - name: my_service
+    connect_timeout: 0.25s
+    type: STRICT_DNS
+    lb_policy: ROUND_ROBIN
+    load_assignment:
+      cluster_name: my_service
+      endpoints:
+        - lb_endpoints:
+            - endpoint:
+                address:
+                  socket_address:
+                    address: my-service
+                    port_value: 9000  # Sidecar port
+    # mTLS configuration
+    transport_socket:
+      name: envoy.transport_sockets.tls
+      typed_config:
+        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+        common_tls_context:
+          tls_certificates:
+            - certificate_chain:
+                filename: /etc/envoy/certs/gateway-cert.pem
+              private_key:
+                filename: /etc/envoy/certs/gateway-key.pem
+          validation_context:
+            trusted_ca:
+              filename: /etc/envoy/certs/ca-cert.pem
+```
+
+### Step 6: Start Your Service
+
+```bash
+cd docker
+docker compose up -d my-service
+docker compose logs -f my-service
 ```
 
 ---

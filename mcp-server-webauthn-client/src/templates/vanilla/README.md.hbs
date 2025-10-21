@@ -10,7 +10,25 @@ A complete WebAuthn (Passkeys/FIDO2) web client generated for testing authentica
 npm install
 ```
 
-### 2. Build the Client
+### 2. Install yq (Required for Service Addition)
+
+If you plan to add additional services using `./scripts/add-service.sh`, you need `yq` v4+:
+
+```bash
+# macOS
+brew install yq
+
+# Linux
+wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/local/bin/yq
+chmod +x /usr/local/bin/yq
+
+# Verify installation
+yq --version  # Should show v4.x.x
+```
+
+*Note: yq is only needed for adding services, not for running the existing stack.*
+
+### 3. Build the Client
 
 ```bash
 npm run build
@@ -35,11 +53,14 @@ You can change the server URL in the web UI or by modifying the configuration.
 
 ### Port Assignments
 - **8000** - Envoy Gateway (main entry point for all API calls)
-- **{{client_port}}** - Web client development server
-- **9000** - Example Service (accessed via `/api/*` through gateway)
+- **{{client_port}}** - Web client development server (this client)
+- **9000** - Service sidecars (mTLS termination, isolated per service)
+- **9001+** - Application ports (configurable, e.g., example-service: 9001)
 - **5432** - PostgreSQL database
 - **6379** - Redis cache
 - **9901** - Envoy admin interface
+
+**Note:** Each service's Envoy sidecar uses port 9000 (no conflicts due to network isolation).
 
 ## Features
 
@@ -129,6 +150,38 @@ This project implements a **complete zero-trust architecture** with JWT-based au
 - ✅ Public key cryptography (RS256)
 - ✅ Gateway-level JWT validation
 - ✅ Zero-trust principle (verify every request)
+
+## Adding Additional Services
+
+Use the automated helper script to add new services to the zero-trust stack:
+
+```bash
+# Auto-detect next available port
+./scripts/add-service.sh my-service
+
+# Specify custom port
+./scripts/add-service.sh my-service --app-port 9005
+
+# Custom API route prefix
+./scripts/add-service.sh billing-api --route /api/billing
+
+# Show help and options
+./scripts/add-service.sh --help
+```
+
+**Requirements:**
+- `yq` v4+ installed (see installation instructions above)
+
+**What the script does automatically:**
+1. Scaffolds service directory from `example-service` template
+2. Generates mTLS certificates (CA-signed)
+3. Creates Envoy sidecar configuration
+4. Updates `docker-compose.yml` with service and sidecar containers
+5. Updates `envoy-gateway.yaml` with explicit routing and mTLS cluster
+6. Validates port conflicts and configuration
+7. Creates backup files (`.backup`) before modifying YAML files
+
+**See `docs/INTEGRATION.md` for comprehensive integration guide and manual setup options.**
 
 ### Server Design: Express vs webpack-dev-server
 

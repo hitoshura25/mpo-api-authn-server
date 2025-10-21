@@ -53,9 +53,9 @@ static_resources:
                           route:
                             cluster: webauthn_server
 
-                        # Protected routes (JWT required)
+                        # Protected routes (JWT required) - Explicit routes only
                         - match:
-                            prefix: "/api"
+                            prefix: "/api/example"
                           route:
                             cluster: example_service
 
@@ -67,6 +67,8 @@ static_resources:
                       providers:
                         webauthn_provider:
                           issuer: "mpo-webauthn"
+                          audiences:
+                            - "webauthn-clients"
                           remote_jwks:
                             http_uri:
                               uri: http://webauthn-server:8080/public-key
@@ -120,6 +122,23 @@ static_resources:
                     socket_address:
                       address: example-service
                       port_value: 9000
+      # mTLS configuration (connects to Istio sidecar)
+      # Phase 2: Envoy Gateway uses mTLS to connect to example-service sidecar
+      transport_socket:
+        name: envoy.transport_sockets.tls
+        typed_config:
+          "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
+          common_tls_context:
+            # Gateway's client certificate (for mTLS)
+            tls_certificates:
+              - certificate_chain:
+                  filename: /etc/envoy/certs/gateway-cert.pem
+                private_key:
+                  filename: /etc/envoy/certs/gateway-key.pem
+            # Trusted CA (validates service certificates)
+            validation_context:
+              trusted_ca:
+                filename: /etc/envoy/certs/ca-cert.pem
 
 admin:
   address:

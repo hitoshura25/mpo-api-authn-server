@@ -107,6 +107,89 @@ This package can be used in two ways:
 1. **MCP Mode** - For MCP-compatible AI agents (Claude Code, Continue.dev, Cline)
 2. **CLI Mode** - For non-MCP agents (Cursor, Aider, Windsurf) or direct usage
 
+### MCP Mode (For Claude Code & Compatible Agents)
+
+1. **Add to your project's `claude_config.json`**:
+
+```json
+{
+  "mcpServers": {
+    "webauthn-client-generator": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@vmenon25/mcp-server-webauthn-client@latest"
+      ]
+    }
+  }
+}
+```
+
+2. **Use naturally in conversation**:
+
+```
+You: "Please create a webauthn stack using the webauthn-client-generator MCP server."
+
+Claude: I'll generate a complete web client for you using the WebAuthn client generator.
+
+[Claude calls the generate_web_client tool]
+
+✅ Web client generated successfully!
+
+Files created:
+  - ./web-client/package.json
+  - ./web-client/src/webauthn-client.ts
+  - ./web-client/src/types.ts
+  - ./web-client/src/server.ts
+  - ./web-client/public/index.html
+  - ./web-client/webpack.config.js
+  - ./web-client/tsconfig.json
+  - ./web-client/README.md
+
+Next steps:
+1. cd web-client
+2. npm install
+3. npm run build
+4. npm start
+5. Open http://localhost:8082
+```
+
+#### Direct MCP Tool Call
+
+The tool accepts these parameters:
+
+```typescript
+{
+  // Required
+  project_path: string;                    // Where to create web client (e.g., './web-client')
+
+  // Core Configuration
+  framework?: 'vanilla' | 'react' | 'vue'; // Default: 'vanilla'
+  server_url?: string;                     // Envoy Gateway URL (default: 'http://localhost:8000')
+  forward_port?: number;                   // Client dev server port (default: 8082)
+
+  // WebAuthn Configuration
+  relying_party_id?: string;               // WebAuthn RP ID (default: 'localhost')
+  relying_party_name?: string;             // WebAuthn RP name (default: 'WebAuthn Demo')
+
+  // Infrastructure Port Customization (to avoid conflicts)
+  postgres_host_port?: number;             // PostgreSQL host port (default: 5432)
+  redis_host_port?: number;                // Redis host port (default: 6379)
+  gateway_host_port?: number;              // Envoy Gateway host port (default: 8000)
+  gateway_admin_port?: number;             // Envoy admin host port (default: 9901)
+
+  // Jaeger Tracing Port Customization
+  jaeger_ui_port?: number;                 // Jaeger UI port (default: 16686)
+  jaeger_collector_http_port?: number;     // Jaeger collector HTTP (default: 14268)
+  jaeger_collector_grpc_port?: number;     // Jaeger collector gRPC (default: 14250)
+  jaeger_otlp_grpc_port?: number;          // Jaeger OTLP gRPC (default: 4317)
+  jaeger_otlp_http_port?: number;          // Jaeger OTLP HTTP (default: 4318)
+  jaeger_agent_compact_port?: number;      // Jaeger agent compact thrift UDP (default: 6831)
+  jaeger_agent_binary_port?: number;       // Jaeger agent binary thrift UDP (default: 6832)
+  jaeger_agent_config_port?: number;       // Jaeger agent config HTTP (default: 5778)
+}
+```
+
 ### CLI Mode (Recommended for Non-MCP Agents)
 
 The easiest way to use the client generator without MCP setup:
@@ -215,88 +298,6 @@ After generation:
 - ✅ **Complete examples**: Working CLI commands ready to use
 - ✅ **No manual configuration**: Single command generates everything
 
-### MCP Mode (For Claude Code & Compatible Agents)
-
-1. **Add to your project's `claude_config.json`**:
-
-```json
-{
-  "mcpServers": {
-    "webauthn-client-generator": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@vmenon25/mcp-server-webauthn-client@latest"
-      ]
-    }
-  }
-}
-```
-
-2. **Use naturally in conversation**:
-
-```
-You: "Please create a webauthn stack using the webauthn-client-generator MCP server."
-
-Claude: I'll generate a complete web client for you using the WebAuthn client generator.
-
-[Claude calls the generate_web_client tool]
-
-✅ Web client generated successfully!
-
-Files created:
-  - ./web-client/package.json
-  - ./web-client/src/webauthn-client.ts
-  - ./web-client/src/types.ts
-  - ./web-client/src/server.ts
-  - ./web-client/public/index.html
-  - ./web-client/webpack.config.js
-  - ./web-client/tsconfig.json
-  - ./web-client/README.md
-
-Next steps:
-1. cd web-client
-2. npm install
-3. npm run build
-4. npm start
-5. Open http://localhost:8082
-```
-
-### Direct MCP Tool Call
-
-The tool accepts these parameters:
-
-```typescript
-{
-  // Required
-  project_path: string;                    // Where to create web client (e.g., './web-client')
-
-  // Core Configuration
-  framework?: 'vanilla' | 'react' | 'vue'; // Default: 'vanilla'
-  server_url?: string;                     // Envoy Gateway URL (default: 'http://localhost:8000')
-  forward_port?: number;                   // Client dev server port (default: 8082)
-
-  // WebAuthn Configuration
-  relying_party_id?: string;               // WebAuthn RP ID (default: 'localhost')
-  relying_party_name?: string;             // WebAuthn RP name (default: 'WebAuthn Demo')
-
-  // Infrastructure Port Customization (to avoid conflicts)
-  postgres_host_port?: number;             // PostgreSQL host port (default: 5432)
-  redis_host_port?: number;                // Redis host port (default: 6379)
-  gateway_host_port?: number;              // Envoy Gateway host port (default: 8000)
-  gateway_admin_port?: number;             // Envoy admin host port (default: 9901)
-
-  // Jaeger Tracing Port Customization
-  jaeger_ui_port?: number;                 // Jaeger UI port (default: 16686)
-  jaeger_collector_http_port?: number;     // Jaeger collector HTTP (default: 14268)
-  jaeger_collector_grpc_port?: number;     // Jaeger collector gRPC (default: 14250)
-  jaeger_otlp_grpc_port?: number;          // Jaeger OTLP gRPC (default: 4317)
-  jaeger_otlp_http_port?: number;          // Jaeger OTLP HTTP (default: 4318)
-  jaeger_agent_compact_port?: number;      // Jaeger agent compact thrift UDP (default: 6831)
-  jaeger_agent_binary_port?: number;       // Jaeger agent binary thrift UDP (default: 6832)
-  jaeger_agent_config_port?: number;       // Jaeger agent config HTTP (default: 5778)
-}
-```
 
 ## What is MCP?
 

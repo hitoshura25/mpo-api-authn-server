@@ -285,7 +285,7 @@ export function initializeWebAuthnClient(): void {
         showStatus('authenticationStatus', '🔐 Please use your passkey...', 'info');
         const result = await authenticationClient.authenticatePasskey(username);
 
-        // PRODUCTION CHANGE: Store JWT using AuthStorage (jwt-decode + store.js)
+        // PRODUCTION CHANGE: Store JWT using AuthStorage (jwt-decode + native sessionStorage)
         if (result.success && result.accessToken) {
             AuthStorage.store({
                 accessToken: result.accessToken,

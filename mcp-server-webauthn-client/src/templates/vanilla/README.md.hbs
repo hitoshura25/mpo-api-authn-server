@@ -111,9 +111,9 @@ credential: JSON.stringify(credential)
 After successful WebAuthn authentication, the client receives a JWT (JSON Web Token) from the server. This implementation uses **industry-standard libraries** for secure token management:
 
 - **jwt-decode** (~2KB) - Safe JWT parsing and expiration validation
-- **store.js** (~6KB) - Robust storage abstraction with fallbacks
+- **Native sessionStorage** (0KB) - Browser-native storage API
 
-**Total bundle impact**: ~8KB minified (~3KB gzipped)
+**Total bundle impact**: ~2KB minified (~1KB gzipped)
 
 ### Security Architecture
 
@@ -157,13 +157,14 @@ HttpOnly cookies provide XSS immunity but require significant backend changes. S
 - **expiresIn**: Token lifetime in seconds (default: 900 = 15 minutes)
 - **username**: Authenticated user identifier
 
-### Session Storage (Using store.js)
+### Session Storage (Using Native sessionStorage)
 
-JWT tokens are stored using **store.js** which provides:
-- ✅ Automatic JSON serialization
-- ✅ Fallback if sessionStorage disabled
-- ✅ Consistent API for testing
-- ✅ Easy switch between storage types
+JWT tokens are stored using **native browser sessionStorage** which provides:
+- ✅ Zero external dependencies
+- ✅ Native browser support (all modern browsers)
+- ✅ Automatic session cleanup on tab/window close
+- ✅ Simple, well-understood API
+- ✅ Manual JSON serialization (explicit and transparent)
 
 ```typescript
 // Stored automatically after successful authentication

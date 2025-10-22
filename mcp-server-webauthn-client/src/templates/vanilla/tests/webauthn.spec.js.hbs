@@ -90,7 +90,7 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     const authStatus = await page.locator('#authenticationStatus').textContent();
     expect(authStatus).toContain('successful');
 
-    // CRITICAL: Verify JWT is stored in sessionStorage (via store.js)
+    // CRITICAL: Verify JWT is stored in sessionStorage (native browser API)
     const sessionData = await page.evaluate(() => {
       const stored = sessionStorage.getItem('webauthn_auth_session');
       return stored ? JSON.parse(stored) : null;

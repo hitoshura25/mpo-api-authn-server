@@ -37,7 +37,7 @@ static_resources:
                           route:
                             cluster: webauthn_server
                         - match:
-                            prefix: "/public-key"
+                            prefix: "/.well-known/jwks.json"
                           route:
                             cluster: webauthn_server
                         - match:
@@ -71,11 +71,11 @@ static_resources:
                             - "webauthn-clients"
                           remote_jwks:
                             http_uri:
-                              uri: http://webauthn-server:8080/public-key
+                              uri: http://webauthn-server:8080/.well-known/jwks.json
                               cluster: webauthn_server
                               timeout: 5s
                             cache_duration:
-                              seconds: 300  # Cache public key for 5 minutes
+                              seconds: 300  # Cache JWKS for 5 minutes
                           forward: true
                       rules:
                         # Require JWT for /api/* routes

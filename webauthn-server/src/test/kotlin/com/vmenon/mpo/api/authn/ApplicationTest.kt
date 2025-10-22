@@ -129,6 +129,18 @@ class ApplicationTest : KoinTest {
         }
 
     @Test
+    fun testJwksEndpoint() =
+        testApplication {
+            application {
+                module(testStorageModule)
+            }
+
+            val response = client.get("/.well-known/jwks.json")
+            assertEquals(HttpStatusCode.OK, response.status)
+            assertEquals(ContentType.Application.Json, response.contentType())
+        }
+
+    @Test
     fun testStatusPageErrorHandler() =
         testApplication {
             val errorFun = {

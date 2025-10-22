@@ -40,10 +40,45 @@ tags:
     description: WebAuthn credential registration endpoints
   - name: Authentication
     description: WebAuthn authentication endpoints
+  - name: JWKS
+    description: JSON Web Key Set endpoints for JWT verification
   - name: Health
     description: Health check endpoints
 
 paths:
+  /.well-known/jwks.json:
+    get:
+      tags:
+        - JWKS
+      summary: Get JSON Web Key Set (JWKS)
+      description: |
+        Returns the JWKS (JSON Web Key Set) containing the RSA public key
+        used for JWT signature verification (RFC 7517).
+
+        This endpoint is designed for integration with:
+        - Envoy Gateway (remote_jwks configuration)
+        - OAuth2/OIDC clients
+        - JWT verification libraries (PyJWKClient, jose, go-jose)
+
+        The JWKS is cached by clients (recommended 5 minutes) and supports
+        key rotation using the 'kid' (Key ID) field.
+      operationId: getJwks
+      responses:
+        '200':
+          description: JWKS returned successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JwksResponse'
+              example:
+                keys:
+                  - kty: "RSA"
+                    use: "sig"
+                    kid: "webauthn-2024-01"
+                    alg: "RS256"
+                    n: "0vx7agoebGcQSuuPiLJXZptN9..."
+                    e: "AQAB"
+
   /health:
     get:
       tags:
@@ -378,3 +413,54 @@ components:
           type: string
           description: Additional error details
           example: "Username is required"
+
+    JwksResponse:
+      type: object
+      required:
+        - keys
+      description: JWKS (JSON Web Key Set) response (RFC 7517)
+      properties:
+        keys:
+          type: array
+          description: Array of JSON Web Keys
+          items:
+            $ref: '#/components/schemas/JsonWebKey'
+
+    JsonWebKey:
+      type: object
+      required:
+        - kty
+        - use
+        - kid
+        - alg
+        - n
+        - e
+      description: JSON Web Key for RSA signature verification (RFC 7517)
+      properties:
+        kty:
+          type: string
+          description: Key Type
+          enum: [RSA]
+          example: "RSA"
+        use:
+          type: string
+          description: Public Key Use
+          enum: [sig, enc]
+          example: "sig"
+        kid:
+          type: string
+          description: Key ID (for key rotation support)
+          example: "webauthn-2024-01"
+        alg:
+          type: string
+          description: Algorithm
+          enum: [RS256, RS384, RS512]
+          example: "RS256"
+        n:
+          type: string
+          description: RSA Modulus (Base64URL-encoded, no padding)
+          example: "0vx7agoebGcQSuuPiLJXZptN9nndrQmbXEps2aiAFbWhM78LhWx4cbbfAAtV"
+        e:
+          type: string
+          description: RSA Exponent (Base64URL-encoded, no padding)
+          example: "AQAB"

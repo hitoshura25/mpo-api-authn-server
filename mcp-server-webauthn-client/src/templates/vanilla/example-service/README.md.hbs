@@ -11,7 +11,7 @@ This is a minimal Python FastAPI service demonstrating JWT-based zero-trust arch
 └─────────┘     └──────────────┘     └──────────────┘     └─────────────┘
                        │                    │                     │
                        │                    └─────────────────────┘
-                       │                    Fetches public key
+                       │                    Fetches JWKS (RFC 7517)
                        │                    (cached 5 min)
                        └──────────────────────────────────────────┘
                        Validates JWT signature
@@ -19,8 +19,8 @@ This is a minimal Python FastAPI service demonstrating JWT-based zero-trust arch
 
 ## Features
 
-- **JWT Verification**: Validates RS256-signed JWT tokens from WebAuthn server
-- **Public Key Caching**: Fetches and caches public key for performance
+- **JWT Verification**: Validates RS256-signed JWT tokens using JWKS (RFC 7517)
+- **JWKS Support**: Uses PyJWKClient for automatic key fetching and caching
 - **Protected Endpoints**: All `/api/*` routes require valid JWT
 - **Health Check**: `/health` endpoint without authentication
 - **Error Handling**: Proper HTTP 401 responses for invalid/expired tokens
@@ -39,10 +39,11 @@ This is a minimal Python FastAPI service demonstrating JWT-based zero-trust arch
 ## JWT Verification Process
 
 1. **Extract Token**: Parse Bearer token from Authorization header
-2. **Fetch Public Key**: Get RSA public key from WebAuthn server (cached)
-3. **Verify Signature**: Validate RS256 signature using public key
-4. **Check Claims**: Verify issuer (`mpo-webauthn`) and expiration
-5. **Return User Data**: Extract username from `sub` claim
+2. **Fetch JWKS**: PyJWKClient fetches JSON Web Key Set from WebAuthn server (RFC 7517, cached)
+3. **Select Key**: Automatically select correct signing key using `kid` (Key ID) from JWT header
+4. **Verify Signature**: Validate RS256 signature using selected public key
+5. **Check Claims**: Verify issuer (`mpo-webauthn`) and expiration
+6. **Return User Data**: Extract username from `sub` claim
 
 ## Testing
 
@@ -89,7 +90,7 @@ curl http://localhost:8000/api/user/profile
 pip install -r requirements.txt
 
 # Set environment variables
-export WEBAUTHN_PUBLIC_KEY_URL=http://localhost:8080/public-key
+export WEBAUTHN_JWKS_URL=http://localhost:8080/.well-known/jwks.json
 export APP_PORT=9000
 
 # Run server
@@ -104,7 +105,7 @@ docker build -t example-service .
 
 # Run container
 docker run -p 9000:9000 \
-  -e WEBAUTHN_PUBLIC_KEY_URL=http://webauthn-server:8080/public-key \
+  -e WEBAUTHN_JWKS_URL=http://webauthn-server:8080/.well-known/jwks.json \
   example-service
 ```
 
@@ -112,7 +113,7 @@ docker run -p 9000:9000 \
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
-| `WEBAUTHN_PUBLIC_KEY_URL` | URL to fetch WebAuthn server's public key for JWT verification | `http://webauthn-server:8080/public-key` | Yes |
+| `WEBAUTHN_JWKS_URL` | URL to fetch WebAuthn server's JWKS endpoint (RFC 7517) for JWT verification | `http://webauthn-server:8080/.well-known/jwks.json` | Yes |
 | `APP_PORT` | Port for application to listen on (internal, accessed by Envoy sidecar) | `9001` | No |
 
 ### Port Configuration
@@ -138,7 +139,8 @@ CMD ["sh", "-c", "uvicorn main:app --host 127.0.0.1 --port $APP_PORT"]
 
 ## Security Notes
 
-- **No Private Key**: Service only has public key (can verify, not sign)
+- **No Private Key**: Service uses JWKS to verify signatures (can verify, not sign)
+- **Automatic Key Rotation**: JWKS supports key rotation using `kid` (Key ID)
 - **Short-Lived Tokens**: JWT tokens expire after 15 minutes
 - **Stateless**: No session storage, fully stateless authentication
 - **Zero-Trust**: Every request verified independently

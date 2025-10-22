@@ -139,8 +139,11 @@ npx -y @vmenon25/mcp-server-webauthn-client --help
 {
   "mcpServers": {
     "webauthn-client-generator": {
-      "command": "node",
-      "args": ["/absolute/path/to/mcp-server-webauthn-client/dist/index.js"]
+      "command": "npx",
+      "args": [
+        "-y",
+        "@vmenon25/mcp-server-webauthn-client@latest"
+      ]
     }
   }
 }

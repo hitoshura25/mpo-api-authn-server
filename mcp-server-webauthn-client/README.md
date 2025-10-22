@@ -82,25 +82,49 @@ npx -y @vmenon25/mcp-server-webauthn-client
 # Custom path
 npx -y @vmenon25/mcp-server-webauthn-client --path ./auth-client
 
-# Custom server URL and port
+# Custom server URL and forward port
 npx -y @vmenon25/mcp-server-webauthn-client \
   --server http://localhost:9000 \
-  --port 3000
+  --forward-port 3000
 
-# Production server
+# Production server with custom relying party
 npx -y @vmenon25/mcp-server-webauthn-client \
   --server https://auth.example.com
 
-# Show help
+# Avoid port conflicts with existing infrastructure
+npx -y @vmenon25/mcp-server-webauthn-client \
+  --postgres-host-port 5433 \
+  --redis-host-port 6380 \
+  --gateway-host-port 8001
+
+# Show help (lists all available options)
 npx -y @vmenon25/mcp-server-webauthn-client --help
 ```
 
 **CLI Options:**
+
+**Core Options:**
 - `-p, --path <path>` - Directory to create web client (default: `./web-client`)
-- `-s, --server <url>` - WebAuthn server URL (default: `http://localhost:8080`)
-- `-P, --port <port>` - Client dev server port (default: `8082`)
+- `-s, --server <url>` - Envoy Gateway URL (default: `http://localhost:8000`)
+- `-P, --forward-port <port>` - Client dev server port (default: `8082`)
 - `-f, --framework <name>` - Framework: `vanilla`|`react`|`vue` (default: `vanilla`)
-- `-h, --help` - Show help message
+- `-h, --help` - Show help message with all options
+
+**Infrastructure Port Customization:**
+- `--postgres-host-port <port>` - PostgreSQL host port (default: `5432`)
+- `--redis-host-port <port>` - Redis host port (default: `6379`)
+- `--gateway-host-port <port>` - Envoy Gateway host port (default: `8000`)
+- `--gateway-admin-port <port>` - Envoy admin host port (default: `9901`)
+
+**Jaeger Tracing Port Customization:**
+- `--jaeger-ui-port <port>` - Jaeger UI port (default: `16686`)
+- `--jaeger-collector-http-port <port>` - Jaeger collector HTTP (default: `14268`)
+- `--jaeger-collector-grpc-port <port>` - Jaeger collector gRPC (default: `14250`)
+- `--jaeger-otlp-grpc-port <port>` - Jaeger OTLP gRPC (default: `4317`)
+- `--jaeger-otlp-http-port <port>` - Jaeger OTLP HTTP (default: `4318`)
+- `--jaeger-agent-compact-port <port>` - Jaeger agent compact thrift UDP (default: `6831`)
+- `--jaeger-agent-binary-port <port>` - Jaeger agent binary thrift UDP (default: `6832`)
+- `--jaeger-agent-config-port <port>` - Jaeger agent config HTTP (default: `5778`)
 
 **Token Cost for Non-MCP Agents:**
 - Discovery: ~1500 tokens (one-time read of `.ai-agents.json`)
@@ -157,10 +181,33 @@ The tool accepts these parameters:
 
 ```typescript
 {
-  project_path: string;      // Where to create web client (e.g., './web-client')
-  framework?: string;        // 'vanilla', 'react', or 'vue' (default: 'vanilla')
-  server_url?: string;       // WebAuthn server URL (default: 'http://localhost:8080')
-  client_port?: number;      // Client dev server port (default: 8082)
+  // Required
+  project_path: string;                    // Where to create web client (e.g., './web-client')
+
+  // Core Configuration
+  framework?: 'vanilla' | 'react' | 'vue'; // Default: 'vanilla'
+  server_url?: string;                     // Envoy Gateway URL (default: 'http://localhost:8000')
+  forward_port?: number;                   // Client dev server port (default: 8082)
+
+  // WebAuthn Configuration
+  relying_party_id?: string;               // WebAuthn RP ID (default: 'localhost')
+  relying_party_name?: string;             // WebAuthn RP name (default: 'WebAuthn Demo')
+
+  // Infrastructure Port Customization (to avoid conflicts)
+  postgres_host_port?: number;             // PostgreSQL host port (default: 5432)
+  redis_host_port?: number;                // Redis host port (default: 6379)
+  gateway_host_port?: number;              // Envoy Gateway host port (default: 8000)
+  gateway_admin_port?: number;             // Envoy admin host port (default: 9901)
+
+  // Jaeger Tracing Port Customization
+  jaeger_ui_port?: number;                 // Jaeger UI port (default: 16686)
+  jaeger_collector_http_port?: number;     // Jaeger collector HTTP (default: 14268)
+  jaeger_collector_grpc_port?: number;     // Jaeger collector gRPC (default: 14250)
+  jaeger_otlp_grpc_port?: number;          // Jaeger OTLP gRPC (default: 4317)
+  jaeger_otlp_http_port?: number;          // Jaeger OTLP HTTP (default: 4318)
+  jaeger_agent_compact_port?: number;      // Jaeger agent compact thrift UDP (default: 6831)
+  jaeger_agent_binary_port?: number;       // Jaeger agent binary thrift UDP (default: 6832)
+  jaeger_agent_config_port?: number;       // Jaeger agent config HTTP (default: 5778)
 }
 ```
 
@@ -207,8 +254,8 @@ web-client/
 {
   "project_path": "./web-client",
   "framework": "vanilla",
-  "server_url": "http://localhost:8080",
-  "client_port": 8082
+  "server_url": "http://localhost:8000",
+  "forward_port": 8082
 }
 ```
 
@@ -221,20 +268,59 @@ web-client/
 {
   "project_path": "./auth-client",
   "server_url": "http://localhost:9000",
-  "client_port": 3000
+  "forward_port": 3000
 }
 ```
 
-### Scenario 3: Production Server Integration
+### Scenario 3: Production Server with Custom Relying Party
 
-**User**: "Generate a web client that connects to my production WebAuthn server at https://auth.example.com"
+**User**: "Generate a web client that connects to my production WebAuthn server at https://auth.example.com with relying party ID 'example.com'"
 
 **MCP Tool Call**:
 ```json
 {
   "project_path": "./production-client",
   "server_url": "https://auth.example.com",
-  "client_port": 8082
+  "forward_port": 8082,
+  "relying_party_id": "example.com",
+  "relying_party_name": "Example Corp Authentication"
+}
+```
+
+### Scenario 4: Avoiding Port Conflicts with Existing Services
+
+**User**: "I already have PostgreSQL on 5432 and Redis on 6379. Generate a client that uses different ports."
+
+**MCP Tool Call**:
+```json
+{
+  "project_path": "./web-client",
+  "server_url": "http://localhost:8000",
+  "forward_port": 8082,
+  "postgres_host_port": 5433,
+  "redis_host_port": 6380,
+  "gateway_host_port": 8001,
+  "jaeger_ui_port": 16687
+}
+```
+
+### Scenario 5: Complete Custom Port Configuration for Isolated Testing
+
+**User**: "Create a completely isolated test environment with no port conflicts"
+
+**MCP Tool Call**:
+```json
+{
+  "project_path": "./isolated-test-client",
+  "server_url": "http://localhost:9000",
+  "forward_port": 9082,
+  "postgres_host_port": 15432,
+  "redis_host_port": 16379,
+  "gateway_host_port": 9000,
+  "gateway_admin_port": 9902,
+  "jaeger_ui_port": 26686,
+  "jaeger_otlp_grpc_port": 14317,
+  "jaeger_otlp_http_port": 14318
 }
 ```
 

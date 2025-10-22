@@ -43,3 +43,7 @@ declare global {
         SimpleWebAuthnBrowser: SimpleWebAuthnBrowser;
     }
 }
+
+// Export auth storage types for convenience
+export type { AuthSession } from './auth-storage';
+export { AuthStorage } from './auth-storage';

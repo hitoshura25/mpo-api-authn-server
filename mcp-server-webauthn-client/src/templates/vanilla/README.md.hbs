@@ -104,6 +104,461 @@ Credentials must be stringified before sending to the server:
 credential: JSON.stringify(credential)
 ```
 
+## JWT Authentication & Session Management (Production-Ready)
+
+### Overview
+
+After successful WebAuthn authentication, the client receives a JWT (JSON Web Token) from the server. This implementation uses **industry-standard libraries** for secure token management:
+
+- **jwt-decode** (~2KB) - Safe JWT parsing and expiration validation
+- **store.js** (~6KB) - Robust storage abstraction with fallbacks
+
+**Total bundle impact**: ~8KB minified (~3KB gzipped)
+
+### Security Architecture
+
+#### JWT in sessionStorage vs HttpOnly Cookies
+
+This client uses **JWT in sessionStorage** instead of HttpOnly cookies:
+
+**Advantages**:
+- ✅ No backend changes required
+- ✅ Simple CORS configuration
+- ✅ Standard Bearer token pattern
+- ✅ Works seamlessly with SPAs
+- ✅ No CSRF vulnerability
+
+**Security Considerations**:
+- ⚠️ Vulnerable to XSS attacks (mitigated by CSP headers)
+- ⚠️ Requires manual token management (handled by libraries)
+
+**HttpOnly Cookies Alternative**:
+HttpOnly cookies provide XSS immunity but require significant backend changes. See INTEGRATION.md for complete details on:
+- Set-Cookie headers instead of JSON response
+- CORS credentials configuration
+- CSRF token management
+- Cookie-based token extraction
+
+**Verdict**: JWT in sessionStorage with **strict CSP headers** provides a good security/complexity balance for this use case.
+
+### JWT Token Structure
+
+```json
+{
+  "accessToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "tokenType": "Bearer",
+  "expiresIn": 900,
+  "username": "user@example.com"
+}
+```
+
+- **accessToken**: RS256-signed JWT containing user claims
+- **tokenType**: Always "Bearer" (standard OAuth 2.0)
+- **expiresIn**: Token lifetime in seconds (default: 900 = 15 minutes)
+- **username**: Authenticated user identifier
+
+### Session Storage (Using store.js)
+
+JWT tokens are stored using **store.js** which provides:
+- ✅ Automatic JSON serialization
+- ✅ Fallback if sessionStorage disabled
+- ✅ Consistent API for testing
+- ✅ Easy switch between storage types
+
+```typescript
+// Stored automatically after successful authentication
+import { AuthStorage } from './auth-storage';
+
+AuthStorage.store({
+  accessToken: "...",
+  tokenType: "Bearer",
+  expiresIn: 900,
+  username: "user@example.com"
+});
+```
+
+**Why sessionStorage?**
+- Cleared when browser tab closes (better security)
+- Appropriate for short-lived tokens (15 minutes)
+- Standard production pattern for JWT storage
+
+### Safe JWT Parsing (Using jwt-decode)
+
+The `jwt-decode` library provides **safe token parsing**:
+
+```typescript
+import { jwtDecode } from 'jwt-decode';
+
+// Safe parsing - validates structure and handles errors
+try {
+  const decoded = jwtDecode<{ exp: number }>(token);
+
+  // Check expiration using decoded 'exp' claim
+  if (decoded.exp * 1000 < Date.now()) {
+    console.log('Token expired');
+  }
+} catch (error) {
+  // Malformed token - handle gracefully
+  console.error('Invalid JWT:', error);
+}
+```
+
+**Benefits over manual parsing**:
+- ✅ Validates JWT structure (3 parts)
+- ✅ Handles malformed base64
+- ✅ Prevents crashes from invalid tokens
+- ✅ Industry standard (5,700+ dependent packages)
+
+### Protected API Calls
+
+Use AuthStorage to call protected endpoints:
+
+```typescript
+import { AuthStorage } from './auth-storage';
+
+// Get authorization header
+const authHeader = AuthStorage.getAuthorizationHeader();
+// Returns: "Bearer eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9..."
+
+// Make authenticated API call
+const response = await fetch('{{server_url}}/api/user/profile', {
+  method: 'GET',
+  headers: {
+    'Authorization': authHeader,
+    'Content-Type': 'application/json'
+  }
+});
+
+if (response.status === 401) {
+  // Token expired or invalid - re-authenticate
+  AuthStorage.clear();
+  // Show authentication UI
+}
+
+const data = await response.json();
+console.log('Profile:', data);
+```
+
+### Session Management API
+
+#### Check Authentication Status
+
+```typescript
+if (AuthStorage.isAuthenticated()) {
+  console.log('User is authenticated');
+  const session = AuthStorage.get();
+  console.log('Username:', session.username);
+} else {
+  console.log('User is not authenticated');
+}
+```
+
+#### Get Token Expiration
+
+```typescript
+// Time remaining in seconds
+const remaining = AuthStorage.getTimeRemaining();
+console.log(`Token expires in ${remaining} seconds`);
+
+// Expiration as Date object
+const expirationDate = AuthStorage.getExpirationDate();
+console.log('Expires at:', expirationDate.toLocaleTimeString());
+```
+
+#### Logout
+
+```typescript
+// Clear session (logout)
+AuthStorage.clear();
+
+// Update UI to unauthenticated state
+updateUIForAuthState(false);
+```
+
+### Auto-Logout on Inactivity (Health Data Security)
+
+**CRITICAL for health data applications**: The client implements auto-logout after 5 minutes of inactivity to prevent unauthorized access if the user walks away from their device.
+
+```typescript
+// Configured for 5-minute inactivity timeout
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+// Tracks user activity
+['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(event => {
+  document.addEventListener(event, resetInactivityTimer, true);
+});
+```
+
+**Why this is critical**:
+- Health data should not remain accessible on an idle browser
+- Prevents unauthorized access if user walks away
+- 5-minute timeout balances security and UX
+- Activity tracking (mouse, keyboard, scroll, touch) resets timer
+
+### Security Best Practices
+
+#### 1. XSS Protection (Content Security Policy)
+
+**CRITICAL**: CSP headers prevent XSS attacks that could steal JWT tokens:
+
+```html
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self' https://unpkg.com;
+               connect-src 'self' https://{{server_url}};">
+```
+
+This is **automatically included** in the generated HTML template.
+
+**What CSP does**:
+- ✅ Blocks inline JavaScript (prevents injected scripts)
+- ✅ Whitelists trusted script sources only
+- ✅ Prevents token exfiltration to attacker domains
+
+**Additional XSS Protection**:
+- Sanitize all user input before rendering
+- Use framework-provided escaping (React, Vue, Angular)
+- Never use `innerHTML` with user-provided data
+- Validate and encode output
+
+#### 2. HTTPS Enforcement
+
+**CRITICAL**: Always use HTTPS in production:
+
+```yaml
+# Envoy Gateway - Force HTTPS redirect
+redirect:
+  https_redirect: true
+```
+
+JWT tokens in Authorization headers are **plain text over HTTP** = easily intercepted.
+
+#### 3. Token Expiration
+
+- Default: 900 seconds (15 minutes)
+- Tokens automatically expire (checked via jwt-decode)
+- Show countdown timer to user
+- Clear expired tokens immediately
+
+```typescript
+// Example: Warning before expiration
+const remaining = AuthStorage.getTimeRemaining();
+
+if (remaining !== null && remaining < 60) {
+  showWarning(`Session expires in ${remaining} seconds`);
+}
+```
+
+#### 4. Input Validation
+
+**Always validate and sanitize**:
+
+```typescript
+// BAD - XSS vulnerable
+element.innerHTML = userInput;
+
+// GOOD - Safe
+element.textContent = userInput;
+
+// GOOD - Framework escaping
+<div>{username}</div>  // React/Vue auto-escapes
+```
+
+#### 5. Secure Token Storage
+
+**sessionStorage vs localStorage**:
+
+| Storage | Security | Use Case |
+|---------|----------|----------|
+| **sessionStorage** | ✅ Better (clears on tab close) | Short-lived tokens (< 1 hour) |
+| **localStorage** | ⚠️ Lower (persists forever) | Long-lived tokens (with refresh) |
+| **HttpOnly Cookies** | ✅ Best (XSS immune) | High-security apps (requires backend changes) |
+
+**Recommendation**: Use sessionStorage (default in this implementation)
+
+### Production Integration Patterns
+
+#### Pattern 1: API Service with Auto-Retry
+
+```typescript
+import { AuthStorage } from './auth-storage';
+
+class ApiService {
+  private baseUrl: string;
+
+  constructor(baseUrl: string) {
+    this.baseUrl = baseUrl;
+  }
+
+  async callProtectedEndpoint(endpoint: string, options: RequestInit = {}): Promise<any> {
+    const authHeader = AuthStorage.getAuthorizationHeader();
+
+    if (!authHeader) {
+      throw new Error('Not authenticated');
+    }
+
+    const response = await fetch(`${this.baseUrl}${endpoint}`, {
+      ...options,
+      headers: {
+        ...options.headers,
+        'Authorization': authHeader,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (response.status === 401) {
+      // Token expired - clear session and throw
+      AuthStorage.clear();
+      throw new Error('Session expired - please re-authenticate');
+    }
+
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+}
+
+// Usage
+const api = new ApiService('{{server_url}}');
+
+try {
+  const profile = await api.callProtectedEndpoint('/api/user/profile');
+  console.log('Profile:', profile);
+} catch (error) {
+  if (error.message.includes('Session expired')) {
+    // Show login UI or redirect to authentication
+    showLoginModal();
+  } else {
+    console.error('API error:', error);
+  }
+}
+```
+
+#### Pattern 2: Fetch Wrapper with Auto-Auth
+
+```typescript
+import { AuthStorage } from './auth-storage';
+
+// Wrap fetch to automatically add auth headers
+async function authenticatedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+  const authHeader = AuthStorage.getAuthorizationHeader();
+
+  if (!authHeader) {
+    throw new Error('Not authenticated');
+  }
+
+  return fetch(url, {
+    ...options,
+    headers: {
+      ...options.headers,
+      'Authorization': authHeader
+    }
+  });
+}
+
+// Usage (identical to fetch)
+const response = await authenticatedFetch('{{server_url}}/api/user/profile');
+const data = await response.json();
+```
+
+### Common Security Mistakes to Avoid
+
+❌ **DON'T**:
+- Store JWT in localStorage without considering XSS risk
+- Skip CSP headers in production
+- Use HTTP instead of HTTPS
+- Render JWT contents in UI (tokens are NOT encrypted!)
+- Trust client-side expiration only (server must validate)
+- Forget to clear tokens on logout
+
+✅ **DO**:
+- Use sessionStorage for short-lived tokens
+- Implement strict CSP headers
+- Enforce HTTPS in production
+- Use jwt-decode for safe parsing
+- Validate tokens server-side
+- Clear tokens on logout and expiration
+
+### E2E Testing Coverage
+
+See `tests/webauthn.spec.js` for complete test examples:
+
+- ✅ JWT storage verification after authentication
+- ✅ Protected API calls with stored JWT
+- ✅ Logout clears session
+- ✅ Expired token handling (jwt-decode)
+- ✅ Malformed token handling (jwt-decode safety)
+- ✅ 401 response triggers re-authentication
+
+### Android Mobile App Integration (Reference)
+
+**Note**: The MCP-generated client is a web client. However, since your primary use case may involve an Android mobile app uploading health data, here are security recommendations for JWT storage on Android.
+
+**Mobile apps should NOT use HttpOnly cookies**:
+- ❌ Native Android apps don't have browser cookie management
+- ❌ OkHttp (Android HTTP client) requires manual CookieJar implementation
+- ❌ More complex than standard Authorization headers
+- ✅ JWT with Authorization headers is the industry standard for mobile APIs
+
+**Secure JWT Storage on Android**:
+
+Use **EncryptedSharedPreferences with Android Keystore** for JWT storage:
+
+```kotlin
+// build.gradle.kts
+dependencies {
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+}
+
+// SecureTokenStorage.kt
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+
+class SecureTokenStorage(context: Context) {
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+
+    private val encryptedPrefs = EncryptedSharedPreferences.create(
+        context,
+        "webauthn_secure_prefs",
+        masterKey,
+        EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+        EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+    )
+
+    fun saveJwtToken(token: String, expiresIn: Int) {
+        val expiresAt = System.currentTimeMillis() + (expiresIn * 1000)
+        encryptedPrefs.edit()
+            .putString("jwt_token", token)
+            .putLong("expires_at", expiresAt)
+            .apply()
+    }
+
+    fun getJwtToken(): String? {
+        val token = encryptedPrefs.getString("jwt_token", null)
+        val expiresAt = encryptedPrefs.getLong("expires_at", 0)
+
+        if (System.currentTimeMillis() >= expiresAt) {
+            clearToken()
+            return null
+        }
+
+        return token
+    }
+}
+```
+
+**Security Benefits**:
+- ✅ Hardware-backed AES-256 encryption
+- ✅ XSS immune (native app)
+- ✅ OS-level app sandboxing
+- ✅ Optional biometric gating
+
+For complete Android implementation details, see `PRODUCTION_READY_PLAN.md`.
+
 ## Architecture
 
 ### Zero-Trust Architecture Overview

@@ -772,6 +772,304 @@ docker compose logs -f my-service
 
 ---
 
+## Production Deployment Security Guide
+
+### JWT Authentication Configuration
+
+Before deploying to production, ensure JWT authentication is properly configured with maximum security.
+
+#### 1. Environment Variables
+
+Verify these environment variables are set on your WebAuthn server:
+
+```bash
+# JWT Configuration
+MPO_AUTHN_JWT_ISSUER=mpo-webauthn
+MPO_AUTHN_JWT_EXPIRATION=900  # 15 minutes (adjust as needed)
+
+# CRITICAL: Use strong RSA key pair in production
+# Generate with: openssl genrsa -out jwt-private.pem 2048
+# Extract public: openssl rsa -in jwt-private.pem -pubout -out jwt-public.pem
+MPO_AUTHN_JWT_PRIVATE_KEY_PATH=/path/to/jwt-private.pem
+MPO_AUTHN_JWT_PUBLIC_KEY_PATH=/path/to/jwt-public.pem
+```
+
+**Key Generation Best Practices**:
+- Use 2048-bit or 4096-bit RSA keys (minimum 2048)
+- Rotate keys periodically (every 6-12 months)
+- Store private keys securely (secrets management system)
+- Never commit keys to version control
+
+#### 2. HTTPS Enforcement (CRITICAL)
+
+JWT tokens are transmitted in HTTP headers and **MUST** use HTTPS:
+
+```yaml
+# Envoy Gateway - Force HTTPS redirect
+# envoy-gateway.yaml
+redirect:
+  https_redirect: true
+```
+
+**Why HTTPS is critical**:
+- HTTP transmits JWT in **plain text**
+- Attackers can intercept tokens on network
+- HTTPS encrypts Authorization header
+
+**Production Checklist**:
+- [ ] HTTPS enforced on all endpoints
+- [ ] Valid SSL/TLS certificate installed
+- [ ] HTTP automatically redirects to HTTPS
+- [ ] HSTS header enabled (Strict-Transport-Security)
+
+#### 3. Content Security Policy (CSP) Headers
+
+**CRITICAL for XSS protection**:
+
+```html
+<!-- Already included in generated HTML template -->
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'self';
+               script-src 'self' https://unpkg.com;
+               connect-src 'self' https://yourdomain.com;">
+```
+
+**What CSP prevents**:
+- ✅ Inline JavaScript execution (prevents XSS injection)
+- ✅ Unauthorized script sources (blocks attacker domains)
+- ✅ Token exfiltration to external servers
+
+**Production Hardening**:
+
+```html
+<meta http-equiv="Content-Security-Policy"
+      content="default-src 'none';
+               script-src 'self' https://unpkg.com/@simplewebauthn/browser@10.0.0;
+               style-src 'self' 'unsafe-inline';
+               connect-src 'self' https://api.yourdomain.com;
+               img-src 'self' data:;
+               font-src 'self';
+               base-uri 'self';
+               form-action 'self';">
+```
+
+#### 4. CORS Configuration
+
+Configure CORS to **whitelist only production domains**:
+
+```kotlin
+// WebAuthn Server CORS
+install(CORS) {
+    // Production: Specific domain only
+    allowHost("app.yourdomain.com", schemes = listOf("https"))
+
+    allowHeader(HttpHeaders.Authorization)
+    allowHeader(HttpHeaders.ContentType)
+    allowMethod(HttpMethod.Options)
+    allowMethod(HttpMethod.Get)
+    allowMethod(HttpMethod.Post)
+
+    // NOT needed for JWT (only for cookies)
+    allowCredentials = false
+}
+```
+
+#### 5. Token Expiration Strategy
+
+Choose appropriate token lifetime based on security requirements:
+
+| Session Length | Security | UX | Best For |
+|----------------|----------|-----|----------|
+| **5-15 min** | 🔒🔒🔒 High | ⚠️ Frequent re-auth | Banking, healthcare |
+| **30-60 min** | 🔒🔒 Medium | ✅ Balanced | Most web apps |
+| **> 1 hour** | 🔒 Lower | ✅ Convenient | Low-security apps |
+
+**Recommendation**: 15 minutes (default) for most applications
+
+#### 6. Auto-Logout on Inactivity
+
+**CRITICAL for health data**: The web client includes auto-logout after 5 minutes of inactivity:
+
+```typescript
+// Configured for 5-minute inactivity timeout
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000;
+
+// Tracks user activity (mouse, keyboard, scroll, touch)
+['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(event => {
+  document.addEventListener(event, resetInactivityTimer, true);
+});
+```
+
+**Why this is critical**:
+- Health data should not remain accessible on idle browser
+- Prevents unauthorized access if user walks away
+- 5-minute timeout balances security and UX
+
+#### 7. Rate Limiting
+
+Implement rate limiting on authentication endpoints:
+
+```yaml
+# Envoy Gateway rate limiting
+rate_limits:
+  - actions:
+    - request_headers:
+        header_name: ":path"
+        descriptor_key: "path"
+    limit:
+      requests_per_unit: 10
+      unit: minute
+```
+
+**Protect against**:
+- ✅ Brute force attacks
+- ✅ Credential stuffing
+- ✅ Token generation abuse
+
+#### 8. Security Comparison: JWT vs HttpOnly Cookies
+
+##### Current Approach: JWT in sessionStorage
+
+**Pros**:
+- ✅ No backend changes required
+- ✅ Simple CORS configuration
+- ✅ Standard Bearer token pattern
+- ✅ Works seamlessly with SPAs
+- ✅ No CSRF vulnerability
+
+**Cons**:
+- ❌ Vulnerable to XSS attacks
+- ❌ Manual token management
+
+**Mitigations**:
+- ✅ Strict CSP headers (included in template)
+- ✅ Input sanitization (documented)
+- ✅ HTTPS enforcement (required)
+- ✅ Short token lifetime (15 minutes)
+- ✅ Auto-logout on inactivity (5 minutes)
+
+##### Alternative: HttpOnly Cookies
+
+**Pros**:
+- ✅ XSS immune (JavaScript cannot access)
+- ✅ Automatic transmission
+- ✅ Browser handles storage
+
+**Cons**:
+- ❌ Vulnerable to CSRF attacks
+- ❌ Requires backend changes
+- ❌ Complex CORS configuration
+- ❌ Needs CSRF token management
+
+**Backend Changes Required for HttpOnly Cookies**:
+
+See `PRODUCTION_READY_PLAN.md` for complete backend modification requirements, including:
+- Set-Cookie headers instead of JSON response
+- CORS credentials configuration
+- CSRF token generation and validation
+- Cookie-based token extraction
+
+**When to Use HttpOnly Cookies**:
+- Extremely high-security requirements
+- Willing to modify backend authentication
+- Need token revocation capabilities
+- Have resources for CSRF protection
+
+**Recommendation**: JWT in sessionStorage is appropriate for most applications when combined with proper XSS protection (CSP, input sanitization, HTTPS).
+
+### Production Testing Checklist
+
+Before deploying to production, verify:
+
+#### Security
+- [ ] HTTPS enforced on all endpoints
+- [ ] Valid SSL/TLS certificate installed
+- [ ] CSP headers configured and tested
+- [ ] CORS allows only production domains
+- [ ] JWT tokens are RS256-signed with production keys
+- [ ] Private keys stored securely (secrets management)
+- [ ] Input sanitization implemented
+- [ ] XSS protection tested
+- [ ] Rate limiting enabled on auth endpoints
+
+#### Authentication
+- [ ] Token expiration matches business requirements (default: 15 minutes)
+- [ ] Auto-logout on inactivity enabled (5 minutes for health data)
+- [ ] sessionStorage cleared on logout
+- [ ] Expired tokens trigger re-authentication
+- [ ] 401 responses handled gracefully
+- [ ] Token countdown timer works
+- [ ] Protected API calls include Authorization header
+
+#### Testing
+- [ ] E2E tests pass in staging environment
+- [ ] Security penetration testing completed
+- [ ] CSP violations monitored and resolved
+- [ ] Load testing completed
+- [ ] Browser compatibility verified
+
+#### Monitoring
+- [ ] Monitoring and alerting configured
+- [ ] CSP violation reporting enabled
+- [ ] Authentication metrics tracked
+- [ ] Error logging configured
+- [ ] Performance monitoring enabled
+
+### Production Monitoring
+
+#### Key Metrics to Track
+
+1. **Authentication Success Rate**
+   - Target: > 95%
+   - Alert if < 90%
+
+2. **Token Expiration Events**
+   - Track how often users experience expiration
+   - Adjust `expiresIn` if too frequent
+
+3. **401 Unauthorized Responses**
+   - High rate indicates token issues or attacks
+   - Track per endpoint
+
+4. **XSS Attempt Detection**
+   - Monitor CSP violation reports
+   - Track blocked script sources
+   - Alert on policy violations
+
+### Emergency Response Plan
+
+#### Token Compromise
+
+If JWT tokens are compromised:
+
+1. **Immediate Actions**:
+   - Rotate JWT signing keys immediately
+   - Invalidate all existing tokens (server-side)
+   - Force all users to re-authenticate
+   - Investigate attack vector (XSS? Network interception?)
+
+2. **Post-Incident**:
+   - Review CSP configuration
+   - Audit code for XSS vulnerabilities
+   - Implement additional security controls
+
+#### XSS Attack Detected
+
+If XSS attack is detected:
+
+1. **Immediate Actions**:
+   - Enable maintenance mode
+   - Sanitize compromised input fields
+   - Clear all user sessions
+   - Deploy patch
+
+2. **Post-Incident**:
+   - Strengthen CSP headers
+   - Audit all user input handling
+   - Implement automated XSS scanning
+
+---
+
 ## Additional Resources
 
 - **WebAuthn Server**: {{server_url}} (gateway entry point)

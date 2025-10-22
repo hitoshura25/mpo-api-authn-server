@@ -137,7 +137,7 @@ class ApplicationTest : KoinTest {
 
             val response = client.get("/.well-known/jwks.json")
             assertEquals(HttpStatusCode.OK, response.status)
-            assertEquals(ContentType.Application.Json, response.contentType())
+            assertEquals(ContentType.Application.Json, response.contentType()?.withoutParameters())
         }
 
     @Test

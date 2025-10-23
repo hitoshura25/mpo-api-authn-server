@@ -58,6 +58,10 @@ static_resources:
                             prefix: "/api/example"
                           route:
                             cluster: example_service
+                        - match:
+                            prefix: "/api/user"
+                          route:
+                            cluster: example_service
 
                 http_filters:
                   # JWT Authentication filter
@@ -120,7 +124,7 @@ static_resources:
               - endpoint:
                   address:
                     socket_address:
-                      address: example-service
+                      address: example-service-sidecar
                       port_value: 9000
       # mTLS configuration (connects to Istio sidecar)
       # Phase 2: Envoy Gateway uses mTLS to connect to example-service sidecar

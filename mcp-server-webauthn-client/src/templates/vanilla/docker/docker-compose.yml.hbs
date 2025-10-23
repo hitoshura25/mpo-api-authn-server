@@ -143,7 +143,7 @@ services:
     network_mode: "service:example-service-sidecar"  # Share network with sidecar
     environment:
       APP_PORT: 9001  # App listens on 9001, Envoy sidecar exposes 9000
-      WEBAUTHN_PUBLIC_KEY_URL: "http://webauthn-server:8080/public-key"
+      WEBAUTHN_JWKS_URL: "http://webauthn-server:8080/.well-known/jwks.json"
     depends_on:
       - webauthn-server
       - example-service-sidecar

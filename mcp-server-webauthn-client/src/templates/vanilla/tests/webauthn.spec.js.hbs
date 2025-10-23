@@ -69,6 +69,254 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
 
     console.log(`Full flow completed successfully for user: ${uniqueUsername}`);
   });
+
+  test('should store JWT in sessionStorage on successful authentication', async ({ page }, testInfo) => {
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
+    // Registration
+    await page.fill('#regUsername', uniqueUsername);
+    await page.fill('#regDisplayName', 'JWT Storage Test User');
+    await page.click('button:has-text("Register Passkey")');
+    await page.waitForTimeout(5000);
+
+    const registrationStatus = await page.locator('#registrationStatus').textContent();
+    expect(registrationStatus).toContain('successful');
+
+    // Authentication
+    await page.fill('#authUsername', uniqueUsername);
+    await page.click('button:has-text("Authenticate with Passkey")');
+    await page.waitForTimeout(3000);
+
+    const authStatus = await page.locator('#authenticationStatus').textContent();
+    expect(authStatus).toContain('successful');
+
+    // CRITICAL: Verify JWT is stored in sessionStorage (native browser API)
+    const sessionData = await page.evaluate(() => {
+      const stored = sessionStorage.getItem('webauthn_auth_session');
+      return stored ? JSON.parse(stored) : null;
+    });
+
+    expect(sessionData).toBeTruthy();
+    expect(sessionData.accessToken).toBeTruthy();
+    expect(sessionData.tokenType).toBe('Bearer');
+    expect(sessionData.expiresIn).toBe(900);
+    expect(sessionData.username).toBe(uniqueUsername);
+    expect(sessionData.issuedAt).toBeTruthy();
+
+    // Verify token format (JWT has 3 parts)
+    const tokenParts = sessionData.accessToken.split('.');
+    expect(tokenParts.length).toBe(3);
+
+    // Verify token can be decoded (jwt-decode functionality)
+    const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64').toString());
+    expect(payload.sub).toBe(uniqueUsername);
+    expect(payload.exp).toBeGreaterThan(Math.floor(Date.now() / 1000));
+
+    console.log(`JWT storage verified for user: ${uniqueUsername}`);
+  });
+
+  test('should successfully call protected API with stored JWT', async ({ page }, testInfo) => {
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
+    // Register and authenticate
+    await page.fill('#regUsername', uniqueUsername);
+    await page.fill('#regDisplayName', 'API Call Test User');
+    await page.click('button:has-text("Register Passkey")');
+    await page.waitForTimeout(5000);
+
+    await page.fill('#authUsername', uniqueUsername);
+    await page.click('button:has-text("Authenticate with Passkey")');
+    await page.waitForTimeout(3000);
+
+    // Verify protected section is visible
+    await expect(page.locator('#protectedSection')).toBeVisible();
+    await expect(page.locator('#authenticationSection')).not.toBeVisible();
+
+    // Mock protected API endpoint response
+    await page.route('**/api/user/profile', route => {
+      const authHeader = route.request().headers()['authorization'];
+
+      if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        route.fulfill({
+          status: 401,
+          body: JSON.stringify({ error: 'Unauthorized' })
+        });
+      } else {
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            username: uniqueUsername,
+            message: 'Profile data retrieved successfully'
+          })
+        });
+      }
+    });
+
+    // Call protected API
+    await page.fill('#apiEndpoint', '/api/user/profile');
+    await page.click('button:has-text("Call Protected API")');
+    await page.waitForTimeout(2000);
+
+    // Verify success status
+    const apiStatus = await page.locator('#apiStatus').textContent();
+    expect(apiStatus).toContain('successful');
+
+    // Verify API response is displayed
+    const apiOutput = await page.textContent('#apiOutput');
+    expect(apiOutput).toContain(uniqueUsername);
+    expect(apiOutput).toContain('Profile data retrieved successfully');
+
+    console.log(`Protected API call successful for user: ${uniqueUsername}`);
+  });
+
+  test('should clear session on logout', async ({ page }, testInfo) => {
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
+    // Register and authenticate
+    await page.fill('#regUsername', uniqueUsername);
+    await page.fill('#regDisplayName', 'Logout Test User');
+    await page.click('button:has-text("Register Passkey")');
+    await page.waitForTimeout(5000);
+
+    await page.fill('#authUsername', uniqueUsername);
+    await page.click('button:has-text("Authenticate with Passkey")');
+    await page.waitForTimeout(3000);
+
+    // Verify protected section is visible
+    await expect(page.locator('#protectedSection')).toBeVisible();
+
+    // Logout
+    await page.click('button:has-text("Logout")');
+    await page.waitForTimeout(1000);
+
+    // Verify sessionStorage is cleared
+    const sessionData = await page.evaluate(() => {
+      return sessionStorage.getItem('webauthn_auth_session');
+    });
+    expect(sessionData).toBeNull();
+
+    // Verify UI state reset
+    await expect(page.locator('#protectedSection')).not.toBeVisible();
+    await expect(page.locator('#authenticationSection')).toBeVisible();
+
+    console.log(`Logout successful for user: ${uniqueUsername}`);
+  });
+
+  test('should handle expired token gracefully using jwt-decode', async ({ page }) => {
+    // Create a fake expired JWT token
+    const expiredPayload = {
+      sub: 'test@example.com',
+      iss: 'mpo-webauthn',
+      exp: Math.floor(Date.now() / 1000) - 1000  // Expired 1000 seconds ago
+    };
+    const encodedPayload = Buffer.from(JSON.stringify(expiredPayload)).toString('base64');
+    const fakeToken = `header.${encodedPayload}.signature`;
+
+    // Manually inject expired session
+    await page.evaluate(({ token }) => {
+      const expiredSession = {
+        accessToken: token,
+        tokenType: 'Bearer',
+        expiresIn: 900,
+        username: 'test@example.com',
+        issuedAt: Date.now() - 1000000  // Far in the past
+      };
+      sessionStorage.setItem('webauthn_auth_session', JSON.stringify(expiredSession));
+    }, { token: fakeToken });
+
+    // Reload page to trigger auth check (jwt-decode should detect expiration)
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // Verify expired session is cleared by AuthStorage.get()
+    const sessionData = await page.evaluate(() => {
+      return sessionStorage.getItem('webauthn_auth_session');
+    });
+    expect(sessionData).toBeNull();
+
+    // Verify UI shows unauthenticated state
+    await expect(page.locator('#protectedSection')).not.toBeVisible();
+    await expect(page.locator('#authenticationSection')).toBeVisible();
+
+    console.log('Expired token handled gracefully');
+  });
+
+  test('should handle malformed JWT gracefully using jwt-decode', async ({ page }) => {
+    // Inject session with malformed JWT
+    await page.evaluate(() => {
+      const malformedSession = {
+        accessToken: 'not.a.valid.jwt.token',
+        tokenType: 'Bearer',
+        expiresIn: 900,
+        username: 'test@example.com',
+        issuedAt: Date.now()
+      };
+      sessionStorage.setItem('webauthn_auth_session', JSON.stringify(malformedSession));
+    });
+
+    // Reload page to trigger auth check
+    await page.reload();
+    await page.waitForLoadState('networkidle');
+
+    // jwt-decode should throw, AuthStorage.get() should catch and clear
+    const sessionData = await page.evaluate(() => {
+      return sessionStorage.getItem('webauthn_auth_session');
+    });
+    expect(sessionData).toBeNull();
+
+    // Verify UI shows unauthenticated state
+    await expect(page.locator('#protectedSection')).not.toBeVisible();
+    await expect(page.locator('#authenticationSection')).toBeVisible();
+
+    console.log('Malformed token handled gracefully');
+  });
+
+  test('should handle 401 response and trigger re-authentication', async ({ page }, testInfo) => {
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
+    // Register and authenticate
+    await page.fill('#regUsername', uniqueUsername);
+    await page.fill('#regDisplayName', '401 Test User');
+    await page.click('button:has-text("Register Passkey")');
+    await page.waitForTimeout(5000);
+
+    await page.fill('#authUsername', uniqueUsername);
+    await page.click('button:has-text("Authenticate with Passkey")');
+    await page.waitForTimeout(3000);
+
+    // Verify protected section is visible
+    await expect(page.locator('#protectedSection')).toBeVisible();
+
+    // Mock API endpoint to return 401
+    await page.route('**/api/user/profile', route => {
+      route.fulfill({
+        status: 401,
+        body: JSON.stringify({ error: 'Unauthorized' })
+      });
+    });
+
+    // Call protected API (should get 401)
+    await page.fill('#apiEndpoint', '/api/user/profile');
+    await page.click('button:has-text("Call Protected API")');
+    await page.waitForTimeout(2000);
+
+    // Verify error status
+    const apiStatus = await page.locator('#apiStatus').textContent();
+    expect(apiStatus).toContain('expired or invalid');
+
+    // Verify session is cleared
+    const sessionData = await page.evaluate(() => {
+      return sessionStorage.getItem('webauthn_auth_session');
+    });
+    expect(sessionData).toBeNull();
+
+    // Verify UI shows unauthenticated state
+    await expect(page.locator('#protectedSection')).not.toBeVisible();
+    await expect(page.locator('#authenticationSection')).toBeVisible();
+
+    console.log('401 response handled correctly');
+  });
 });
 
 // Configure test execution

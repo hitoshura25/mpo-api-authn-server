@@ -9,6 +9,7 @@ import type {
     WebAuthnResult,
     ConnectionTestResult
 } from './types';
+import { AuthStorage } from './auth-storage';
 
 export class WebAuthnClient {
     private registrationApi: RegistrationApi;
@@ -284,9 +285,192 @@ export function initializeWebAuthnClient(): void {
         showStatus('authenticationStatus', '🔐 Please use your passkey...', 'info');
         const result = await authenticationClient.authenticatePasskey(username);
 
-        showStatus('authenticationStatus', result.message, result.success ? 'success' : 'error');
+        // PRODUCTION CHANGE: Store JWT using AuthStorage (jwt-decode + native sessionStorage)
+        if (result.success && result.accessToken) {
+            AuthStorage.store({
+                accessToken: result.accessToken,
+                tokenType: result.tokenType || 'Bearer',
+                expiresIn: result.expiresIn || 900,
+                username: result.username || username || 'user'
+            });
+
+            showStatus('authenticationStatus', result.message, 'success');
+            updateUIForAuthState(true);  // Update UI to show authenticated state
+        } else {
+            showStatus('authenticationStatus', result.message, 'error');
+        }
+    };
+
+    // Logout function
+    (window as any).logout = async function() {
+        const showStatus = (window as any).showStatus;
+
+        AuthStorage.clear();
+        updateUIForAuthState(false);
+
+        showStatus('authenticationStatus', '🔓 Logged out successfully', 'info');
+
+        // Clear authentication form
+        const authUsernameElement = document.getElementById('authUsername') as HTMLInputElement;
+        if (authUsernameElement) {
+            authUsernameElement.value = '';
+        }
+    };
+
+    // Call protected API endpoint
+    // SECURITY: Resets inactivity timer on API calls (user is active)
+    (window as any).callProtectedApi = async function() {
+        const showStatus = (window as any).showStatus;
+        const serverUrl = (window as any).getServerUrl();
+
+        const endpointElement = document.getElementById('apiEndpoint') as HTMLInputElement;
+        const endpoint = endpointElement?.value.trim() || '/api/user/profile';
+
+        showStatus('apiStatus', '🔄 Calling protected endpoint...', 'info');
+
+        const authHeader = AuthStorage.getAuthorizationHeader();
+        if (!authHeader) {
+            showStatus('apiStatus', '❌ Not authenticated. Please authenticate first.', 'error');
+            return;
+        }
+
+        // Reset inactivity timer - user is making API call (active)
+        resetInactivityTimer();
+
+        try {
+            const response = await fetch(`${serverUrl}${endpoint}`, {
+                method: 'GET',
+                headers: {
+                    'Authorization': authHeader,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (response.status === 401) {
+                showStatus('apiStatus', '❌ Token expired or invalid. Please re-authenticate.', 'error');
+                AuthStorage.clear();
+                updateUIForAuthState(false);
+                return;
+            }
+
+            if (!response.ok) {
+                showStatus('apiStatus', `❌ API call failed: ${response.status} ${response.statusText}`, 'error');
+                return;
+            }
+
+            const data = await response.json();
+            showStatus('apiStatus', `✅ API call successful!`, 'success');
+
+            // Display response in output area
+            const outputElement = document.getElementById('apiOutput');
+            if (outputElement) {
+                outputElement.textContent = JSON.stringify(data, null, 2);
+            }
+        } catch (error: any) {
+            showStatus('apiStatus', `❌ Network error: ${error.message}`, 'error');
+        }
     };
 }
+
+// Update UI based on authentication state
+function updateUIForAuthState(isAuthenticated: boolean): void {
+    const protectedSection = document.getElementById('protectedSection');
+    const authSection = document.getElementById('authenticationSection');
+    const sessionInfo = document.getElementById('sessionInfo');
+
+    if (protectedSection) {
+        protectedSection.style.display = isAuthenticated ? 'block' : 'none';
+    }
+
+    if (authSection) {
+        authSection.style.display = isAuthenticated ? 'none' : 'block';
+    }
+
+    if (sessionInfo && isAuthenticated) {
+        const session = AuthStorage.get();
+        if (session) {
+            const expirationDate = AuthStorage.getExpirationDate();
+            sessionInfo.innerHTML = `
+                <strong>Authenticated as:</strong> ${session.username}<br>
+                <strong>Token expires in:</strong> <span id="tokenTimer">${session.expiresIn}s</span><br>
+                <strong>Expiration time:</strong> ${expirationDate?.toLocaleTimeString() || 'N/A'}
+            `;
+            startTokenTimer();
+        }
+    }
+
+    // Reset inactivity timer when auth state changes
+    if (isAuthenticated) {
+        resetInactivityTimer();
+    } else {
+        clearInactivityTimer();
+    }
+}
+
+// Start countdown timer for token expiration
+function startTokenTimer(): void {
+    const updateTimer = () => {
+        const remaining = AuthStorage.getTimeRemaining();
+        const timerElement = document.getElementById('tokenTimer');
+
+        if (remaining === null || remaining <= 0) {
+            if (timerElement) {
+                timerElement.textContent = 'expired';
+                timerElement.style.color = '#dc3545';
+            }
+            updateUIForAuthState(false);
+            return;
+        }
+
+        if (timerElement) {
+            timerElement.textContent = `${remaining}s`;
+            if (remaining < 60) {
+                timerElement.style.color = '#dc3545';  // Red for last minute
+            } else if (remaining < 300) {
+                timerElement.style.color = '#ffc107';  // Yellow for last 5 minutes
+            }
+        }
+
+        setTimeout(updateTimer, 1000);
+    };
+
+    updateTimer();
+}
+
+// Auto-logout on inactivity (5 minutes idle timeout)
+// SECURITY: Critical for health data - prevents unauthorized access if user walks away
+let inactivityTimer: number | null = null;
+const INACTIVITY_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
+function resetInactivityTimer(): void {
+    clearInactivityTimer();
+
+    // Only set timer if authenticated
+    if (!AuthStorage.isAuthenticated()) return;
+
+    inactivityTimer = window.setTimeout(() => {
+        console.warn('[SECURITY] Auto-logout due to inactivity (5 min idle)');
+        AuthStorage.clear();
+        updateUIForAuthState(false);
+
+        const showStatus = (window as any).showStatus;
+        if (showStatus) {
+            showStatus('authenticationStatus', '🔒 Logged out due to inactivity', 'info');
+        }
+    }, INACTIVITY_TIMEOUT);
+}
+
+function clearInactivityTimer(): void {
+    if (inactivityTimer) {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = null;
+    }
+}
+
+// Track user activity to reset timer
+['mousedown', 'keydown', 'scroll', 'touchstart'].forEach(event => {
+    document.addEventListener(event, resetInactivityTimer, true);
+});
 
 // Initialize when DOM is loaded
 if (typeof window !== 'undefined') {
@@ -295,6 +479,22 @@ if (typeof window !== 'undefined') {
         console.log('📋 SimpleWebAuthn library:', window.SimpleWebAuthnBrowser ? 'loaded' : 'not loaded');
 
         initializeWebAuthnClient();
+
+        // Check authentication state and update UI
+        const isAuthenticated = AuthStorage.isAuthenticated();
+        updateUIForAuthState(isAuthenticated);
+
+        if (isAuthenticated) {
+            const session = AuthStorage.get();
+            const remaining = AuthStorage.getTimeRemaining();
+            console.log('✅ Existing session found:', {
+                username: session?.username,
+                remainingSeconds: remaining
+            });
+
+            // SECURITY: Start inactivity timer for existing session
+            resetInactivityTimer();
+        }
 
         // Auto-test server connection
         setTimeout(() => {

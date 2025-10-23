@@ -101,9 +101,10 @@ After successful WebAuthn authentication, the server issues JWT tokens for zero-
 
 - **RS256 Asymmetric Signing** - 2048-bit RSA key pairs for secure token signing
 - **15-Minute Token Expiration** - Short-lived tokens (900 seconds) for enhanced security
-- **Public Key Export** - `/public-key` endpoint for downstream service verification
+- **JWKS Endpoint** - `/.well-known/jwks.json` (RFC 7517) for industry-standard JWT verification
 - **Bearer Token Format** - Standard OAuth2-compatible JWT tokens
 - **No Session State** - Stateless authentication for distributed systems
+- **Key Rotation Support** - JWKS format enables seamless key rotation using `kid` (Key ID)
 
 #### JWT Token Response
 
@@ -119,46 +120,62 @@ After successful WebAuthn authentication, the server issues JWT tokens for zero-
 
 #### Downstream Service Verification
 
-Downstream services can verify JWT signatures using the public key:
+Downstream services can verify JWT signatures using the JWKS endpoint (RFC 7517):
 
 ```bash
-# Get the public key
-curl http://webauthn-server:8080/public-key
+# Get the JWKS
+curl http://webauthn-server:8080/.well-known/jwks.json
 ```
 
-**Example verification (Python)**:
+**Example verification (Python with PyJWKClient)**:
 ```python
-import httpx
-import base64
-from cryptography.hazmat.primitives.serialization import load_der_public_key
 import jwt
+from jwt import PyJWKClient
 
-# Fetch and cache public key
-response = httpx.get("http://webauthn-server:8080/public-key")
-public_key = load_der_public_key(base64.b64decode(response.text))
+# PyJWKClient automatically fetches and caches JWKS
+jwks_client = PyJWKClient("http://webauthn-server:8080/.well-known/jwks.json")
 
-# Verify JWT token
-decoded = jwt.decode(token, public_key, algorithms=["RS256"], issuer="mpo-webauthn")
+# Get signing key from token and verify
+signing_key = jwks_client.get_signing_key_from_jwt(token)
+decoded = jwt.decode(
+    token,
+    signing_key.key,
+    algorithms=["RS256"],
+    issuer="mpo-webauthn"
+)
 username = decoded["sub"]
 ```
 
-**Example verification (TypeScript)**:
+**Example verification (TypeScript with jose)**:
 ```typescript
 import * as jose from 'jose'
 
-// Fetch and cache public key
-const response = await fetch('http://webauthn-server:8080/public-key')
-const publicKeyDer = await response.text()
-const publicKey = await jose.importSPKI(
-  `-----BEGIN PUBLIC KEY-----\n${publicKeyDer}\n-----END PUBLIC KEY-----`,
-  'RS256'
+// Create remote JWKS client (automatically fetches and caches)
+const JWKS = jose.createRemoteJWKSet(
+  new URL('http://webauthn-server:8080/.well-known/jwks.json')
 )
 
-// Verify JWT token
-const { payload } = await jose.jwtVerify(token, publicKey, {
+// Verify JWT token (automatically selects correct key using kid)
+const { payload } = await jose.jwtVerify(token, JWKS, {
   issuer: 'mpo-webauthn'
 })
 const username = payload.sub
+```
+
+**Example verification (Envoy Gateway)**:
+```yaml
+# Envoy Gateway JWT authentication configuration
+providers:
+  webauthn_provider:
+    issuer: "mpo-webauthn"
+    audiences: ["webauthn-clients"]
+    remote_jwks:
+      http_uri:
+        uri: http://webauthn-server:8080/.well-known/jwks.json
+        cluster: webauthn_server
+        timeout: 5s
+      cache_duration:
+        seconds: 300
 ```
 
 ### 🛡️ Professional FOSS Security Implementation

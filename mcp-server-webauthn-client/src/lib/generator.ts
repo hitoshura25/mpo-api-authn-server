@@ -112,6 +112,7 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     { template: '.gitignore.hbs', output: '.gitignore' },
     { template: 'package.json.hbs', output: 'package.json' },
     { template: 'index.ts.hbs', output: 'src/index.ts' },
+    { template: 'auth-storage.ts.hbs', output: 'src/auth-storage.ts' },
     { template: 'webauthn-client.ts.hbs', output: 'src/webauthn-client.ts' },
     { template: 'types.ts.hbs', output: 'src/types.ts' },
     { template: 'server.ts.hbs', output: 'src/server.ts' },

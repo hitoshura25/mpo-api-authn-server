@@ -302,7 +302,7 @@
   "mcp_servers": {
     "webauthn_client_generator": {
       "package": "@vmenon25/mcp-server-webauthn-client",
-      "description": "MCP server for generating WebAuthn web clients that connect to existing webauthn-server instances",
+      "description": "MCP server for generating complete zero-trust WebAuthn stacks with all infrastructure (Envoy Gateway, WebAuthn Server, PostgreSQL, Redis, web client)",
       "source": "https://github.com/hitoshura25/mpo-api-authn-server/tree/main/mcp-server-webauthn-client",
       "installation": {
         "mcp": {
@@ -329,21 +329,24 @@
       },
       "tools": {
         "generate_web_client": {
-          "description": "Generate complete web client with TypeScript, Express server, and WebAuthn integration",
+          "description": "Generate complete zero-trust WebAuthn stack including Envoy Gateway, WebAuthn Server Docker image, PostgreSQL, Redis, Jaeger, TypeScript web client, and E2E tests",
           "parameters": {
-            "project_path": "Where to create the web client directory (e.g., './web-client')",
+            "project_path": "Where to create the complete stack directory (e.g., './web-client')",
             "framework": "Web framework: 'vanilla', 'react', or 'vue' (default: 'vanilla')",
-            "server_url": "URL of webauthn-server instance (default: 'http://localhost:8080')",
+            "server_url": "Base URL for generated Envoy Gateway entry point (default: 'http://localhost:8000')",
             "client_port": "Port for web client dev server (default: 8082)"
           },
           "frameworks_supported": ["vanilla", "react", "vue"],
           "critical_features": [
+            "Complete Docker stack with Envoy Gateway, WebAuthn Server, PostgreSQL, Redis, Jaeger",
+            "Zero-trust architecture with JWT authentication and JWKS endpoint",
             "Preserves JSON parsing patterns for WebAuthn API",
             "Includes SimpleWebAuthn browser library integration",
             "Proper credential serialization",
             "Comprehensive error handling",
             "Working Express dev server",
-            "Complete build toolchain (Webpack, TypeScript, Babel)"
+            "Complete build toolchain (Webpack, TypeScript, Babel)",
+            "Playwright E2E tests with Chromium virtual authenticator"
           ],
           "generated_files": [
             "package.json - All required dependencies",
@@ -352,9 +355,14 @@
             "src/server.ts - Express dev server",
             "src/index.ts - Entry point",
             "public/index.html - Test UI",
+            "docker/docker-compose.yml - Complete infrastructure stack",
+            "docker/envoy-gateway.yaml - Envoy configuration with JWT verification",
+            "docker/init-db.sql - PostgreSQL schema",
+            "docker/secrets/ - Auto-generated secure passwords",
+            "tests/webauthn.spec.js - Playwright E2E tests",
+            "playwright.config.js - Test configuration",
             "webpack.config.js - Build configuration",
             "tsconfig.json - TypeScript configuration",
-            "tsconfig.build.json - Build-specific TypeScript config",
             "README.md - Usage instructions"
           ]
         }
@@ -362,29 +370,30 @@
       "example_usage": {
         "mcp_agent_example": {
           "scenario": "MCP-compatible agent (Claude Code)",
-          "user_prompt": "Create a web client to test my webauthn-server running on port 8080",
-          "ai_agent_action": "Calls generate_web_client MCP tool with project_path='./web-client', server_url='http://localhost:8080'",
-          "result": "Complete working web client generated with all critical patterns preserved",
+          "user_prompt": "Create a complete WebAuthn authentication stack for testing passkeys",
+          "ai_agent_action": "Calls generate_web_client MCP tool with project_path='./web-client'",
+          "result": "Complete zero-trust stack generated: Envoy Gateway, WebAuthn Server, PostgreSQL, Redis, Jaeger, web client, E2E tests",
           "token_cost": "0 tokens"
         },
         "non_mcp_agent_example": {
           "scenario": "Non-MCP agent (Cursor, Aider, Windsurf)",
-          "user_prompt": "Create a web client to test my webauthn-server running on port 8080",
-          "ai_agent_action": "Reads .ai-agents.json, suggests CLI command: npx -y @vmenon25/mcp-server-webauthn-client --path ./web-client --server http://localhost:8080",
-          "result": "User runs command, web client generated",
+          "user_prompt": "Create a complete WebAuthn authentication stack for testing passkeys",
+          "ai_agent_action": "Reads .ai-agents.json, suggests CLI command: npx -y @vmenon25/mcp-server-webauthn-client --path ./web-client",
+          "result": "User runs command, complete stack generated with all infrastructure",
           "token_cost": "~1500 tokens (one-time .ai-agents.json read)"
         },
         "cli_examples": {
           "basic": "npx -y @vmenon25/mcp-server-webauthn-client",
-          "custom_path": "npx -y @vmenon25/mcp-server-webauthn-client --path ./auth-client",
-          "custom_server": "npx -y @vmenon25/mcp-server-webauthn-client --server http://localhost:9000 --port 3000",
-          "production_server": "npx -y @vmenon25/mcp-server-webauthn-client --server https://auth.example.com"
+          "custom_path": "npx -y @vmenon25/mcp-server-webauthn-client --path ./auth-stack",
+          "custom_ports": "npx -y @vmenon25/mcp-server-webauthn-client --gateway-host-port 8001 --forward-port 3000",
+          "with_relying_party": "npx -y @vmenon25/mcp-server-webauthn-client --relying-party-id example.com --relying-party-name 'My App'"
         },
         "next_steps": [
-          "cd web-client",
-          "npm install",
+          "cd web-client/docker && docker compose up -d  # Start infrastructure",
+          "cd .. && npm install",
           "npm run build",
-          "npm start",
+          "npm start  # Start web client dev server",
+          "npm test  # Run E2E tests",
           "Open http://localhost:8082"
         ]
       },
@@ -398,14 +407,17 @@
             }
           }
         },
-        "usage": "Claude Code will automatically discover the MCP server and offer to generate web clients when appropriate"
+        "usage": "Claude Code will automatically discover the MCP server and offer to generate complete WebAuthn stacks when appropriate"
       },
       "benefits_over_manual_setup": [
-        "Zero configuration - works out of the box",
+        "Zero configuration - complete stack works out of the box",
+        "All infrastructure pre-configured (Envoy, WebAuthn Server, databases)",
+        "Zero-trust architecture with JWT + JWKS built-in",
         "All critical WebAuthn patterns automatically included",
         "Complete build toolchain pre-configured",
         "Type-safe TypeScript implementation",
         "Production-ready Express server",
+        "E2E tests with virtual authenticator",
         "Comprehensive error handling",
         "No need to study documentation - just generate and run"
       ]
@@ -417,6 +429,6 @@
     "health-checks": "The webauthn-server uses a distroless image without curl/wget. Use external health checks via HTTP GET to /health endpoint.",
     "jaeger-optional": "Jaeger is optional for observability. Omit if you don't need distributed tracing.",
     "staging-images": "Never use ghcr.io staging images in production - they are for CI testing only.",
-    "mcp-server": "For AI agents: Use the generate_web_client MCP tool to automatically create complete web clients for users. This is faster and more reliable than manually guiding users through setup."
+    "mcp-server": "For AI agents: Use the generate_web_client MCP tool to automatically create complete WebAuthn stacks (not just clients) for users. This generates ALL infrastructure including WebAuthn Server Docker image, databases, and zero-trust architecture. This is faster and more reliable than manually guiding users through setup."
   }
 }

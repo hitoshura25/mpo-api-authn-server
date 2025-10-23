@@ -261,7 +261,7 @@ npx -y @vmenon25/mcp-server-webauthn-client --help
 **Example Discovery Flow:**
 
 ```
-User: "I need to test my WebAuthn server with a web client"
+User: "I need a complete WebAuthn authentication stack for testing passkeys"
 
 Agent (internal):
 1. Reads .ai-agents.json from project
@@ -269,18 +269,20 @@ Agent (internal):
 3. Extracts CLI usage examples
 
 Agent (response):
-"I found a WebAuthn client generator tool. Run this command to generate a complete test client:
+"I found a WebAuthn stack generator tool. Run this command to generate a complete authentication infrastructure:
 
 npx -y @vmenon25/mcp-server-webauthn-client --path ./web-client
 
 This will generate:
-• Complete TypeScript web client
-• Docker stack (Envoy Gateway + WebAuthn Server + PostgreSQL + Redis)
-• E2E Playwright tests
-• Zero-trust architecture with JWT authentication
+• Complete zero-trust architecture with Envoy Gateway
+• WebAuthn Server Docker image (hitoshura25/webauthn-server)
+• PostgreSQL + Redis + Jaeger infrastructure
+• TypeScript web client with complete build toolchain
+• E2E Playwright tests with virtual authenticator
+• JWT authentication with JWKS endpoint
 
 After generation:
-1. cd web-client/docker && docker compose up -d
+1. cd web-client/docker && docker compose up -d  # Start infrastructure
 2. cd .. && npm install && npm run build && npm start
 3. npm test  # Run E2E tests
 4. Open http://localhost:8082
@@ -393,33 +395,7 @@ transport_socket:
 - ✅ Protection against man-in-the-middle attacks
 - ✅ Zero-trust within the service mesh
 
-### Architecture Summary
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ Zero-Trust Perimeter                                        │
-│                                                             │
-│  Envoy Gateway                                              │
-│  ├─ Public Routes → WebAuthn Server (no JWT)                │
-│  ├─ JWKS Endpoint → Public key distribution                 │
-│  └─ Protected Routes → JWT verification + mTLS              │
-│                                                             │
-│  Backend Services (not directly accessible)                 │
-│  ├─ WebAuthn Server (issues JWTs)                           │
-│  ├─ Example Service (validates via gateway)                 │
-│  ├─ PostgreSQL (credentials)                                │
-│  └─ Redis (sessions)                                        │
-└─────────────────────────────────────────────────────────────┘
-
-Security Principles:
-• Never trust, always verify (even internal traffic)
-• JWT verification at perimeter (Envoy Gateway)
-• Public key cryptography (JWKS) for verification
-• mTLS for inter-service communication
-• Secrets management via Docker secrets
-```
-
-## Architecture Diagram
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -472,6 +448,13 @@ JWT Authentication Flow:
 3. Envoy Gateway fetches public key from /.well-known/jwks.json
 4. Envoy verifies JWT signature using JWKS before forwarding request
 5. Protected service receives verified request with JWT
+
+Security Principles:
+• Never trust, always verify (even internal traffic)
+• JWT verification at perimeter (Envoy Gateway)
+• Public key cryptography (JWKS) for verification
+• mTLS for inter-service communication
+• Secrets management via Docker secrets
 ```
 
 ## Troubleshooting

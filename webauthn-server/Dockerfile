@@ -91,8 +91,9 @@ USER appuser
 EXPOSE 8080
 
 # Health check for production monitoring
+# Uses curl with GET request to match CI/dev scripts and exercise full health endpoint
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s --retries=3 \
-    CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
+    CMD curl -f --silent --max-time 3 http://localhost:8080/health || exit 1
 
 # JVM optimization for containerized environments
 ENV JAVA_OPTS="-XX:+UseContainerSupport \

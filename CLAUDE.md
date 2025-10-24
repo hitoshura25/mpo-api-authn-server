@@ -35,6 +35,55 @@ source ./venv/bin/activate && python3 -c "import mlx.core as mx; print('✅ MLX 
 - **✅ ALWAYS prepare**: Changes and inform user they are ready for review
 - **✅ ALWAYS stage**: Changes for user review using file modification tools only
 
+### 🚨 CRITICAL: MCP E2E Test Pattern - ALWAYS Use Virtual Authenticator
+
+**🛑 MANDATORY: All E2E tests in MCP templates MUST use virtual authenticator + browser UI interaction**
+
+**THE FUNDAMENTAL RULE**: NEVER use mock credentials or API-only tests for WebAuthn flows. ALWAYS use virtual authenticator with browser UI interaction to ensure tests accurately reflect production behavior.
+
+#### **STRICT ENFORCEMENT:**
+- **❌ NEVER use**: Mock WebAuthn credentials, API-only auth tests, or conditional assertions without proper validation
+- **✅ ALWAYS use**: Virtual authenticator setup, browser UI interactions (`page.fill()`, `page.click()`), sessionStorage for JWT extraction
+- **✅ REFERENCE**: `mcp-server-webauthn-client/src/templates/vanilla/tests/webauthn.spec.js.hbs` as canonical pattern
+
+#### **Mandatory Test Pattern:**
+```javascript
+test.beforeEach(async ({ page, context }) => {
+  const client = await context.newCDPSession(page);
+  await client.send('WebAuthn.enable');
+  const { authenticatorId } = await client.send('WebAuthn.addVirtualAuthenticator', {
+    options: {
+      protocol: 'ctap2',
+      ctap2Version: 'ctap2_1',
+      transport: 'internal',
+      hasResidentKey: true,
+      hasUserVerification: true,
+      automaticPresenceSimulation: true,
+      isUserVerified: true
+    }
+  });
+  page.authenticatorId = authenticatorId;
+  await page.goto('http://localhost:8082');
+  await page.waitForLoadState('networkidle');
+});
+
+test('test name', async ({ page }, testInfo) => {
+  // Use page.fill(), page.click() for WebAuthn flows
+  // Assert success before extracting data
+  // Extract JWT from sessionStorage if needed
+  const sessionData = await page.evaluate(() => {
+    const stored = sessionStorage.getItem('webauthn_auth_session');
+    return stored ? JSON.parse(stored) : null;
+  });
+  expect(sessionData.accessToken).toBeTruthy();
+});
+```
+
+#### **Why This Matters:**
+- **Mock credentials fail silently** - tests pass even when auth fails
+- **API-only tests miss browser behavior** - can't validate sessionStorage, DOM interactions
+- **Virtual authenticator tests production flow** - real WebAuthn credentials, actual JWT issuance
+
 ### 🚨 CRITICAL: NEVER Make Assumptions - Always Validate Documentation
 
 **THE FUNDAMENTAL RULE**: NEVER create code, workflows, or configurations based on assumptions or invented parameters. ALWAYS validate against official documentation first.

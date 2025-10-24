@@ -244,6 +244,13 @@ jobs:
           sudo udevadm trigger --name-match=kvm
           ls -la /dev/kvm
 
+      - name: Install missing system libraries for emulator
+        run: |
+          echo "📦 Installing required system libraries for Android emulator"
+          sudo apt-get update -qq
+          sudo apt-get install -y libvulkan1 libx11-6
+          echo "✅ System libraries installed"
+
       # Cache AVD configuration and snapshots (much faster than system images)
       - name: AVD cache
         uses: actions/cache@v4

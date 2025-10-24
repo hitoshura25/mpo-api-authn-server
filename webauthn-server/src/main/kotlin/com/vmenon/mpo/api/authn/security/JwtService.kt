@@ -41,8 +41,10 @@ class JwtService {
 
     companion object {
         private const val ISSUER = "mpo-webauthn"
+        private const val AUDIENCE = "webauthn-clients" // JWT audience for Envoy Gateway validation
         private const val TOKEN_EXPIRY_SECONDS = 900L // 15 minutes
         private const val RSA_KEY_SIZE = 2048 // RSA-2048 for JWT signing
+        private const val KEY_ID = "webauthn-2024-01" // JWKS Key ID for PyJWKClient compatibility
     }
 
     /**
@@ -50,9 +52,11 @@ class JwtService {
      *
      * Token Claims:
      * - iss (issuer): "mpo-webauthn"
+     * - aud (audience): "webauthn-clients" (required by Envoy Gateway)
      * - sub (subject): username (e.g., "user@example.com")
      * - iat (issued at): Current timestamp
      * - exp (expires): iat + 15 minutes
+     * - kid (key ID): "webauthn-2024-01" (JWT header for PyJWKClient)
      *
      * @param username The authenticated user's username
      * @return RS256-signed JWT token string
@@ -63,9 +67,11 @@ class JwtService {
 
         return JWT.create()
             .withIssuer(ISSUER)
+            .withAudience(AUDIENCE) // Required by Envoy Gateway JWT filter
             .withSubject(username)
             .withIssuedAt(Date.from(now))
             .withExpiresAt(Date.from(expiry))
+            .withKeyId(KEY_ID) // Add kid header for PyJWKClient compatibility
             .sign(algorithm)
     }
 

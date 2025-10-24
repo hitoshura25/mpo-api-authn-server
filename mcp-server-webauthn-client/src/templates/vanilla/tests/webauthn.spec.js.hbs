@@ -1,6 +1,9 @@
 const { test, expect } = require('@playwright/test');
 const crypto = require('crypto');
 
+// Timeout configuration for WebAuthn operations (max wait time, actual wait is condition-based)
+const WEBAUTHN_OPERATION_TIMEOUT = 10000; // 10 seconds max for WebAuthn operations
+
 // Helper function to generate unique usernames for parallel test execution
 function generateUniqueUsername(testName, workerIndex = 0) {
   const timestamp = Date.now();
@@ -53,19 +56,15 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     // Start registration - this will use the virtual authenticator
     await page.click('button:has-text("Register Passkey")');
 
-    // Wait for registration to complete
-    await page.waitForTimeout(5000);
-
-    const registrationStatus = await page.locator('#registrationStatus').textContent();
-    expect(registrationStatus).toContain('successful');
+    // Wait for registration to complete (production-grade auto-waiting with expect)
+    await expect(page.locator('#registrationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // Step 2: Authenticate with the newly registered passkey
     await page.fill('#authUsername', uniqueUsername);
     await page.click('button:has-text("Authenticate with Passkey")');
-    await page.waitForTimeout(3000);
 
-    const authStatus = await page.locator('#authenticationStatus').textContent();
-    expect(authStatus).toContain('successful');
+    // Wait for authentication to complete (production-grade auto-waiting with expect)
+    await expect(page.locator('#authenticationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     console.log(`Full flow completed successfully for user: ${uniqueUsername}`);
   });
@@ -77,18 +76,12 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     await page.fill('#regUsername', uniqueUsername);
     await page.fill('#regDisplayName', 'JWT Storage Test User');
     await page.click('button:has-text("Register Passkey")');
-    await page.waitForTimeout(5000);
-
-    const registrationStatus = await page.locator('#registrationStatus').textContent();
-    expect(registrationStatus).toContain('successful');
+    await expect(page.locator('#registrationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // Authentication
     await page.fill('#authUsername', uniqueUsername);
     await page.click('button:has-text("Authenticate with Passkey")');
-    await page.waitForTimeout(3000);
-
-    const authStatus = await page.locator('#authenticationStatus').textContent();
-    expect(authStatus).toContain('successful');
+    await expect(page.locator('#authenticationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // CRITICAL: Verify JWT is stored in sessionStorage (native browser API)
     const sessionData = await page.evaluate(() => {
@@ -122,11 +115,11 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     await page.fill('#regUsername', uniqueUsername);
     await page.fill('#regDisplayName', 'API Call Test User');
     await page.click('button:has-text("Register Passkey")');
-    await page.waitForTimeout(5000);
+    await expect(page.locator('#registrationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     await page.fill('#authUsername', uniqueUsername);
     await page.click('button:has-text("Authenticate with Passkey")');
-    await page.waitForTimeout(3000);
+    await expect(page.locator('#authenticationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // Verify protected section is visible
     await expect(page.locator('#protectedSection')).toBeVisible();
@@ -156,11 +149,9 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     // Call protected API
     await page.fill('#apiEndpoint', '/api/user/profile');
     await page.click('button:has-text("Call Protected API")');
-    await page.waitForTimeout(2000);
 
-    // Verify success status
-    const apiStatus = await page.locator('#apiStatus').textContent();
-    expect(apiStatus).toContain('successful');
+    // Wait for API call to complete (production-grade auto-waiting with expect)
+    await expect(page.locator('#apiStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // Verify API response is displayed
     const apiOutput = await page.textContent('#apiOutput');
@@ -177,18 +168,20 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     await page.fill('#regUsername', uniqueUsername);
     await page.fill('#regDisplayName', 'Logout Test User');
     await page.click('button:has-text("Register Passkey")');
-    await page.waitForTimeout(5000);
+    await expect(page.locator('#registrationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     await page.fill('#authUsername', uniqueUsername);
     await page.click('button:has-text("Authenticate with Passkey")');
-    await page.waitForTimeout(3000);
+    await expect(page.locator('#authenticationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // Verify protected section is visible
     await expect(page.locator('#protectedSection')).toBeVisible();
 
     // Logout
     await page.click('button:has-text("Logout")');
-    await page.waitForTimeout(1000);
+
+    // Wait for logout to complete (authentication section becomes visible again)
+    await expect(page.locator('#authenticationSection')).toBeVisible({ timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // Verify sessionStorage is cleared
     const sessionData = await page.evaluate(() => {
@@ -279,11 +272,11 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     await page.fill('#regUsername', uniqueUsername);
     await page.fill('#regDisplayName', '401 Test User');
     await page.click('button:has-text("Register Passkey")');
-    await page.waitForTimeout(5000);
+    await expect(page.locator('#registrationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     await page.fill('#authUsername', uniqueUsername);
     await page.click('button:has-text("Authenticate with Passkey")');
-    await page.waitForTimeout(3000);
+    await expect(page.locator('#authenticationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // Verify protected section is visible
     await expect(page.locator('#protectedSection')).toBeVisible();
@@ -299,11 +292,9 @@ test.describe('WebAuthn Passkey End-to-End Tests', () => {
     // Call protected API (should get 401)
     await page.fill('#apiEndpoint', '/api/user/profile');
     await page.click('button:has-text("Call Protected API")');
-    await page.waitForTimeout(2000);
 
-    // Verify error status
-    const apiStatus = await page.locator('#apiStatus').textContent();
-    expect(apiStatus).toContain('expired or invalid');
+    // Wait for error status to appear (production-grade auto-waiting with expect)
+    await expect(page.locator('#apiStatus')).toContainText('expired or invalid', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
     // Verify session is cleared
     const sessionData = await page.evaluate(() => {

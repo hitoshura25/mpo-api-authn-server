@@ -1,6 +1,9 @@
 const { test, expect } = require('@playwright/test');
 const crypto = require('crypto');
 
+// Timeout configuration for WebAuthn operations (max wait time, actual wait is condition-based)
+const WEBAUTHN_OPERATION_TIMEOUT = 10000; // 10 seconds max for WebAuthn operations
+
 // Base URL - All traffic goes through Envoy Gateway in zero-trust architecture
 const GATEWAY_URL = '{{server_url}}';
 
@@ -43,18 +46,16 @@ async function registerAndAuthenticate(page, testInfo) {
   await page.fill('#regUsername', username);
   await page.fill('#regDisplayName', 'JWT Test User');
   await page.click('button:has-text("Register Passkey")');
-  await page.waitForTimeout(5000);
 
-  const registrationStatus = await page.locator('#registrationStatus').textContent();
-  expect(registrationStatus).toContain('successful');
+  // Wait for registration to complete (production-grade auto-waiting with expect)
+  await expect(page.locator('#registrationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
   // Step 2: Authenticate with the newly registered passkey
   await page.fill('#authUsername', username);
   await page.click('button:has-text("Authenticate with Passkey")');
-  await page.waitForTimeout(3000);
 
-  const authStatus = await page.locator('#authenticationStatus').textContent();
-  expect(authStatus).toContain('successful');
+  // Wait for authentication to complete (production-grade auto-waiting with expect)
+  await expect(page.locator('#authenticationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
 
   // Step 3: Extract JWT from sessionStorage
   const sessionData = await page.evaluate(() => {

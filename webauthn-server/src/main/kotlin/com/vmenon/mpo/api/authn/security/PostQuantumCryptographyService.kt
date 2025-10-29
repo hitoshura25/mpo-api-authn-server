@@ -1,5 +1,7 @@
 package com.vmenon.mpo.api.authn.security
 
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMExtractor
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMGenerator
@@ -35,6 +37,9 @@ class PostQuantumCryptographyService {
         private const val BITS_PER_BYTE = 8
         private const val KYBER768_ENCAPSULATION_SIZE = 1088 // Kyber768 specific
         private const val AES_KEY_SIZE_BITS = 256 // AES-256
+
+        // Jackson mapper for JSON serialization of EncryptedData
+        private val objectMapper = jacksonObjectMapper()
 
         init {
             // Register BouncyCastle post-quantum provider
@@ -156,6 +161,30 @@ class PostQuantumCryptographyService {
         cipher.init(Cipher.DECRYPT_MODE, aesKey, parameterSpec)
 
         return String(cipher.doFinal(encrypted))
+    }
+
+    /**
+     * Convenience method: Encrypt data and serialize to JSON string.
+     * Compatible with String-based storage (database TEXT columns).
+     *
+     * @param plaintext Data to encrypt
+     * @return JSON string representation of EncryptedData
+     */
+    fun encryptToString(plaintext: String): String {
+        val encryptedData = encrypt(plaintext)
+        return objectMapper.writeValueAsString(encryptedData)
+    }
+
+    /**
+     * Convenience method: Deserialize JSON string and decrypt data.
+     * Compatible with String-based storage (database TEXT columns).
+     *
+     * @param encryptedJson JSON string representation of EncryptedData
+     * @return Decrypted plaintext
+     */
+    fun decryptFromString(encryptedJson: String): String {
+        val encryptedData: EncryptedData = objectMapper.readValue(encryptedJson)
+        return decrypt(encryptedData)
     }
 
     private fun generateAESKey(): SecretKey {

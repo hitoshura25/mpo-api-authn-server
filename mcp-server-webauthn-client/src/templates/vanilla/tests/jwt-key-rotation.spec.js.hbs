@@ -1,0 +1,245 @@
+const { test, expect } = require('@playwright/test');
+const crypto = require('crypto');
+
+// Timeout configuration
+const WEBAUTHN_OPERATION_TIMEOUT = 10000; // 10 seconds for WebAuthn operations
+const KEY_ROTATION_INTERVAL = 30000; // 30 seconds rotation interval
+const GRACE_PERIOD = 15000; // 15 seconds grace period
+const FULL_ROTATION_CYCLE = KEY_ROTATION_INTERVAL + GRACE_PERIOD; // 45 seconds total
+const KEY_ROTATION_TIMEOUT = FULL_ROTATION_CYCLE + 10000; // 55 seconds with buffer for detection
+
+// Helper function to generate unique usernames for parallel test execution
+function generateUniqueUsername(testName, workerIndex = 0) {
+  const timestamp = Date.now();
+  const randomBytes = crypto.randomBytes(4).toString('hex');
+  const processId = process.pid;
+  const workerId = workerIndex || Math.floor(Math.random() * 1000);
+  const testHash = crypto.createHash('md5').update(testName).digest('hex').substring(0, 6);
+  return `pw-${testHash}-${timestamp}-${processId}-${workerId}-${randomBytes}`;
+}
+
+// Helper to perform WebAuthn registration
+async function registerUser(page, username, displayName = 'Test User') {
+  await page.fill('#regUsername', username);
+  await page.fill('#regDisplayName', displayName);
+  await page.click('button:has-text("Register Passkey")');
+  await expect(page.locator('#registrationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
+}
+
+// Helper to perform WebAuthn authentication
+async function authenticateUser(page, username) {
+  await page.fill('#authUsername', username);
+  await page.click('button:has-text("Authenticate with Passkey")');
+  await expect(page.locator('#authenticationStatus')).toContainText('successful', { timeout: WEBAUTHN_OPERATION_TIMEOUT });
+}
+
+// Helper to extract JWT from sessionStorage
+async function getSessionJWT(page) {
+  const sessionData = await page.evaluate(() => {
+    const stored = sessionStorage.getItem('webauthn_auth_session');
+    return stored ? JSON.parse(stored) : null;
+  });
+  expect(sessionData).toBeTruthy();
+  expect(sessionData.accessToken).toBeTruthy();
+  return sessionData.accessToken;
+}
+
+// Helper to decode JWT header to extract kid
+function getKeyIdFromJWT(jwt) {
+  const headerB64 = jwt.split('.')[0];
+  const header = JSON.parse(Buffer.from(headerB64, 'base64').toString('utf8'));
+  return header.kid;
+}
+
+// Helper to clear session and re-authenticate
+async function clearSessionAndReAuth(page, username) {
+  // Clear sessionStorage to force fresh authentication
+  await page.evaluate(() => sessionStorage.clear());
+
+  // Re-authenticate to get fresh JWT
+  await authenticateUser(page, username);
+
+  return await getSessionJWT(page);
+}
+
+// Helper to wait for key rotation by polling for kid change
+async function waitForKeyRotation(page, username, currentKid, maxWaitMs = KEY_ROTATION_TIMEOUT) {
+  const startTime = Date.now();
+  const pollInterval = 2000; // Check every 2 seconds
+
+  while (Date.now() - startTime < maxWaitMs) {
+    // Re-authenticate to get fresh JWT
+    const jwt = await clearSessionAndReAuth(page, username);
+    const kid = getKeyIdFromJWT(jwt);
+
+    // Check if key changed
+    if (kid !== currentKid) {
+      return { kid, jwt, waitTime: Date.now() - startTime };
+    }
+
+    // Wait before next poll
+    await page.waitForTimeout(pollInterval);
+  }
+
+  throw new Error(`Key rotation did not occur within ${maxWaitMs}ms. Current kid: ${currentKid}`);
+}
+
+test.describe('JWT Key Rotation End-to-End Tests', () => {
+  // Set timeout for rotation tests (rotation can take up to 45s + polling overhead)
+  test.setTimeout(120000); // 2 minutes
+
+  test.beforeEach(async ({ page, context }) => {
+    // Set up CDP (Chrome DevTools Protocol) virtual authenticator
+    const client = await context.newCDPSession(page);
+    await client.send('WebAuthn.enable');
+    const { authenticatorId } = await client.send('WebAuthn.addVirtualAuthenticator', {
+      options: {
+        protocol: 'ctap2',
+        ctap2Version: 'ctap2_1',
+        transport: 'internal',
+        hasResidentKey: true,
+        hasUserVerification: true,
+        automaticPresenceSimulation: true,
+        isUserVerified: true
+      }
+    });
+    page.authenticatorId = authenticatorId;
+
+    // Navigate to the test client
+    await page.goto('http://localhost:{{client_port}}');
+    await page.waitForLoadState('networkidle');
+  });
+
+  test('Phase 1: Initial key (K1) - Registration and authentication with first key', async ({ page }, testInfo) => {
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
+    // Register user
+    await registerUser(page, uniqueUsername, 'Key Rotation Phase 1 User');
+
+    // Authenticate and get JWT
+    await authenticateUser(page, uniqueUsername);
+    const jwt = await getSessionJWT(page);
+
+    // Extract and verify kid exists
+    const kid = getKeyIdFromJWT(jwt);
+    expect(kid).toBeTruthy();
+    expect(kid).toMatch(/^webauthn-/); // Should have webauthn prefix
+
+    console.log(`Phase 1: Successfully authenticated with key: ${kid}`);
+  });
+
+  test('Phase 2: After rotation (K1→K2) - New JWTs use new key, old JWTs still valid', async ({ page, request }, testInfo) => {
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
+    // Register user and get initial JWT
+    await registerUser(page, uniqueUsername, 'Key Rotation Phase 2 User');
+    await authenticateUser(page, uniqueUsername);
+    const jwtK1 = await getSessionJWT(page);
+    const kidK1 = getKeyIdFromJWT(jwtK1);
+
+    console.log(`Phase 2: Initial authentication with key: ${kidK1}`);
+
+    // Wait for key rotation by polling for kid change
+    console.log('Phase 2: Waiting for key rotation...');
+    const { kid: kidK2, jwt: jwtK2, waitTime } = await waitForKeyRotation(page, uniqueUsername, kidK1);
+
+    console.log(`Phase 2: After rotation, new JWT uses key: ${kidK2} (waited ${Math.round(waitTime / 1000)}s)`);
+
+    // Verify old JWT (K1) is still valid during grace period using Playwright request (bypasses CORS)
+    const responseWithK1 = await request.get('http://localhost:{{gateway_host_port}}/api/user/profile', {
+      headers: {
+        'Authorization': `Bearer ${jwtK1}`
+      }
+    });
+
+    expect(responseWithK1.ok()).toBe(true);
+    expect(responseWithK1.status()).toBe(200);
+
+    console.log(`Phase 2: Old JWT (K1) still valid during grace period ✓`);
+  });
+
+  test('Phase 3: After retention period expires - Old key (K1) deleted, only K2 valid', async ({ page, request }, testInfo) => {
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
+    // Register user and get initial JWT with K1
+    await registerUser(page, uniqueUsername, 'Key Rotation Phase 3 User');
+    await authenticateUser(page, uniqueUsername);
+    const jwtK1 = await getSessionJWT(page);
+    const kidK1 = getKeyIdFromJWT(jwtK1);
+
+    console.log(`Phase 3: Initial authentication with key: ${kidK1}`);
+
+    // Wait for key rotation by polling
+    console.log('Phase 3: Waiting for key rotation...');
+    const { kid: kidK2, jwt: jwtK2, waitTime } = await waitForKeyRotation(page, uniqueUsername, kidK1);
+
+    console.log(`Phase 3: After rotation, new JWT uses key: ${kidK2} (waited ${Math.round(waitTime / 1000)}s)`);
+
+    // First verify K2 JWT is currently valid (before it potentially rotates)
+    const responseWithK2Before = await request.get('http://localhost:{{gateway_host_port}}/api/user/profile', {
+      headers: {
+        'Authorization': `Bearer ${jwtK2}`
+      }
+    });
+
+    expect(responseWithK2Before.ok()).toBe(true);
+    expect(responseWithK2Before.status()).toBe(200);
+    console.log(`Phase 3: New JWT (K2) is valid ✓`);
+
+    // Wait for retention period to expire AND next rotation cleanup to occur
+    // Timeline: K2 active → 30s retention → next rotation at 45s (30s interval + 15s grace)
+    // Cleanup happens during next rotation + Envoy cache refresh (10s)
+    // Total wait: 45s (next rotation) + 10s (Envoy cache) + 5s buffer = 60s
+    console.log('Phase 3: Waiting for retention to expire and cleanup to occur (60s)...');
+    await page.waitForTimeout(60000);
+
+    // Verify K1 JWT is no longer valid after retention expires and cleanup occurred
+    const responseWithK1 = await request.get('http://localhost:{{gateway_host_port}}/api/user/profile', {
+      headers: {
+        'Authorization': `Bearer ${jwtK1}`
+      }
+    });
+
+    expect(responseWithK1.ok()).toBe(false);
+    expect(responseWithK1.status()).toBe(401); // Unauthorized
+
+    console.log(`Phase 3: Old JWT (K1) rejected after retention period expired ✓`);
+  });
+
+  test('Phase 4: Multiple rotations (K1→K2→K3) - Verify continuous rotation works', async ({ page, request }, testInfo) => {
+    const uniqueUsername = generateUniqueUsername(testInfo.title, testInfo.workerIndex);
+
+    // Register user and get initial JWT with K1
+    await registerUser(page, uniqueUsername, 'Key Rotation Phase 4 User');
+    await authenticateUser(page, uniqueUsername);
+    const jwtK1 = await getSessionJWT(page);
+    const kidK1 = getKeyIdFromJWT(jwtK1);
+
+    console.log(`Phase 4: Initial authentication with key: ${kidK1}`);
+
+    // Wait for first rotation (K1 → K2) by polling
+    console.log('Phase 4: Waiting for first rotation (K1 → K2)...');
+    const { kid: kidK2, jwt: jwtK2, waitTime: wait1 } = await waitForKeyRotation(page, uniqueUsername, kidK1);
+
+    console.log(`Phase 4: After first rotation, key changed: ${kidK1} → ${kidK2} (waited ${Math.round(wait1 / 1000)}s)`);
+
+    // Wait for second rotation (K2 → K3) by polling
+    console.log('Phase 4: Waiting for second rotation (K2 → K3)...');
+    const { kid: kidK3, jwt: jwtK3, waitTime: wait2 } = await waitForKeyRotation(page, uniqueUsername, kidK2);
+
+    expect(kidK3).not.toBe(kidK1);
+    console.log(`Phase 4: After second rotation, key changed: ${kidK2} → ${kidK3} (waited ${Math.round(wait2 / 1000)}s)`);
+
+    // Verify K3 JWT works for API calls using Playwright request (bypasses CORS)
+    const responseWithK3 = await request.get('http://localhost:{{gateway_host_port}}/api/user/profile', {
+      headers: {
+        'Authorization': `Bearer ${jwtK3}`
+      }
+    });
+
+    expect(responseWithK3.ok()).toBe(true);
+    expect(responseWithK3.status()).toBe(200);
+
+    console.log(`Phase 4: Multiple rotations working correctly ✓`);
+  });
+});

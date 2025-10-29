@@ -245,6 +245,41 @@ npx -y @vmenon25/mcp-server-webauthn-client --help
 - `--jaeger-agent-binary-port <port>` - Jaeger agent binary thrift UDP (default: `6832`)
 - `--jaeger-agent-config-port <port>` - Jaeger agent config HTTP (default: `5778`)
 
+**JWT Key Rotation Configuration (Advanced):**
+
+The generated WebAuthn stack includes automatic JWT signing key rotation for enhanced security. These parameters control the rotation behavior:
+
+- `--jwt-rotation-enabled <true|false>` - Enable automatic key rotation (default: `true`)
+- `--jwt-rotation-interval-days <days>` - Days between key rotations (default: `180` = 6 months)
+- `--jwt-rotation-interval-seconds <seconds>` - Override rotation interval in seconds for testing (optional)
+- `--jwt-grace-period-minutes <minutes>` - Grace period before retiring old key (default: `60` = 1 hour)
+- `--jwt-retention-minutes <minutes>` - How long to keep retired keys for verification (default: `60` = 1 hour)
+- `--jwks-cache-duration-seconds <seconds>` - JWKS endpoint cache duration (default: `300` = 5 minutes)
+
+**Production Example** (6-month rotation with 1-hour grace period):
+```bash
+npx -y @vmenon25/mcp-server-webauthn-client \
+  --jwt-rotation-interval-days 180 \
+  --jwt-grace-period-minutes 60 \
+  --jwt-retention-minutes 60
+```
+
+**Testing Example** (accelerated 30-second rotation for E2E tests):
+```bash
+npx -y @vmenon25/mcp-server-webauthn-client \
+  --jwt-rotation-interval-seconds 30 \
+  --jwt-grace-period-minutes 0.25 \
+  --jwt-retention-minutes 0.5 \
+  --jwks-cache-duration-seconds 10
+```
+
+**How It Works:**
+1. Server automatically rotates JWT signing keys every 180 days (or custom interval)
+2. New JWTs are signed with the new key after rotation
+3. Old JWTs remain valid for 60 minutes (grace period) to prevent disruption
+4. Retired keys are kept for 60 minutes (retention period) then automatically cleaned up
+5. JWKS endpoint (`/.well-known/jwks.json`) serves all active keys with 5-minute cache
+
 #### Discovery File for Non-MCP Agents
 
 **For coding agents without native MCP support** (Cursor, Aider, Windsurf, etc.), this tool can be discovered via the project's `.ai-agents.json` file:

@@ -2,6 +2,12 @@ package com.vmenon.mpo.api.authn.di
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import com.vmenon.mpo.api.authn.monitoring.OpenTelemetryTracer
+import com.vmenon.mpo.api.authn.repository.KeyRepository
+import com.vmenon.mpo.api.authn.repository.PostgresKeyRepository
+import com.vmenon.mpo.api.authn.scheduler.KeyRotationScheduler
+import com.vmenon.mpo.api.authn.security.JwtService
+import com.vmenon.mpo.api.authn.security.KeyRotationService
+import com.vmenon.mpo.api.authn.security.PostQuantumCryptographyService
 import com.vmenon.mpo.api.authn.storage.AssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.CredentialStorage
 import com.vmenon.mpo.api.authn.storage.RegistrationRequestStorage
@@ -9,11 +15,14 @@ import com.vmenon.mpo.api.authn.storage.postgresql.DatabaseConfig
 import com.vmenon.mpo.api.authn.storage.postgresql.createQuantumSafeCredentialStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisAssertionRequestStorage
 import com.vmenon.mpo.api.authn.storage.redis.RedisRegistrationRequestStorage
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import org.koin.dsl.onClose
 import redis.clients.jedis.JedisPool
 import redis.clients.jedis.JedisPoolConfig
+import javax.sql.DataSource
 
 // Constants for default values
 private const val DEFAULT_REDIS_PORT = 6379
@@ -254,7 +263,8 @@ val storageModule =
             RedisAssertionRequestStorage(jedisPool, openTelemetryHelper)
         }.onClose { it?.close() }
 
-        single<CredentialStorage> {
+        // Centralized DatabaseConfig provider - single source of truth for database configuration
+        single<DatabaseConfig> {
             val host: String by inject(named("dbHost"))
             val port: Int by inject(named("dbPort"))
             val database: String by inject(named("dbName"))
@@ -262,15 +272,70 @@ val storageModule =
             val password: String by inject(named("dbPassword"))
             val maxPoolSize: Int by inject(named("dbMaxPoolSize"))
 
-            createQuantumSafeCredentialStorage(
-                DatabaseConfig(
-                    host = host,
-                    port = port,
-                    database = database,
-                    username = username,
-                    password = password,
-                    maxPoolSize = maxPoolSize,
-                ),
+            DatabaseConfig(
+                host = host,
+                port = port,
+                database = database,
+                username = username,
+                password = password,
+                maxPoolSize = maxPoolSize,
             )
+        }
+
+        // DataSource bean for PostgreSQL (used by JWT key rotation)
+        single<DataSource> {
+            val dbConfig: DatabaseConfig by inject()
+
+            val hikariConfig =
+                HikariConfig().apply {
+                    jdbcUrl = "jdbc:postgresql://${dbConfig.host}:${dbConfig.port}/${dbConfig.database}?sslmode=disable"
+                    username = dbConfig.username
+                    password = dbConfig.password
+                    maximumPoolSize = dbConfig.maxPoolSize
+                    connectionTimeout = 30000
+                    idleTimeout = 600000
+                    maxLifetime = 1800000
+                }
+
+            HikariDataSource(hikariConfig)
+        }
+
+        single<CredentialStorage> {
+            val dbConfig: DatabaseConfig by inject()
+            createQuantumSafeCredentialStorage(dbConfig)
         }.onClose { it?.close() }
+
+        // JWT Key Rotation Infrastructure (storage/persistence concern)
+        single<KeyRepository> {
+            val dataSource: DataSource by inject()
+            PostgresKeyRepository(dataSource)
+        }
+
+        // Post-quantum cryptography service for JWT key encryption (Kyber768 + AES-256-GCM)
+        single<PostQuantumCryptographyService> {
+            PostQuantumCryptographyService()
+        }
+
+        single {
+            val keyRepository: KeyRepository by inject()
+            val postQuantumCrypto: PostQuantumCryptographyService by inject()
+            KeyRotationService(keyRepository, postQuantumCrypto).also { service ->
+                // Initialize key rotation system (creates initial key if needed)
+                service.initialize()
+            }
+        }
+
+        single {
+            val keyRotationService: KeyRotationService by inject()
+            KeyRotationScheduler(keyRotationService).also { scheduler ->
+                // Start background scheduler for automatic rotation
+                scheduler.start()
+            }
+        }
+
+        // JWT Service for zero-trust architecture with key rotation
+        single {
+            val keyRotationService: KeyRotationService by inject()
+            JwtService(keyRotationService)
+        }
     }

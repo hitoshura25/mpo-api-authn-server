@@ -1,6 +1,7 @@
 package com.vmenon.mpo.api.authn.di
 
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
+import com.vmenon.mpo.api.authn.testStorageModule
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -14,6 +15,7 @@ import kotlin.test.assertEquals
 
 @TestInstance(TestInstance.Lifecycle.PER_METHOD)
 class AppModuleTest : KoinTest {
+
     @AfterEach
     fun cleanup() {
         clearAllTestProperties()
@@ -25,7 +27,7 @@ class AppModuleTest : KoinTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID, "test.example.com")
 
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
 
         val relyingPartyId = get<String>(named("relyingPartyId"))
@@ -35,7 +37,7 @@ class AppModuleTest : KoinTest {
     @Test
     fun `Relying Party ID should use default value when not configured`() {
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
 
         val relyingPartyId = get<String>(named("relyingPartyId"))
@@ -47,7 +49,7 @@ class AppModuleTest : KoinTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID, "")
 
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
         assertThrows<Exception> {
             get<String>(named("relyingPartyId"))
@@ -59,7 +61,7 @@ class AppModuleTest : KoinTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_ID, "   ")
 
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
         assertThrows<Exception> {
             get<String>(named("relyingPartyId"))
@@ -74,7 +76,7 @@ class AppModuleTest : KoinTest {
         )
 
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
 
         val relyingPartyName = get<String>(named("relyingPartyName"))
@@ -84,7 +86,7 @@ class AppModuleTest : KoinTest {
     @Test
     fun `Relying Party Name should fallback to env var when sysprop not set`() {
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
 
         val relyingPartyName = get<String>(named("relyingPartyName"))
@@ -97,7 +99,7 @@ class AppModuleTest : KoinTest {
     @Test
     fun `Relying Party Name should use default value when not configured`() {
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
 
         val relyingPartyName = get<String>(named("relyingPartyName"))
@@ -109,7 +111,7 @@ class AppModuleTest : KoinTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME, "")
 
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
         assertThrows<Exception> {
             get<String>(named("relyingPartyName"))
@@ -121,7 +123,7 @@ class AppModuleTest : KoinTest {
         System.setProperty(EnvironmentVariables.MPO_AUTHN_APP_RELYING_PARTY_NAME, "   ")
 
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
         assertThrows<Exception> {
             get<String>(named("relyingPartyName"))
@@ -136,7 +138,7 @@ class AppModuleTest : KoinTest {
         )
 
         startKoin {
-            modules(appModule)
+            modules(testStorageModule, appModule)
         }
 
         val relyingPartyName = get<String>(named("relyingPartyName"))

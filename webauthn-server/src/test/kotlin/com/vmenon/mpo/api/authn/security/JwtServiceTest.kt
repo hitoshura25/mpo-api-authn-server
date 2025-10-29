@@ -1,21 +1,27 @@
 package com.vmenon.mpo.api.authn.security
 
-import com.auth0.jwt.JWT
-import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.JWTVerificationException
+import io.mockk.every
+import io.mockk.mockk
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.assertThrows
-import java.security.interfaces.RSAPublicKey
+import java.security.KeyPairGenerator
 import java.time.Instant
 
 /**
  * Unit tests for JwtService - RS256 JWT token creation and verification for zero-trust architecture.
  */
 class JwtServiceTest {
-    private val jwtService = JwtService()
+    // Create a mock KeyRotationService that returns a test key pair
+    private val mockKeyRotationService = mockk<KeyRotationService>().apply {
+        val testKeyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        every { getActiveSigningKey() } returns Pair("test-key-id", testKeyPair)
+    }
+
+    private val jwtService = JwtService(mockKeyRotationService)
 
     @Test
     fun `createToken should generate valid JWT with correct claims`() {
@@ -55,7 +61,11 @@ class JwtServiceTest {
     @Test
     fun `verifyToken should reject token with wrong issuer`() {
         // Create a token with a different JwtService instance (different key) and wrong issuer
-        val fakeJwtService = JwtService()
+        val fakeKeyRotationService = mockk<KeyRotationService>().apply {
+            val fakeKeyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+            every { getActiveSigningKey() } returns Pair("fake-key-id", fakeKeyPair)
+        }
+        val fakeJwtService = JwtService(fakeKeyRotationService)
         val username = "user@example.com"
 
         // Manually create a token with the wrong issuer using the fake service's key
@@ -97,57 +107,15 @@ class JwtServiceTest {
     }
 
     @Test
-    fun `getPublicKey should return RSA public key`() {
-        val publicKey = jwtService.getPublicKey()
-
-        assertNotNull(publicKey)
-        assertTrue(publicKey is RSAPublicKey)
-        assertEquals("RSA", publicKey.algorithm)
-
-        // Verify key size is 2048 bits
-        assertEquals(2048, publicKey.modulus.bitLength())
-    }
-
-    @Test
-    fun `tokens should be verifiable with exported public key`() {
+    fun `tokens should be verifiable using JwtService verifyToken method`() {
         val username = "public_key_test@example.com"
         val token = jwtService.createToken(username)
 
-        // Simulate downstream service verifying token with public key
-        val publicKey = jwtService.getPublicKey()
-        val algorithm = Algorithm.RSA256(publicKey, null)
-
-        val verifier =
-            JWT.require(algorithm)
-                .withIssuer("mpo-webauthn")
-                .build()
-
-        val decodedJwt = verifier.verify(token)
+        // Verify token using JwtService (simulates downstream service verification pattern)
+        val decodedJwt = jwtService.verifyToken(token)
 
         assertEquals(username, decodedJwt.subject)
         assertEquals("mpo-webauthn", decodedJwt.issuer)
-    }
-
-    @Test
-    fun `different JwtService instances should have different keys`() {
-        val service1 = JwtService()
-        val service2 = JwtService()
-
-        val publicKey1 = service1.getPublicKey()
-        val publicKey2 = service2.getPublicKey()
-
-        // Different instances should generate different key pairs
-        assertTrue(publicKey1.modulus != publicKey2.modulus)
-    }
-
-    @Test
-    fun `same JwtService instance should reuse the same key`() {
-        val publicKey1 = jwtService.getPublicKey()
-        val publicKey2 = jwtService.getPublicKey()
-
-        // Same instance should return the same key (lazy initialization)
-        assertEquals(publicKey1.modulus, publicKey2.modulus)
-        assertEquals(publicKey1.publicExponent, publicKey2.publicExponent)
     }
 
     @Test

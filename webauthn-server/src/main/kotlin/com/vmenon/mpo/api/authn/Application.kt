@@ -14,11 +14,13 @@ import com.vmenon.mpo.api.authn.routes.configureHealthRoutes
 import com.vmenon.mpo.api.authn.routes.configureJwksRoutes
 import com.vmenon.mpo.api.authn.routes.configureOpenAPIRoutes
 import com.vmenon.mpo.api.authn.routes.configureRegistrationRoutes
+import com.vmenon.mpo.api.authn.scheduler.KeyRotationScheduler
 import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
 import org.koin.core.module.Module
+import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 import org.slf4j.LoggerFactory
@@ -36,6 +38,10 @@ private fun Application.configureDependencyInjection(storageModule: Module) {
         slf4jLogger()
         modules(listOf(appModule, storageModule, monitoringModule))
     }
+
+    // Explicitly start KeyRotationScheduler (triggers lazy bean creation and scheduler.start())
+    val scheduler: KeyRotationScheduler by inject()
+    scheduler  // Force evaluation to trigger bean creation
 }
 
 private fun Application.configurePlugins() {

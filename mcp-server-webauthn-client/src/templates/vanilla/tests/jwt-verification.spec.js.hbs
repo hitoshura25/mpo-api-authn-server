@@ -96,7 +96,7 @@ test.describe('JWT Token Issuance', () => {
     await page.waitForLoadState('networkidle');
   });
 
-  test('should issue JWT on successful authentication', async ({ page }, testInfo) => {
+  test('should issue JWT on successful authentication', async ({ page, request }, testInfo) => {
     const { username, token, sessionData } = await registerAndAuthenticate(page, testInfo);
 
     // Verify JWT token structure from sessionStorage
@@ -126,7 +126,16 @@ test.describe('JWT Token Issuance', () => {
     console.log('🔍 header.kid value:', header.kid);
     expect(header).toHaveProperty('kid');
     expect(header.kid).toBeDefined();
-    expect(header.kid).toBe('webauthn-2024-01');
+    expect(typeof header.kid).toBe('string');
+    expect(header.kid.length).toBeGreaterThan(0);
+
+    // Verify kid matches a key in JWKS (supports key rotation - kid changes over time)
+    const jwksResponse = await request.get(`${GATEWAY_URL}/.well-known/jwks.json`);
+    expect(jwksResponse.ok()).toBeTruthy();
+    const jwks = await jwksResponse.json();
+    const keyIds = jwks.keys.map(key => key.kid);
+    expect(keyIds).toContain(header.kid);
+    console.log(`✅ JWT kid '${header.kid}' found in JWKS (${keyIds.length} total keys)`);
 
     // Verify JWT payload
     const payload = JSON.parse(Buffer.from(tokenParts[1], 'base64url').toString());

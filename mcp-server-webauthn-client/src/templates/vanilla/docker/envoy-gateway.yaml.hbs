@@ -78,8 +78,9 @@ static_resources:
                               uri: http://webauthn-server:8080/.well-known/jwks.json
                               cluster: webauthn_server
                               timeout: 5s
+                            # JWKS cache duration (configured in generator, default: 300 seconds / 5 minutes)
                             cache_duration:
-                              seconds: 300  # Cache JWKS for 5 minutes
+                              seconds: {{jwks_cache_duration_seconds}}
                           forward: true
                       rules:
                         # Require JWT for /api/* routes

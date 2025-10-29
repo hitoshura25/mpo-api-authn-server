@@ -936,6 +936,240 @@ cd docker && bash setup-secrets.sh
 
 **Important**: The `docker/secrets/` directory is automatically excluded from git via `.gitignore` to prevent accidental exposure of credentials.
 
+## JWT Key Rotation Configuration
+
+The WebAuthn server supports automatic JWT signing key rotation for enhanced security. Keys are stored in PostgreSQL with AES-256-GCM encryption and rotate automatically based on age.
+
+### Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MPO_AUTHN_JWT_KEY_ROTATION_ENABLED` | `true` | Enable automatic key rotation |
+| `MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL_DAYS` | `180` | Rotation interval in days (6 months default) |
+| `MPO_AUTHN_JWT_KEY_GRACE_PERIOD_MINUTES` | `60` | Grace period for clients to refresh caches (1 hour) |
+| `MPO_AUTHN_JWT_KEY_RETENTION_MINUTES` | `60` | How long to keep RETIRED keys after activation (1 hour) |
+| `MPO_AUTHN_JWT_KEY_SIZE` | `2048` | RSA key size in bits (2048, 3072, or 4096) |
+| `MPO_AUTHN_JWT_KEY_ID_PREFIX` | `webauthn` | Prefix for generated key IDs |
+| `MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY` | (auto-generated) | Master key for encrypting private keys at-rest (stored in `docker/secrets/jwt_master_key`) |
+| `MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS` | (none) | **Test mode**: Override interval in seconds for accelerated testing |
+
+These variables are pre-configured in `docker/docker-compose.yml` with secure defaults.
+
+### Testing Key Rotation
+
+For E2E testing with accelerated rotation, uncomment the test mode configuration in `docker/docker-compose.yml`:
+
+```yaml
+# Uncomment for testing with accelerated rotation (e.g., every 60 seconds):
+# MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS: "60"
+```
+
+Then restart the stack:
+
+```bash
+cd docker && docker compose restart webauthn-server
+```
+
+With 60-second rotation, you can observe key rotation in real-time:
+
+```bash
+# Watch JWKS endpoint for key changes
+watch -n 5 'curl -s http://localhost:8000/.well-known/jwks.json | jq ".keys | length"'
+```
+
+### Key Lifecycle
+
+Keys progress through 4 states during rotation:
+
+1. **PENDING**: Newly generated key, published in JWKS but not yet used for signing
+   - Duration: Grace period (default 1 hour, or 15 seconds in test mode)
+   - Purpose: Allow clients to refresh their JWKS cache before activation
+
+2. **ACTIVE**: Currently used for signing new JWT tokens
+   - Duration: Rotation interval (default 6 months, or 60 seconds in test mode)
+   - Only one key is ACTIVE at any time
+
+3. **RETIRED**: No longer used for signing, but still published in JWKS for verification
+   - Duration: Retention period (default 1 hour, or 1 minute in test mode)
+   - Purpose: Allow existing tokens to be verified during their lifetime
+
+4. **DELETED**: Permanently removed from JWKS and database
+   - Cleanup happens automatically after retention period expires
+
+### Key Rotation Flow
+
+```
+Time 0:00  - Key A is ACTIVE (signing new tokens)
+Time 6:00m - Rotation triggered: Key B generated as PENDING
+           - JWKS now returns: [Key A (ACTIVE), Key B (PENDING)]
+Time 6:01h - Grace period ends: Key B becomes ACTIVE, Key A becomes RETIRED
+           - JWKS now returns: [Key B (ACTIVE), Key A (RETIRED)]
+           - New tokens signed with Key B
+           - Old tokens (signed with Key A) still verifiable
+Time 7:01h - Retention period ends: Key A is DELETED
+           - JWKS now returns: [Key B (ACTIVE)]
+```
+
+**Zero Client Impact**: Clients automatically use the correct key via the `kid` (Key ID) header in JWT tokens.
+
+### JWKS Endpoint
+
+The server publishes all active and retired keys at `/.well-known/jwks.json`:
+
+```bash
+curl http://localhost:8000/.well-known/jwks.json | jq
+```
+
+Response during rotation (multiple keys):
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "use": "sig",
+      "kid": "webauthn-2025-10-24-143052",
+      "alg": "RS256",
+      "n": "0vx7agoebGcQSuuPiLJXZpt...",
+      "e": "AQAB"
+    },
+    {
+      "kty": "RSA",
+      "use": "sig",
+      "kid": "webauthn-2024-01",
+      "alg": "RS256",
+      "n": "xjlCRBqkOL958PhIgB5EhX...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
+**Cache-Control Headers**: The JWKS endpoint includes caching directives:
+- `max-age=300` (5 minutes) - Standard cache duration
+- `stale-if-error=3600` (1 hour) - Serve stale keys if endpoint fails
+- `public` - Allow shared caching (CDN, proxies)
+
+### Security Best Practices
+
+#### 1. Master Key Protection
+
+The JWT master encryption key is auto-generated and stored in `docker/secrets/jwt_master_key`. This key encrypts all private signing keys at-rest in PostgreSQL.
+
+**Important**:
+- ✅ Auto-generated with cryptographically secure random bytes (32 bytes = 256 bits)
+- ✅ Stored as Docker secret (mounted read-only at `/run/secrets/`)
+- ✅ Never committed to git (excluded via `.gitignore`)
+- ⚠️ **Backup this key** - If lost, you cannot decrypt existing private keys
+
+**Backup Procedure**:
+```bash
+# Backup master key to secure location
+cp docker/secrets/jwt_master_key /path/to/secure/backup/jwt_master_key.$(date +%Y%m%d)
+```
+
+#### 2. Key Size Recommendations
+
+| Key Size | Security Level | Use Case |
+|----------|---------------|----------|
+| **2048** | Standard (default) | General production use, balances security and performance |
+| **3072** | High security | Financial services, healthcare, compliance-heavy industries |
+| **4096** | Maximum security | Military, government, highly sensitive data (slower performance) |
+
+Default (2048) is sufficient for most use cases per NIST recommendations.
+
+#### 3. Rotation Frequency
+
+The default 6-month rotation interval follows industry best practices:
+
+- **NIST SP 800-57**: Recommends 1-3 year rotation for signing keys
+- **PCI DSS**: Requires annual rotation minimum
+- **Industry Standard**: 6 months balances security and operational complexity
+
+**When to rotate more frequently**:
+- ⚠️ Suspected key compromise
+- ⚠️ Insider threat incidents
+- ⚠️ Compliance requirements
+- ⚠️ High-value target applications
+
+#### 4. Audit Trail
+
+All key lifecycle events are logged in the `jwt_key_audit_log` table:
+
+```sql
+SELECT key_id, event, timestamp, metadata
+FROM jwt_key_audit_log
+ORDER BY timestamp DESC
+LIMIT 10;
+```
+
+Events tracked:
+- `GENERATED` - New key created
+- `ACTIVATED` - Key promoted to ACTIVE status
+- `RETIRED` - Key demoted from ACTIVE to RETIRED
+- `DELETED` - Key permanently removed
+- `MANUAL_ROTATION` - Admin-triggered rotation
+
+### Manual Key Rotation
+
+**Emergency rotation** (e.g., suspected compromise) can be triggered via the admin API:
+
+```bash
+# Requires admin authentication
+TOKEN="your-admin-jwt-token"
+
+curl -X POST http://localhost:8000/admin/jwt/rotate-key \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "reason": "Security incident - suspected key compromise"
+  }'
+```
+
+**Note**: Manual rotation endpoint is planned for Phase 8 (Admin API). For now, rotation occurs automatically based on key age.
+
+### Troubleshooting
+
+#### "Unable to find a signing key that matches" Error
+
+**Symptom**: Python clients (PyJWKClient) fail with this error
+
+**Cause**: JWT `kid` header doesn't match any key in JWKS
+
+**Solutions**:
+1. Verify JWKS endpoint is accessible:
+   ```bash
+   curl http://localhost:8000/.well-known/jwks.json
+   ```
+
+2. Check JWT `kid` header:
+   ```bash
+   echo "YOUR_JWT_TOKEN" | cut -d. -f1 | base64 -d | jq
+   # Should show: {"alg":"RS256","typ":"JWT","kid":"webauthn-..."}
+   ```
+
+3. Verify `kid` exists in JWKS:
+   ```bash
+   curl -s http://localhost:8000/.well-known/jwks.json | jq '.keys[].kid'
+   ```
+
+#### Key Rotation Not Occurring
+
+**Check rotation configuration**:
+```bash
+docker exec webauthn-server env | grep MPO_AUTHN_JWT
+```
+
+**Check logs**:
+```bash
+docker logs webauthn-server | grep "rotation"
+```
+
+**Verify database**:
+```bash
+docker exec -it webauthn-postgres psql -U webauthn_user -d webauthn \
+  -c "SELECT key_id, status, created_at, activated_at FROM jwt_signing_keys ORDER BY created_at DESC;"
+```
+
 ## Integration with Zero-Trust Stack
 
 This client connects to a complete zero-trust architecture stack via Envoy Gateway at `http://localhost:8000`.

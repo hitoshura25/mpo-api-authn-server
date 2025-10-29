@@ -1,5 +1,7 @@
 package com.vmenon.mpo.api.authn.security
 
+import com.typesafe.config.ConfigException
+import com.typesafe.config.ConfigFactory
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import com.vmenon.mpo.api.authn.model.JwtSigningKey
 import com.vmenon.mpo.api.authn.model.KeyStatus
@@ -48,6 +50,64 @@ class KeyRotationService(
 ) {
     private val logger = LoggerFactory.getLogger(KeyRotationService::class.java)
 
+    /**
+     * Parse duration from environment variable using Typesafe Config (HOCON format).
+     *
+     * Supported formats:
+     * - With unit suffix: "30s", "180d", "2h", "60m"
+     * - With spaces: "30 seconds", "180 days", "2 hours", "60 minutes"
+     * - Singular/plural: "1 second", "2 seconds"
+     *
+     * Supported units:
+     * - ns, nano, nanos, nanosecond, nanoseconds
+     * - us, micro, micros, microsecond, microseconds
+     * - ms, milli, millis, millisecond, milliseconds
+     * - s, second, seconds
+     * - m, minute, minutes
+     * - h, hour, hours
+     * - d, day, days
+     *
+     * @param envVarName Name of environment variable (for error messages)
+     * @param value Value to parse (e.g., "30s", "180d")
+     * @return Parsed java.time.Duration
+     * @throws IllegalArgumentException if format is invalid
+     */
+    private fun parseDurationFromEnv(
+        envVarName: String,
+        value: String
+    ): Duration {
+        return try {
+            // Parse as HOCON config with temporary key
+            // Typesafe Config's getDuration() returns java.time.Duration directly (as of 1.4.x)
+            val config = ConfigFactory.parseString("temp = $value")
+            config.getDuration("temp")
+        } catch (e: ConfigException.BadValue) {
+            throw IllegalArgumentException(
+                """
+                $envVarName has invalid duration format: '$value'
+
+                Expected format: <number><unit>
+                Examples: '30s', '180d', '2h', '60m', '1 hour', '30 seconds'
+
+                Supported units:
+                  • s, second, seconds
+                  • m, minute, minutes
+                  • h, hour, hours
+                  • d, day, days
+
+                Original error: ${e.message}
+                """.trimIndent(),
+                e
+            )
+        } catch (e: ConfigException) {
+            throw IllegalArgumentException(
+                "$envVarName could not be parsed: '$value'. " +
+                "Ensure the value follows HOCON duration format (e.g., '30s', '180d').",
+                e
+            )
+        }
+    }
+
     // Configuration from environment variables with fail-fast validation
     private val rotationEnabled: Boolean =
         (System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_ENABLED)
@@ -58,56 +118,44 @@ class KeyRotationService(
             }
         }.toBoolean()
 
-    private val rotationIntervalDays: Long =
-        (System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL_DAYS)
-            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL_DAYS)
-            ?: "180").also { value ->
-            val days = value.toLongOrNull()
-                ?: throw IllegalArgumentException(
-                    "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL_DAYS} must be a valid number, got: '$value'",
-                )
-            require(days > 0) {
-                "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL_DAYS} must be positive, got: $days"
-            }
-        }.toLong()
+    /**
+     * JWT key rotation interval (HOCON duration format).
+     * Examples: "30s" (30 seconds), "180d" (180 days), "2h" (2 hours)
+     * Default: "180d" (6 months)
+     */
+    private val rotationInterval: Duration =
+        parseDurationFromEnv(
+            EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL,
+            System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL)
+                ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL)
+                ?: "180d"
+        )
 
-    private val rotationIntervalSeconds: Long? =
-        (System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS)
-            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS))?.also { value ->
-            val seconds = value.toLongOrNull()
-                ?: throw IllegalArgumentException(
-                    "${EnvironmentVariables.MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS} must be a valid number, got: '$value'",
-                )
-            require(seconds > 0) {
-                "${EnvironmentVariables.MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS} must be positive, got: $seconds"
-            }
-        }?.toLong()
+    /**
+     * Grace period before retiring old key after rotation (HOCON duration format).
+     * Examples: "1h" (1 hour), "15s" (15 seconds)
+     * Default: "1h" (1 hour)
+     */
+    private val gracePeriod: Duration =
+        parseDurationFromEnv(
+            EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD,
+            System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD)
+                ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD)
+                ?: "1h"
+        )
 
-    private val gracePeriodMinutes: Double =
-        (System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD_MINUTES)
-            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD_MINUTES)
-            ?: "60").also { value ->
-            val minutes = value.toDoubleOrNull()
-                ?: throw IllegalArgumentException(
-                    "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD_MINUTES} must be a valid number, got: '$value'",
-                )
-            require(minutes > 0) {
-                "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD_MINUTES} must be positive, got: $minutes"
-            }
-        }.toDouble()
-
-    private val retentionAfterRetirementMinutes: Double =
-        (System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION_MINUTES)
-            ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION_MINUTES)
-            ?: "60").also { value ->
-            val minutes = value.toDoubleOrNull()
-                ?: throw IllegalArgumentException(
-                    "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION_MINUTES} must be a valid number, got: '$value'",
-                )
-            require(minutes > 0) {
-                "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION_MINUTES} must be positive, got: $minutes"
-            }
-        }.toDouble()
+    /**
+     * Retention period for retired keys before deletion (HOCON duration format).
+     * Examples: "1h" (1 hour), "30s" (30 seconds), "24h" (24 hours)
+     * Default: "1h" (1 hour)
+     */
+    private val retentionPeriod: Duration =
+        parseDurationFromEnv(
+            EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION,
+            System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION)
+                ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION)
+                ?: "1h"
+        )
 
     private val keySize: Int =
         (System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_SIZE)
@@ -137,10 +185,10 @@ class KeyRotationService(
     init {
         logger.info("KeyRotationService initialized with configuration:")
         logger.info("  Rotation enabled: $rotationEnabled")
-        logger.info("  Rotation interval: ${rotationIntervalSeconds?.let { "${it}s (test mode)" } ?: "${rotationIntervalDays}d (production)"}")
-        logger.info("  Grace period: ${gracePeriodMinutes}min")
-        logger.info("  Retention: ${retentionAfterRetirementMinutes}min")
-        logger.info("  Key size: ${keySize} bits")
+        logger.info("  Rotation interval: $rotationInterval")
+        logger.info("  Grace period: $gracePeriod")
+        logger.info("  Retention period: $retentionPeriod")
+        logger.info("  Key size: $keySize bits")
         logger.info("  Key ID prefix: '$keyIdPrefix'")
     }
 
@@ -254,11 +302,6 @@ class KeyRotationService(
                 return
             }
 
-        // Calculate rotation interval (test mode uses seconds, production uses days)
-        val rotationInterval =
-            rotationIntervalSeconds?.let { Duration.ofSeconds(it) }
-                ?: Duration.ofDays(rotationIntervalDays)
-
         val keyAge = Duration.between(activeKey.activatedAt ?: activeKey.createdAt, Instant.now())
 
         if (keyAge >= rotationInterval) {
@@ -320,26 +363,15 @@ class KeyRotationService(
 
         // Phase 2: Grace period
         // JWKS now returns both keys (handled automatically by getAllPublishableKeys())
-        logger.info("Phase 2: Grace period started. Duration: $gracePeriodMinutes minutes")
-
-        // In test mode with fast rotation, activate immediately after short grace period
-        if (rotationIntervalSeconds != null && rotationIntervalSeconds < 120) {
-            // Test mode: Use shorter grace period (30 seconds or half of rotation interval)
-            val testGracePeriodSeconds = minOf(30L, rotationIntervalSeconds / 2)
-            logger.info("Test mode detected: Using accelerated grace period of $testGracePeriodSeconds seconds")
-            Thread.sleep(testGracePeriodSeconds * 1000)
-            activatePendingKey(newKeyId, activeKey.keyId)
-        } else {
-            // Production mode: Pending key will be activated by scheduler after grace period
-            logger.info("Production mode: Pending key will be activated by scheduler after grace period")
-        }
+        logger.info("Phase 2: Grace period started. Duration: $gracePeriod")
+        logger.info("PENDING key will be activated by scheduler after grace period expires")
 
         return newKeyId
     }
 
     /**
      * Activate a PENDING key and retire the current ACTIVE key.
-     * Called by scheduler after grace period, or immediately in test mode.
+     * Called by scheduler after grace period.
      *
      * Phase 3 of rotation:
      * - New key becomes ACTIVE
@@ -354,14 +386,13 @@ class KeyRotationService(
         activeKeyId: String,
     ) {
         val now = Instant.now()
-        val retentionDuration = Duration.ofSeconds((retentionAfterRetirementMinutes * 60).toLong())
 
         logger.info("Phase 3: Activating key $pendingKeyId and retiring key $activeKeyId")
 
         // CRITICAL: Retire old key FIRST to avoid violating single_active_key constraint
         // We must not have two ACTIVE keys simultaneously
         keyRepository.updateKeyStatus(activeKeyId, KeyStatus.RETIRED, now)
-        keyRepository.updateKeyExpiration(activeKeyId, now.plus(retentionDuration))
+        keyRepository.updateKeyExpiration(activeKeyId, now.plus(retentionPeriod))
 
         // Now activate new key
         keyRepository.updateKeyStatus(pendingKeyId, KeyStatus.ACTIVE, now)
@@ -373,7 +404,7 @@ class KeyRotationService(
             "Phase 3 complete: Key {} is now ACTIVE. Key {} is RETIRED (expires at {})",
             pendingKeyId,
             activeKeyId,
-            now.plus(retentionDuration)
+            now.plus(retentionPeriod)
         )
     }
 
@@ -393,6 +424,46 @@ class KeyRotationService(
             if (key.expiresAt != null && now.isAfter(key.expiresAt)) {
                 logger.info("Phase 4: Cleaning up expired key: ${key.keyId} (expired at ${key.expiresAt})")
                 keyRepository.deleteKey(key.keyId)
+            }
+        }
+    }
+
+    /**
+     * Check for PENDING keys that have exceeded grace period and activate them.
+     * Called periodically by KeyRotationScheduler.
+     *
+     * This universal activation approach works for all rotation speeds:
+     * - Production (180d rotation, 1h grace) - Activates after 1 hour
+     * - Testing (30s rotation, 15s grace) - Activates after 15 seconds
+     *
+     * No "test mode" detection needed - grace period is always respected.
+     */
+    fun checkAndActivatePendingKeys() {
+        if (!rotationEnabled) {
+            return
+        }
+
+        val pendingKeys = keyRepository.getKeysByStatus(KeyStatus.PENDING)
+        val now = Instant.now()
+
+        pendingKeys.forEach { pendingKey ->
+            val keyAge = Duration.between(pendingKey.createdAt, now)
+
+            if (keyAge >= gracePeriod) {
+                logger.info(
+                    "Grace period expired for PENDING key ${pendingKey.keyId} (age: $keyAge, grace period: $gracePeriod)"
+                )
+
+                val activeKey = keyRepository.getActiveKey()
+                if (activeKey != null) {
+                    activatePendingKey(pendingKey.keyId, activeKey.keyId)
+                } else {
+                    logger.warn("No active key found to retire during activation of ${pendingKey.keyId}")
+                }
+            } else {
+                logger.debug(
+                    "PENDING key ${pendingKey.keyId} still in grace period (age: $keyAge, grace period: $gracePeriod)"
+                )
             }
         }
     }

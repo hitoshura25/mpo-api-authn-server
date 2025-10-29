@@ -51,11 +51,11 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
         // Clear any existing keys from database
         clearKeyTables()
 
-        // Set up test environment with accelerated rotation for testing
+        // Set up test environment with accelerated rotation for testing (HOCON format)
         System.setProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_ENABLED, "true")
-        System.setProperty(EnvironmentVariables.MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS, "30") // 30 seconds for testing
-        System.setProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD_MINUTES, "1")
-        System.setProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION_MINUTES, "1")
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL, "30s") // 30 seconds for testing
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD, "15s") // 15 seconds grace period
+        System.setProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION, "30s") // 30 seconds retention
 
         // Initialize services using Kyber768 post-quantum encryption
         keyRepository = PostgresKeyRepository(createDataSource())
@@ -67,9 +67,9 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
     fun cleanupKeyRotation() {
         // Clear key rotation environment variables
         System.clearProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_ENABLED)
-        System.clearProperty(EnvironmentVariables.MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS)
-        System.clearProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD_MINUTES)
-        System.clearProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION_MINUTES)
+        System.clearProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL)
+        System.clearProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_GRACE_PERIOD)
+        System.clearProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_RETENTION)
         System.clearProperty(EnvironmentVariables.MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY)
 
         // Clear key tables
@@ -138,14 +138,22 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
         // Trigger rotation
         val newKeyId = keyRotationService.rotateKey(reason = "Integration test")
 
-        // Verify new key is PENDING (test mode activates it after short grace period)
-        Thread.sleep(500) // Wait for test mode activation
+        // Verify new key is PENDING immediately after rotation
+        val pendingKey = keyRepository.getKey(newKeyId)
+        assertNotNull(pendingKey)
+        assertEquals(KeyStatus.PENDING, pendingKey.status)
 
-        // After test mode grace period, new key should be ACTIVE
-        Thread.sleep(16000) // Wait for 15 second grace period in test mode
+        // Wait for grace period (15 seconds)
+        println("Waiting 16 seconds for grace period to expire...")
+        Thread.sleep(16_000)
 
+        // Manually trigger activation check (simulating scheduler)
+        keyRotationService.checkAndActivatePendingKeys()
+
+        // After activation, new key should be ACTIVE
         val currentActiveKey = keyRepository.getActiveKey()
         assertNotNull(currentActiveKey)
+        assertEquals(newKeyId, currentActiveKey.keyId)
 
         // Old key should be RETIRED
         val retiredKey = keyRepository.getKey(initialActiveKey.keyId)
@@ -240,11 +248,15 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
         println("Waiting 31 seconds for key to age beyond rotation threshold...")
         Thread.sleep(31_000)
 
-        // Trigger rotation check (should automatically rotate)
+        // Trigger rotation check (should automatically rotate to PENDING)
         keyRotationService.checkAndRotateIfNeeded()
 
-        // Wait for rotation to complete (including grace period)
-        Thread.sleep(16_000) // 15 second grace period + buffer
+        // Wait for grace period (15 seconds)
+        println("Waiting 16 seconds for grace period to expire...")
+        Thread.sleep(16_000)
+
+        // Manually trigger activation check (simulating scheduler)
+        keyRotationService.checkAndActivatePendingKeys()
 
         // Verify rotation occurred
         val newActiveKey = keyRepository.getActiveKey()
@@ -362,13 +374,19 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
             // Get initial JWT token
             val initialResponse = client.get("/") // Dummy endpoint to trigger DI initialization
 
-            // Wait for key rotation
-            Thread.sleep(31_000) // Wait for rotation threshold
+            // Wait for key to age beyond rotation threshold
+            println("Waiting 31 seconds for key to age beyond rotation threshold...")
+            Thread.sleep(31_000)
 
+            // Trigger rotation check
             keyRotationService.checkAndRotateIfNeeded()
 
-            // Wait for grace period and activation
+            // Wait for grace period
+            println("Waiting 16 seconds for grace period to expire...")
             Thread.sleep(16_000)
+
+            // Manually trigger activation check (simulating scheduler)
+            keyRotationService.checkAndActivatePendingKeys()
 
             // New token should be signed with new key
             // (Integration test via actual authentication would be more comprehensive,

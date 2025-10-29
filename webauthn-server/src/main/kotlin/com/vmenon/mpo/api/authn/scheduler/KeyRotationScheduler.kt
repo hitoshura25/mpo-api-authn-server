@@ -1,5 +1,7 @@
 package com.vmenon.mpo.api.authn.scheduler
 
+import com.typesafe.config.ConfigFactory
+import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import com.vmenon.mpo.api.authn.security.KeyRotationService
 import org.slf4j.LoggerFactory
 import kotlinx.coroutines.*
@@ -25,8 +27,11 @@ class KeyRotationScheduler(
     /**
      * Start the background scheduler.
      *
-     * The scheduler checks for rotation every hour in production mode.
-     * In test mode (with rotation interval < 2 minutes), it checks more frequently.
+     * The scheduler performs two operations periodically:
+     * 1. Check if rotation is needed (based on key age vs rotation interval)
+     * 2. Activate PENDING keys that have exceeded grace period
+     *
+     * Check interval is adaptive based on rotation speed to ensure timely activation.
      *
      * This method is idempotent - calling it multiple times has no effect if already running.
      */
@@ -38,14 +43,17 @@ class KeyRotationScheduler(
 
         job =
             CoroutineScope(Dispatchers.IO).launch {
-                // Check interval: 1 hour in production, more frequent in test mode
                 val checkInterval = determineCheckInterval()
 
                 logger.info("Key rotation scheduler started. Check interval: {}ms", checkInterval.toMillis())
 
                 while (isActive) {
                     try {
+                        // Check if rotation is needed (based on key age)
                         keyRotationService.checkAndRotateIfNeeded()
+
+                        // Check if any PENDING keys should be activated (after grace period)
+                        keyRotationService.checkAndActivatePendingKeys()
                     } catch (e: Exception) {
                         logger.error("Error during key rotation check", e)
                     }
@@ -67,23 +75,47 @@ class KeyRotationScheduler(
     }
 
     /**
-     * Determine the check interval based on configuration.
+     * Determine the check interval based on rotation configuration.
      *
-     * In test mode (rotation interval < 120 seconds), check every 10 seconds.
-     * In production mode, check every hour.
+     * Universal adaptive approach that works for all rotation speeds:
+     * - Fast rotation (< 5 min): Check every 10 seconds
+     * - Medium rotation (5 min - 1 day): Check every 1 minute
+     * - Slow rotation (> 1 day): Check every 1 hour
+     *
+     * This ensures timely activation of PENDING keys without excessive checking.
      *
      * @return Duration between rotation checks
      */
     private fun determineCheckInterval(): Duration {
-        val rotationIntervalSeconds =
-            (System.getProperty("MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS")
-                ?: System.getenv("MPO_AUTHN_JWT_ROTATION_INTERVAL_SECONDS"))?.toLongOrNull()
+        val rotationIntervalValue =
+            System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL)
+                ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL)
+                ?: "180d"
 
-        return if (rotationIntervalSeconds != null && rotationIntervalSeconds < 120) {
-            // Test mode: Check every 10 seconds
-            Duration.ofSeconds(10)
-        } else {
-            // Production mode: Check every hour
+        return try {
+            val config = ConfigFactory.parseString("temp = $rotationIntervalValue")
+            val rotationInterval = config.getDuration("temp")
+
+            when {
+                rotationInterval < Duration.ofMinutes(5) -> {
+                    // Fast rotation: Check every 10 seconds
+                    Duration.ofSeconds(10)
+                }
+                rotationInterval < Duration.ofDays(1) -> {
+                    // Medium rotation: Check every minute
+                    Duration.ofMinutes(1)
+                }
+                else -> {
+                    // Slow rotation: Check every hour
+                    Duration.ofHours(1)
+                }
+            }
+        } catch (e: Exception) {
+            logger.warn(
+                "Failed to parse rotation interval '{}', defaulting to 1 hour check interval",
+                rotationIntervalValue,
+                e
+            )
             Duration.ofHours(1)
         }
     }

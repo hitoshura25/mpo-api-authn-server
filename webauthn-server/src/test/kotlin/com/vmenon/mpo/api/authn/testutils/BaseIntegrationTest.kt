@@ -28,13 +28,13 @@ abstract class BaseIntegrationTest : KoinTest {
          * Generate secure test master encryption key.
          *
          * Supports optional environment variable override for reproducible tests:
-         * - Set TEST_JWT_MASTER_KEY for deterministic CI builds
-         * - Omit for random key generation (better isolation)
+         * - Set MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY for deterministic CI builds
+         * - Omit for random key generation (better test isolation)
          *
          * Key requirements: 32 bytes (256 bits) for AES-256
          */
         private val testMasterKey: String by lazy {
-            System.getenv("TEST_JWT_MASTER_KEY") ?: run {
+            System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY) ?: run {
                 val secureRandom = SecureRandom()
                 val keyBytes = ByteArray(32) // 256 bits for AES-256
                 secureRandom.nextBytes(keyBytes)

@@ -4,7 +4,12 @@ import com.typesafe.config.ConfigFactory
 import com.vmenon.mpo.api.authn.config.EnvironmentVariables
 import com.vmenon.mpo.api.authn.security.KeyRotationService
 import org.slf4j.LoggerFactory
-import kotlinx.coroutines.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.time.Duration
 
 /**
@@ -23,6 +28,21 @@ class KeyRotationScheduler(
 ) {
     private val logger = LoggerFactory.getLogger(KeyRotationScheduler::class.java)
     private var job: Job? = null
+
+    private companion object {
+        // Check interval thresholds for adaptive scheduling
+        const val FAST_ROTATION_CHECK_INTERVAL_SECONDS = 10L
+        const val MEDIUM_ROTATION_CHECK_INTERVAL_MINUTES = 1L
+        const val SLOW_ROTATION_CHECK_INTERVAL_HOURS = 1L
+
+        // Rotation speed thresholds (in minutes)
+        const val FAST_ROTATION_THRESHOLD_MINUTES = 5L
+
+        // Duration formatting thresholds
+        const val SECONDS_PER_MINUTE = 60L
+        const val SECONDS_PER_HOUR = 3600L
+        const val SECONDS_PER_DAY = 86400L
+    }
 
     /**
      * Start the background scheduler.
@@ -45,16 +65,16 @@ class KeyRotationScheduler(
             CoroutineScope(Dispatchers.IO).launch {
                 val checkInterval = determineCheckInterval()
 
-                logger.info("Key rotation scheduler started. Check interval: {}ms", checkInterval.toMillis())
+                logger.info("Key rotation scheduler started. Check interval: {}", formatDuration(checkInterval))
 
                 while (isActive) {
-                    try {
+                    runCatching {
                         // Check if rotation is needed (based on key age)
                         keyRotationService.checkAndRotateIfNeeded()
 
                         // Check if any PENDING keys should be activated (after grace period)
                         keyRotationService.checkAndActivatePendingKeys()
-                    } catch (e: Exception) {
+                    }.onFailure { e ->
                         logger.error("Error during key rotation check", e)
                     }
 
@@ -92,31 +112,45 @@ class KeyRotationScheduler(
                 ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL)
                 ?: "180d"
 
-        return try {
+        return runCatching {
             val config = ConfigFactory.parseString("temp = $rotationIntervalValue")
             val rotationInterval = config.getDuration("temp")
 
             when {
-                rotationInterval < Duration.ofMinutes(5) -> {
+                rotationInterval < Duration.ofMinutes(FAST_ROTATION_THRESHOLD_MINUTES) -> {
                     // Fast rotation: Check every 10 seconds
-                    Duration.ofSeconds(10)
+                    Duration.ofSeconds(FAST_ROTATION_CHECK_INTERVAL_SECONDS)
                 }
                 rotationInterval < Duration.ofDays(1) -> {
                     // Medium rotation: Check every minute
-                    Duration.ofMinutes(1)
+                    Duration.ofMinutes(MEDIUM_ROTATION_CHECK_INTERVAL_MINUTES)
                 }
                 else -> {
                     // Slow rotation: Check every hour
-                    Duration.ofHours(1)
+                    Duration.ofHours(SLOW_ROTATION_CHECK_INTERVAL_HOURS)
                 }
             }
-        } catch (e: Exception) {
+        }.getOrElse { e ->
             logger.warn(
                 "Failed to parse rotation interval '{}', defaulting to 1 hour check interval",
                 rotationIntervalValue,
                 e
             )
-            Duration.ofHours(1)
+            Duration.ofHours(SLOW_ROTATION_CHECK_INTERVAL_HOURS)
+        }
+    }
+
+    /**
+     * Format duration in human-readable format for logging.
+     * Examples: "10s", "1m", "1h", "1d"
+     */
+    private fun formatDuration(duration: Duration): String {
+        val seconds = duration.seconds
+        return when {
+            seconds < SECONDS_PER_MINUTE -> "${seconds}s"
+            seconds < SECONDS_PER_HOUR -> "${seconds / SECONDS_PER_MINUTE}m"
+            seconds < SECONDS_PER_DAY -> "${seconds / SECONDS_PER_HOUR}h"
+            else -> "${seconds / SECONDS_PER_DAY}d"
         }
     }
 }

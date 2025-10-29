@@ -186,14 +186,34 @@ test.describe('JWT Key Rotation End-to-End Tests', () => {
     expect(responseWithK2Before.status()).toBe(200);
     console.log(`Phase 3: New JWT (K2) is valid ✓`);
 
-    // Wait for retention period to expire AND next rotation cleanup to occur
+    // Wait for retention period to expire AND cleanup to occur via polling
     // Timeline: K2 active → 30s retention → next rotation at 45s (30s interval + 15s grace)
-    // Cleanup happens during next rotation + Envoy cache refresh (10s)
-    // Total wait: 45s (next rotation) + 10s (Envoy cache) + 5s buffer = 60s
-    console.log('Phase 3: Waiting for retention to expire and cleanup to occur (60s)...');
-    await page.waitForTimeout(60000);
+    // Cleanup happens during next rotation + Envoy cache refresh (~10s)
+    // Poll for 401 response on K1 JWT (exits early when cleanup occurs)
+    console.log('Phase 3: Polling for retention to expire and cleanup to occur (max 65s)...');
+    const maxWaitMs = 65000; // Maximum timeout
+    const pollIntervalMs = 2000; // Check every 2 seconds
+    const startTime = Date.now();
+    let k1Rejected = false;
 
-    // Verify K1 JWT is no longer valid after retention expires and cleanup occurred
+    while (Date.now() - startTime < maxWaitMs) {
+      const responseWithK1Test = await request.get('http://localhost:{{gateway_host_port}}/api/user/profile', {
+        headers: {
+          'Authorization': `Bearer ${jwtK1}`
+        }
+      });
+
+      if (responseWithK1Test.status() === 401) {
+        k1Rejected = true;
+        const elapsedMs = Date.now() - startTime;
+        console.log(`Phase 3: K1 JWT rejected after ${(elapsedMs / 1000).toFixed(1)}s (polling detected cleanup)`);
+        break;
+      }
+
+      await page.waitForTimeout(pollIntervalMs);
+    }
+
+    // Final verification after polling completes
     const responseWithK1 = await request.get('http://localhost:{{gateway_host_port}}/api/user/profile', {
       headers: {
         'Authorization': `Bearer ${jwtK1}`

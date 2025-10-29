@@ -44,11 +44,20 @@ import org.bouncycastle.util.io.pem.PemWriter
  * @property keyRepository Database access for key storage
  * @property postQuantumCrypto Post-quantum encryption service for private keys
  */
+@Suppress("TooManyFunctions") // Complex service managing complete key lifecycle
 class KeyRotationService(
     private val keyRepository: KeyRepository,
     private val postQuantumCrypto: PostQuantumCryptographyService,
 ) {
     private val logger = LoggerFactory.getLogger(KeyRotationService::class.java)
+
+    private companion object {
+        // Supported RSA key sizes (in bits)
+        const val KEY_SIZE_2048 = 2048
+        const val KEY_SIZE_3072 = 3072
+        const val KEY_SIZE_4096 = 4096
+        val SUPPORTED_KEY_SIZES = listOf(KEY_SIZE_2048, KEY_SIZE_3072, KEY_SIZE_4096)
+    }
 
     /**
      * Parse duration from environment variable using Typesafe Config (HOCON format).
@@ -160,13 +169,13 @@ class KeyRotationService(
     private val keySize: Int =
         (System.getProperty(EnvironmentVariables.MPO_AUTHN_JWT_KEY_SIZE)
             ?: System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_KEY_SIZE)
-            ?: "2048").also { value ->
+            ?: KEY_SIZE_2048.toString()).also { value ->
             val size = value.toIntOrNull()
                 ?: throw IllegalArgumentException(
                     "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_SIZE} must be a valid integer, got: '$value'",
                 )
-            require(size in listOf(2048, 3072, 4096)) {
-                "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_SIZE} must be 2048, 3072, or 4096, got: $size"
+            require(size in SUPPORTED_KEY_SIZES) {
+                "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_SIZE} must be one of $SUPPORTED_KEY_SIZES, got: $size"
             }
         }.toInt()
 
@@ -178,7 +187,8 @@ class KeyRotationService(
                 "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_ID_PREFIX} cannot be blank"
             }
             require(value.matches(Regex("^[a-z0-9-]+$"))) {
-                "${EnvironmentVariables.MPO_AUTHN_JWT_KEY_ID_PREFIX} must contain only lowercase letters, numbers, and hyphens, got: '$value'"
+                val envVarName = EnvironmentVariables.MPO_AUTHN_JWT_KEY_ID_PREFIX
+                "$envVarName must contain only lowercase letters, numbers, and hyphens, got: '$value'"
             }
         }
 
@@ -214,7 +224,7 @@ class KeyRotationService(
         logger.debug("Loading active key from database...")
         val activeKey =
             keyRepository.getActiveKey()
-                ?: throw IllegalStateException("No active signing key found. Run initialization first.")
+                ?: error("No active signing key found. Run initialization first.")
 
         logger.debug("Retrieved active key from DB: keyId=${activeKey.keyId}, status=${activeKey.status}")
         logger.debug("Encrypted private key JSON length: ${activeKey.privateKeyPem.length} bytes")
@@ -244,10 +254,9 @@ class KeyRotationService(
         val activeKey = keyRepository.getActiveKey()
 
         if (activeKey == null) {
-            logger.info("No active key found. Creating initial key for backward compatibility...")
+            logger.info("No active key found. Creating initial key...")
 
-            // Generate backward-compatible key ID
-            val keyId = "webauthn-2024-01" // Maintain existing ID for compatibility
+            val keyId = generateKeyId()
             logger.info("Generated key ID: $keyId")
 
             val keyPair = generateKeyPair()
@@ -333,7 +342,7 @@ class KeyRotationService(
 
         val activeKey =
             keyRepository.getActiveKey()
-                ?: throw IllegalStateException("No active key found for rotation")
+                ?: error("No active key found for rotation")
 
         // Phase 1: Generate new key in PENDING status
         val newKeyId = generateKeyId()
@@ -342,10 +351,11 @@ class KeyRotationService(
 
         val (privateKeyPem, publicKeyPem) = keyPairToPem(newKeyPair)
 
+        val encryptedPrivateKey = postQuantumCrypto.encryptToString(privateKeyPem)
         val pendingKey =
             JwtSigningKey(
                 keyId = newKeyId,
-                privateKeyPem = postQuantumCrypto.encryptToString(privateKeyPem),
+                privateKeyPem = encryptedPrivateKey,
                 publicKeyPem = publicKeyPem,
                 algorithm = "RS256",
                 keySize = keySize,
@@ -450,20 +460,22 @@ class KeyRotationService(
             val keyAge = Duration.between(pendingKey.createdAt, now)
 
             if (keyAge >= gracePeriod) {
-                logger.info(
-                    "Grace period expired for PENDING key ${pendingKey.keyId} (age: $keyAge, grace period: $gracePeriod)"
-                )
+                val logMessage = "Grace period expired for PENDING key ${pendingKey.keyId} " +
+                    "(age: $keyAge, grace period: $gracePeriod)"
+                logger.info(logMessage)
 
                 val activeKey = keyRepository.getActiveKey()
                 if (activeKey != null) {
                     activatePendingKey(pendingKey.keyId, activeKey.keyId)
                 } else {
-                    logger.warn("No active key found to retire during activation of ${pendingKey.keyId}")
+                    val warnMessage = "No active key found to retire during activation " +
+                        "of ${pendingKey.keyId}"
+                    logger.warn(warnMessage)
                 }
             } else {
-                logger.debug(
-                    "PENDING key ${pendingKey.keyId} still in grace period (age: $keyAge, grace period: $gracePeriod)"
-                )
+                val debugMessage = "PENDING key ${pendingKey.keyId} still in grace period " +
+                    "(age: $keyAge, grace period: $gracePeriod)"
+                logger.debug(debugMessage)
             }
         }
     }

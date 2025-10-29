@@ -1,7 +1,7 @@
 package com.vmenon.mpo.api.authn.repository
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.vmenon.mpo.api.authn.model.JwtKeyAuditLog
+import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import com.vmenon.mpo.api.authn.model.JwtSigningKey
 import com.vmenon.mpo.api.authn.model.KeyEvent
 import com.vmenon.mpo.api.authn.model.KeyStatus
@@ -113,8 +113,36 @@ interface KeyRepository {
  *
  * Uses raw JDBC for database operations with proper transaction handling.
  */
+@Suppress("TooManyFunctions") // Repository pattern naturally has many CRUD operations
 class PostgresKeyRepository(private val dataSource: DataSource) : KeyRepository {
-    private val objectMapper = jacksonObjectMapper()
+    private val objectMapper = JacksonUtils.objectMapper
+
+    // JDBC parameter indices for saveKey operation
+    private companion object {
+        const val PARAM_KEY_ID = 1
+        const val PARAM_PRIVATE_KEY_PEM = 2
+        const val PARAM_PUBLIC_KEY_PEM = 3
+        const val PARAM_ALGORITHM = 4
+        const val PARAM_KEY_SIZE = 5
+        const val PARAM_STATUS = 6
+        const val PARAM_CREATED_AT = 7
+        const val PARAM_ACTIVATED_AT = 8
+        const val PARAM_RETIRED_AT = 9
+        const val PARAM_EXPIRES_AT = 10
+        const val PARAM_METADATA = 11
+
+        // Update status parameter indices
+        const val UPDATE_STATUS_PARAM_STATUS = 1
+        const val UPDATE_STATUS_PARAM_TIMESTAMP = 2
+        const val UPDATE_STATUS_PARAM_KEY_ID = 3
+        const val UPDATE_STATUS_PARAM_KEY_ID_NO_TIMESTAMP = 2
+
+        // Audit log parameter indices
+        const val AUDIT_PARAM_KEY_ID = 1
+        const val AUDIT_PARAM_EVENT = 2
+        const val AUDIT_PARAM_TIMESTAMP = 3
+        const val AUDIT_PARAM_METADATA = 4
+    }
 
     override fun saveKey(key: JwtSigningKey) {
         dataSource.connection.use { conn ->
@@ -127,17 +155,17 @@ class PostgresKeyRepository(private val dataSource: DataSource) : KeyRepository 
                 """.trimIndent()
 
             conn.prepareStatement(sql).use { stmt ->
-                stmt.setString(1, key.keyId)
-                stmt.setString(2, key.privateKeyPem)
-                stmt.setString(3, key.publicKeyPem)
-                stmt.setString(4, key.algorithm)
-                stmt.setInt(5, key.keySize)
-                stmt.setString(6, key.status.name)
-                stmt.setTimestamp(7, Timestamp.from(key.createdAt))
-                stmt.setTimestamp(8, key.activatedAt?.let { Timestamp.from(it) })
-                stmt.setTimestamp(9, key.retiredAt?.let { Timestamp.from(it) })
-                stmt.setTimestamp(10, key.expiresAt?.let { Timestamp.from(it) })
-                stmt.setObject(11, key.metadata?.let { toPGobject(it) })
+                stmt.setString(PARAM_KEY_ID, key.keyId)
+                stmt.setString(PARAM_PRIVATE_KEY_PEM, key.privateKeyPem)
+                stmt.setString(PARAM_PUBLIC_KEY_PEM, key.publicKeyPem)
+                stmt.setString(PARAM_ALGORITHM, key.algorithm)
+                stmt.setInt(PARAM_KEY_SIZE, key.keySize)
+                stmt.setString(PARAM_STATUS, key.status.name)
+                stmt.setTimestamp(PARAM_CREATED_AT, Timestamp.from(key.createdAt))
+                stmt.setTimestamp(PARAM_ACTIVATED_AT, key.activatedAt?.let { Timestamp.from(it) })
+                stmt.setTimestamp(PARAM_RETIRED_AT, key.retiredAt?.let { Timestamp.from(it) })
+                stmt.setTimestamp(PARAM_EXPIRES_AT, key.expiresAt?.let { Timestamp.from(it) })
+                stmt.setObject(PARAM_METADATA, key.metadata?.let { toPGobject(it) })
                 stmt.executeUpdate()
             }
 
@@ -238,12 +266,12 @@ class PostgresKeyRepository(private val dataSource: DataSource) : KeyRepository 
                 }
 
             conn.prepareStatement(sql).use { stmt ->
-                stmt.setString(1, newStatus.name)
+                stmt.setString(UPDATE_STATUS_PARAM_STATUS, newStatus.name)
                 if (columnName != null) {
-                    stmt.setTimestamp(2, Timestamp.from(statusTimestamp))
-                    stmt.setString(3, keyId)
+                    stmt.setTimestamp(UPDATE_STATUS_PARAM_TIMESTAMP, Timestamp.from(statusTimestamp))
+                    stmt.setString(UPDATE_STATUS_PARAM_KEY_ID, keyId)
                 } else {
-                    stmt.setString(2, keyId)
+                    stmt.setString(UPDATE_STATUS_PARAM_KEY_ID_NO_TIMESTAMP, keyId)
                 }
                 stmt.executeUpdate()
             }
@@ -298,10 +326,10 @@ class PostgresKeyRepository(private val dataSource: DataSource) : KeyRepository 
                 """.trimIndent()
 
             conn.prepareStatement(sql).use { stmt ->
-                stmt.setString(1, event.keyId)
-                stmt.setString(2, event.event.name)
-                stmt.setTimestamp(3, Timestamp.from(event.timestamp))
-                stmt.setObject(4, event.metadata?.let { toPGobject(it) })
+                stmt.setString(AUDIT_PARAM_KEY_ID, event.keyId)
+                stmt.setString(AUDIT_PARAM_EVENT, event.event.name)
+                stmt.setTimestamp(AUDIT_PARAM_TIMESTAMP, Timestamp.from(event.timestamp))
+                stmt.setObject(AUDIT_PARAM_METADATA, event.metadata?.let { toPGobject(it) })
                 stmt.executeUpdate()
             }
         }

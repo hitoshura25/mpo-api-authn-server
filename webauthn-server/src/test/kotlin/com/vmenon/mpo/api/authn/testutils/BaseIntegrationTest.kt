@@ -32,6 +32,12 @@ abstract class BaseIntegrationTest : KoinTest {
          * - Omit for random key generation (better test isolation)
          *
          * Key requirements: 32 bytes (256 bits) for AES-256
+         *
+         * IMPORTANT: Lazy initialization means the same key is reused across ALL test classes
+         * in the same JVM run. This provides consistent encryption/decryption within a test
+         * suite but means tests are not fully isolated from each other. For true isolation,
+         * consider moving key generation to individual test setup methods or using @TestInstance
+         * (Lifecycle.PER_CLASS) with test-level key generation.
          */
         private val testMasterKey: String by lazy {
             System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY) ?: run {

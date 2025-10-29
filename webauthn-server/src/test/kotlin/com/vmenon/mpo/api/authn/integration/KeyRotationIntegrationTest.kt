@@ -85,13 +85,44 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
         }
     }
 
+    /**
+     * Poll for a condition with timeout, replacing Thread.sleep for faster and more reliable tests.
+     * Exits early when condition is met, reducing test execution time.
+     *
+     * @param timeoutMs Maximum time to wait (milliseconds)
+     * @param intervalMs Time between polls (milliseconds)
+     * @param description Description for logging
+     * @param condition Lambda that returns true when condition is met
+     * @throws AssertionError if timeout is reached before condition is met
+     */
+    private fun pollUntil(
+        timeoutMs: Long,
+        intervalMs: Long = 500,
+        description: String,
+        condition: () -> Boolean
+    ) {
+        val startTime = System.currentTimeMillis()
+        var elapsed = 0L
+
+        while (elapsed < timeoutMs) {
+            if (condition()) {
+                println("$description - condition met after ${elapsed}ms")
+                return
+            }
+            Thread.sleep(intervalMs)
+            elapsed = System.currentTimeMillis() - startTime
+        }
+
+        throw AssertionError("$description - timeout after ${timeoutMs}ms")
+    }
+
     @Test
-    fun `test initial key generation creates backward-compatible key`() {
+    fun `test initial key generation creates timestamped key`() {
         keyRotationService.initialize()
 
         val activeKey = keyRepository.getActiveKey()
         assertNotNull(activeKey, "Active key should be created during initialization")
-        assertEquals("webauthn-2024-01", activeKey.keyId, "Should use backward-compatible key ID")
+        assertTrue(activeKey.keyId.startsWith("webauthn-"), "Key ID should start with prefix")
         assertEquals(KeyStatus.ACTIVE, activeKey.status)
         assertEquals("RS256", activeKey.algorithm)
         assertEquals(2048, activeKey.keySize)
@@ -135,6 +166,9 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
         val initialActiveKey = keyRepository.getActiveKey()
         assertNotNull(initialActiveKey)
 
+        // Wait 1 second to ensure unique timestamp-based key ID
+        Thread.sleep(1000)
+
         // Trigger rotation
         val newKeyId = keyRotationService.rotateKey(reason = "Integration test")
 
@@ -143,9 +177,17 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
         assertNotNull(pendingKey)
         assertEquals(KeyStatus.PENDING, pendingKey.status)
 
-        // Wait for grace period (15 seconds)
-        println("Waiting 16 seconds for grace period to expire...")
-        Thread.sleep(16_000)
+        // Wait for grace period and poll for activation readiness
+        pollUntil(
+            timeoutMs = 20_000,
+            description = "Waiting for grace period to expire (polling)"
+        ) {
+            val key = keyRepository.getKey(newKeyId)
+            val keyAge = key?.let {
+                java.time.Duration.between(it.createdAt, java.time.Instant.now())
+            }
+            keyAge?.seconds?.let { it >= 15 } ?: false
+        }
 
         // Manually trigger activation check (simulating scheduler)
         keyRotationService.checkAndActivatePendingKeys()
@@ -244,16 +286,37 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
         keyRotationService.initialize()
         val initialKey = keyRepository.getActiveKey()!!
 
-        // Wait for key to age beyond rotation threshold (30 seconds in test mode)
-        println("Waiting 31 seconds for key to age beyond rotation threshold...")
-        Thread.sleep(31_000)
+        // Wait for key to age beyond rotation threshold (30 seconds)
+        pollUntil(
+            timeoutMs = 35_000,
+            intervalMs = 1000,
+            description = "Waiting for key to age beyond rotation threshold (polling)"
+        ) {
+            val activeKey = keyRepository.getActiveKey()
+            val keyAge = activeKey?.let {
+                java.time.Duration.between(it.activatedAt ?: it.createdAt, java.time.Instant.now())
+            }
+            keyAge?.seconds?.let { it >= 30 } ?: false
+        }
 
         // Trigger rotation check (should automatically rotate to PENDING)
         keyRotationService.checkAndRotateIfNeeded()
 
-        // Wait for grace period (15 seconds)
-        println("Waiting 16 seconds for grace period to expire...")
-        Thread.sleep(16_000)
+        val pendingKeyId = keyRepository.getKeysByStatus(KeyStatus.PENDING).firstOrNull()?.keyId
+
+        // Wait for grace period and poll for activation readiness
+        pendingKeyId?.let { keyId ->
+            pollUntil(
+                timeoutMs = 20_000,
+                description = "Waiting for grace period to expire (accelerated lifecycle test)"
+            ) {
+                val key = keyRepository.getKey(keyId)
+                val keyAge = key?.let {
+                    java.time.Duration.between(it.createdAt, java.time.Instant.now())
+                }
+                keyAge?.seconds?.let { it >= 15 } ?: false
+            }
+        }
 
         // Manually trigger activation check (simulating scheduler)
         keyRotationService.checkAndActivatePendingKeys()
@@ -352,8 +415,6 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
 
         // Simulate restart by creating new service instances
         val newKeyRepository = PostgresKeyRepository(createDataSource())
-        val newPostQuantumCrypto = PostQuantumCryptographyService()
-        val newKeyRotationService = KeyRotationService(newKeyRepository, newPostQuantumCrypto)
 
         // Verify keys are persisted
         val persistedPendingKey = newKeyRepository.getKey(pendingKeyId)
@@ -371,19 +432,41 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
 
             keyRotationService.initialize()
 
-            // Get initial JWT token
-            val initialResponse = client.get("/") // Dummy endpoint to trigger DI initialization
+            // Trigger DI initialization
+            client.get("/")
+            val firstKeyId = keyRepository.getActiveKey()?.keyId
 
             // Wait for key to age beyond rotation threshold
-            println("Waiting 31 seconds for key to age beyond rotation threshold...")
-            Thread.sleep(31_000)
+            pollUntil(
+                timeoutMs = 35_000,
+                intervalMs = 1000,
+                description = "Waiting for key to age beyond rotation threshold (application test)"
+            ) {
+                val activeKey = keyRepository.getActiveKey()
+                val keyAge = activeKey?.let {
+                    java.time.Duration.between(it.activatedAt ?: it.createdAt, java.time.Instant.now())
+                }
+                keyAge?.seconds?.let { it >= 30 } ?: false
+            }
 
             // Trigger rotation check
             keyRotationService.checkAndRotateIfNeeded()
 
-            // Wait for grace period
-            println("Waiting 16 seconds for grace period to expire...")
-            Thread.sleep(16_000)
+            val pendingKeyId = keyRepository.getKeysByStatus(KeyStatus.PENDING).firstOrNull()?.keyId
+
+            // Wait for grace period and poll for activation readiness
+            pendingKeyId?.let { keyId ->
+                pollUntil(
+                    timeoutMs = 20_000,
+                    description = "Waiting for grace period to expire (application test)"
+                ) {
+                    val key = keyRepository.getKey(keyId)
+                    val keyAge = key?.let {
+                        java.time.Duration.between(it.createdAt, java.time.Instant.now())
+                    }
+                    keyAge?.seconds?.let { it >= 15 } ?: false
+                }
+            }
 
             // Manually trigger activation check (simulating scheduler)
             keyRotationService.checkAndActivatePendingKeys()
@@ -393,7 +476,7 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
             // but this validates the key rotation mechanism is working)
             val newActiveKey = keyRepository.getActiveKey()
             assertNotNull(newActiveKey)
-            assertTrue(newActiveKey.keyId != "webauthn-2024-01", "Should have rotated to new key")
+            assertTrue(newActiveKey.keyId != firstKeyId, "Should have rotated to new key")
         }
 
     @Test
@@ -419,7 +502,8 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
 
         // First call should load from database
         val (keyId1, keyPair1) = keyRotationService.getActiveSigningKey()
-        assertEquals("webauthn-2024-01", keyId1)
+        assertTrue(keyId1.startsWith("webauthn-"), "Key ID should start with 'webauthn-' prefix")
+        assertTrue(keyId1.matches(Regex("webauthn-\\d{4}-\\d{2}-\\d{2}-\\d{6}")), "Key ID should match timestamp pattern")
 
         // Second call should return cached value (same instance)
         val (keyId2, keyPair2) = keyRotationService.getActiveSigningKey()

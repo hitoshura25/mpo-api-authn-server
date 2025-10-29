@@ -1,7 +1,7 @@
 package com.vmenon.mpo.api.authn.security
 
-import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.vmenon.mpo.api.authn.utils.JacksonUtils
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMExtractor
 import org.bouncycastle.pqc.crypto.crystals.kyber.KyberKEMGenerator
@@ -38,8 +38,8 @@ class PostQuantumCryptographyService {
         private const val KYBER768_ENCAPSULATION_SIZE = 1088 // Kyber768 specific
         private const val AES_KEY_SIZE_BITS = 256 // AES-256
 
-        // Jackson mapper for JSON serialization of EncryptedData
-        private val objectMapper = jacksonObjectMapper()
+        // Reuse shared Jackson mapper for JSON serialization
+        private val objectMapper = JacksonUtils.objectMapper
 
         init {
             // Register BouncyCastle post-quantum provider

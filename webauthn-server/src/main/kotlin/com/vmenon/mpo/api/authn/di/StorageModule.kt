@@ -35,6 +35,11 @@ private const val MIN_PORT = 1
 private const val MAX_PORT = 65535
 private const val REDIS_TIMEOUT_MS = 2000
 
+// HikariCP connection pool configuration
+private const val HIKARI_CONNECTION_TIMEOUT_MS = 30000  // 30 seconds
+private const val HIKARI_IDLE_TIMEOUT_MS = 600000       // 10 minutes
+private const val HIKARI_MAX_LIFETIME_MS = 1800000      // 30 minutes
+
 val storageModule =
     module {
         single(named("redisHost")) {
@@ -292,9 +297,9 @@ val storageModule =
                     username = dbConfig.username
                     password = dbConfig.password
                     maximumPoolSize = dbConfig.maxPoolSize
-                    connectionTimeout = 30000
-                    idleTimeout = 600000
-                    maxLifetime = 1800000
+                    connectionTimeout = HIKARI_CONNECTION_TIMEOUT_MS.toLong()
+                    idleTimeout = HIKARI_IDLE_TIMEOUT_MS.toLong()
+                    maxLifetime = HIKARI_MAX_LIFETIME_MS.toLong()
                 }
 
             HikariDataSource(hikariConfig)

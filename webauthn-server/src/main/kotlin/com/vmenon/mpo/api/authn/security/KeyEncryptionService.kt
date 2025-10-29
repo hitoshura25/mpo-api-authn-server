@@ -46,7 +46,12 @@ interface KeyEncryptionService {
  */
 class AesGcmKeyEncryptionService(masterKey: String) : KeyEncryptionService {
     private val secretKey: SecretKeySpec
-    private val gcmTagLength = 128 // bits (16 bytes)
+
+    private companion object {
+        const val GCM_TAG_LENGTH_BITS = 128 // bits (16 bytes) - detects tampering
+    }
+
+    private val gcmTagLength = GCM_TAG_LENGTH_BITS
 
     init {
         // Derive 256-bit AES key from master key using SHA-256

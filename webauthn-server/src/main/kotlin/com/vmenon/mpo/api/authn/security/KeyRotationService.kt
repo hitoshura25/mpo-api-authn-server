@@ -491,14 +491,14 @@ class KeyRotationService(
     }
 
     /**
-     * Generate a unique key ID with timestamp.
-     * Format: {prefix}-YYYY-MM-DD-HHmmss
+     * Generate a unique key ID with timestamp including millisecond precision.
+     * Format: {prefix}-YYYY-MM-DD-HHmmss-SSS
      *
-     * Example: webauthn-2025-10-24-143052
+     * Example: webauthn-2025-10-24-143052-123
      */
     private fun generateKeyId(): String {
         val timestamp =
-            DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss")
+            DateTimeFormatter.ofPattern("yyyy-MM-dd-HHmmss-SSS")
                 .format(Instant.now().atZone(ZoneId.systemDefault()))
         return "$keyIdPrefix-$timestamp"
     }

@@ -27,4 +27,18 @@ object EnvironmentVariables {
     // Monitoring
     const val MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME = "MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME"
     const val MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT = "MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT"
+
+    // JWT Key Rotation Configuration
+    const val MPO_AUTHN_JWT_KEY_ROTATION_ENABLED = "MPO_AUTHN_JWT_KEY_ROTATION_ENABLED"
+
+    // Duration format (HOCON syntax: "30s", "180d", "1h", etc.)
+    // Supported units: s (seconds), m (minutes), h (hours), d (days)
+    const val MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL = "MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL"
+    const val MPO_AUTHN_JWT_KEY_GRACE_PERIOD = "MPO_AUTHN_JWT_KEY_GRACE_PERIOD"
+    const val MPO_AUTHN_JWT_KEY_RETENTION = "MPO_AUTHN_JWT_KEY_RETENTION"
+
+    // Other JWT configuration
+    const val MPO_AUTHN_JWT_KEY_SIZE = "MPO_AUTHN_JWT_KEY_SIZE"
+    const val MPO_AUTHN_JWT_KEY_ID_PREFIX = "MPO_AUTHN_JWT_KEY_ID_PREFIX"
+    const val MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY = "MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY"
 }

@@ -38,6 +38,13 @@ interface GenerateWebClientArgs {
   jaeger_agent_compact_port?: number;
   jaeger_agent_binary_port?: number;
   jaeger_agent_config_port?: number;
+  // JWT key rotation configuration (HOCON duration format)
+  jwt_rotation_enabled?: string;              // Default: "true"
+  jwt_rotation_interval?: string;             // Default: "180d" (6 months) - HOCON format: "30s", "180d", "1h"
+  jwt_grace_period?: string;                  // Default: "1h" (1 hour) - HOCON format
+  jwt_retention?: string;                     // Default: "1h" (1 hour) - HOCON format
+  // JWKS cache duration - PRODUCTION default
+  jwks_cache_duration_seconds?: number;       // Default: 300 (5 minutes - industry standard)
 }
 
 export async function generateWebClient(args: GenerateWebClientArgs) {
@@ -61,7 +68,13 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     jaeger_otlp_http_port = 4318,
     jaeger_agent_compact_port = 6831,
     jaeger_agent_binary_port = 6832,
-    jaeger_agent_config_port = 5778
+    jaeger_agent_config_port = 5778,
+    // JWT rotation parameters - PRODUCTION defaults (HOCON format)
+    jwt_rotation_enabled = 'true',
+    jwt_rotation_interval = '180d',            // PRODUCTION: 6 months (HOCON format)
+    jwt_grace_period = '1h',                   // PRODUCTION: 1 hour (HOCON format)
+    jwt_retention = '1h',                      // PRODUCTION: 1 hour (HOCON format)
+    jwks_cache_duration_seconds = 300          // PRODUCTION: 5 minutes
   } = args;
 
   // Validate framework
@@ -107,6 +120,10 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     console.error('Warning: Could not parse server_url, using default port 8080');
   }
 
+  // Log JWT rotation configuration
+  console.log(`ℹ️  JWT Rotation: ${jwt_rotation_enabled}`);
+  console.log(`ℹ️  JWKS cache duration: ${jwks_cache_duration_seconds} seconds`);
+
   // Template files to generate
   const template_files = [
     { template: '.gitignore.hbs', output: '.gitignore' },
@@ -127,10 +144,11 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     { template: 'global-teardown.js.hbs', output: 'global-teardown.js' },
     { template: 'tests/webauthn.spec.js.hbs', output: 'tests/webauthn.spec.js' },
     { template: 'tests/jwt-verification.spec.js.hbs', output: 'tests/jwt-verification.spec.js' },
+    { template: 'tests/jwt-key-rotation.spec.js.hbs', output: 'tests/jwt-key-rotation.spec.js' },
     // Docker setup for WebAuthn server + Zero-Trust stack
     { template: 'docker/docker-compose.yml.hbs', output: 'docker/docker-compose.yml' },
     { template: 'docker/envoy-gateway.yaml.hbs', output: 'docker/envoy-gateway.yaml' },
-    { template: 'docker/init-db.sql.hbs', output: 'docker/init-db.sql' },
+    { template: 'docker/init-db.sql.hbs', output: 'docker/migrations/01_init-db.sql' },
     { template: 'docker/secrets/.gitignore.hbs', output: 'docker/secrets/.gitignore' },
     { template: 'docker/setup-secrets.sh.hbs', output: 'docker/setup-secrets.sh' },
     // Istio service mesh (Phase 2: mTLS sidecars)
@@ -166,13 +184,20 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     jaeger_otlp_http_port,
     jaeger_agent_compact_port,
     jaeger_agent_binary_port,
-    jaeger_agent_config_port
+    jaeger_agent_config_port,
+    // JWT rotation parameters (HOCON format)
+    jwt_rotation_enabled,
+    jwt_rotation_interval,
+    jwt_grace_period,
+    jwt_retention,
+    jwks_cache_duration_seconds
   };
 
   try {
     // Generate secure passwords for Docker secrets
     const postgres_password = generateSecurePassword();
     const redis_password = generateSecurePassword();
+    const jwt_master_key = generateSecurePassword();
 
     // Create project directory structure
     mkdirSync(sanitizedProjectPath, { recursive: true });
@@ -213,11 +238,25 @@ export async function generateWebClient(args: GenerateWebClientArgs) {
     // Generate Docker secret files with auto-generated passwords
     const postgres_password_path = join(sanitizedProjectPath, 'docker', 'secrets', 'postgres_password');
     const redis_password_path = join(sanitizedProjectPath, 'docker', 'secrets', 'redis_password');
+    const jwt_master_key_path = join(sanitizedProjectPath, 'docker', 'secrets', 'jwt_master_key');
 
     writeFileSync(postgres_password_path, postgres_password, 'utf8');
     writeFileSync(redis_password_path, redis_password, 'utf8');
+    writeFileSync(jwt_master_key_path, jwt_master_key, 'utf8');
     files_created.push(postgres_password_path);
     files_created.push(redis_password_path);
+    files_created.push(jwt_master_key_path);
+
+    // Copy JWT migration file (synced from server during build) to migrations/ subdirectory
+    const jwt_migration_template = join(template_dir, 'docker', 'jwt-migration.sql.hbs');
+    const jwt_migration_output = join(sanitizedProjectPath, 'docker', 'migrations', '03_jwt-migration.sql');
+
+    // Only copy if template exists (will be created by sync-migrations.js during build)
+    if (existsSync(jwt_migration_template)) {
+      const jwt_migration_content = readFileSync(jwt_migration_template, 'utf8');
+      writeFileSync(jwt_migration_output, jwt_migration_content, 'utf8');
+      files_created.push(jwt_migration_output);
+    }
 
     // Phase 2: Generate mTLS certificates for zero-trust service mesh
     const cert_result = generateMTLSCertificates(sanitizedProjectPath);

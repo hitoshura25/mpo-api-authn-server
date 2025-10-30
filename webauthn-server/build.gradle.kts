@@ -51,6 +51,7 @@ val openTelemetryVersion = "1.32.0"
 val openTelemetryKtorVersion = "2.17.1-alpha"
 val cborVersion = "4.5.2"
 val jwtVersion = "4.4.0"
+val typesafeConfigVersion = "1.4.3"
 
 group = "com.vmenon.mpo.api.authn"
 version = "1.0-SNAPSHOT"
@@ -87,6 +88,9 @@ dependencies {
 
     // JWT (JSON Web Tokens) for zero-trust architecture
     implementation("com.auth0:java-jwt:$jwtVersion")
+
+    // Configuration parsing (HOCON duration format: "30s", "180d", "1h", etc.)
+    implementation("com.typesafe:config:$typesafeConfigVersion")
 
     // Ktor Framework
     implementation("io.ktor:ktor-server-netty:$ktorVersion")

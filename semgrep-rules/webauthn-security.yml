@@ -364,34 +364,6 @@ rules:
       technology: [webauthn]
       cwe: "CWE-489: Active Debug Code"
 
-  - id: webauthn-insecure-logging
-    message: |
-      WebAuthn credentials and sensitive data should not be logged
-      as this can expose authentication secrets.
-    severity: ERROR
-    languages: [kotlin, java]
-    patterns:
-      - pattern-either:
-          - pattern: |
-              logger.info("...", $CREDENTIAL, ...)
-          - pattern: |
-              logger.debug("...", $CHALLENGE, ...)
-          - pattern: |
-              println($CREDENTIAL)
-          - pattern: |
-              System.out.println($CREDENTIAL)
-      - pattern-inside: |
-          fun $FUNC(...) {
-            ...
-            logger.$LEVEL("...", $VAR, ...)
-            ...
-          }
-    metadata:
-      category: security
-      technology: [webauthn]
-      cwe: "CWE-532: Information Exposure Through Log Files"
-      owasp: "A09:2021 – Security Logging and Monitoring Failures"
-
   # Additional Security Patterns
   - id: webauthn-weak-timeout-configuration
     message: |

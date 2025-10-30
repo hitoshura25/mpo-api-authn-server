@@ -1,0 +1,6 @@
+# Build output
+node_modules/
+dist/
+
+# Generated migration template (synced from server during build)
+src/templates/vanilla/docker/jwt-migration.sql.hbs

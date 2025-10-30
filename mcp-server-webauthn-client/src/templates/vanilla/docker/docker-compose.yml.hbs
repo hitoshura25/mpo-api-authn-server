@@ -44,8 +44,9 @@ services:
       - "{{postgres_host_port}}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      # Auto-run schema initialization on first startup
-      - ./init-db.sql:/docker-entrypoint-initdb.d/V1__Create_webauthn_tables.sql
+      # Auto-run schema initialization on first startup (PostgreSQL executes in alphabetical order)
+      # Mount entire migrations directory for easier maintenance (add new migrations without updating docker-compose)
+      - ./migrations:/docker-entrypoint-initdb.d:ro
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U webauthn_user -d webauthn"]
@@ -99,6 +100,7 @@ services:
       - |
         export MPO_AUTHN_DB_PASSWORD=$$(cat /run/secrets/postgres_password)
         export MPO_AUTHN_REDIS_PASSWORD=$$(cat /run/secrets/redis_password)
+        export MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY=$$(cat /run/secrets/jwt_master_key)
         exec java $$JAVA_OPTS -jar /app/app.jar
     environment:
       # JVM optimization for containerized environments (from Dockerfile)
@@ -114,9 +116,17 @@ services:
       # WebAuthn configuration
       MPO_AUTHN_APP_RELYING_PARTY_ID: {{relying_party_id}}
       MPO_AUTHN_APP_RELYING_PARTY_NAME: "{{relying_party_name}}"
+      # JWT Key Rotation Configuration (HOCON duration format)
+      MPO_AUTHN_JWT_KEY_ROTATION_ENABLED: "{{jwt_rotation_enabled}}"
+      MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL: "{{jwt_rotation_interval}}"
+      MPO_AUTHN_JWT_KEY_GRACE_PERIOD: "{{jwt_grace_period}}"
+      MPO_AUTHN_JWT_KEY_RETENTION: "{{jwt_retention}}"
+      MPO_AUTHN_JWT_KEY_SIZE: "2048"
+      MPO_AUTHN_JWT_KEY_ID_PREFIX: "webauthn"
     secrets:
       - postgres_password
       - redis_password
+      - jwt_master_key
     depends_on:
       postgres:
         condition: service_healthy
@@ -163,3 +173,5 @@ secrets:
     file: ./secrets/postgres_password
   redis_password:
     file: ./secrets/redis_password
+  jwt_master_key:
+    file: ./secrets/jwt_master_key

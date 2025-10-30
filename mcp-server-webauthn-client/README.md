@@ -245,6 +245,74 @@ npx -y @vmenon25/mcp-server-webauthn-client --help
 - `--jaeger-agent-binary-port <port>` - Jaeger agent binary thrift UDP (default: `6832`)
 - `--jaeger-agent-config-port <port>` - Jaeger agent config HTTP (default: `5778`)
 
+**JWT Key Rotation Configuration (Advanced):**
+
+The generated WebAuthn stack includes automatic JWT signing key rotation for enhanced security (always enabled). These parameters control the rotation behavior using **HOCON duration format**:
+
+**CLI Parameters:**
+- `--jwt-rotation-interval <duration>` - Time between key rotations (default: `180d` = 6 months)
+- `--jwt-grace-period <duration>` - Grace period before retiring old key (default: `1h` = 1 hour)
+- `--jwt-retention <duration>` - How long to keep retired keys for verification (default: `1h` = 1 hour)
+- `--jwks-cache-duration-seconds <seconds>` - JWKS endpoint cache duration (default: `300` = 5 minutes)
+
+**Duration Format (HOCON Syntax):**
+- Format: `<number><unit>` (e.g., `30s`, `180d`, `2h`, `60m`)
+- Supported units:
+  - `s`, `second`, `seconds`
+  - `m`, `minute`, `minutes`
+  - `h`, `hour`, `hours`
+  - `d`, `day`, `days`
+- Examples: `"30s"` (30 seconds), `"2h"` (2 hours), `"180d"` (180 days), `"1 hour"` (1 hour)
+
+**Production Example** (6-month rotation with 1-hour grace period):
+```bash
+npx -y @vmenon25/mcp-server-webauthn-client \
+  --jwt-rotation-interval 180d \
+  --jwt-grace-period 1h \
+  --jwt-retention 1h \
+  --jwks-cache-duration-seconds 300
+```
+
+**Testing Example** (accelerated 30-second rotation for E2E tests):
+```bash
+npx -y @vmenon25/mcp-server-webauthn-client \
+  --jwt-rotation-interval 30s \
+  --jwt-grace-period 15s \
+  --jwt-retention 30s \
+  --jwks-cache-duration-seconds 5
+```
+
+**How Key Rotation Works:**
+1. **Initial State:** Server starts with first signing key (K1) in ACTIVE status
+2. **Rotation Trigger:** After rotation interval (e.g., 180 days), server generates new key (K2)
+3. **Pending Phase:** K2 is PENDING while K1 remains ACTIVE (seamless for existing tokens)
+4. **Activation:** After grace period (e.g., 1 hour), K2 becomes ACTIVE, K1 becomes RETIRED
+5. **Cleanup:** After retention period (e.g., 1 hour), K1 is deleted from database
+6. **JWKS Endpoint:** `/.well-known/jwks.json` always serves current ACTIVE + RETIRED keys for verification
+
+**Timeline Example (Production Settings):**
+```
+T+0:        K1 ACTIVE → Rotation needed
+T+0:        K2 PENDING generated
+T+1h:       K2 ACTIVE, K1 RETIRED (grace period expired)
+T+2h:       K1 deleted (retention period expired)
+T+180d:     K3 PENDING generated, cycle repeats
+```
+
+**Environment Variables (Alternative to CLI):**
+```yaml
+MPO_AUTHN_JWT_KEY_ROTATION_ENABLED: "true"
+MPO_AUTHN_JWT_KEY_ROTATION_INTERVAL: "180d"
+MPO_AUTHN_JWT_KEY_GRACE_PERIOD: "1h"
+MPO_AUTHN_JWT_KEY_RETENTION: "1h"
+```
+
+**Why HOCON Format?**
+- ✅ **Human-readable:** "180d" is clearer than 15552000 seconds or 0.000347 days
+- ✅ **Flexible:** Same variable works for production (days) and testing (seconds)
+- ✅ **Standard:** Industry-standard format used by Kubernetes, Spring Boot, etc.
+- ✅ **Safe:** Native library parsing with clear error messages
+
 #### Discovery File for Non-MCP Agents
 
 **For coding agents without native MCP support** (Cursor, Aider, Windsurf, etc.), this tool can be discovered via the project's `.ai-agents.json` file:

@@ -76,6 +76,23 @@ const { values } = parseArgs({
       type: 'string',
       default: '5778'
     },
+    // JWT Key Rotation Configuration (HOCON format)
+    'jwt-rotation-interval': {
+      type: 'string',
+      default: '180d'
+    },
+    'jwt-grace-period': {
+      type: 'string',
+      default: '1h'
+    },
+    'jwt-retention': {
+      type: 'string',
+      default: '1h'
+    },
+    'jwks-cache-duration-seconds': {
+      type: 'string',
+      default: '300'
+    },
     help: {
       type: 'boolean',
       short: 'h',
@@ -117,6 +134,12 @@ JAEGER TRACING PORT CUSTOMIZATION:
   --jaeger-agent-compact-port <port>     Jaeger agent compact thrift UDP (default: 6831)
   --jaeger-agent-binary-port <port>      Jaeger agent binary thrift UDP (default: 6832)
   --jaeger-agent-config-port <port>      Jaeger agent config HTTP (default: 5778)
+
+JWT KEY ROTATION CONFIGURATION (HOCON duration format):
+  --jwt-rotation-interval <duration>     Time between key rotations (default: 180d)
+  --jwt-grace-period <duration>          Grace period before retiring old key (default: 1h)
+  --jwt-retention <duration>             How long to keep retired keys (default: 1h)
+  --jwks-cache-duration-seconds <sec>    JWKS endpoint cache duration (default: 300)
 
 EXAMPLES:
   # Generate vanilla TypeScript client
@@ -184,6 +207,7 @@ const jaegerOtlpHttpPort = validatePort(values['jaeger-otlp-http-port'], 'jaeger
 const jaegerAgentCompactPort = validatePort(values['jaeger-agent-compact-port'], 'jaeger-agent-compact-port', '6831');
 const jaegerAgentBinaryPort = validatePort(values['jaeger-agent-binary-port'], 'jaeger-agent-binary-port', '6832');
 const jaegerAgentConfigPort = validatePort(values['jaeger-agent-config-port'], 'jaeger-agent-config-port', '5778');
+const jwksCacheDurationSeconds = validatePort(values['jwks-cache-duration-seconds'], 'jwks-cache-duration-seconds', '300');
 
 // Generate web client
 console.log('🚀 WebAuthn Client Generator');
@@ -213,7 +237,12 @@ try {
     jaeger_otlp_http_port: jaegerOtlpHttpPort,
     jaeger_agent_compact_port: jaegerAgentCompactPort,
     jaeger_agent_binary_port: jaegerAgentBinaryPort,
-    jaeger_agent_config_port: jaegerAgentConfigPort
+    jaeger_agent_config_port: jaegerAgentConfigPort,
+    // JWT Key Rotation (HOCON format)
+    jwt_rotation_interval: values['jwt-rotation-interval'],
+    jwt_grace_period: values['jwt-grace-period'],
+    jwt_retention: values['jwt-retention'],
+    jwks_cache_duration_seconds: jwksCacheDurationSeconds
   });
 
   // MCP returns structured result, CLI just needs the text

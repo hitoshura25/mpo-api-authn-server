@@ -13,6 +13,8 @@ import org.testcontainers.containers.GenericContainer
 import org.testcontainers.containers.PostgreSQLContainer
 import org.testcontainers.junit.jupiter.Testcontainers
 import org.testcontainers.utility.DockerImageName
+import java.security.SecureRandom
+import java.util.Base64
 
 /**
  * Base class for integration tests that need PostgreSQL, Redis, and Jaeger containers.
@@ -21,6 +23,31 @@ import org.testcontainers.utility.DockerImageName
 @Testcontainers
 @TestInstance(TestInstance.Lifecycle.PER_CLASS)
 abstract class BaseIntegrationTest : KoinTest {
+    companion object {
+        /**
+         * Generate secure test master encryption key.
+         *
+         * Supports optional environment variable override for reproducible tests:
+         * - Set MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY for deterministic CI builds
+         * - Omit for random key generation (better test isolation)
+         *
+         * Key requirements: 32 bytes (256 bits) for AES-256
+         *
+         * IMPORTANT: Lazy initialization means the same key is reused across ALL test classes
+         * in the same JVM run. This provides consistent encryption/decryption within a test
+         * suite but means tests are not fully isolated from each other. For true isolation,
+         * consider moving key generation to individual test setup methods or using @TestInstance
+         * (Lifecycle.PER_CLASS) with test-level key generation.
+         */
+        private val testMasterKey: String by lazy {
+            System.getenv(EnvironmentVariables.MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY) ?: run {
+                val secureRandom = SecureRandom()
+                val keyBytes = ByteArray(32) // 256 bits for AES-256
+                secureRandom.nextBytes(keyBytes)
+                Base64.getEncoder().encodeToString(keyBytes)
+            }
+        }
+    }
     val postgres: PostgreSQLContainer<*> =
         PostgreSQLContainer(DockerImageName.parse("postgres:15-alpine"))
             .withDatabaseName("webauthn_test")
@@ -106,6 +133,13 @@ abstract class BaseIntegrationTest : KoinTest {
             EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME,
             "mpo-authn-server-test",
         )
+
+        // JWT Key Rotation configuration
+        // Use securely generated test key (supports env var override for reproducible tests)
+        System.setProperty(
+            EnvironmentVariables.MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY,
+            testMasterKey,
+        )
     }
 
     /**
@@ -128,6 +162,7 @@ abstract class BaseIntegrationTest : KoinTest {
                 EnvironmentVariables.MPO_AUTHN_DB_PASSWORD,
                 EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_JAEGER_ENDPOINT,
                 EnvironmentVariables.MPO_AUTHN_OPEN_TELEMETRY_SERVICE_NAME,
+                EnvironmentVariables.MPO_AUTHN_JWT_MASTER_ENCRYPTION_KEY,
             )
         properties.forEach { System.clearProperty(it) }
     }
@@ -135,6 +170,10 @@ abstract class BaseIntegrationTest : KoinTest {
     private fun clearDatabase() {
         postgres.createConnection("").use { connection ->
             connection.createStatement().use { statement ->
+                // Clear JWT rotation tables (must be before jwt_signing_keys due to FK constraint)
+                statement.execute("TRUNCATE TABLE jwt_key_audit_log CASCADE")
+                statement.execute("TRUNCATE TABLE jwt_signing_keys CASCADE")
+                // Clear WebAuthn tables
                 statement.execute("TRUNCATE TABLE webauthn_credentials_secure CASCADE")
                 statement.execute("TRUNCATE TABLE webauthn_users_secure CASCADE")
             }

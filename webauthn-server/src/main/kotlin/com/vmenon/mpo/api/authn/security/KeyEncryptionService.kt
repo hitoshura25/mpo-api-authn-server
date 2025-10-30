@@ -55,6 +55,7 @@ class AesGcmKeyEncryptionService(masterKey: String) : KeyEncryptionService {
     private val secretKey: SecretKeySpec
 
     private companion object {
+        const val GCM_IV_LENGTH_BYTES = 12  // bytes (96 bits) - GCM standard IV length
         const val GCM_TAG_LENGTH_BITS = 128 // bits (16 bytes) - detects tampering
     }
 
@@ -75,9 +76,12 @@ class AesGcmKeyEncryptionService(masterKey: String) : KeyEncryptionService {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
 
         // Explicitly generate unique random IV to prevent nonce reuse (CWE-323)
-        val iv = ByteArray(12) // GCM standard IV length (96 bits)
+        val iv = ByteArray(GCM_IV_LENGTH_BYTES)
         SecureRandom().nextBytes(iv)
 
+        // nosemgrep: kotlin.lang.security.gcm-detection.gcm-detection
+        // Justification: GCMParameterSpec initialized with cryptographically random IV generated above.
+        // IV uniqueness prevents CWE-323 (nonce reuse).
         val parameterSpec = GCMParameterSpec(gcmTagLength, iv)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec)
 
@@ -111,6 +115,9 @@ class AesGcmKeyEncryptionService(masterKey: String) : KeyEncryptionService {
 
         // Decrypt with extracted IV
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        // nosemgrep: kotlin.lang.security.gcm-detection.gcm-detection
+        // Justification: GCMParameterSpec initialized with IV extracted from ciphertext. Each ciphertext
+        // has its own unique IV that was generated during encryption.
         cipher.init(Cipher.DECRYPT_MODE, secretKey, GCMParameterSpec(gcmTagLength, iv))
 
         val decryptedBytes = cipher.doFinal(encryptedBytes)

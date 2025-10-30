@@ -1,6 +1,7 @@
 package com.vmenon.mpo.api.authn.security
 
 import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.Base64
 import javax.crypto.Cipher
 import javax.crypto.spec.GCMParameterSpec
@@ -38,7 +39,13 @@ interface KeyEncryptionService {
  * - Algorithm: AES-256-GCM (Galois/Counter Mode)
  * - Key size: 256 bits (derived from master key via SHA-256)
  * - Authentication tag: 128 bits (detects tampering)
- * - IV: Random 12-byte nonce (unique per encryption)
+ * - IV: 12-byte random nonce (MUST be unique per encryption to prevent CWE-323)
+ *
+ * IV/Nonce Security (Addresses Semgrep kotlin.lang.security.gcm-detection):
+ * Each encryption operation explicitly generates a cryptographically random 12-byte IV
+ * using SecureRandom. The IV is stored with the ciphertext and must never be reused
+ * with the same key, as this would break GCM's confidentiality and authenticity guarantees.
+ * Semgrep finding is acknowledged and suppressed with justification in code comments.
  *
  * Format of encrypted data: [IV_LENGTH(1 byte)][IV(12 bytes)][CIPHERTEXT + AUTH_TAG]
  *
@@ -61,16 +68,23 @@ class AesGcmKeyEncryptionService(masterKey: String) : KeyEncryptionService {
     }
 
     override fun encrypt(plaintext: String): String {
+        // nosemgrep: kotlin.lang.security.gcm-detection.gcm-detection
+        // Justification: IV/nonce uniqueness is guaranteed by explicit SecureRandom generation.
+        // Each encryption operation generates a fresh random 12-byte IV, preventing CWE-323
+        // (nonce reuse). The IV is stored with ciphertext and never reused with the same key.
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
 
-        // Initialize with random IV (GCM mode generates unique IV automatically)
-        cipher.init(Cipher.ENCRYPT_MODE, secretKey)
+        // Explicitly generate unique random IV to prevent nonce reuse (CWE-323)
+        val iv = ByteArray(12) // GCM standard IV length (96 bits)
+        SecureRandom().nextBytes(iv)
 
-        val iv = cipher.iv
+        val parameterSpec = GCMParameterSpec(gcmTagLength, iv)
+        cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec)
+
         val encryptedBytes = cipher.doFinal(plaintext.toByteArray())
 
-        // Combine IV and ciphertext into single byte array
-        // Format: [IV_LENGTH(1 byte)][IV][ENCRYPTED_DATA + AUTH_TAG]
+        // Combine IV and ciphertext (IV doesn't need to be secret, but must be unique)
+        // Format: [IV_LENGTH(1 byte)][IV(12 bytes)][CIPHERTEXT + AUTH_TAG]
         val combined = ByteArray(1 + iv.size + encryptedBytes.size)
         combined[0] = iv.size.toByte()
         System.arraycopy(iv, 0, combined, 1, iv.size)
@@ -80,6 +94,9 @@ class AesGcmKeyEncryptionService(masterKey: String) : KeyEncryptionService {
     }
 
     override fun decrypt(ciphertext: String): String {
+        // nosemgrep: kotlin.lang.security.gcm-detection.gcm-detection
+        // Justification: GCMParameterSpec usage is safe - IV is extracted from ciphertext
+        // (where it was stored during encryption). Each ciphertext has its own unique IV.
         val combined = Base64.getDecoder().decode(ciphertext)
 
         // Extract IV length from first byte

@@ -69,19 +69,21 @@ class AesGcmKeyEncryptionService(masterKey: String) : KeyEncryptionService {
     }
 
     override fun encrypt(plaintext: String): String {
+        // Ignoring semgrep warning. Justification: IV/nonce uniqueness is guaranteed by
+        // explicit SecureRandom generation. Each encryption operation generates a fresh random
+        // 12-byte IV, preventing CWE-323 (nonce reuse). The IV is stored with ciphertext and
+        // never reused with the same key.
         // nosemgrep: kotlin.lang.security.gcm-detection.gcm-detection
-        // Justification: IV/nonce uniqueness is guaranteed by explicit SecureRandom generation.
-        // Each encryption operation generates a fresh random 12-byte IV, preventing CWE-323
-        // (nonce reuse). The IV is stored with ciphertext and never reused with the same key.
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
 
         // Explicitly generate unique random IV to prevent nonce reuse (CWE-323)
         val iv = ByteArray(GCM_IV_LENGTH_BYTES)
         SecureRandom().nextBytes(iv)
 
+        // Ignoring Semgrep. Justification: GCMParameterSpec initialized with
+        // cryptographically random IV generated above. IV uniqueness prevents CWE-323
+        // (nonce reuse).
         // nosemgrep: kotlin.lang.security.gcm-detection.gcm-detection
-        // Justification: GCMParameterSpec initialized with cryptographically random IV generated above.
-        // IV uniqueness prevents CWE-323 (nonce reuse).
         val parameterSpec = GCMParameterSpec(gcmTagLength, iv)
         cipher.init(Cipher.ENCRYPT_MODE, secretKey, parameterSpec)
 

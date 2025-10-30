@@ -500,7 +500,12 @@ class KeyRotationIntegrationTest : BaseIntegrationTest() {
         // First call should load from database
         val (keyId1, keyPair1) = keyRotationService.getActiveSigningKey()
         assertTrue(keyId1.startsWith("webauthn-"), "Key ID should start with 'webauthn-' prefix")
-        assertTrue(keyId1.matches(Regex("webauthn-\\d{4}-\\d{2}-\\d{2}-\\d{6}-\\d{3}")), "Key ID should match timestamp pattern with milliseconds")
+
+        val timestampPattern = Regex("webauthn-\\d{4}-\\d{2}-\\d{2}-\\d{6}-\\d{3}")
+        assertTrue(
+            keyId1.matches(timestampPattern),
+            "Key ID should match timestamp pattern with milliseconds"
+        )
 
         // Second call should return cached value (same instance)
         val (keyId2, keyPair2) = keyRotationService.getActiveSigningKey()

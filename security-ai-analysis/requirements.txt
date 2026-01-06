@@ -1,7 +1,7 @@
 ai2-olmo @ git+https://github.com/allenai/OLMo.git@59a53e3f68e546330ca5a99ec626e58f9ab96494
 ai2-olmo-core==2.2.0
 aiohappyeyeballs==2.6.1
-aiohttp==3.13.0
+aiohttp==3.13.3
 aiosignal==1.4.0
 antlr4-python3-runtime==4.9.3
 anyio==4.11.0

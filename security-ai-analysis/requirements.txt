@@ -19,7 +19,7 @@ cwe2==3.0.0
 datasets==4.1.1
 dill==0.4.0
 faiss-cpu==1.12.0
-filelock==3.19.1
+filelock==3.20.3
 frozenlist==1.8.0
 fsspec==2025.9.0
 google-api-core==2.25.2

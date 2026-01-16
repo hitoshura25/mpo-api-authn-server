@@ -64,7 +64,7 @@ protobuf==6.32.1
 psutil==7.1.0
 pyaml==25.7.0
 pyarrow==21.0.0
-pyasn1==0.6.1
+pyasn1==0.6.2
 pyasn1_modules==0.4.2
 Pygments==2.19.2
 pytest==8.4.2

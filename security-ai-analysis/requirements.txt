@@ -60,7 +60,7 @@ pillow==11.3.0
 pluggy==1.6.0
 propcache==0.4.0
 proto-plus==1.26.1
-protobuf==6.32.1
+protobuf==6.33.5
 psutil==7.1.0
 pyaml==25.7.0
 pyarrow==21.0.0
